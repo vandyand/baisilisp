@@ -1,3 +1,5 @@
+import functools
+import numbers
 from builtins import map as pymap
 from collections.abc import Callable, Iterable, Mapping
 from itertools import islice
@@ -373,6 +375,117 @@ class PersistentMap(
         return init
 
 
+def _comparator_fn(comparator: Callable[[K, K], int | bool]):
+    """Normalize Basilisp boolean and three-way comparator functions."""
+
+    def compare(left: K, right: K) -> int:
+        result = comparator(left, right)
+        if isinstance(result, bool):
+            if result:
+                return -1
+            if comparator(right, left):
+                return 1
+            return 0
+        if not isinstance(result, numbers.Number):
+            raise TypeError("Sorted collection comparator must return a number or bool")
+        return int(result)
+
+    return compare
+
+
+class PersistentSortedMap(PersistentMap[K, V]):
+    """An immutable map whose observable iteration order follows a comparator."""
+
+    __slots__ = ("_comparator",)
+
+    def __init__(
+        self,
+        m: "_Map[K, V]",
+        comparator: Callable[[K, K], int | bool],
+        meta: IPersistentMap | None = None,
+    ) -> None:
+        super().__init__(m, meta=meta)
+        self._comparator = comparator
+
+    @property
+    def comparator(self):
+        return self._comparator
+
+    def _sorted_items(self):
+        compare = _comparator_fn(self._comparator)
+        return sorted(
+            self._inner.items(),
+            key=functools.cmp_to_key(lambda left, right: compare(left[0], right[0])),
+        )
+
+    def _new(self, m: "_Map[K, V]", meta: IPersistentMap | None = None):
+        return PersistentSortedMap(
+            m, self._comparator, meta=self._meta if meta is None else meta
+        )
+
+    def __iter__(self):
+        for key, _ in self._sorted_items():
+            yield key
+
+    def _lrepr(self, **kwargs: Unpack[PrintSettings]):
+        return map_lrepr(
+            self._sorted_items,
+            start="{",
+            end="}",
+            meta=self._meta,
+            **kwargs,
+        )
+
+    def with_meta(self, meta: IPersistentMap | None):
+        return self._new(self._inner, meta=meta)
+
+    def assoc(self, *kvs):
+        with self._inner.mutate() as m:
+            for k, v in partition(kvs, 2):
+                m[k] = v
+            return self._new(m.finish())
+
+    def dissoc(self, *ks):
+        with self._inner.mutate() as m:
+            for k in ks:
+                try:
+                    del m[k]
+                except KeyError:
+                    pass
+            return self._new(m.finish())
+
+    def update(self, *maps: Mapping[K, V]):
+        return self._new(self._inner.update(*(m.items() for m in maps)))
+
+    def update_with(self, merge_fn: Callable[[V, V], V], *maps: Mapping[K, V]):
+        with self._inner.mutate() as m:
+            for map_ in maps:
+                for k, v in map_.items():
+                    m.set(k, merge_fn(m[k], v) if k in m else v)
+            return self._new(m.finish())
+
+    def cons(self, *elems):
+        updated = super().cons(*elems)
+        return self._new(updated._inner)
+
+    def empty(self):
+        return self._new(_Map())
+
+    def seq(self) -> ISeq[IMapEntry[K, V]] | None:
+        if len(self._inner) == 0:
+            return None
+        return iterator_sequence(
+            (MapEntry.of(k, v) for k, v in self._sorted_items())
+        )
+
+    def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
+        for k, v in self._sorted_items():
+            init = f(init, k, v)
+            if isinstance(init, Reduced):
+                return init.deref()
+        return init
+
+
 EMPTY: PersistentMap = PersistentMap.from_coll(())
 
 
@@ -386,6 +499,15 @@ def map(  # pylint:disable=redefined-builtin
     # adheres to the `Mapping` protocol. Passing the `.items()` directly bypasses
     # this problem.
     return PersistentMap.from_coll(kvs.items(), meta=meta)
+
+
+def sorted_map(
+    comparator: Callable[[K, K], int | bool], *pairs, meta: IPersistentMap | None = None
+) -> PersistentSortedMap[K, V]:
+    """Create a persistent map whose iteration order follows ``comparator``."""
+    if len(pairs) % 2:
+        raise ValueError("Sorted map requires an even number of key-value arguments")
+    return PersistentSortedMap(_Map(partition(pairs, 2)), comparator, meta=meta)
 
 
 def m(**kvs) -> PersistentMap[str, V]:

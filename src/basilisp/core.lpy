@@ -253,12 +253,34 @@
   array-map
   hash-map)
 
+(def sorted-map
+  (fn sorted-map [& kvs]
+    (apply basilisp.lang.map/sorted-map basilisp.lang.runtime/compare kvs)))
+
+(def sorted-map-by
+  (fn sorted-map-by [cmp & kvs]
+    (apply basilisp.lang.map/sorted-map cmp kvs)))
+
 (def
   ^{:doc      "Create a set from the input arguments."
     :arglists '([& members])}
   hash-set
   (fn hash-set [& members]
     (apply basilisp.lang.set/s members)))
+
+(def sorted-set
+  (fn sorted-set [& members]
+    (apply basilisp.lang.set/sorted-set basilisp.lang.runtime/compare members)))
+
+(def sorted-set-by
+  (fn sorted-set-by [cmp & members]
+    (apply basilisp.lang.set/sorted-set cmp members)))
+
+(def sorted?
+  (fn sorted? [coll]
+    (if (instance? basilisp.lang.map/PersistentSortedMap coll)
+      true
+      (instance? basilisp.lang.set/PersistentSortedSet coll))))
 
 (def
   ^{:doc      "Return a set with the contents of ``coll``\\."
@@ -3553,6 +3575,29 @@
                    (update acc k f v)
                    (assoc acc k v))))
              (first maps) (apply concat (rest maps)))))
+
+(defn ^:private sorted-bound?
+  [coll test bound entry]
+  (let [elem (if (map? coll) (key entry) entry)]
+    (test ((.-comparator coll) elem bound) 0)))
+
+(defn subseq
+  "Return map entries in sorted collection ``coll`` within the supplied bounds."
+  ([coll test key]
+   (filter #(sorted-bound? coll test key %) (seq coll)))
+  ([coll start-test start-key end-test end-key]
+   (filter #(and (sorted-bound? coll start-test start-key %)
+                 (sorted-bound? coll end-test end-key %))
+           (seq coll))))
+
+(defn rsubseq
+  "Return reverse-ordered map entries in sorted collection ``coll`` within bounds."
+  ([coll test key]
+   (filter #(sorted-bound? coll test key %) (reverse (seq coll))))
+  ([coll start-test start-key end-test end-key]
+   (filter #(and (sorted-bound? coll start-test start-key %)
+                 (sorted-bound? coll end-test end-key %))
+           (reverse (seq coll)))))
 
 (defn trampoline
   "Trampoline ``f`` with starting arguments. If ``f`` returns a function (as determined

@@ -13,13 +13,14 @@ one of those names.
 
 ## Implemented
 
-The following twenty-one symbols are now implemented and no longer appear as
+The following twenty-eight symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
 `line-seq`, `list*`, `locking`, `num`, `partitionv`, `partitionv-all`,
 `re-groups`, `re-matcher`, `reductions`, `replicate`, `splitv-at`, `struct`,
-`struct-map`, `unsigned-bit-shift-right`, and `xml-seq`.
+`struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
+`sorted-set`, `sorted-set-by`, `unsigned-bit-shift-right`, and `xml-seq`.
 
 ## Portable Implementation Targets
 
@@ -29,8 +30,6 @@ deferrals.
 
 - Namespace/runtime: `compile`, `find-protocol-impl`, `find-protocol-method`,
   and `test`.
-- Collections: `sorted-map`, `sorted-map-by`, `sorted-set`, `sorted-set-by`,
-  `sorted?`, `subseq`, and `rsubseq`.
 - Reader helpers: `read+string`.
 - Numeric and hash helpers: `hash-combine`, `hash-ordered-coll`,
   `hash-unordered-coll`, and `mix-collection-hash`. Hash helpers must be

@@ -1,4 +1,6 @@
-from collections.abc import Iterable
+import functools
+import numbers
+from collections.abc import Callable, Iterable
 from collections.abc import Set as _PySet
 from typing import AbstractSet, TypeVar
 
@@ -178,6 +180,81 @@ class PersistentSet(
         return TransientSet(self._inner.mutate())
 
 
+def _comparator_fn(comparator: Callable[[T, T], int | bool]):
+    def compare(left: T, right: T) -> int:
+        result = comparator(left, right)
+        if isinstance(result, bool):
+            if result:
+                return -1
+            if comparator(right, left):
+                return 1
+            return 0
+        if not isinstance(result, numbers.Number):
+            raise TypeError("Sorted collection comparator must return a number or bool")
+        return int(result)
+
+    return compare
+
+
+class PersistentSortedSet(PersistentSet[T]):
+    """An immutable set whose observable iteration order follows a comparator."""
+
+    __slots__ = ("_comparator",)
+
+    def __init__(
+        self,
+        m: "_Map[T, T]",
+        comparator: Callable[[T, T], int | bool],
+        meta: IPersistentMap | None = None,
+    ) -> None:
+        super().__init__(m, meta=meta)
+        self._comparator = comparator
+
+    @property
+    def comparator(self):
+        return self._comparator
+
+    def _sorted_members(self):
+        return sorted(self._inner.keys(), key=functools.cmp_to_key(_comparator_fn(self._comparator)))
+
+    def _new(self, m: "_Map[T, T]", meta: IPersistentMap | None = None):
+        return PersistentSortedSet(
+            m, self._comparator, meta=self._meta if meta is None else meta
+        )
+
+    def __iter__(self):
+        yield from self._sorted_members()
+
+    def _lrepr(self, **kwargs: Unpack[PrintSettings]):
+        return _seq_lrepr(self._sorted_members(), "#{", "}", meta=self._meta, **kwargs)
+
+    def with_meta(self, meta: IPersistentMap | None):
+        return self._new(self._inner, meta=meta)
+
+    def cons(self, *elems: T):
+        with self._inner.mutate() as m:
+            for elem in elems:
+                m.set(elem, elem)
+            return self._new(m.finish())
+
+    def disj(self, *elems: T):
+        with self._inner.mutate() as m:
+            for elem in elems:
+                try:
+                    del m[elem]
+                except KeyError:
+                    pass
+            return self._new(m.finish())
+
+    def empty(self):
+        return self._new(_Map())
+
+    def seq(self) -> ISeq[T] | None:
+        if len(self._inner) == 0:
+            return None
+        return sequence(self)
+
+
 EMPTY = PersistentSet.from_iterable(())
 
 
@@ -191,3 +268,10 @@ def set(  # pylint:disable=redefined-builtin
 def s(*members: T, meta: IPersistentMap | None = None) -> PersistentSet[T]:
     """Creates a new set from members."""
     return PersistentSet.from_iterable(members, meta=meta)
+
+
+def sorted_set(
+    comparator: Callable[[T, T], int | bool], *members: T, meta: IPersistentMap | None = None
+) -> PersistentSortedSet[T]:
+    """Create a persistent set whose iteration order follows ``comparator``."""
+    return PersistentSortedSet(_Map((member, member) for member in members), comparator, meta=meta)
