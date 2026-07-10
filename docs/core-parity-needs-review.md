@@ -13,16 +13,17 @@ one of those names.
 
 ## Implemented
 
-The following thirty-five symbols are now implemented and no longer appear as
+The following thirty-six symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
 `find-protocol-impl`, `find-protocol-method`, `line-seq`, `list*`, `locking`,
 `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
 `mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
-`re-matcher`, `reductions`, `replicate`, `splitv-at`, `struct`, `struct-map`,
-`subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`, `sorted-set`,
-`sorted-set-by`, `test`, `unsigned-bit-shift-right`, and `xml-seq`.
+`re-matcher`, `read+string`, `reductions`, `replicate`, `splitv-at`, `struct`,
+`struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
+`sorted-set`, `sorted-set-by`, `test`, `unsigned-bit-shift-right`, and
+`xml-seq`.
 
 ## Portable Implementation Targets
 
@@ -30,7 +31,6 @@ These symbols have useful public behavior that can be ported without claiming
 to reproduce JVM internals. They remain implementation work, not review
 deferrals.
 
-- Reader helpers: `read+string`.
 
 ## Needs Review
 

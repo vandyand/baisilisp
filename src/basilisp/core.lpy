@@ -4950,6 +4950,28 @@
   ([stream eof-error? eof-value]
    (first (read-seq {:eof (if eof-error? :eofthrow eof-value)} stream))))
 
+(defn read+string
+  "Read one form from a seekable stream and return ``[form source]``.
+
+  The returned source is the original whitespace-trimmed text consumed for the form."
+  ([stream]
+   (read+string {} stream))
+  ([opts stream]
+   (let [eof    (if (contains? opts :eof) (:eof opts) :eofthrow)
+         result (basilisp.lang.reader/read-with-source
+                 stream
+                 *resolver*
+                 *data-readers*
+                 eof
+                 (= eof :eofthrow)
+                 (:features opts)
+                 (not= :preserve (:read-cond opts))
+                 *default-data-reader-fn*
+                 (:init-line opts)
+                 (:init-column opts))]
+     (when result
+       (vec result)))))
+
 (defn eval
   "Evaluate a form (not a string) and return its result.
 

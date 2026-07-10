@@ -265,6 +265,11 @@ class StreamReader:
         (line, col)."""
         return self.line, self.col
 
+    @property
+    def unread_count(self) -> int:
+        """Return the number of source characters retained as lookahead."""
+        return sum(bool(c) for c in list(self._buffer)[self._idx :])
+
     def _update_loc(self):
         """Update the internal line and column buffers after a new character is
         added."""
@@ -1939,6 +1944,55 @@ def read(  # pylint: disable=too-many-arguments
                 "reader is configured to process reader conditionals"
             )
         yield expr
+
+
+def read_with_source(  # pylint: disable=too-many-arguments
+    stream,
+    resolver: Resolver | None = None,
+    data_readers: DataReaders | None = None,
+    eof: Any = EOF,
+    is_eof_error: bool = False,
+    features: IPersistentSet[kw.Keyword] | None = None,
+    process_reader_cond: bool = True,
+    default_data_reader_fn: DefaultDataReaderFn | None = None,
+    init_line: int | None = None,
+    init_column: int | None = None,
+) -> tuple[RawReaderForm, str] | None:
+    """Read one form and return it with its original trimmed source text."""
+    try:
+        start = stream.tell()
+    except (AttributeError, OSError) as exc:
+        raise TypeError("read_with_source requires a seekable text stream") from exc
+
+    reader = StreamReader(stream, init_line=init_line, init_column=init_column)
+    ctx = ReaderContext(
+        reader,
+        resolver=resolver,
+        data_readers=data_readers,
+        eof=eof,
+        features=features,
+        process_reader_cond=process_reader_cond,
+        default_data_reader_fn=default_data_reader_fn,
+    )
+    while True:
+        expr = _read_next(ctx)
+        if expr is ctx.eof:
+            if is_eof_error:
+                raise EOFError
+            return None
+        if expr is COMMENT or isinstance(expr, Comment):
+            continue
+        if isinstance(expr, ReaderConditional) and ctx.should_process_reader_cond:
+            raise ctx.syntax_error(
+                f"Unexpected reader conditional '{repr(expr)})'; "
+                "reader is configured to process reader conditionals"
+            )
+
+        end = stream.tell() - reader.unread_count
+        stream.seek(start)
+        source = stream.read(end - start).strip()
+        stream.seek(end)
+        return expr, source
 
 
 def read_str(  # pylint: disable=too-many-arguments
