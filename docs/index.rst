@@ -53,6 +53,7 @@ Contents
    features
    gettingstarted
    differencesfromclojure
+   parityroadmap
    concepts
    reference
    releasenotes
