@@ -13,15 +13,16 @@ one of those names.
 
 ## Implemented
 
-The following thirty-one symbols are now implemented and no longer appear as
+The following thirty-five symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
 `find-protocol-impl`, `find-protocol-method`, `line-seq`, `list*`, `locking`,
-`num`, `partitionv`, `partitionv-all`, `re-groups`, `re-matcher`, `reductions`,
-`replicate`, `splitv-at`, `struct`, `struct-map`, `subseq`, `rsubseq`,
-`sorted-map`, `sorted-map-by`, `sorted?`, `sorted-set`, `sorted-set-by`, `test`,
-`unsigned-bit-shift-right`, and `xml-seq`.
+`hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
+`mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
+`re-matcher`, `reductions`, `replicate`, `splitv-at`, `struct`, `struct-map`,
+`subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`, `sorted-set`,
+`sorted-set-by`, `test`, `unsigned-bit-shift-right`, and `xml-seq`.
 
 ## Portable Implementation Targets
 
@@ -30,10 +31,6 @@ to reproduce JVM internals. They remain implementation work, not review
 deferrals.
 
 - Reader helpers: `read+string`.
-- Numeric and hash helpers: `hash-combine`, `hash-ordered-coll`,
-  `hash-unordered-coll`, and `mix-collection-hash`. Hash helpers must be
-  documented as Basilisp hash semantics unless they can be proven byte-for-byte
-  compatible with Clojure.
 
 ## Needs Review
 

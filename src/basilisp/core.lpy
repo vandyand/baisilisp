@@ -2265,6 +2265,67 @@
   [x n]
   (python/bool (bit-and (bit-shift-right x n) 1)))
 
+(def ^:private ^:const uint32-mask 4294967295)
+
+(defn ^:private uint32 [x]
+  (bit-and x uint32-mask))
+
+(defn ^:private int32 [x]
+  (let [x (uint32 x)]
+    (if (>= x 2147483648) (- x 4294967296) x)))
+
+(defn ^:private unsigned-bit-shift-right-32 [x n]
+  (bit-shift-right (uint32 x) n))
+
+(defn ^:private rotate-left-32 [x n]
+  (uint32 (bit-or (bit-shift-left (uint32 x) n)
+                  (unsigned-bit-shift-right-32 x (- 32 n)))))
+
+(defn ^:private murmur-mix-k1 [k]
+  (let [k (uint32 (* k 3432918353))
+        k (rotate-left-32 k 15)
+        k (uint32 (* k 461845907))]
+    k))
+
+(defn ^:private murmur-mix-h1 [h k]
+  (let [h (bit-xor (uint32 h) k)
+        h (rotate-left-32 h 13)]
+    (uint32 (+ (* h 5) 3864292196))))
+
+(defn ^:private murmur-fmix [h length]
+  (let [h (bit-xor (uint32 h) length)
+        h (bit-xor h (unsigned-bit-shift-right-32 h 16))
+        h (uint32 (* h 2246822507))
+        h (bit-xor h (unsigned-bit-shift-right-32 h 13))
+        h (uint32 (* h 3266489909))]
+    (int32 (bit-xor h (unsigned-bit-shift-right-32 h 16)))))
+
+(defn mix-collection-hash [hash-basis count]
+  "Mix a collection hash basis and element count using Murmur3's finalizer."
+  (murmur-fmix (murmur-mix-h1 0 (murmur-mix-k1 hash-basis)) count))
+
+(defn hash-combine [x y]
+  "Combine two hash values using Clojure's 32-bit collection hash combiner."
+  (int32 (bit-xor x (+ y 2654435769 (bit-shift-left x 6) (bit-shift-right x 2)))))
+
+(defn hash-ordered-coll [coll]
+  "Return the Basilisp ordered collection hash for ``coll``."
+  (loop [coll  (seq coll)
+         basis 1
+         count 0]
+    (if coll
+      (recur (next coll) (int32 (+ (* 31 basis) (hash (first coll)))) (inc count))
+      (mix-collection-hash basis count))))
+
+(defn hash-unordered-coll [coll]
+  "Return the Basilisp unordered collection hash for ``coll``."
+  (loop [coll  (seq coll)
+         basis 0
+         count 0]
+    (if coll
+      (recur (next coll) (int32 (+ basis (hash (first coll)))) (inc count))
+      (mix-collection-hash basis count))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Collection Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
