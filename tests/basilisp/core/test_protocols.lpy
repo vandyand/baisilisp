@@ -203,3 +203,17 @@
   (is (satisfies? Shape (->Rectangle 2 2)))
   (is (not (satisfies? Polygon (->Circle 1))))
   (is (satisfies? Polygon (->Rectangle 2 2))))
+
+(deftest find-protocol-implementation-test
+  (let [circle      (->Circle 1)
+        square      (->Square 3)
+        circle-impl (find-protocol-impl Shape circle)
+        square-impl (find-protocol-impl Shape square)
+        circle-area (find-protocol-method Shape :area circle)
+        square-area (find-protocol-method Shape :area square)]
+    (is (identical? circle circle-impl))
+    (is (map? square-impl))
+    (is (= math/pi (circle-area circle)))
+    (is (= 9 (square-area square)))
+    (is (nil? (find-protocol-impl Shape :not-a-shape)))
+    (is (nil? (find-protocol-method Shape :area :not-a-shape)))))

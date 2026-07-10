@@ -7147,6 +7147,29 @@
   (or (instance? interface x)
       (python/isinstance x (python/tuple impls))))
 
+(defn find-protocol-impl
+  "Return the implementation backing protocol ``protocol`` for ``x``, if any."
+  [{:keys [interface methods] :as protocol} x]
+  (when (satisfies? protocol x)
+    (if (instance? interface x)
+      x
+      (reduce* (fn [impl entry]
+                 (assoc impl
+                        (key entry)
+                        (.dispatch (val entry) (python/type x))))
+               {}
+               methods))))
+
+(defn find-protocol-method
+  "Return the protocol method identified by ``methodk`` for ``x``, if any."
+  [{:keys [interface] :as protocol} methodk x]
+  (when-let [impl (find-protocol-impl protocol x)]
+    (if (instance? interface impl)
+      (python/getattr (python/type impl)
+                      (basilisp.lang.util/munge (name methodk))
+                      nil)
+      (get impl methodk))))
+
 ;;;;;;;;;;;;;;;;
 ;; Data Types ;;
 ;;;;;;;;;;;;;;;;
