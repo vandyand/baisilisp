@@ -5115,6 +5115,13 @@
     (throw
      (ex-info "Cannot set non-thread-bound Var binding" {:var v}))))
 
+(defn test
+  "Invoke the function stored in Var ``v``'s ``:test`` metadata, when present."
+  [v]
+  (if-let [f (:test (meta v))]
+    (do (f) :ok)
+    :no-test))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Namespace Utilities ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;

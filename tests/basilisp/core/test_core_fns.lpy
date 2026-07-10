@@ -90,6 +90,13 @@
     (is (= '([:c 3] [:b 2]) (rsubseq m >= :b)))
     (is (= '(:b :c) (subseq s >= :b)))))
 
+(def ^{:test (fn [] nil)} parity-tested-var nil)
+(def parity-untested-var nil)
+
+(deftest test-test
+  (is (= :ok (test #'parity-tested-var)))
+  (is (= :no-test (test #'parity-untested-var))))
+
 (deftest str-test
   (are [expected args] (= expected (apply str args))
     ""                         []
