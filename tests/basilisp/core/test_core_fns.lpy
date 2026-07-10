@@ -4,13 +4,77 @@
 
   If there are many tests for a single category of functions, ideally those should
   be moved out into a new file."
-  (:import shutil
-           time)
+  (:import io
+           shutil
+           threading
+           time
+           [xml.etree.ElementTree :as etree])
   (:require
    [basilisp.io :as bio]
    [basilisp.set :as set]
    [basilisp.string :as str]
    [basilisp.test :refer [deftest are is testing]]))
+
+(deftest array-map-test
+  (is (= {} (array-map)))
+  (is (= {:a 2 :b 3} (array-map :a 1 :a 2 :b 3))))
+
+(deftest comparator-test
+  (let [cmp (comparator <)]
+    (is (= -1 (cmp 1 2)))
+    (is (= 0 (cmp 2 2)))
+    (is (= 1 (cmp 2 1)))))
+
+(deftest line-seq-test
+  (is (= '("one" "two")
+         (line-seq (io/StringIO "one\ntwo\n")))))
+
+(deftest xml-seq-test
+  (let [root (etree/fromstring "<root><first/><second><third/></second></root>")]
+    (is (= '("root" "first" "second" "third")
+           (map #(.-tag %) (xml-seq root))))))
+
+(deftest alias-test
+  (let [target (symbol "tests.basilisp.core.alias-target")
+        shortcut (symbol "alias-target")]
+    (create-ns target)
+    (alias shortcut target)
+    (is (= target (get (ns-aliases *ns*) shortcut)))
+    (ns-unalias *ns* shortcut)
+    (remove-ns target)))
+
+(defstruct parity-struct :a :b)
+
+(deftest struct-test
+  (let [basis (create-struct :a :b)]
+    (is (= [:a :b] basis))
+    (is (= {:a nil :b nil} (struct basis)))
+    (is (= {:a 1 :b nil} (struct basis 1)))
+    (is (= {:a nil :b 2 :c 3} (struct-map basis :b 2 :c 3)))
+    (is (= {:a 1 :b 2} (struct parity-struct 1 2)))
+    (is (thrown? python/ValueError (struct basis 1 2 3)))))
+
+(deftest bound-test
+  (let [unbound (intern *ns* 'parity-unbound)]
+    (is (true? (bound?)))
+    (is (true? (bound? #'array-map)))
+    (is (false? (bound? unbound)))))
+
+(deftest num-test
+  (is (= 1 (num 1)))
+  (is (= 1.5 (num 1.5)))
+  (is (thrown? python/TypeError (num "1"))))
+
+(deftest unsigned-bit-shift-right-test
+  (is (= 9223372036854775807 (unsigned-bit-shift-right -1 1)))
+  (is (= 4611686018427387904
+         (unsigned-bit-shift-right -9223372036854775808 1))))
+
+(deftest locking-test
+  (let [lock (threading/Lock)]
+    (locking lock
+      (is (.locked lock)))
+    (is (false? (.locked lock)))))
 
 (deftest str-test
   (are [expected args] (= expected (apply str args))

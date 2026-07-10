@@ -20,4 +20,18 @@
   (is (nil? (seq (re-seq #"[a-zA-Z]+" "134325235234"))))
   (are [expected p s] (= expected (re-seq p s))
     '("1" "1" "0")                            #"\d+" "Basilisp 1.1.0"
-    '("the" "man" "who" "sold" "the" "world") #"\w+" "the man who sold the world"))
+    '("the" "man" "who" "sold" "the" "world") #"\w+" "the man who sold the world"
+    '(["a1" "a" "1"] ["b2" "b" "2"])       #"([a-z])(\d)" "a1 b2"))
+
+(deftest re-matcher-test
+  (let [matcher      (re-matcher #"(a)(b)?" "ab ac")
+        first-found  (.find matcher)
+        first-groups (re-groups matcher)
+        second-found (.find matcher)
+        second-groups (re-groups matcher)
+        final-found  (.find matcher)]
+    (is (true? first-found))
+    (is (= ["ab" "a" "b"] first-groups))
+    (is (true? second-found))
+    (is (= ["a" "a" nil] second-groups))
+    (is (false? final-found))))

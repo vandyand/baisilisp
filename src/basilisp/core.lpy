@@ -16,6 +16,7 @@
          [queue :as py-queue]
          random
          re
+         basilisp.lang.regex
          threading
          [time :as py-time]
          uuid)
@@ -245,6 +246,12 @@
   hash-map
   (fn hash-map [& kvs]
     (apply basilisp.lang.map/hash-map kvs)))
+
+(def
+  ^{:doc      "Construct a map from pairs of input arguments."
+    :arglists '([& kvs])}
+  array-map
+  hash-map)
 
 (def
   ^{:doc      "Create a set from the input arguments."
@@ -1274,6 +1281,15 @@
   [x y]
   (basilisp.lang.runtime/compare x y))
 
+(defn comparator
+  "Return a three-way comparator derived from the predicate ``pred``."
+  [pred]
+  (fn [x y]
+    (cond
+      (pred x y) -1
+      (pred y x) 1
+      :else      0)))
+
 (defn sort
   "Return a sorted sequence of the elements from ``coll`` using the ``cmp`` comparator\\.
 
@@ -1458,6 +1474,13 @@
   [x]
   (and (not (boolean? x))
        (instance? numbers/Number x)))
+
+(defn num
+  "Return ``x`` as a number, or raise ``TypeError`` when it is not numeric."
+  [x]
+  (if (number? x)
+    x
+    (throw (python/TypeError #f"Expected a number: {x}"))))
 
 (defn odd?
   "Return ``true`` if ``x`` is odd.
@@ -2181,6 +2204,11 @@
   [x n]
   (operator/rshift x n))
 
+(defn ^:inline unsigned-bit-shift-right
+  "Return the 64-bit unsigned value of ``x`` shifted right ``n`` bits."
+  [x n]
+  (bit-shift-right (bit-and x (dec (bit-shift-left 1 64))) n))
+
 (defn bit-xor
   "Return the bitwise xor of ``x`` and ``args``\\."
   [x & args]
@@ -2606,6 +2634,19 @@
   collections will be evaluated until it is needed."
   [& colls]
   `(concat ~@(iterator-seq (python/map (fn [coll] `(lazy-seq ~coll)) colls))))
+
+(defn line-seq
+  "Return a lazy sequence of newline-stripped lines read from ``rdr``."
+  [rdr]
+  (lazy-seq
+   (let [line (.readline rdr)]
+     (when (not= "" line)
+       (cons (.rstrip line "\r\n") (line-seq rdr))))))
+
+(defn xml-seq
+  "Return a depth-first sequence of XML elements rooted at ``root``."
+  [root]
+  (iterator-seq (.iter root)))
 
 
 (defn dorun
@@ -3065,11 +3106,21 @@
   [coll]
   (seq (drop-last coll)))
 
+(defn list*
+  "Create a list from all arguments, splicing the final argument as a sequence."
+  [& args]
+  (apply list (concat (butlast args) (last args))))
+
 (defn split-at
   "Split a collection at the ``n`` th item. Returns a vector of
   ``[(take n coll) (drop n coll)]``\\."
   [n coll]
   [(take n coll) (drop n coll)])
+
+(defn splitv-at
+  "Return ``[(vec (take n coll)) (drop n coll)]``."
+  [n coll]
+  [(vec (take n coll)) (drop n coll)])
 
 (defn split-with
   "Split a collection at the inflection point of ``pred``\\. Returns a vector of
@@ -3173,8 +3224,30 @@
    (lazy-seq (cons (f) (repeatedly f))))
   ([n f]
    (lazy-seq
-    (when (> n 0)
+   (when (> n 0)
       (cons (f) (repeatedly (dec n) f))))))
+
+(defn replicate
+  "Return a lazy sequence containing ``n`` repetitions of ``x``."
+  [n x]
+  (take n (repeat x)))
+
+(defn reductions
+  "Return a lazy sequence of the intermediate reduction values of ``coll`` by ``f``.
+
+  With an explicit ``init`` value, include ``init`` as the first result."
+  ([f coll]
+   (lazy-seq
+    (if-let [s (seq coll)]
+      (reductions f (first s) (rest s))
+      (list (f)))))
+  ([f init coll]
+   (if (reduced? init)
+     (list @init)
+     (cons init
+           (lazy-seq
+            (when-let [s (seq coll)]
+              (reductions f (f init (first s)) (rest s))))))))
 
 (defn take-nth
   "Return a lazy sequence of every ``n`` th element of ``coll``\\.
@@ -3255,6 +3328,22 @@
    (lazy-seq
     (when-let [coll (seq coll)]
       (cons (take n coll) (partition-all n step (drop step coll)))))))
+
+(defn partitionv
+  "Like ``partition``, but return each partition as a vector."
+  ([n coll]
+   (map vec (partition n coll)))
+  ([n step coll]
+   (map vec (partition n step coll)))
+  ([n step pad coll]
+   (map vec (partition n step pad coll))))
+
+(defn partitionv-all
+  "Like ``partition-all``, but return each partition as a vector."
+  ([n coll]
+   (map vec (partition-all n coll)))
+  ([n step coll]
+   (map vec (partition-all n step coll))))
 
 (defn partition-by
   "Return a lazy sequence of partitions, splitting ``coll`` each time ``f`` returns a
@@ -3415,6 +3504,30 @@
   "Return a map with the keys mapped to their corresponding indexed value in vals."
   [keys vals]
   (apply hash-map (interleave keys vals)))
+
+(defn create-struct
+  "Return a structure basis containing ``keys`` in declaration order."
+  [& keys]
+  (vec keys))
+
+(defmacro defstruct
+  "Define ``name`` as a structure basis created from ``keys``."
+  [name & keys]
+  `(def ~name (create-struct ~@keys)))
+
+(defn struct
+  "Return a map with the keys from structure basis ``s`` and positional values.
+
+  Omitted values default to ``nil``."
+  [s & vals]
+  (when (> (count vals) (count s))
+    (throw (python/ValueError "Too many values supplied for structure basis")))
+  (zipmap s (concat vals (repeat nil))))
+
+(defn struct-map
+  "Return a map initialized from structure basis ``s`` and key-value pairs."
+  [s & inits]
+  (apply assoc (apply struct s []) inits))
 
 (defn merge
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a duplicate key
@@ -3940,6 +4053,12 @@
          (finally
            (when-not @hit-except#
              (. obj# (~'__exit__ nil nil nil))))))))
+
+(defmacro locking
+  "Execute ``body`` while holding Python context-manager lock ``x``."
+  [x & body]
+  `(with [_# ~x]
+     ~@body))
 
 (def ^{:doc   "Evaluate ``body`` within a ``try`` / ``except`` expression, binding the
                named expressions as per Python's context manager protocol spec (Python's
@@ -4930,6 +5049,11 @@
         (recur (first r) (rest r))
         false))))
 
+(defn bound?
+  "Return true if every Var has a root or thread-local binding."
+  [& vars]
+  (every? #(.-is-bound %) vars))
+
 (defn var-get
   "Return the value inside the Var. Return thread local bindings if they exist,
   otherwise, return the root binding."
@@ -5005,6 +5129,11 @@
   "Return the name of the namespace, a symbol."
   [ns]
   (.-name ns))
+
+(defn alias
+  "Add ``alias`` for an existing namespace in the current namespace."
+  [alias namespace-sym]
+  (.add-alias *ns* (the-ns namespace-sym) alias))
 
 (defn ns-aliases
   "Return a map of Basilisp namespaces which are aliased in the current namespace."
@@ -5588,12 +5717,29 @@
           (.group match 0)
           (vec (cons (.group match 0) groups)))))))
 
+(defn re-matcher
+  "Return a stateful matcher for ``pattern`` and ``s``."
+  [pattern s]
+  (basilisp.lang.regex/Matcher pattern s))
+
+(defn re-groups
+  "Return the current match from ``matcher`` and any capture groups."
+  [matcher]
+  (let [groups (.groups matcher)]
+    (if (zero? (count groups))
+      (.group matcher 0)
+      (vec (cons (.group matcher 0) groups)))))
+
 (defn ^:private lazy-re-seq
   "Return a lazy sequence of the matches in a match iterator."
   [iter]
   (lazy-seq
    (when (first iter)
-     (let [match (.group (first iter) 0)]
+     (let [matcher (first iter)
+           groups  (.groups matcher)
+           match   (if (zero? (count groups))
+                     (.group matcher 0)
+                     (vec (cons (.group matcher 0) groups)))]
        (cons match (when (seq (rest iter))
                      (lazy-re-seq (rest iter))))))))
 
