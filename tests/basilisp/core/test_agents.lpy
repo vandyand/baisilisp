@@ -1,0 +1,54 @@
+(ns tests.basilisp.core.test-agents
+  (:import time)
+  (:require
+   [basilisp.test :refer [deftest is]]))
+
+(deftest agent-serial-state-test
+  (let [a       (agent 0)
+        _send   (send a + 1)
+        _send-off (send-off a + 2)
+        waited  (await-agent a)
+        state   @a
+        error   (agent-error a)]
+    (is (nil? waited))
+    (is (= 3 state))
+    (is (nil? error))))
+
+(deftest agent-failure-test
+  (let [a        (agent 0)
+        _failed  (send a (fn [_] (throw (python/ValueError "bad action"))))
+        _waited  (await-agent a)
+        error    (agent-error a)
+        _ignored (send a + 1)
+        _waited2 (await-agent a)
+        state    @a
+        _cleared (clear-agent-errors a)
+        _restart (restart-agent a)
+        _sent    (send a + 1)
+        _waited3 (await-agent a)
+        recovered @a]
+    (is (instance? python/ValueError error))
+    (is (= 0 state))
+    (is (= 1 recovered))))
+
+(deftest agent-continue-mode-test
+  (let [a        (agent 0 :error-mode :continue)
+        _failed  (send a (fn [_] (throw (python/ValueError "bad action"))))
+        _sent    (send a + 1)
+        _waited  (await-agent a)
+        state    @a
+        error    (agent-error a)]
+    (is (= 1 state))
+    (is (instance? python/ValueError error))))
+
+(deftest agent-await-for-test
+  (let [a       (agent 0)
+        _sent   (send a (fn [state]
+                          (time/sleep 0.1)
+                          (inc state)))
+        timed   (await-for 1 a)
+        waited  (await-for 1000 a)
+        state   @a]
+    (is (false? timed))
+    (is (true? waited))
+    (is (= 1 state))))

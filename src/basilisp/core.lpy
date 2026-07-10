@@ -16,6 +16,7 @@
          [queue :as py-queue]
          random
          re
+         basilisp.lang.agent
          basilisp.lang.regex
          threading
          [time :as py-time]
@@ -1100,7 +1101,15 @@
 (def ^:dynamic *executor-pool*
   (basilisp.lang.futures/ThreadPoolExecutor))
 
+(def ^:dynamic *agent-send-executor*
+  (basilisp.lang.futures/ThreadPoolExecutor ** :thread-name-prefix "basilisp-agents"))
+
+(def ^:dynamic *agent-send-off-executor*
+  (basilisp.lang.futures/ThreadPoolExecutor ** :thread-name-prefix "basilisp-agent-io"))
+
 (atexit/register (.-shutdown *executor-pool*))
+(atexit/register (.-shutdown *agent-send-executor*))
+(atexit/register (.-shutdown *agent-send-off-executor*))
 
 ;; Declare `bound-fn*` now for use in `future-call`, though it is defined much later
 ;; with the rest of the Var binding functions and macros.
@@ -1144,6 +1153,78 @@
   "Return ``true`` if the Future ``fut`` is done, ``false`` otherwise."
   [fut]
   (.done fut))
+
+;;;;;;;;;;;;
+;; Agents ;;
+;;;;;;;;;;;;
+
+(defn agent
+  "Create a serialized, executor-backed mutable reference."
+  ([state]
+   (basilisp.lang.agent/Agent state))
+  ([state & kwargs]
+   (let [opts (apply hash-map kwargs)]
+     (basilisp.lang.agent/Agent state
+                                **
+                                :meta (:meta opts)
+                                :validator (:validator opts)
+                                :error-mode (if (:error-mode opts)
+                                              (name (:error-mode opts))
+                                              "fail")
+                                :error-handler (:error-handler opts)))))
+
+(defn ^:inline agent-error [agent]
+  (.get-error agent))
+
+(defn ^:inline error-mode [agent]
+  (.get-error-mode agent))
+
+(defn ^:inline error-handler [agent]
+  (.get-error-handler agent))
+
+(defn send [agent f & args]
+  (.submit-args agent *agent-send-executor* (bound-fn* f) args))
+
+(defn send-off [agent f & args]
+  (.submit-args agent *agent-send-off-executor* (bound-fn* f) args))
+
+(defn await-agent [& agents]
+  "Wait until all agents have no queued or active actions."
+  (loop [agents agents]
+    (when-let [agent (first agents)]
+      (.await-completion agent nil)
+      (recur (rest agents))))
+  nil)
+
+(defn await-for [timeout-ms & agents]
+  (let [deadline (operator/add (py-time/monotonic)
+                               (operator/truediv timeout-ms 1000.0))]
+    (loop [agents agents]
+      (if-let [agent (first agents)]
+        (let [remaining (operator/sub deadline (py-time/monotonic))]
+          (if (operator/le remaining 0)
+            false
+            (if (.await-completion agent remaining)
+              (recur (rest agents))
+              false)))
+        true))))
+
+(defn clear-agent-errors [agent]
+  (.clear-error agent))
+
+(defn restart-agent
+  ([agent]
+   (.restart agent))
+  ([agent state]
+   (.restart agent state)))
+
+(defn set-error-mode! [agent mode]
+  (.set-error-mode agent (name mode))
+  agent)
+
+(defn set-error-handler! [agent handler]
+  (.set-error-handler agent handler)
+  agent)
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Arithmetic Functions ;;

@@ -13,17 +13,19 @@ one of those names.
 
 ## Implemented
 
-The following thirty-six symbols are now implemented and no longer appear as
+The following forty-seven symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
-`find-protocol-impl`, `find-protocol-method`, `line-seq`, `list*`, `locking`,
-`hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
+`agent`, `agent-error`, `await-for`, `clear-agent-errors`, `error-handler`,
+`error-mode`, `find-protocol-impl`, `find-protocol-method`, `line-seq`,
+`list*`, `locking`, `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
 `mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
 `re-matcher`, `read+string`, `reductions`, `replicate`, `splitv-at`, `struct`,
 `struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
-`sorted-set`, `sorted-set-by`, `test`, `unsigned-bit-shift-right`, and
-`xml-seq`.
+`sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`,
+`set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
+and `xml-seq`.
 
 ## Portable Implementation Targets
 
@@ -77,18 +79,20 @@ iterators, database cursors, or URL parse results for the Java types.
 
 ### Agents and software transactional memory
 
-`*agent*`, `agent`, `agent-error`, `agent-errors`, `alter`, `await`,
-`await-for`, `await1`, `clear-agent-errors`, `commute`, `dosync`, `ensure`,
-`error-handler`, `error-mode`, `io!`, `ref`, `ref-history-count`,
-`ref-max-history`, `ref-min-history`, `ref-set`, `release-pending-sends`,
-`restart-agent`, `send`, `send-off`, `send-via`, `seque`,
-`set-agent-send-executor!`, `set-agent-send-off-executor!`,
-`set-error-handler!`, `set-error-mode!`, `shutdown-agents`, and `sync`.
+`*agent*`, `agent-errors`, `alter`, `await`, `await1`, `commute`, `dosync`,
+`ensure`, `io!`, `ref`, `ref-history-count`, `ref-max-history`,
+`ref-min-history`, `ref-set`, `release-pending-sends`, `send-via`, `seque`,
+`set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
+and `sync`.
 
 These names depend on Clojure's agent executor and STM retry/transaction
 semantics. Python threads, `asyncio`, and locks can support a useful native
 concurrency library, but they cannot truthfully implement Clojure STM by
-wrapping the existing atom abstraction.
+wrapping the existing atom abstraction. Basilisp now provides executor-backed
+`agent`, `send`, `send-off`, error handling, and bounded `await-for`.
+Bare `await` remains unavailable as an agent wait function because it is a
+Python async special form; `await-agent` provides that synchronous wait
+operation instead.
 
 ### Version identity and unchecked arithmetic
 
