@@ -388,11 +388,15 @@
 
 (defn ^:private run-with-fixtures
   [fixtures f]
-  (try
-    (with-fixtures [(join-fixtures fixtures)]
-      (f))
-    (catch python/Exception e
-      (fixture-error-summary e))))
+  (let [result (volatile! nil)]
+    (try
+      (with-fixtures [(join-fixtures fixtures)]
+        (vreset! result (f)))
+      (deref result)
+      (catch python/Exception e
+        (merge-summaries
+         (or (deref result) (empty-summary))
+         (fixture-error-summary e))))))
 
 (defn ^:private run-test-var*
   [v]

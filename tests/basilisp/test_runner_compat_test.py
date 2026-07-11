@@ -1,3 +1,5 @@
+import random
+
 import pytest
 
 from basilisp.lang import keyword as kw
@@ -125,22 +127,75 @@ def test_run_all_tests_with_no_matching_namespaces_returns_empty_summary(
     assert 0 == _summary_value(summary, "error")
 
 
-@pytest.mark.parametrize("fixture_type", ["once", "each"])
+@pytest.mark.parametrize(
+    ("fixture_type", "phase", "expected"),
+    [
+        ("once", "setup", {"test": 0, "pass": 0, "fail": 0, "error": 1}),
+        ("each", "setup", {"test": 0, "pass": 0, "fail": 0, "error": 1}),
+        ("once", "teardown", {"test": 1, "pass": 2, "fail": 0, "error": 1}),
+        ("each", "teardown", {"test": 1, "pass": 2, "fail": 0, "error": 1}),
+    ],
+)
 def test_fixture_errors_are_reported_in_the_summary(
-    runner: CompileFn, cap_lisp_io, fixture_type: str
+    runner: CompileFn, cap_lisp_io, fixture_type: str, phase: str, expected: dict
 ):
     out, _ = cap_lisp_io
+    fixture_body = (
+        '(throw (python/Exception "fixture error"))'
+        if phase == "setup"
+        else '(yield)\n            (throw (python/Exception "fixture error"))'
+    )
     runner(f"""
         (use-fixtures :{fixture_type}
           (fn []
-            (throw (python/Exception "fixture error"))))
+            {fixture_body}))
         """)
 
     summary = runner("(run-test-var #'passing-test)")
 
-    assert 0 == _summary_value(summary, "test")
-    assert 0 == _summary_value(summary, "pass")
-    assert 0 == _summary_value(summary, "fail")
-    assert 1 == _summary_value(summary, "error")
+    assert {
+        name: _summary_value(summary, name)
+        for name in ("test", "pass", "fail", "error")
+    } == expected
     assert runner("(successful? (run-test-var #'passing-test))") is False
     assert "ERROR in test fixture:" in out.getvalue()
+
+
+def test_runner_repeated_mixed_result_stress(runner: CompileFn, cap_lisp_io):
+    rng = random.Random(0xB45115)
+    expected = {"test": 3, "pass": 2, "fail": 1, "error": 1}
+    forms = []
+
+    for index in range(120):
+        outcome = rng.choice(("pass", "pass", "failure", "error"))
+        name = f"generated-test-{index}"
+        expected["test"] += 1
+
+        if outcome == "pass":
+            expected["pass"] += 2
+            forms.append(f"""
+                (deftest {name}
+                  (is true)
+                  (is (= {index} {index})))
+                """)
+        elif outcome == "failure":
+            expected["fail"] += 1
+            forms.append(f"""
+                (deftest {name}
+                  (is false))
+                """)
+        else:
+            expected["error"] += 1
+            forms.append(f"""
+                (deftest {name}
+                  (throw (python/Exception "generated error {index}")))
+                """)
+
+    runner("\n".join(forms))
+
+    for _ in range(5):
+        summary = runner("(run-tests 'basilisp.test-runner-compat)")
+        assert {
+            name: _summary_value(summary, name)
+            for name in ("test", "pass", "fail", "error")
+        } == expected
