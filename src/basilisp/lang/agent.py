@@ -94,6 +94,8 @@ class Agent(RefBase[T], Generic[T]):
             )
 
     def submit(self, executor: Executor, f: Callable[..., T], *args: Any) -> "Agent[T]":
+        scheduled = None
+        scheduling_error = None
         with self._condition:
             if self._error is not None and self._error_mode == "fail":
                 raise RuntimeError(
@@ -101,8 +103,17 @@ class Agent(RefBase[T], Generic[T]):
                 ) from self._error
             self._queue.append((executor, f, args))
             if not self._active:
-                self._schedule_next()
-            return self
+                try:
+                    scheduled = self._schedule_next()
+                except BaseException as exc:
+                    self._queue.popleft()
+                    scheduling_error = exc
+        if scheduled is not None:
+            self._observe_scheduled_action(scheduled)
+        if scheduling_error is not None:
+            self._handle_failure(scheduling_error)
+            raise scheduling_error
+        return self
 
     def submit_args(
         self, executor: Executor, f: Callable[..., T], args: tuple[Any, ...] | None
@@ -110,7 +121,10 @@ class Agent(RefBase[T], Generic[T]):
         """Submit an action when its argument sequence is already collected."""
         return self.submit(executor, f, *(args or ()))
 
-    def await_completion(self, timeout: float | None = None) -> bool:
+    def await_completion(
+        self, timeout: float | None = None, *, wait_on_failure: bool = False
+    ) -> bool:
+        """Wait for queued work, optionally retaining Clojure await1 failure semantics."""
         with self._condition:
             return self._condition.wait_for(
                 lambda: not self._active
@@ -118,6 +132,11 @@ class Agent(RefBase[T], Generic[T]):
                     not self._queue
                     or self._error is not None
                     and self._error_mode == "fail"
+                )
+                and (
+                    not wait_on_failure
+                    or self._error is None
+                    or self._error_mode != "fail"
                 ),
                 timeout,
             )
@@ -128,6 +147,8 @@ class Agent(RefBase[T], Generic[T]):
             self._condition.notify_all()
 
     def restart(self, state: Any = _UNSET, clear_actions: bool = False) -> "Agent[T]":
+        scheduled = None
+        scheduling_error = None
         with self._condition:
             if self._active:
                 raise RuntimeError("Cannot restart an agent while an action is running")
@@ -140,9 +161,18 @@ class Agent(RefBase[T], Generic[T]):
             if clear_actions:
                 self._queue.clear()
             if not self._active and self._queue:
-                self._schedule_next()
+                try:
+                    scheduled = self._schedule_next()
+                except BaseException as exc:
+                    self._queue.popleft()
+                    scheduling_error = exc
             self._condition.notify_all()
-            return self
+        if scheduled is not None:
+            self._observe_scheduled_action(scheduled)
+        if scheduling_error is not None:
+            self._handle_failure(scheduling_error)
+            raise scheduling_error
+        return self
 
     def set_error_mode(self, mode: str) -> None:
         if mode not in {"fail", "continue"}:
@@ -154,23 +184,44 @@ class Agent(RefBase[T], Generic[T]):
         with self._lock:
             self._error_handler = handler
 
-    def _schedule_next(self) -> None:
+    def _schedule_next(self):
         if not self._queue:
             self._active = False
             self._condition.notify_all()
-            return
+            return None
         executor, _, _ = self._queue[0]
+        execution_started = threading.Event()
         self._active = True
-        try:
-            executor.submit(self._run_one)
-        except BaseException as exc:
-            self._error = exc
-            self._queue.clear()
-            self._active = False
-            self._condition.notify_all()
-            raise
+        future = executor.submit(self._run_one, execution_started)
+        return future, execution_started
 
-    def _run_one(self) -> None:
+    def _observe_scheduled_action(self, scheduled) -> None:
+        future, execution_started = scheduled
+        future.add_done_callback(
+            lambda completed: self._handle_pre_start_failure(
+                completed, execution_started
+            )
+        )
+
+    def _handle_pre_start_failure(
+        self, future, execution_started: threading.Event
+    ) -> None:
+        if execution_started.is_set():
+            return
+        try:
+            error = future.exception()
+        except BaseException as exc:
+            error = exc
+        if error is None:
+            error = RuntimeError("Agent executor completed without starting its action")
+        with self._condition:
+            if not self._active:
+                return
+            self._queue.popleft()
+        self._handle_failure(error)
+
+    def _run_one(self, execution_started: threading.Event) -> None:
+        execution_started.set()
         with self._condition:
             if not self._queue:
                 self._active = False
@@ -183,26 +234,59 @@ class Agent(RefBase[T], Generic[T]):
             new_state = f(state, *args)
             self._validate(new_state)
         except BaseException as exc:  # preserve user action failures on the agent
-            with self._condition:
-                self._error = exc
-                handler = self._error_handler
-            try:
-                if handler is not None:
-                    handler(self, exc)
-            finally:
-                with self._condition:
-                    self._active = False
-                    if self._error_mode == "continue":
-                        self._schedule_next()
-                    else:
-                        self._condition.notify_all()
+            self._handle_failure(exc)
             return
 
         with self._condition:
             old = self._state
             self._state = new_state
+            watcher_error = None
+            scheduled = None
+            scheduling_error = None
             try:
                 self._notify_watches(old, new_state)
+            except BaseException as exc:
+                watcher_error = exc
             finally:
                 self._active = False
-                self._schedule_next()
+                try:
+                    scheduled = self._schedule_next()
+                except BaseException as exc:
+                    self._queue.popleft()
+                    scheduling_error = exc
+        if scheduled is not None:
+            self._observe_scheduled_action(scheduled)
+        if scheduling_error is not None:
+            self._handle_failure(scheduling_error)
+        if watcher_error is not None:
+            raise watcher_error
+
+    def _handle_failure(self, error: BaseException) -> None:
+        scheduled = None
+        scheduling_error = None
+        handler_error = None
+        with self._condition:
+            self._error = error
+            handler = self._error_handler
+        try:
+            if handler is not None:
+                handler(self, error)
+        except BaseException as exc:
+            handler_error = exc
+        finally:
+            with self._condition:
+                self._active = False
+                if self._error_mode == "continue":
+                    try:
+                        scheduled = self._schedule_next()
+                    except BaseException as exc:
+                        self._queue.popleft()
+                        scheduling_error = exc
+                else:
+                    self._condition.notify_all()
+        if scheduled is not None:
+            self._observe_scheduled_action(scheduled)
+        if scheduling_error is not None:
+            self._handle_failure(scheduling_error)
+        if handler_error is not None:
+            raise handler_error

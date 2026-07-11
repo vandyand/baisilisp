@@ -1,5 +1,7 @@
 (ns tests.basilisp.core.test-agents
-  (:import time)
+  (:import time
+           threading
+           [basilisp.lang.futures :as futures])
   (:require
    [basilisp.test :refer [deftest is]]))
 
@@ -38,6 +40,27 @@
         error    (agent-error a)]
     (is (= 1 state))
     (is (instance? python/ValueError error))))
+
+(deftest send-via-test
+  (let [executor (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "agent-via")
+        a        (agent nil)]
+    (try
+      (send-via executor a (fn [_] (.-name (threading/current_thread))))
+      (await-agent a)
+      (is (.startswith @a "agent-via"))
+      (finally
+        (.shutdown executor)))))
+
+(deftest await1-waits-for-restart-test
+  (let [a        (agent 0)
+        _failed  (send a (fn [_] (throw (python/ValueError "bad action"))))
+        _waited  (await-agent a)
+        waiter   (future (await1 a))]
+    (time/sleep 0.05)
+    (is (false? (future-done? waiter)))
+    (restart-agent a)
+    (is (nil? (deref waiter 1000 :timeout)))
+    (is (true? (future-done? waiter)))))
 
 (deftest agent-await-for-test
   (let [a       (agent 0)

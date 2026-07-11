@@ -1188,12 +1188,23 @@
 (defn send-off [agent f & args]
   (.submit-args agent *agent-send-off-executor* (bound-fn* f) args))
 
+(defn send-via
+  "Dispatch an agent action using an application-owned executor."
+  [executor agent f & args]
+  (.submit-args agent executor (bound-fn* f) args))
+
 (defn await-agent [& agents]
   "Wait until all agents have no queued or active actions."
   (loop [agents agents]
     (when-let [agent (first agents)]
       (.await-completion agent nil)
       (recur (rest agents))))
+  nil)
+
+(defn await1
+  "Wait for one agent, including until a failed agent is restarted."
+  [agent]
+  (.await-completion agent nil ** :wait-on-failure true)
   nil)
 
 (defn await-for [timeout-ms & agents]

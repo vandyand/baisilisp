@@ -13,7 +13,7 @@ one of those names.
 
 ## Implemented
 
-The following forty-seven symbols are now implemented and no longer appear as
+The following forty-nine symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
@@ -23,9 +23,9 @@ gaps:
 `mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
 `re-matcher`, `read+string`, `reductions`, `replicate`, `splitv-at`, `struct`,
 `struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
-`sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`,
+`sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
-and `xml-seq`.
+and `xml-seq`, plus `await1`.
 
 ## Portable Implementation Targets
 
@@ -79,9 +79,9 @@ iterators, database cursors, or URL parse results for the Java types.
 
 ### Agents and software transactional memory
 
-`*agent*`, `agent-errors`, `alter`, `await`, `await1`, `commute`, `dosync`,
+`*agent*`, `agent-errors`, `alter`, `await`, `commute`, `dosync`,
 `ensure`, `io!`, `ref`, `ref-history-count`, `ref-max-history`,
-`ref-min-history`, `ref-set`, `release-pending-sends`, `send-via`, `seque`,
+`ref-min-history`, `ref-set`, `release-pending-sends`, `seque`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
 and `sync`.
 
@@ -89,7 +89,8 @@ These names depend on Clojure's agent executor and STM retry/transaction
 semantics. Python threads, `asyncio`, and locks can support a useful native
 concurrency library, but they cannot truthfully implement Clojure STM by
 wrapping the existing atom abstraction. Basilisp now provides executor-backed
-`agent`, `send`, `send-off`, error handling, and bounded `await-for`.
+`agent`, `send`, `send-off`, `send-via`, error handling, bounded `await-for`,
+and failure-blocking `await1`.
 Bare `await` remains unavailable as an agent wait function because it is a
 Python async special form; `await-agent` provides that synchronous wait
 operation instead.

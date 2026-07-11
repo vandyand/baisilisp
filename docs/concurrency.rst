@@ -15,9 +15,21 @@ iterable objects.
 Agent Compatibility
 -------------------
 
-``agent``, ``send``, ``send-off``, ``agent-error``, and ``await-for`` are
-available from :lpy:ns:`basilisp.core`. Use ``basilisp.concurrent/wait`` for
-synchronous waiting because bare ``await`` is reserved for async functions.
+``agent``, ``send``, ``send-off``, ``send-via``, ``agent-error``, ``await1``,
+and ``await-for`` are available from :lpy:ns:`basilisp.core`. Use
+``basilisp.concurrent/wait`` for synchronous waiting because bare ``await`` is
+reserved for async functions. ``await1`` retains Clojure's behavior of waiting
+for a failed agent to be restarted.
+
+Executor Ownership
+------------------
+
+``send-via`` accepts an application-owned thread executor for one agent action;
+its workers must share the process memory that owns the agent.
+Basilisp intentionally does not implement global executor replacement or
+``shutdown-agents``: Python executors have explicit application ownership, and
+replacing or shutting down shared process-wide executors would make unrelated
+work fail unpredictably.
 
 Transactions
 ------------

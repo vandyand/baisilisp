@@ -38,6 +38,13 @@ class Future(IBlockingDeref[T], IPending):
     def done(self) -> bool:
         return self._future.done()
 
+    def exception(self, timeout: float | None = None) -> BaseException | None:
+        return self._future.exception(timeout=timeout)
+
+    def add_done_callback(self, fn: Callable[["Future[T]"], object]) -> None:
+        """Register a callback to run when this future completes."""
+        self._future.add_done_callback(lambda _: fn(self))
+
     @property
     def is_realized(self) -> bool:
         return self.done()

@@ -65,7 +65,7 @@ That said, there are some fundamental differences and omissions in Basilisp that
 
 * Atoms work just as in Clojure.
 * Basilisp does not include Ref types or software transactional memory (STM) support.
-* Basilisp does not include Agent support (support is tracked in `#413 <https://github.com/basilisp-lang/basilisp/issues/413>`_).
+* Basilisp provides executor-backed Agents.
 * All Vars are reified at runtime and users may use the :lpy:fn:`binding` macro as in Clojure.
 
   * Non-dynamic Vars are compiled into Python variables and references to those Vars are made using Python variables using :ref:`direct_linking`.
@@ -176,7 +176,10 @@ Agents
 
 Basilisp provides executor-backed agents with serialized actions, error handling,
 and bounded waiting. They do not provide JVM executor controls or the
-transactional integration offered by Clojure's STM. See :ref:`concurrency`.
+transactional integration offered by Clojure's STM. In particular,
+``set-agent-send-executor!``, ``set-agent-send-off-executor!``, and
+``shutdown-agents`` are intentionally unavailable because Python executors have
+explicit application ownership. See :ref:`concurrency`.
 
 .. _host_interop_differences:
 
