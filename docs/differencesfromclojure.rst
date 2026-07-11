@@ -174,7 +174,9 @@ Neither refs nor transactions are supported.
 Agents
 ------
 
-Agents are not currently supported. Support is tracked in `#413 <https://github.com/basilisp-lang/basilisp/issues/413>`_.
+Basilisp provides executor-backed agents with serialized actions, error handling,
+and bounded waiting. They do not provide JVM executor controls or the
+transactional integration offered by Clojure's STM. See :ref:`concurrency`.
 
 .. _host_interop_differences:
 

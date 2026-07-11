@@ -1216,7 +1216,10 @@
   ([agent]
    (.restart agent))
   ([agent state]
-   (.restart agent state)))
+   (.restart agent state))
+  ([agent state & kwargs]
+   (let [opts (apply hash-map kwargs)]
+     (.restart agent state (:clear-actions opts)))))
 
 (defn set-error-mode! [agent mode]
   (.set-error-mode agent (name mode))

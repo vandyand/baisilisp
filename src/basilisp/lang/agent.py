@@ -13,6 +13,7 @@ from basilisp.lang.interfaces import IPersistentMap, RefValidator
 from basilisp.lang.reference import RefBase
 
 T = TypeVar("T")
+_UNSET = object()
 
 
 class Agent(RefBase[T], Generic[T]):
@@ -49,6 +50,8 @@ class Agent(RefBase[T], Generic[T]):
         self._queue: deque[tuple[Executor, Callable[..., T], tuple[Any, ...]]] = deque()
         self._active = False
         self._error: BaseException | None = None
+        if error_mode not in {"fail", "continue"}:
+            raise ValueError("Agent error mode must be 'fail' or 'continue'")
         self._error_mode = error_mode
         self._error_handler = error_handler
         if validator is not None:
@@ -84,12 +87,18 @@ class Agent(RefBase[T], Generic[T]):
 
     def pending(self) -> bool:
         with self._lock:
-            return self._active or bool(self._queue)
+            return (
+                self._active
+                or (self._error is None or self._error_mode == "continue")
+                and bool(self._queue)
+            )
 
     def submit(self, executor: Executor, f: Callable[..., T], *args: Any) -> "Agent[T]":
         with self._condition:
             if self._error is not None and self._error_mode == "fail":
-                return self
+                raise RuntimeError(
+                    "Cannot send an action to a failed agent"
+                ) from self._error
             self._queue.append((executor, f, args))
             if not self._active:
                 self._schedule_next()
@@ -103,16 +112,26 @@ class Agent(RefBase[T], Generic[T]):
 
     def await_completion(self, timeout: float | None = None) -> bool:
         with self._condition:
-            return self._condition.wait_for(lambda: not self._active and not self._queue, timeout)
+            return self._condition.wait_for(
+                lambda: not self._active
+                and (
+                    not self._queue
+                    or self._error is not None
+                    and self._error_mode == "fail"
+                ),
+                timeout,
+            )
 
     def clear_error(self) -> None:
         with self._condition:
             self._error = None
             self._condition.notify_all()
 
-    def restart(self, state: T | None = None, clear_actions: bool = False) -> "Agent[T]":
+    def restart(self, state: Any = _UNSET, clear_actions: bool = False) -> "Agent[T]":
         with self._condition:
-            if state is not None:
+            if self._active:
+                raise RuntimeError("Cannot restart an agent while an action is running")
+            if state is not _UNSET:
                 self._validate(state)
                 old = self._state
                 self._state = state
@@ -142,7 +161,14 @@ class Agent(RefBase[T], Generic[T]):
             return
         executor, _, _ = self._queue[0]
         self._active = True
-        executor.submit(self._run_one)
+        try:
+            executor.submit(self._run_one)
+        except BaseException as exc:
+            self._error = exc
+            self._queue.clear()
+            self._active = False
+            self._condition.notify_all()
+            raise
 
     def _run_one(self) -> None:
         with self._condition:
@@ -160,20 +186,23 @@ class Agent(RefBase[T], Generic[T]):
             with self._condition:
                 self._error = exc
                 handler = self._error_handler
-                if self._error_mode == "fail":
-                    self._queue.clear()
-                self._active = False
-                self._condition.notify_all()
-            if handler is not None:
-                handler(self, exc)
-            with self._condition:
-                if self._error_mode == "continue":
-                    self._schedule_next()
+            try:
+                if handler is not None:
+                    handler(self, exc)
+            finally:
+                with self._condition:
+                    self._active = False
+                    if self._error_mode == "continue":
+                        self._schedule_next()
+                    else:
+                        self._condition.notify_all()
             return
 
         with self._condition:
             old = self._state
             self._state = new_state
-            self._notify_watches(old, new_state)
-            self._active = False
-            self._schedule_next()
+            try:
+                self._notify_watches(old, new_state)
+            finally:
+                self._active = False
+                self._schedule_next()

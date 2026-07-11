@@ -19,17 +19,15 @@
         _failed  (send a (fn [_] (throw (python/ValueError "bad action"))))
         _waited  (await-agent a)
         error    (agent-error a)
-        _ignored (send a + 1)
-        _waited2 (await-agent a)
-        state    @a
-        _cleared (clear-agent-errors a)
-        _restart (restart-agent a)
-        _sent    (send a + 1)
-        _waited3 (await-agent a)
-        recovered @a]
+        state    @a]
     (is (instance? python/ValueError error))
     (is (= 0 state))
-    (is (= 1 recovered))))
+    (is (thrown? python/RuntimeError (send a + 1)))
+    (clear-agent-errors a)
+    (restart-agent a)
+    (send a + 1)
+    (await-agent a)
+    (is (= 1 @a))))
 
 (deftest agent-continue-mode-test
   (let [a        (agent 0 :error-mode :continue)
@@ -52,3 +50,19 @@
     (is (false? timed))
     (is (true? waited))
     (is (= 1 state))))
+
+(deftest restart-agent-can-set-nil-state-test
+  (let [a        (agent 1)
+        _restart (restart-agent a nil)]
+    (is (nil? @a))))
+
+(deftest restart-agent-clear-actions-option-test
+  (let [a        (agent 0)
+        _failed  (send a (fn [_]
+                           (time/sleep 0.1)
+                           (throw (python/ValueError "bad action"))))
+        _queued  (send a + 1)
+        _waited  (await-agent a)
+        _restart (restart-agent a 2 :clear-actions true)
+        _waited2 (await-agent a)]
+    (is (= 2 @a))))
