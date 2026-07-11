@@ -23,8 +23,9 @@ def compiler_file_path() -> str:
 def runner(lcompile: CompileFn) -> CompileFn:
     lcompile("""
     (require '[basilisp.test :refer
-               [assert-expr deftest deftest- do-report gen-assert is run-all-tests run-test-var
-                run-tests set-test successful? use-fixtures with-test]])
+                [assert-expr deftest deftest- do-report gen-assert is run-all-tests run-test-var
+                run-test run-tests set-test successful? test-ns testing-contexts-str
+                testing testing-vars-str use-fixtures with-test]])
 
     (def events (atom []))
 
@@ -251,3 +252,68 @@ def test_load_tests_can_omit_test_definitions(runner: CompileFn):
         runner("(deftest omitted-test (is false))")
 
     assert runner("(find-var 'basilisp.test-runner-compat/omitted-test)") is None
+
+
+def test_single_runner_context_helpers_and_namespace_hook(runner: CompileFn):
+    runner("""
+    (deftest hook-target
+      (is true)
+      (is (= "(hook-target) (line 7)" (testing-vars-str {:line 7})))
+      (testing "outer"
+        (testing "inner"
+          (is (= "outer :: inner" (testing-contexts-str))))))
+
+    (deftest second-hook-target (is true))
+
+    (defn test-ns-hook []
+      (hook-target)
+      (second-hook-target))
+    """)
+
+    assert 1 == _summary_value(runner("(run-test hook-target)"), "test")
+    assert 2 == _summary_value(runner("(test-ns 'basilisp.test-runner-compat)"), "test")
+    assert runner("(testing-contexts-str)") == ""
+    assert runner("(testing-vars-str {:line 7})") == "() (line 7)"
+
+
+def test_namespace_hook_captures_direct_test_exceptions(runner: CompileFn, cap_lisp_io):
+    out, _ = cap_lisp_io
+    runner("""
+    (deftest hook-error-target
+      (throw (python/Exception "hook test error")))
+
+    (defn test-ns-hook []
+      (hook-error-target))
+    """)
+
+    summary = runner("(test-ns 'basilisp.test-runner-compat)")
+
+    assert 0 == _summary_value(summary, "test")
+    assert 0 == _summary_value(summary, "pass")
+    assert 0 == _summary_value(summary, "fail")
+    assert 1 == _summary_value(summary, "error")
+    assert "ERROR in test-ns-hook:" in out.getvalue()
+
+
+def test_namespace_hook_empty_and_error_results(runner: CompileFn, cap_lisp_io):
+    out, _ = cap_lisp_io
+    runner("(defn test-ns-hook [] nil)")
+
+    empty_summary = runner("(test-ns 'basilisp.test-runner-compat)")
+
+    assert {
+        name: _summary_value(empty_summary, name)
+        for name in ("test", "pass", "fail", "error")
+    } == {"test": 0, "pass": 0, "fail": 0, "error": 0}
+
+    runner("""
+    (defn test-ns-hook []
+      (throw (python/Exception "hook setup error")))
+    """)
+    error_summary = runner("(test-ns 'basilisp.test-runner-compat)")
+
+    assert {
+        name: _summary_value(error_summary, name)
+        for name in ("test", "pass", "fail", "error")
+    } == {"test": 0, "pass": 0, "fail": 0, "error": 1}
+    assert "ERROR in test-ns-hook:" in out.getvalue()

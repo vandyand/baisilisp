@@ -46,7 +46,7 @@ Running Tests at the REPL
 -------------------------
 
 The PyTest plugin remains the normal project test runner. For interactive work,
-``basilisp.test`` also provides ``run-test-var``, ``run-tests``, and
+``basilisp.test`` also provides ``run-test``, ``run-test-var``, ``run-tests``, and
 ``run-all-tests``. They execute ``deftest`` Vars using the namespace's declared
 fixtures, print a summary, and return a map with ``:test``, ``:pass``, ``:fail``,
 and ``:error`` counts. ``successful?`` returns whether a summary has no failures
@@ -61,6 +61,13 @@ or errors.
 
    ;; Run one known test Var.
    (test/run-test-var #'my-test)
+
+   ;; Run one known test by name.
+   (test/run-test my-test)
+
+``test-ns`` respects an optional ``test-ns-hook`` in the target namespace. A hook
+can directly call selected ``deftest`` functions; their results are combined into
+the normal namespace summary.
 
 Custom Assertions and Definition Tests
 --------------------------------------

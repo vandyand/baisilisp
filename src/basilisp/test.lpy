@@ -29,6 +29,8 @@
 (def ^:dynamic *test-passes* nil)
 (def ^:dynamic *load-tests* true)
 (def ^:dynamic *test-line* nil)
+(def ^:dynamic *testing-vars* [])
+(def ^:dynamic *test-results* nil)
 
 (defmulti ^:dynamic report
   "Report an assertion event. Applications may add methods to customize reporting.
@@ -354,17 +356,32 @@
                               ~msg)]
      ~@body))
 
+(defn testing-contexts-str
+  "Return the current nested :lpy:fn:`testing` context."
+  []
+  (or *test-section* ""))
+
+(defn testing-vars-str
+  "Return a human-readable description of the current test and optional event."
+  [m]
+  (str "(" (apply str (interpose " " *testing-vars*)) ")"
+       (if-let [line (:line m)] (str " (line " line ")") "")))
+
 (defn ^:private test-fn-form
   [test-ns-name test-name body]
   `(fn []
      (binding [*ns*            (the-ns ~test-ns-name)
                *test-name*     ~test-name
+               *testing-vars*  [~test-name]
                *test-section*  nil
                *test-failures* (volatile! [])
                *test-passes*   (volatile! 0)]
        ~@body
-       {:failures (deref *test-failures*)
-        :passes   (deref *test-passes*)})))
+       (let [result# {:failures (deref *test-failures*)
+                      :passes   (deref *test-passes*)}]
+         (when *test-results*
+           (vswap! *test-results* conj {:name ~test-name :result result#}))
+         result#))))
 
 (defmacro deftest
   "Define a new test.
@@ -442,9 +459,8 @@
           (:failures result)))
 
 (defn ^:private report-test-failure
-  [v failure]
+  [test-name failure]
   (let [type      (:type failure)
-        test-name (:name (meta v))
         line      (:line failure)]
     (println (str "\n" (if (= :error type) "ERROR" "FAIL")
                   " in (" test-name ")"
@@ -484,7 +500,7 @@
   (try
     (let [result ((test-function v))]
       (doseq [failure (:failures result)]
-        (report-test-failure v failure))
+        (report-test-failure (:name (meta v)) failure))
       (summarize-test-result result))
     (catch python/Exception e
       (println (str "ERROR in (" (:name (meta v)) "): " (python/repr e)))
@@ -525,11 +541,40 @@
   (test-vars (vals (ns-interns (the-ns ns)))))
 
 (defn test-ns
-  "Run all ``deftest`` Vars in namespace ``ns`` and return a summary map."
+  "Run a namespace's tests and return a summary map.
+
+  When ``ns`` defines ``test-ns-hook``, call that hook instead of automatically
+  selecting test Vars. Direct ``deftest`` calls made by the hook are aggregated."
   [ns]
   (let [ns (the-ns ns)]
     (println "Testing" (.-name ns))
-    (test-all-vars ns)))
+    (if-let [hook (get (ns-interns ns) 'test-ns-hook)]
+      (binding [*test-results* (volatile! [])]
+        (let [hook-outcome (try
+                             {:result ((var-get hook))}
+                             (catch python/Exception e
+                               {:error e}))
+              results      (deref *test-results*)
+              test-summary (reduce (fn [summary {:keys [name result]}]
+                                     (doseq [failure (:failures result)]
+                                       (report-test-failure name failure))
+                                     (merge-summaries summary
+                                                      (summarize-test-result result)))
+                                   (empty-summary)
+                                   results)
+              hook-summary (cond
+                             (:error hook-outcome)
+                             (do
+                               (println "ERROR in test-ns-hook:"
+                                        (python/repr (:error hook-outcome)))
+                               {:test 0 :pass 0 :fail 0 :error 1})
+
+                             (seq results) (empty-summary)
+                             (map? (:result hook-outcome))
+                             (summarize-test-result (:result hook-outcome))
+                             :else (empty-summary))]
+          (merge-summaries test-summary hook-summary)))
+      (test-all-vars ns))))
 
 (defn ^:private report-summary
   [summary]
@@ -544,6 +589,11 @@
   (let [summary (assoc (test-vars [v]) :type :summary)]
     (report-summary summary)
     summary))
+
+(defmacro run-test
+  "Run a single test named by ``test-symbol``."
+  [test-symbol]
+  `(run-test-var (var ~test-symbol)))
 
 (defn ^:private run-namespaces
   [namespaces]
