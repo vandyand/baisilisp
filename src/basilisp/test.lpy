@@ -26,6 +26,7 @@
 (def ^:dynamic *test-name* nil)
 (def ^:dynamic *test-section* nil)
 (def ^:dynamic *test-failures* nil)
+(def ^:dynamic *test-passes* nil)
 
 (defmulti ^{:arglists '([fixture-type & fixtures])}
   use-fixtures
@@ -256,21 +257,25 @@
    (let [line-num (or (:basilisp.lang.reader/line (meta &form))
                       (:basilisp.lang.reader/line (meta (first &form))))
          exc-name (gensym "e")]
-     `(try
-        ~(gen-assert expr msg line-num)
-        (catch python/Exception ~exc-name
-          (vswap! *test-failures*
-                  conj
-                  {:test-name    *test-name*
-                   :test-section *test-section*
-                   :message      (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
-                   :expr         (quote ~expr)
-                   :actual       ~exc-name
-                   :expected     (quote ~expr)
-                   :line         ~(if line-num
-                                    line-num
-                                    `(.-tb_lineno (.-__traceback__ ~exc-name)))
-                   :type         :error}))))))
+     `(let [failure-count# (count (deref *test-failures*))
+            result#        (try
+                             ~(gen-assert expr msg line-num)
+                             (catch python/Exception ~exc-name
+                               (vswap! *test-failures*
+                                       conj
+                                       {:test-name    *test-name*
+                                        :test-section *test-section*
+                                        :message      (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
+                                        :expr         (quote ~expr)
+                                        :actual       ~exc-name
+                                        :expected     (quote ~expr)
+                                        :line         ~(if line-num
+                                                         line-num
+                                                         `(.-tb_lineno (.-__traceback__ ~exc-name)))
+                                        :type         :error})))]
+        (when (= failure-count# (count (deref *test-failures*)))
+          (vswap! *test-passes* inc))
+        result#))))
 
 (defmacro are
   "Generate assertions using the template expression ``expr``. Template expressions
@@ -335,6 +340,154 @@
        (binding [*ns*            (the-ns ~test-ns-name)
                  *test-name*     ~test-name-str
                  *test-section*  nil
-                 *test-failures* (volatile! [])]
+                 *test-failures* (volatile! [])
+                 *test-passes*   (volatile! 0)]
          ~@body
-         {:failures (deref *test-failures*)}))))
+         {:failures (deref *test-failures*)
+          :passes   (deref *test-passes*)}))))
+
+(defn ^:private empty-summary
+  []
+  {:test 0 :pass 0 :fail 0 :error 0})
+
+(defn ^:private merge-summaries
+  [left right]
+  (merge-with + left right))
+
+(defn ^:private summarize-test-result
+  [result]
+  (reduce (fn [summary failure]
+            (case (:type failure)
+              :failure (update summary :fail inc)
+              :error   (update summary :error inc)
+              summary))
+          {:test  1
+           :pass  (or (:passes result) 0)
+           :fail  0
+           :error 0}
+          (:failures result)))
+
+(defn ^:private report-test-failure
+  [v failure]
+  (let [type      (:type failure)
+        test-name (:name (meta v))
+        line      (:line failure)]
+    (println (str "\n" (if (= :error type) "ERROR" "FAIL")
+                  " in (" test-name ")"
+                  (if line (str " (line " line ")") "")))
+    (when (:test-section failure)
+      (println (:test-section failure)))
+    (println (:message failure))
+    (println "expected:" (pr-str (:expected failure)))
+    (println "  actual:" (pr-str (:actual failure)))))
+
+(defn ^:private fixture-error-summary
+  [e]
+  (println "ERROR in test fixture:" (python/repr e))
+  {:test 0 :pass 0 :fail 0 :error 1})
+
+(defn ^:private run-with-fixtures
+  [fixtures f]
+  (try
+    (with-fixtures [(join-fixtures fixtures)]
+      (f))
+    (catch python/Exception e
+      (fixture-error-summary e))))
+
+(defn ^:private run-test-var*
+  [v]
+  (try
+    (let [result ((var-get v))]
+      (doseq [failure (:failures result)]
+        (report-test-failure v failure))
+      (summarize-test-result result))
+    (catch python/Exception e
+      (println (str "ERROR in (" (:name (meta v)) "): " (python/repr e)))
+      {:test 1 :pass 0 :fail 0 :error 1})))
+
+(defn ^:private test-var?
+  [v]
+  (true? (::test (meta v))))
+
+(defn test-vars
+  "Run the supplied test Vars with the ``:once`` and ``:each`` fixtures declared
+  by their namespaces. Return a summary map."
+  [vars]
+  (reduce
+   (fn [summary [ns vars]]
+     (let [ns-meta       (meta ns)
+           once-fixtures (or (::once-fixtures ns-meta) [])
+           each-fixtures (or (::each-fixtures ns-meta) [])
+           ns-summary    (run-with-fixtures
+                          once-fixtures
+                          (fn []
+                            (reduce
+                             (fn [summary v]
+                               (merge-summaries
+                                summary
+                                (run-with-fixtures
+                                 each-fixtures
+                                 #(run-test-var* v))))
+                             (empty-summary)
+                             vars)))]
+       (merge-summaries summary ns-summary)))
+   (empty-summary)
+   (group-by #(:ns (meta %)) (filter test-var? vars))))
+
+(defn test-all-vars
+  "Run all ``deftest`` Vars in namespace ``ns`` and return a summary map."
+  [ns]
+  (test-vars (vals (ns-interns (the-ns ns)))))
+
+(defn test-ns
+  "Run all ``deftest`` Vars in namespace ``ns`` and return a summary map."
+  [ns]
+  (let [ns (the-ns ns)]
+    (println "Testing" (.-name ns))
+    (test-all-vars ns)))
+
+(defn ^:private report-summary
+  [summary]
+  (println (str "\nRan " (:test summary) " tests containing "
+                (+ (:pass summary) (:fail summary) (:error summary))
+                " assertions."))
+  (println (:fail summary) "failures," (:error summary) "errors."))
+
+(defn run-test-var
+  "Run a single test Var with its namespace fixtures and print a summary."
+  [v]
+  (let [summary (assoc (test-vars [v]) :type :summary)]
+    (report-summary summary)
+    summary))
+
+(defn ^:private run-namespaces
+  [namespaces]
+  (let [summary (assoc (reduce merge-summaries
+                               (empty-summary)
+                               (map test-ns namespaces))
+                       :type :summary)]
+    (report-summary summary)
+    summary))
+
+(defn run-tests
+  "Run all tests in the supplied namespaces and print a summary. Defaults to the
+  current namespace when called with no arguments."
+  ([]
+   (run-namespaces [*ns*]))
+  ([& namespaces]
+   (run-namespaces namespaces)))
+
+(defn run-all-tests
+  "Run tests in all loaded namespaces. With ``re`` provided, only test namespace
+  names that fully match the regular expression."
+  ([]
+   (run-namespaces (all-ns)))
+  ([re]
+   (run-namespaces
+    (filter #(re-matches re (str (.-name %))) (all-ns)))))
+
+(defn successful?
+  "Return ``true`` when a test summary contains no failures or errors."
+  [summary]
+  (and (zero? (:fail summary 0))
+       (zero? (:error summary 0))))

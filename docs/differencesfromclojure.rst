@@ -28,9 +28,9 @@ Type Differences
 * Python does not offer different integer sizes, so ``short``, ``int``, and ``long`` are identical.
 * Python does not offer different precision floating point numbers, so ``double`` and ``float`` are identical.
 * Type coercions generally delegate to the relevant Python constructor, which handles such things natively.
-* Collections
-
-  * Sorted sets, sorted maps, and array maps are not implemented (support is tracked in `#416 <https://github.com/basilisp-lang/basilisp/issues/416>`_).
+* ``array-map``, sorted maps, and sorted sets are available. Their implementations
+  use Python-hosted persistent collections rather than Clojure's JVM collection
+  classes.
 
 .. _arithmetic_comparison:
 
@@ -125,7 +125,8 @@ Basilisp special forms should be identical to their Clojure counterparts unless 
 
 * :lpy:form:`def` does not support the ``^:const`` metadata key.
 * :lpy:form:`if` does not use any boxing behavior as that is not relevant for Python.
-* The JVM specific ``locking``\, ``monitor-enter``\, and ``monitor-exit`` special forms are not implemented.
+* ``locking`` is available for Python context-manager locks. The JVM specific
+  ``monitor-enter`` and ``monitor-exit`` special forms are not implemented.
 * The Python VM specific :lpy:form:`await` and :lpy:form:`yield` forms are included to support Python interoperability.
 
 .. _namespace_differences:

@@ -40,6 +40,28 @@ For asserting repeatedly against different inputs, you can use the :lpy:fn:`are`
        4  2 2
        0 -1 1)
 
+.. _testing_repl:
+
+Running Tests at the REPL
+-------------------------
+
+The PyTest plugin remains the normal project test runner. For interactive work,
+``basilisp.test`` also provides ``run-test-var``, ``run-tests``, and
+``run-all-tests``. They execute ``deftest`` Vars using the namespace's declared
+fixtures, print a summary, and return a map with ``:test``, ``:pass``, ``:fail``,
+and ``:error`` counts. ``successful?`` returns whether a summary has no failures
+or errors.
+
+.. code-block:: clojure
+
+   (require '[basilisp.test :as test])
+
+   ;; Run all tests in a loaded namespace.
+   (test/run-tests 'my-project.core-test)
+
+   ;; Run one known test Var.
+   (test/run-test-var #'my-test)
+
 .. _testing_path:
 
 Testing and ``PYTHONPATH``
