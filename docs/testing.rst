@@ -62,6 +62,17 @@ or errors.
    ;; Run one known test Var.
    (test/run-test-var #'my-test)
 
+Custom Assertions and Definition Tests
+--------------------------------------
+
+``assert-expr`` is a public multimethod used by ``is``. Applications can add
+methods for custom assertion forms; each method should return code that calls
+``do-report`` with a ``:pass``, ``:fail``, or ``:error`` event.
+
+``with-test`` and ``set-test`` attach assertions to existing Vars, while
+``deftest-`` creates a private test Var. Bind ``*load-tests*`` to ``false``
+while loading production code to omit all of these test definitions.
+
 .. _testing_path:
 
 Testing and ``PYTHONPATH``

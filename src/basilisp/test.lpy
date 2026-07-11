@@ -27,6 +27,42 @@
 (def ^:dynamic *test-section* nil)
 (def ^:dynamic *test-failures* nil)
 (def ^:dynamic *test-passes* nil)
+(def ^:dynamic *load-tests* true)
+(def ^:dynamic *test-line* nil)
+
+(defmulti ^:dynamic report
+  "Report an assertion event. Applications may add methods to customize reporting.
+  The default methods preserve Basilisp's structured test results."
+  (fn [m] (:type m)))
+
+(defmethod report :pass
+  [_]
+  (vswap! *test-passes* inc))
+
+(defmethod report :fail
+  [m]
+  (vswap! *test-failures* conj (assoc m :type :failure)))
+
+(defmethod report :failure
+  [m]
+  (vswap! *test-failures* conj m))
+
+(defmethod report :error
+  [m]
+  (vswap! *test-failures* conj m))
+
+(defmethod report :default
+  [m]
+  (println m))
+
+(defn do-report
+  "Add the current test context to assertion event ``m`` and dispatch it through
+  :lpy:fn:`report`. Custom assertion methods should call this function."
+  [m]
+  (report (merge {:test-name    *test-name*
+                  :test-section *test-section*
+                  :line         *test-line*}
+                 m)))
 
 (defmulti ^{:arglists '([fixture-type & fixtures])}
   use-fixtures
@@ -111,10 +147,13 @@
     (constantly nil)))
 
 (defmulti
-  ^{:arglists '([expr msg line-num])}
-  gen-assert
-  "Implementation detail of :lpy:fn:`is` for generating macros."
-  (fn [expr _ _]
+  ^{:arglists '([msg expr])}
+  assert-expr
+  "Generate assertion code for :lpy:fn:`is`. Extend this multimethod to add
+  custom assertion forms. Methods receive the optional assertion message followed
+  by the unevaluated assertion form and should return code that calls
+  :lpy:fn:`do-report`."
+  (fn [_ expr]
     (cond
       (vector? expr)     :default
       (sequential? expr) (let [maybe-f (first expr)]
@@ -127,109 +166,99 @@
 
 ;; clojure.test does not special case '=, but this means that its expected/actual
 ;; results just show expected `expr` and `(not expr)`
-(defmethod gen-assert '=
-  [expr msg line-num]
+(defmethod assert-expr '=
+  [msg expr]
   `(let [actual#   ~(nth expr 2)
          expected# ~(second expr)]
-     (when-not (= expected# actual#)
-       (vswap! *test-failures*
-               conj
-               {:test-name    *test-name*
-                :test-section *test-section*
-                :message      ~msg
-                :expr         (quote ~expr)
-                :actual       actual#
-                :expected     expected#
-                :line         ~line-num
-                :type         :failure}))))
+     (if (= expected# actual#)
+       (do-report {:type :pass
+                   :message ~msg
+                   :expr (quote ~expr)
+                   :actual actual#
+                   :expected expected#})
+       (do-report {:type :fail
+                   :message ~msg
+                   :expr (quote ~expr)
+                   :actual actual#
+                   :expected expected#}))))
 
-(defmethod gen-assert 'thrown?
-  [expr msg line-num]
+(defmethod assert-expr 'thrown?
+  [msg expr]
   (let [exc-type (second expr)
         body     (nthnext expr 2)]
     `(try
        (let [result# (do ~@body)]
-         (vswap! *test-failures*
-                 conj
-                 {:test-name    *test-name*
-                  :test-section *test-section*
-                  :message      ~msg
-                  :expr         (quote ~expr)
-                  :actual       result#
-                  :expected     (quote ~exc-type)
-                  :line         ~line-num
-                  :type         :failure}))
-       (catch ~exc-type _ nil)
+         (do-report {:type :fail
+                     :message ~msg
+                     :expr (quote ~expr)
+                     :actual result#
+                     :expected (quote ~exc-type)}))
+       (catch ~exc-type e#
+         (do-report {:type :pass
+                     :message ~msg
+                     :expr (quote ~expr)
+                     :actual e#
+                     :expected (quote ~exc-type)})
+         e#)
        (catch python/Exception e#
-         (vswap! *test-failures*
-                 conj
-                 {:test-name    *test-name*
-                  :test-section *test-section*
-                  :message      (str "Expected " ~exc-type "; got " (python/type e#) " instead")
-                  :expr         (quote ~expr)
-                  :actual       e#
-                  :expected     ~exc-type
-                  :line         ~line-num
-                  :type         :failure})))))
+         (do-report {:type :fail
+                     :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
+                     :expr (quote ~expr)
+                     :actual e#
+                     :expected ~exc-type})))))
 
-(defmethod gen-assert 'thrown-with-msg?
-  [expr msg line-num]
+(defmethod assert-expr 'thrown-with-msg?
+  [msg expr]
   (let [exc-type (second expr)
         pattern  (nth expr 2)
         body     (nthnext expr 3)]
     `(try
        (let [result# (do ~@body)]
-         (vswap! *test-failures*
-                 conj
-                 {:test-name    *test-name*
-                  :test-section *test-section*
-                  :message      ~msg
-                  :expr         (quote ~expr)
-                  :actual       result#
-                  :expected     (quote ~exc-type)
-                  :line         ~line-num
-                  :type         :failure}))
+         (do-report {:type :fail
+                     :message ~msg
+                     :expr (quote ~expr)
+                     :actual result#
+                     :expected (quote ~exc-type)}))
        (catch ~exc-type e#
          ;; Use python/str rather than Basilisp str to get the raw "message"
          ;; from the exception.
          (let [string-exc# (python/str e#)]
-           (when-not (re-find ~pattern string-exc#)
-             (vswap! *test-failures*
-                     conj
-                     {:test-name    *test-name*
-                      :test-section *test-section*
-                      :message      "Regex pattern did not match"
-                      :expr         (quote ~expr)
-                      :actual       string-exc#
-                      :expected     ~pattern
-                      :line         ~line-num
-                      :type         :failure}))))
+           (if (re-find ~pattern string-exc#)
+             (do-report {:type :pass
+                         :message ~msg
+                         :expr (quote ~expr)
+                         :actual e#
+                         :expected ~pattern})
+             (do-report {:type :fail
+                         :message "Regex pattern did not match"
+                         :expr (quote ~expr)
+                         :actual string-exc#
+                         :expected ~pattern}))))
        (catch python/Exception e#
-         (vswap! *test-failures*
-                 conj
-                 {:test-name    *test-name*
-                  :test-section *test-section*
-                  :message      (str "Expected " ~exc-type "; got " (python/type e#) " instead")
-                  :expr         (quote ~expr)
-                  :actual       e#
-                  :expected     ~exc-type
-                  :line         ~line-num
-                  :type         :failure})))))
+         (do-report {:type :fail
+                     :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
+                     :expr (quote ~expr)
+                     :actual e#
+                     :expected ~exc-type})))))
 
-(defmethod gen-assert :default
-  [expr msg line-num]
+(defmethod assert-expr :default
+  [msg expr]
   `(let [computed# ~expr]
-     (when-not computed#
-       (vswap! *test-failures*
-               conj
-               {:test-name    *test-name*
-                :test-section *test-section*
-                :message      ~msg
-                :expr         (quote ~expr)
-                :actual       computed#
-                :expected     (list (symbol "not") computed#)
-                :line         ~line-num
-                :type         :failure}))))
+     (if computed#
+       (do-report {:type :pass
+                   :message ~msg
+                   :expr (quote ~expr)
+                   :actual computed#
+                   :expected computed#})
+       (do-report {:type :fail
+                   :message ~msg
+                   :expr (quote ~expr)
+                   :actual computed#
+                   :expected (list (symbol "not") computed#)}))))
+
+(def gen-assert
+  "Deprecated alias for :lpy:fn:`assert-expr`."
+  assert-expr)
 
 (defmacro is
   "Assert that a test condition, ``expr``, is true. :lpy:fn:`is` assertion failures are
@@ -257,25 +286,18 @@
    (let [line-num (or (:basilisp.lang.reader/line (meta &form))
                       (:basilisp.lang.reader/line (meta (first &form))))
          exc-name (gensym "e")]
-     `(let [failure-count# (count (deref *test-failures*))
-            result#        (try
-                             ~(gen-assert expr msg line-num)
-                             (catch python/Exception ~exc-name
-                               (vswap! *test-failures*
-                                       conj
-                                       {:test-name    *test-name*
-                                        :test-section *test-section*
-                                        :message      (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
-                                        :expr         (quote ~expr)
-                                        :actual       ~exc-name
-                                        :expected     (quote ~expr)
-                                        :line         ~(if line-num
-                                                         line-num
-                                                         `(.-tb_lineno (.-__traceback__ ~exc-name)))
-                                        :type         :error})))]
-        (when (= failure-count# (count (deref *test-failures*)))
-          (vswap! *test-passes* inc))
-        result#))))
+     `(binding [*test-line* ~line-num]
+        (try
+          ~(assert-expr msg expr)
+          (catch python/Exception ~exc-name
+            (do-report {:type :error
+                        :message (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
+                        :expr (quote ~expr)
+                        :actual ~exc-name
+                        :expected (quote ~expr)
+                        :line ~(if line-num
+                                 line-num
+                                 `(.-tb_lineno (.-__traceback__ ~exc-name)))})))))))
 
 (defmacro are
   "Generate assertions using the template expression ``expr``. Template expressions
@@ -323,6 +345,18 @@
                               ~msg)]
      ~@body))
 
+(defn ^:private test-fn-form
+  [test-ns-name test-name body]
+  `(fn []
+     (binding [*ns*            (the-ns ~test-ns-name)
+               *test-name*     ~test-name
+               *test-section*  nil
+               *test-failures* (volatile! [])
+               *test-passes*   (volatile! 0)]
+       ~@body
+       {:failures (deref *test-failures*)
+        :passes   (deref *test-passes*)})))
+
 (defmacro deftest
   "Define a new test.
 
@@ -332,19 +366,46 @@
   Tests defined by `deftest` will be run by default by the PyTest test runner using
   Basilisp's builtin PyTest hook."
   [name-sym & body]
-  (let [test-name-sym (vary-meta name-sym assoc ::test true)
-        test-name-str (name test-name-sym)
-        test-ns-name  `(quote ~(symbol (name *ns*)))]
-    `(defn ~test-name-sym
-       []
-       (binding [*ns*            (the-ns ~test-ns-name)
-                 *test-name*     ~test-name-str
-                 *test-section*  nil
-                 *test-failures* (volatile! [])
-                 *test-passes*   (volatile! 0)]
-         ~@body
-         {:failures (deref *test-failures*)
-          :passes   (deref *test-passes*)}))))
+  (when *load-tests*
+    (let [test-name-sym (vary-meta name-sym assoc ::test true)
+          test-name-str (name test-name-sym)
+          test-ns-name  `(quote ~(symbol (name *ns*)))]
+      `(def ~test-name-sym
+         ~(test-fn-form test-ns-name test-name-str body)))))
+
+(defmacro deftest-
+  "Like :lpy:fn:`deftest`, but creates a private test Var."
+  [name-sym & body]
+  (when *load-tests*
+    (let [test-name-sym (vary-meta name-sym assoc ::test true :private true)
+          test-name-str (name test-name-sym)
+          test-ns-name  `(quote ~(symbol (name *ns*)))]
+      `(def ~test-name-sym
+         ~(test-fn-form test-ns-name test-name-str body)))))
+
+(defmacro with-test
+  "Associate test assertions with a definition. The definition must return a Var.
+  When :lpy:var:`*load-tests*` is false, only evaluate the definition."
+  [definition & body]
+  (let [v            (gensym "v")
+        test-ns-name `(quote ~(symbol (name *ns*)))
+        test-name    `(name (:name (meta ~v)))]
+    (if *load-tests*
+      `(let [~v ~definition]
+         (alter-meta! ~v assoc ::test ~(test-fn-form test-ns-name test-name body))
+         ~v)
+      definition)))
+
+(defmacro set-test
+  "Associate test assertions with an existing Var."
+  [name-sym & body]
+  (when *load-tests*
+    (let [v            (gensym "v")
+          test-ns-name `(quote ~(symbol (name *ns*)))
+          test-name    `(name (:name (meta ~v)))]
+      `(let [~v (var ~name-sym)]
+         (alter-meta! ~v assoc ::test ~(test-fn-form test-ns-name test-name body))
+         ~v))))
 
 (defn ^:private empty-summary
   []
@@ -398,10 +459,17 @@
          (or (deref result) (empty-summary))
          (fixture-error-summary e))))))
 
+(defn ^:private test-function
+  [v]
+  (let [test (::test (meta v))]
+    (if (fn? test)
+      test
+      (var-get v))))
+
 (defn ^:private run-test-var*
   [v]
   (try
-    (let [result ((var-get v))]
+    (let [result ((test-function v))]
       (doseq [failure (:failures result)]
         (report-test-failure v failure))
       (summarize-test-result result))
@@ -411,7 +479,7 @@
 
 (defn ^:private test-var?
   [v]
-  (true? (::test (meta v))))
+  (boolean (::test (meta v))))
 
 (defn test-vars
   "Run the supplied test Vars with the ``:once`` and ``:each`` fixtures declared

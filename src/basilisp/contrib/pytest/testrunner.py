@@ -311,7 +311,9 @@ class BasilispFile(pytest.File):
         once_fixtures, each_fixtures = self._collected_fixtures(ns)
         self._fixture_manager = FixtureManager(once_fixtures)
         for test in self._collected_tests(ns):
-            f: TestFunction = test.value
+            assert test.meta is not None
+            test_meta = test.meta.val_at(_TEST_META_KW)
+            f: TestFunction = test_meta if callable(test_meta) else test.value
             yield BasilispTestItem.from_parent(
                 self,
                 name=test.name.name,

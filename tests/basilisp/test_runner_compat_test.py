@@ -3,6 +3,9 @@ import random
 import pytest
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import map as lmap
+from basilisp.lang import runtime
+from basilisp.lang import symbol as sym
 from tests.basilisp.helpers import CompileFn
 
 
@@ -20,7 +23,8 @@ def compiler_file_path() -> str:
 def runner(lcompile: CompileFn) -> CompileFn:
     lcompile("""
     (require '[basilisp.test :refer
-               [deftest is run-all-tests run-test-var run-tests successful? use-fixtures]])
+               [assert-expr deftest deftest- do-report is run-all-tests run-test-var
+                run-tests set-test successful? use-fixtures with-test]])
 
     (def events (atom []))
 
@@ -199,3 +203,45 @@ def test_runner_repeated_mixed_result_stress(runner: CompileFn, cap_lisp_io):
             name: _summary_value(summary, name)
             for name in ("test", "pass", "fail", "error")
         } == expected
+
+
+def test_custom_assertions_and_metadata_backed_tests(runner: CompileFn):
+    runner("""
+    (defmethod assert-expr 'is-even? [msg form]
+      `(let [value# ~(second form)]
+         (do-report {:type (if (zero? (mod value# 2)) :pass :fail)
+                     :message ~msg
+                     :expr (quote ~form)
+                     :actual value#
+                     :expected :even})))
+
+    (deftest custom-assertion-test
+      (is (is-even? 4)))
+
+    (deftest- private-test
+      (is true))
+
+    (with-test (defn with-tested [] :value)
+      (is (= :value (with-tested))))
+
+    (defn set-tested [] :set-value)
+    (set-test set-tested
+      (is (= :set-value (set-tested))))
+    """)
+
+    summary = runner("(run-tests 'basilisp.test-runner-compat)")
+
+    assert 7 == _summary_value(summary, "test")
+    assert 6 == _summary_value(summary, "pass")
+    assert 1 == _summary_value(summary, "fail")
+    assert 1 == _summary_value(summary, "error")
+
+
+def test_load_tests_can_omit_test_definitions(runner: CompileFn):
+    load_tests = runtime.Var.find(sym.symbol("*load-tests*", ns="basilisp.test"))
+    assert load_tests is not None
+
+    with runtime.bindings(lmap.map({load_tests: False})):
+        runner("(deftest omitted-test (is false))")
+
+    assert runner("(find-var 'basilisp.test-runner-compat/omitted-test)") is None
