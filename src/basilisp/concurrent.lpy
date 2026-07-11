@@ -1,0 +1,68 @@
+(ns basilisp.concurrent
+  "Python-native concurrency helpers for Basilisp applications."
+  (:import asyncio
+           inspect
+           [basilisp.lang.futures :as futures]))
+
+(defn thread-executor
+  "Create a thread executor for application-owned concurrent work."
+  ([] (futures/ThreadPoolExecutor))
+  ([max-workers] (futures/ThreadPoolExecutor max-workers)))
+
+(defn shutdown!
+  "Shut down an executor created by this namespace."
+  ([executor] (.shutdown executor))
+  ([executor wait?] (.shutdown executor ** :wait wait?)))
+
+(defn submit
+  "Submit ``f`` and its arguments to ``executor`` and return a Basilisp future."
+  [executor f & args]
+  (.submit executor (bound-fn* (fn [] (apply f args)))))
+
+(defn agent-status
+  "Return a compact status map for an executor-backed agent."
+  [agent]
+  {:pending?    (.pending agent)
+   :error       (agent-error agent)
+   :error-mode  (error-mode agent)})
+
+(defn wait
+  "Wait for agents to become idle. This is the synchronous counterpart to Python await."
+  [& agents]
+  (apply await-agent agents))
+
+(defn wait-for
+  "Wait at most ``timeout-ms`` for agents to become idle."
+  [timeout-ms & agents]
+  (apply await-for timeout-ms agents))
+
+(defn awaitable? [value]
+  (inspect/isawaitable value))
+
+(defn async-iterable? [value]
+  (python/hasattr value "__aiter__"))
+
+(defn task [awaitable]
+  (asyncio/create-task awaitable))
+
+(defn task? [value]
+  (instance? asyncio/Task value))
+
+(defn cancel! [task]
+  (.cancel task))
+
+(defn cancelled? [task]
+  (.cancelled task))
+
+(defn queue
+  ([] (asyncio/Queue))
+  ([maxsize] (asyncio/Queue maxsize)))
+
+(defn queue-put! [queue value]
+  (.put queue value))
+
+(defn queue-get! [queue]
+  (.get queue))
+
+(defn queue-empty? [queue]
+  (.empty queue))

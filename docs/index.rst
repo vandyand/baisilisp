@@ -55,6 +55,7 @@ Contents
    differencesfromclojure
    parityroadmap
    concepts
+   concurrency
    reference
    releasenotes
    contributing

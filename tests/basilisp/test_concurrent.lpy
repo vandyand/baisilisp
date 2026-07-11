@@ -1,0 +1,43 @@
+(ns tests.basilisp.test-concurrent
+  (:import asyncio)
+  (:require
+   [basilisp.concurrent :as concurrent]
+   [basilisp.test :refer [deftest is]]))
+
+(defasync resolve-value []
+  (await (asyncio/sleep 0))
+  :resolved)
+
+(defasync task-roundtrip []
+  (let [task (concurrent/task (resolve-value))]
+    (await task)))
+
+(defasync queue-roundtrip []
+  (let [queue (concurrent/queue)]
+    (await (concurrent/queue-put! queue :queued))
+    (await (concurrent/queue-get! queue))))
+
+(deftest executor-test
+  (let [executor (concurrent/thread-executor 1)]
+    (try
+      (is (= 3 @(concurrent/submit executor + 1 2)))
+      (finally
+        (concurrent/shutdown! executor)))))
+
+(deftest agent-status-test
+  (let [agent (agent 0)]
+    (send agent + 1)
+    (concurrent/wait agent)
+    (is (= {:pending? false :error nil :error-mode "fail"}
+           (concurrent/agent-status agent)))))
+
+(deftest asyncio-adapter-test
+  (let [awaitable (resolve-value)
+        task-result (asyncio/run (task-roundtrip))
+        queue-result (asyncio/run (queue-roundtrip))]
+    (try
+      (is (concurrent/awaitable? awaitable))
+      (is (= :resolved task-result))
+      (is (= :queued queue-result))
+      (finally
+        (.close awaitable)))))
