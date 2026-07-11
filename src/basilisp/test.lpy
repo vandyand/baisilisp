@@ -256,9 +256,18 @@
                    :actual computed#
                    :expected (list (symbol "not") computed#)}))))
 
-(def gen-assert
-  "Deprecated alias for :lpy:fn:`assert-expr`."
-  assert-expr)
+(defmulti gen-assert
+  "Legacy assertion generation extension point. New code should extend
+  :lpy:fn:`assert-expr`; existing three-argument methods remain supported."
+  (fn [expr _ _]
+    (cond
+      (vector? expr)     :default
+      (sequential? expr) (first expr)
+      :else              :default)))
+
+(defmethod gen-assert :default
+  [expr msg _]
+  (assert-expr msg expr))
 
 (defmacro is
   "Assert that a test condition, ``expr``, is true. :lpy:fn:`is` assertion failures are
@@ -288,7 +297,7 @@
          exc-name (gensym "e")]
      `(binding [*test-line* ~line-num]
         (try
-          ~(assert-expr msg expr)
+          ~(gen-assert expr msg line-num)
           (catch python/Exception ~exc-name
             (do-report {:type :error
                         :message (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
@@ -392,7 +401,9 @@
         test-name    `(name (:name (meta ~v)))]
     (if *load-tests*
       `(let [~v ~definition]
-         (alter-meta! ~v assoc ::test ~(test-fn-form test-ns-name test-name body))
+         (alter-meta! ~v assoc
+                      ::test ~(test-fn-form test-ns-name test-name body)
+                      :test ~(test-fn-form test-ns-name test-name body))
          ~v)
       definition)))
 
@@ -404,7 +415,9 @@
           test-ns-name `(quote ~(symbol (name *ns*)))
           test-name    `(name (:name (meta ~v)))]
       `(let [~v (var ~name-sym)]
-         (alter-meta! ~v assoc ::test ~(test-fn-form test-ns-name test-name body))
+         (alter-meta! ~v assoc
+                      ::test ~(test-fn-form test-ns-name test-name body)
+                      :test ~(test-fn-form test-ns-name test-name body))
          ~v))))
 
 (defn ^:private empty-summary

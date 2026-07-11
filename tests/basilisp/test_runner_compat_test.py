@@ -23,7 +23,7 @@ def compiler_file_path() -> str:
 def runner(lcompile: CompileFn) -> CompileFn:
     lcompile("""
     (require '[basilisp.test :refer
-               [assert-expr deftest deftest- do-report is run-all-tests run-test-var
+               [assert-expr deftest deftest- do-report gen-assert is run-all-tests run-test-var
                 run-tests set-test successful? use-fixtures with-test]])
 
     (def events (atom []))
@@ -215,8 +215,12 @@ def test_custom_assertions_and_metadata_backed_tests(runner: CompileFn):
                      :actual value#
                      :expected :even})))
 
+    (defmethod gen-assert 'legacy-true? [form msg line]
+      `(do-report {:type :pass :message ~msg :expr (quote ~form) :line ~line}))
+
     (deftest custom-assertion-test
-      (is (is-even? 4)))
+      (is (is-even? 4))
+      (is (legacy-true?)))
 
     (deftest- private-test
       (is true))
@@ -232,9 +236,11 @@ def test_custom_assertions_and_metadata_backed_tests(runner: CompileFn):
     summary = runner("(run-tests 'basilisp.test-runner-compat)")
 
     assert 7 == _summary_value(summary, "test")
-    assert 6 == _summary_value(summary, "pass")
+    assert 7 == _summary_value(summary, "pass")
     assert 1 == _summary_value(summary, "fail")
     assert 1 == _summary_value(summary, "error")
+    assert runner("(test #'with-tested)") == kw.keyword("ok")
+    assert runner("(test #'set-tested)") == kw.keyword("ok")
 
 
 def test_load_tests_can_omit_test_definitions(runner: CompileFn):

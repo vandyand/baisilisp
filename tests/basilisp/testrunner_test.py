@@ -465,6 +465,22 @@ def test_ns_with_underscore(pytester: pytest.Pytester):
     result.assert_outcomes(passed=1, failed=1)
 
 
+def test_collects_metadata_backed_tests(pytester: pytest.Pytester):
+    code = """
+    (ns test-metadata-backed
+      (:require [basilisp.test :refer [deftest- is set-test with-test]]))
+
+    (deftest- private-test (is true))
+    (with-test (defn with-tested [] :value) (is (= :value (with-tested))))
+    (defn set-tested [] :set-value)
+    (set-test set-tested (is (= :set-value (set-tested))))
+    """
+    pytester.makefile(".lpy", test_metadata_backed=code)
+    pytester.syspathinsert()
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=3)
+
+
 def test_no_ns(pytester: pytest.Pytester):
     runtime.Namespace.remove(sym.symbol("abc"))
 
