@@ -67,10 +67,12 @@ The next STM phases are intentionally ordered:
    and retry-safe functions.
 4. **Completed locally:** ``ensure`` returns the in-transaction value and marks
    a Ref for version validation when it would otherwise be a pure commute.
-5. Do not add Clojure's adaptive history queue until contention measurements
-   show that the simpler validation model causes material retry starvation.
-   History is an optimization for snapshot retention, not a prerequisite for
-   atomic multi-Ref updates.
+5. **Measured locally:** ``scripts/stm_contention_probe.py`` ran three forced-
+   yield rounds of eight workers performing 100 transactions each. All 2,400
+   commits completed with roughly 3.3--3.6 mean attempts and worst-case retries
+   in the tens. This shows normal retry cost but no starvation, so do not add
+   Clojure's adaptive history queue yet. History is an optimization for snapshot
+   retention, not a prerequisite for atomic multi-Ref updates.
 
 This ordering follows the observable Clojure contract: transactions are
 atomic, consistent, isolated, and retry on conflict; ``commute`` deliberately
@@ -255,9 +257,10 @@ Execution Order
 The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
-2. Measure STM contention before considering history controls. The Hypothesis
-   transfer, commute, and ensure-model suite is in place; do not claim JVM STM
-   internals without a measurable need and a separate proof.
+2. Repeat ``scripts/stm_contention_probe.py`` at realistic production-like
+   workloads before considering history controls. The current forced-yield
+   sample shows retry cost but no starvation; do not claim JVM STM internals
+   without a measurable need and a separate proof.
 3. Broaden explicit ``fspec`` generation only where a portable descriptor has a
    well-defined Hypothesis strategy; do not synthesize arbitrary predicates.
 4. Run the sample package build/install probe before considering a new backend.

@@ -257,6 +257,9 @@ tuning and asynchronous transactions remain excluded. The test gate includes det
 barrier-driven conflicts, randomized operation histories checked against a
 serialized model, commute/ensure replay interleavings, validator/watch ordering
 tests, nested transaction tests, and high-contention stress coverage.
+``scripts/stm_contention_probe.py`` records retries, worst-case attempts, and
+completion time for a forced-yield multi-thread sample; it is a measurement aid,
+not a throughput benchmark or a basis for adding Ref history queues.
 
 This is a compatibility feature, not a general-purpose database transaction
 API. The external ``stm`` distribution is unlicensed and unmaintained, and
