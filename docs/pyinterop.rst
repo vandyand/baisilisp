@@ -99,6 +99,31 @@ It is also possible to refer all module members into the namespace using ``:refe
 
    :ref:`namespaces`
 
+.. _dataclass_interop:
+
+Dataclasses
+-----------
+
+``basilisp.contrib.dataclasses`` provides explicit conversions at the boundary
+between a Python :external:py:mod:`dataclasses` model and Basilisp data.
+``datafy`` creates a shallow keyword-keyed map of all declared fields and
+records the source object and class in metadata. ``from-data`` constructs a
+dataclass from unqualified keyword or string keys without coercion; the Python
+constructor remains responsible for defaults and default factories.
+
+.. code-block:: clojure
+
+   (require '[basilisp.contrib.dataclasses :as dataclass])
+
+   (dataclass/datafy account)
+   ;; => {:name "Ada" :active true}
+
+   (dataclass/from-data Account {:name "Grace"})
+
+The adapter does not recursively convert field values, register a spec, or
+change global ``datafy`` behavior. Supplying unknown or non-init fields to
+``from-data`` is an error.
+
 .. _referencing_module_members:
 
 Referencing Module Members

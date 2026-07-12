@@ -1,0 +1,13 @@
+(ns basilisp.contrib.dataclasses
+  "Explicit adapters between Python dataclasses and Basilisp data."
+  (:import basilisp.lang.dataclass))
+
+(defn datafy
+  "Project a dataclass instance to a keyword-keyed Basilisp map."
+  [instance]
+  (basilisp.lang.dataclass/datafy instance))
+
+(defn from-data
+  "Construct dataclass ``cls`` from keyword- or string-keyed ``data``."
+  [cls data]
+  (basilisp.lang.dataclass/from_data cls data))

@@ -560,9 +560,11 @@ coerce values. Therefore an adapter's default read path must produce ordinary
 Basilisp data without validation side effects. Its construction path must make
 coercion explicit, preserve field aliases and defaults in metadata, and convert
 framework validation failures into ordinary, documented problem data rather
-than pretending they are native spec failures. The first deliverable should be
-a dataclass ``datafy`` adapter because it needs no optional dependency; attrs
-and Pydantic follow as isolated contrib packages with contract fixtures.
+than pretending they are native spec failures. ``basilisp.contrib.dataclasses``
+now provides that first explicit adapter: a shallow keyword-keyed projection
+with provenance metadata and a separately named, non-coercing ``from-data``
+constructor. It does not register specs or alter ``datafy`` dispatch. attrs and
+Pydantic follow as isolated contrib packages with contract fixtures.
 
 Python interop should similarly prefer narrow vocabulary over Java-shaped
 aliases. Add adapters for mappings, sequences, asynchronous iterables, and
