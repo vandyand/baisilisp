@@ -18,9 +18,14 @@ one readable EDN event per line to ``*out*``. Return and tap values are printed
 with ``pr-str`` by default so Python objects are not serialized across a
 transport boundary.
 
-The local APIs do not open sockets. A remote pREPL server remains a later
-milestone, after session isolation, framing, authentication, and interruption
-semantics have explicit contracts.
+``server-make`` creates a loopback-only TCP server with newline-delimited EDN
+events. Each connection gets an isolated namespace and ends when its client
+closes the write side of the socket. Input is incrementally buffered so source
+text remains available to ``prepl`` and is bounded to 1 MiB by default; pass
+``:max-input-chars`` in the options map to change that limit.
+
+CLI exposure, authentication, and interruption controls remain later
+milestones.
 
 .. autonamespace:: basilisp.contrib.prepl
    :members:

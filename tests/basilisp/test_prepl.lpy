@@ -2,7 +2,9 @@
   (:require
    [basilisp.contrib.prepl :as prepl]
    [basilisp.test :refer [deftest is testing]])
-  (:import io))
+  (:import io
+           socket
+           threading))
 
 (deftest prepl-return-and-output-events-test
   (let [events (atom [])]
@@ -56,3 +58,38 @@
       (prepl/io-prepl))
     (is (= {:tag :ret :val "3" :ns "basilisp.user" :form "(+ 1 2)"}
            (dissoc (read-string (.getvalue out)) :ms)))))
+
+(deftest remote-prepl-server-test
+  (let [server (prepl/server-make {})
+        thread (threading/Thread ** :target #(.serve_forever server) :daemon true)]
+    (.start thread)
+    (try
+      (with [client (socket/create_connection (.-server_address server))]
+        (.sendall client (.encode "(+ 1 2)\n" "utf-8"))
+        (.shutdown client socket/SHUT_WR)
+        (let [event (read-string (.decode (.recv client 4096) "utf-8"))]
+          (is (= {:tag :ret :val "3" :form "(+ 1 2)"}
+                 (dissoc event :ms :ns)))))
+      (finally
+        (.shutdown server)
+        (.server_close server)
+        (.join thread)))))
+
+(deftest remote-prepl-isolates-connection-namespaces-test
+  (let [server (prepl/server-make {})
+        thread (threading/Thread ** :target #(.serve_forever server) :daemon true)]
+    (.start thread)
+    (try
+      (with [first-client (socket/create_connection (.-server_address server))]
+        (.sendall first-client (.encode "(def remote-state 1)\n" "utf-8"))
+        (.shutdown first-client socket/SHUT_WR)
+        (.recv first-client 4096))
+      (with [second-client (socket/create_connection (.-server_address server))]
+        (.sendall second-client (.encode "remote-state\n" "utf-8"))
+        (.shutdown second-client socket/SHUT_WR)
+        (let [event (read-string (.decode (.recv second-client 4096) "utf-8"))]
+          (is (true? (:exception event)))))
+      (finally
+        (.shutdown server)
+        (.server_close server)
+        (.join thread)))))

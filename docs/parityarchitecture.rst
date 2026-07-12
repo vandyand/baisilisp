@@ -300,12 +300,12 @@ Its initial event model is the Clojure pREPL contract:
 
 ``prepl`` operates over supplied readers and callbacks for deterministic tests.
 ``io-prepl`` writes one EDN map per line, using ``pr-str`` for return values.
-``remote-prepl`` remains the next phase: it needs a loopback-default socket
-server, one isolated session per connection, request ordering, size limits, and
-clean shutdown. It is deliberately distinct from nREPL's bencode transport.
-The test gate is transcript fixtures for values, output, stderr, reader errors,
-compiler errors with source locations, session namespace isolation, and
-concurrent independent connections.
+``server-make`` now adds a loopback-default socket server, one isolated
+namespace per connection, newline-delimited EDN framing, bounded incremental
+input buffering, and clean shutdown. It is deliberately distinct from nREPL's
+bencode transport. The next remote phases are request identifiers,
+authentication hooks, cancellation, CLI exposure, and concurrent-connection
+stress transcripts.
 
 The evaluator boundary should be a small Python service rather than a network
 handler: ``evaluate(form_text, session, emit) -> session``. ``session`` owns
