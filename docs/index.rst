@@ -54,6 +54,7 @@ Contents
    gettingstarted
    differencesfromclojure
    parityroadmap
+   parityarchitecture
    concepts
    concurrency
    reference

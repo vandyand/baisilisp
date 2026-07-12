@@ -49,6 +49,7 @@ from basilisp.lang.interfaces import (
     ISeqable,
     ITransientAssociative,
     ITransientSet,
+    IWithMeta,
     ReduceFunction,
 )
 from basilisp.lang.reduced import Reduced
@@ -58,6 +59,46 @@ from basilisp.lang.util import OBJECT_DUNDER_METHODS, demunge, is_abstract, mung
 from basilisp.util import Maybe
 
 logger = logging.getLogger(__name__)
+
+
+class ProtocolDispatch:
+    """Dispatch a protocol method while honoring optional per-value metadata.
+
+    Direct protocol implementations take precedence over metadata implementations,
+    which in turn take precedence over extensions registered for an external type.
+    """
+
+    __slots__ = ("_dispatch", "_interface", "_metadata_key")
+
+    def __init__(
+        self,
+        default: Callable,
+        interface: type,
+        metadata_key: sym.Symbol | None = None,
+    ):
+        self._dispatch = functools.singledispatch(default)
+        self._interface = interface
+        self._metadata_key = metadata_key
+
+    def __call__(self, obj, *args, **kwargs):
+        if isinstance(obj, self._interface):
+            return self._dispatch.dispatch(self._interface)(obj, *args, **kwargs)
+
+        if self._metadata_key is not None and isinstance(obj, IWithMeta):
+            metadata = obj.meta
+            if metadata is not None:
+                method = metadata.val_at(self._metadata_key)
+                if method is not None:
+                    return method(obj, *args, **kwargs)
+
+        return self._dispatch(obj, *args, **kwargs)
+
+    def __getattr__(self, name: str):
+        return getattr(self._dispatch, name)
+
+    def register(self, cls: type, func: Callable | None = None):
+        return self._dispatch.register(cls, func)
+
 
 # Public constants
 CORE_NS = "basilisp.core"

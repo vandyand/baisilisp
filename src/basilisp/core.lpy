@@ -6965,14 +6965,15 @@
 
 (defn ^:private gen-protocol-dispatch
   "Return the dispatch function for a single protocol method."
-  [protocol-name interface-name [method-name & args+docstring :as method-def]]
+  [protocol-name interface-name extend-via-metadata method-symbol
+   [method-name & args+docstring :as method-def]]
   (let [[arglists [docstring]] (split-with (complement string?) args+docstring)]
     [`(def ~(vary-meta method-name
                        assoc
                        :doc docstring
                        :arglists (list 'quote arglists)
                        :basilisp.core/source-protocol (list 'var protocol-name))
-        (functools/singledispatch
+        (basilisp.lang.runtime/ProtocolDispatch
          (fn ~method-name
            ~@(map (fn [[obj-sym & args]]
                     (list `[~obj-sym ~@(map #(vary-meta % assoc :no-warn-when-unused true) args)]
@@ -6984,7 +6985,9 @@
                                        {:protocol    (var ~protocol-name)
                                         :method      ~method-name
                                         :object-type obj-type#})))))
-                  arglists))))
+                  arglists))
+         ~interface-name
+         ~(when extend-via-metadata (list 'quote method-symbol))))
      `(.register ~(vary-meta method-name assoc :no-warn-on-var-indirection true)
                  ~interface-name
                  (fn ~method-name
@@ -7012,6 +7015,7 @@
 ;;
 ;; - :impls     - a set of types which dynamically extend the Protocol
 ;;                (e.g. by `extend`)
+;; - :extend-via-metadata - whether implementations may be supplied by metadata
 ;; - :interface - the Python interface type which backs the Protocol
 ;; - :methods   - a mapping of method names (as Basilisp keywords) to the dispatch
 ;;                method backing the Protocol method
@@ -7038,14 +7042,31 @@
 
     (method-name [self arg1] [self arg1 arg2] \"This method foos the bars.\")
 
+  Protocols may opt into per-value metadata implementations by placing
+  ``:extend-via-metadata true`` after an optional docstring and before method
+  definitions. Metadata implementations are selected after direct implementations
+  and before external ``extend`` implementations. Metadata keys must be fully
+  qualified protocol method symbols.
+
   Callers must provide the ``self`` or ``this`` arguments for each method."
   [protocol-name & methods]
   (let [doc           (when (string? (first methods))
                         (first methods))
         methods       (if doc (rest methods) methods)
+        opt-key       (when (keyword? (first methods)) (first methods))
+        opt-val       (when opt-key (second methods))
+        _             (when (and opt-key (not= :extend-via-metadata opt-key))
+                        (throw (ex-info "Unsupported defprotocol option"
+                                        {:option opt-key})))
+        _             (when (and opt-key (not (boolean? opt-val)))
+                        (throw (ex-info "defprotocol :extend-via-metadata must be boolean"
+                                        {:value opt-val})))
+        methods       (if opt-key (drop 2 methods) methods)
+        extend-via-metadata (boolean opt-val)
         protocol-name (vary-meta
                        (cond-> protocol-name
-                         doc (vary-meta assoc :doc doc))
+                         doc (vary-meta assoc :doc doc)
+                         extend-via-metadata (vary-meta assoc :extend-via-metadata true))
                        assoc
                        :basilisp.core/protocol true
                        :redef true)
@@ -7069,15 +7090,22 @@
                                                                            ~@(when docstring [docstring]))))
                                                                  arglists)))
                                                         methods)])]
-         ~@(mapcat #(gen-protocol-dispatch protocol-name interface-sym %) methods)
-         (->> {:impls     #{}
-               :interface ~interface-sym
-               :methods   ~(apply hash-map
-                                  (mapcat #(let [v (first %)]
-                                             [(keyword (name v)) (vary-meta v assoc :no-warn-on-var-indirection true)])
-                                          methods))
-               :var       (var ~protocol-name)}
-              (alter-var-root (var ~protocol-name) merge ~protocol-name)))
+         ~@(mapcat #(gen-protocol-dispatch protocol-name
+                                           interface-sym
+                                           extend-via-metadata
+                                           (symbol (name *ns*) (name (first %)))
+                                           %)
+                    methods)
+         (let [protocol-map# (cond-> {:impls     #{}
+                                      :interface ~interface-sym
+                                      :methods   ~(apply hash-map
+                                                         (mapcat #(let [v (first %)]
+                                                                    [(keyword (name v)) (vary-meta v assoc :no-warn-on-var-indirection true)])
+                                                                 methods))
+                                      :var       (var ~protocol-name)}
+                               ~extend-via-metadata
+                               (assoc :extend-via-metadata true))]
+           (alter-var-root (var ~protocol-name) merge ~protocol-name protocol-map#)))
        ~protocol-name)))
 
 (defn protocol?

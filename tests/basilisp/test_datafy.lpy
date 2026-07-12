@@ -29,6 +29,12 @@
   (nav [this k v]
     {:collection (.-name this) :key k :value v}))
 
+(def datafy-key
+  (symbol "basilisp.core.protocols" "datafy"))
+
+(def nav-key
+  (symbol "basilisp.core.protocols" "nav"))
+
 (deftest datafy-defaults-to-identity-test
   (testing "values without a Datafiable implementation are returned unchanged"
     (doseq [value [nil 1 "value" :keyword [1 2] {:a 1}]]
@@ -64,6 +70,14 @@
     (is (identical? source result))
     (is (nil? (meta result)))))
 
+(deftest datafy-supports-metadata-protocol-implementations-test
+  (let [source (with-meta {:name "metadata"}
+                 {datafy-key (fn [value]
+                               {:name (:name value) :source :metadata})})
+        result (datafy/datafy source)]
+    (is (= {:name "metadata" :source :metadata} result))
+    (is (identical? source (:basilisp.datafy/obj (meta result))))))
+
 (deftest nav-defaults-to-value-test
   (let [value {:nested :value}]
     (is (identical? value (datafy/nav {:value value} :value value)))
@@ -76,3 +90,10 @@
            (datafy/nav coll :item {:id 7})))
     (is (= {:collection "inventory" :key nil :value :root}
            (protocols/nav coll nil :root)))))
+
+(deftest nav-supports-metadata-protocol-implementations-test
+  (let [coll (with-meta {:name "metadata"}
+               {nav-key (fn [_ k v]
+                          {:key k :value v :source :metadata})})]
+    (is (= {:key :item :value {:id 7} :source :metadata}
+           (datafy/nav coll :item {:id 7})))))

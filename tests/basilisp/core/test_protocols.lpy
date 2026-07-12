@@ -28,6 +28,19 @@
   (interior-angle [this]
     "Return the interior angle of the shape in degrees."))
 
+(defprotocol MetadataGreeting
+  :extend-via-metadata true
+  (metadata-greet [this] [this suffix]))
+
+(defprotocol PlainGreeting
+  (plain-greet [this]))
+
+(def metadata-greet-key
+  (symbol (name *ns*) "metadata-greet"))
+
+(def plain-greet-key
+  (symbol (name *ns*) "plain-greet"))
+
 (defrecord Circle [radius]
   Shape
   (area [this] (* math/pi radius radius)))
@@ -39,6 +52,31 @@
   (interior-angle [this] 360))
 
 (defrecord Square [x])
+
+(defrecord DirectMetadataGreeting []
+  MetadataGreeting
+  (metadata-greet [_] :direct)
+  (metadata-greet [_ suffix] (str "direct-" suffix)))
+
+(defrecord ExtendedMetadataGreeting [])
+
+(extend DirectMetadataGreeting
+  MetadataGreeting
+  {:metadata-greet (fn
+                      ([_] :extended-direct)
+                      ([_ suffix] (str "extended-direct-" suffix)))})
+
+(extend ExtendedMetadataGreeting
+  MetadataGreeting
+  {:metadata-greet (fn
+                      ([_] :extended)
+                      ([_ suffix] (str "extended-" suffix)))})
+
+(defrecord ExtendedPlainGreeting [])
+
+(extend ExtendedPlainGreeting
+  PlainGreeting
+  {:plain-greet (fn [_] :extended)})
 
 (extend-type Square
   Shape
@@ -91,6 +129,42 @@
                (interior-angle (->Circle 1))))
   (is (thrown? basilisp.lang.exception/ExceptionInfo
                (interior-angle (->Square 3)))))
+
+(deftest protocol-extension-via-metadata-test
+  (let [metadata-greeting (fn
+                            ([_] :metadata)
+                            ([_ suffix] (str "metadata-" suffix)))]
+    (testing "protocols opt in explicitly"
+      (is (= true (:extend-via-metadata MetadataGreeting)))
+      (is (nil? (:extend-via-metadata PlainGreeting))))
+
+    (testing "metadata implementations apply to metadata-capable values"
+      (let [value (with-meta {:name "metadata"}
+                    {metadata-greet-key metadata-greeting})]
+        (is (= :metadata (metadata-greet value)))
+        (is (= "metadata-suffix" (metadata-greet value "suffix")))))
+
+    (testing "direct implementations take precedence over metadata"
+      (let [value (with-meta (->DirectMetadataGreeting)
+                    {metadata-greet-key metadata-greeting})]
+        (is (= :direct (metadata-greet value)))
+        (is (= "direct-suffix" (metadata-greet value "suffix")))))
+
+    (testing "metadata implementations take precedence over external extensions"
+      (let [value (with-meta (->ExtendedMetadataGreeting)
+                    {metadata-greet-key metadata-greeting})]
+        (is (= :metadata (metadata-greet value)))
+        (is (= "metadata-suffix" (metadata-greet value "suffix")))))
+
+    (testing "external extensions remain the fallback"
+      (let [value (->ExtendedMetadataGreeting)]
+        (is (= :extended (metadata-greet value)))
+        (is (= "extended-suffix" (metadata-greet value "suffix")))))
+
+    (testing "protocols without the option ignore metadata implementations"
+      (let [value (with-meta (->ExtendedPlainGreeting)
+                    {plain-greet-key (fn [_] :metadata)})]
+        (is (= :extended (plain-greet value)))))))
 
 (deftest Describable-self-name-method-test
   (are [x y] (= x (self-name y))

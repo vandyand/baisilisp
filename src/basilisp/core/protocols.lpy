@@ -47,6 +47,7 @@
 (defprotocol Datafiable
   "Protocol for representing an object as data. Values without a custom
   implementation are returned unchanged."
+  :extend-via-metadata true
   (datafy [o]
     "Return a representation of ``o`` as data."))
 
@@ -62,6 +63,7 @@
 (defprotocol Navigable
   "Protocol for transforming values in the context of a collection. Values
   without a custom implementation are returned unchanged."
+  :extend-via-metadata true
   (nav [coll k v]
     "Return a possibly transformed ``v`` in the context of ``coll`` and key or
     index ``k``."))
