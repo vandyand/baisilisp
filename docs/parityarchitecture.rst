@@ -513,10 +513,10 @@ become renderers of the same facts instead of separately parsed tracebacks.
 Spec And Python Interoperability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-``basilisp.spec.alpha`` should start as a pure value-validation library:
-``s/def``, ``valid?``, ``conform``, ``unform``, ``explain-data``, ``and``,
+``basilisp.spec.alpha`` now provides pure value validation, conforming, and
+explain-data for ``s/def``, ``valid?``, ``conform``, ``unform``, ``and``,
 ``or``, ``nilable``, ``coll-of``, ``map-of``, ``keys``, ``tuple``, and
-``multi-spec``. Explain data must be a stable Basilisp data structure before
+``multi-spec``. Explain data is a stable Basilisp data structure before
 human-readable explanation or instrumentation is added. Generators and function
 instrumentation are later because they require a shrinking/property-testing
 model and callable boundary policy. Hypothesis is a good optional test adapter,

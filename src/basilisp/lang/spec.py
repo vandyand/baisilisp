@@ -1,0 +1,333 @@
+"""Portable descriptor-based validation used by ``basilisp.spec.alpha``."""
+
+from __future__ import annotations
+
+import threading
+from collections.abc import Callable, Iterable, Mapping, Sequence
+from dataclasses import dataclass
+from typing import Any
+
+from basilisp.lang import keyword as kw
+from basilisp.lang import map as lmap
+from basilisp.lang import vector as vec
+from basilisp.lang.interfaces import IPersistentMap, IPersistentSet
+
+INVALID = kw.keyword("invalid", ns="basilisp.spec.alpha")
+_PROBLEMS = kw.keyword("problems", ns="basilisp.spec.alpha")
+_PATH = kw.keyword("path")
+_PRED = kw.keyword("pred")
+_VAL = kw.keyword("val")
+_VIA = kw.keyword("via")
+_IN = kw.keyword("in")
+_REGISTRY: dict[kw.Keyword, Any] = {}
+_REGISTRY_LOCK = threading.RLock()
+
+
+class _Spec:
+    pass
+
+
+@dataclass(frozen=True)
+class _And(_Spec):
+    specs: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class _Or(_Spec):
+    branches: tuple[tuple[kw.Keyword, Any], ...]
+
+
+@dataclass(frozen=True)
+class _Nilable(_Spec):
+    spec: Any
+
+
+@dataclass(frozen=True)
+class _CollOf(_Spec):
+    spec: Any
+    kind: Any | None = None
+    count: int | None = None
+    min_count: int | None = None
+    max_count: int | None = None
+    distinct: bool = False
+
+
+@dataclass(frozen=True)
+class _MapOf(_Spec):
+    key_spec: Any
+    value_spec: Any
+
+
+@dataclass(frozen=True)
+class _Keys(_Spec):
+    required: tuple[kw.Keyword, ...]
+    optional: tuple[kw.Keyword, ...]
+
+
+@dataclass(frozen=True)
+class _Tuple(_Spec):
+    specs: tuple[Any, ...]
+
+
+@dataclass(frozen=True)
+class _MultiSpec(_Spec):
+    dispatch: Callable[[Any], kw.Keyword]
+
+
+def define(key: kw.Keyword, spec: Any) -> kw.Keyword:
+    if not isinstance(key, kw.Keyword):
+        raise TypeError("spec names must be keywords")
+    with _REGISTRY_LOCK:
+        _REGISTRY[key] = spec
+    return key
+
+
+def get_spec(key: kw.Keyword) -> Any | None:
+    with _REGISTRY_LOCK:
+        return _REGISTRY.get(key)
+
+
+def valid(spec: Any, value: Any) -> bool:
+    return _conform(spec, value, (), (), (), None) is not INVALID
+
+
+def conform(spec: Any, value: Any) -> Any:
+    return _conform(spec, value, (), (), (), None)
+
+
+def unform(spec: Any, value: Any) -> Any:
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        return value if resolved is None else unform(resolved, value)
+    if isinstance(spec, _Or) and _sequence(value) and len(value) == 2:
+        tag, conformed = value
+        for branch_tag, branch_spec in spec.branches:
+            if tag == branch_tag:
+                return unform(branch_spec, conformed)
+    return value
+
+
+def explain_data(spec: Any, value: Any) -> IPersistentMap | None:
+    problems: list[IPersistentMap] = []
+    if _conform(spec, value, (), (), (), problems) is not INVALID:
+        return None
+    return lmap.map({_PROBLEMS: vec.v(*problems)})
+
+
+def and_(*specs: Any) -> _And:
+    return _And(specs)
+
+
+def or_(*tagged_specs: Any) -> _Or:
+    if len(tagged_specs) % 2:
+        raise ValueError("or requires tagged spec pairs")
+    branches = []
+    for tag, spec in zip(tagged_specs[::2], tagged_specs[1::2]):
+        if not isinstance(tag, kw.Keyword):
+            raise TypeError("or tags must be keywords")
+        branches.append((tag, spec))
+    return _Or(tuple(branches))
+
+
+def nilable(spec: Any) -> _Nilable:
+    return _Nilable(spec)
+
+
+def coll_of(
+    spec: Any,
+    *,
+    kind: Any | None = None,
+    count: int | None = None,
+    min_count: int | None = None,
+    max_count: int | None = None,
+    distinct: bool = False,
+) -> _CollOf:
+    return _CollOf(spec, kind, count, min_count, max_count, distinct)
+
+
+def map_of(key_spec: Any, value_spec: Any) -> _MapOf:
+    return _MapOf(key_spec, value_spec)
+
+
+def keys(
+    required: Iterable[kw.Keyword] = (), optional: Iterable[kw.Keyword] = ()
+) -> _Keys:
+    return _Keys(tuple(required), tuple(optional))
+
+
+def tuple_(*specs: Any) -> _Tuple:
+    return _Tuple(specs)
+
+
+def multi_spec(dispatch: Callable[[Any], kw.Keyword]) -> _MultiSpec:
+    return _MultiSpec(dispatch)
+
+
+def _conform(
+    spec: Any,
+    value: Any,
+    path: tuple[Any, ...],
+    via: tuple[kw.Keyword, ...],
+    location: tuple[Any, ...],
+    problems: list[IPersistentMap] | None,
+) -> Any:
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        if resolved is None:
+            return _invalid(spec, value, path, via, location, problems)
+        return _conform(resolved, value, path, (*via, spec), location, problems)
+    if isinstance(spec, _And):
+        conformed = value
+        for child in spec.specs:
+            conformed = _conform(child, conformed, path, via, location, problems)
+            if conformed is INVALID:
+                return INVALID
+        return conformed
+    if isinstance(spec, _Or):
+        all_problems: list[IPersistentMap] = []
+        for tag, child in spec.branches:
+            conformed = _conform(child, value, (*path, tag), via, location, None)
+            if conformed is not INVALID:
+                return vec.v(tag, conformed)
+            if problems is not None:
+                _conform(child, value, (*path, tag), via, location, all_problems)
+        if problems is not None:
+            problems.extend(all_problems)
+        return INVALID
+    if isinstance(spec, _Nilable):
+        return (
+            value
+            if value is None
+            else _conform(spec.spec, value, path, via, location, problems)
+        )
+    if isinstance(spec, _CollOf):
+        return _conform_coll_of(spec, value, path, via, location, problems)
+    if isinstance(spec, _MapOf):
+        return _conform_map_of(spec, value, path, via, location, problems)
+    if isinstance(spec, _Keys):
+        return _conform_keys(spec, value, path, via, location, problems)
+    if isinstance(spec, _Tuple):
+        return _conform_tuple(spec, value, path, via, location, problems)
+    if isinstance(spec, _MultiSpec):
+        try:
+            selected = spec.dispatch(value)
+        except BaseException:
+            selected = None
+        if not isinstance(selected, kw.Keyword):
+            return _invalid(spec.dispatch, value, path, via, location, problems)
+        return _conform(selected, value, path, via, location, problems)
+    if callable(spec):
+        try:
+            matches = bool(spec(value))
+        except BaseException:
+            matches = False
+        return (
+            value if matches else _invalid(spec, value, path, via, location, problems)
+        )
+    if isinstance(spec, IPersistentSet) or isinstance(spec, (set, frozenset)):
+        return (
+            value
+            if value in spec
+            else _invalid(spec, value, path, via, location, problems)
+        )
+    raise TypeError(f"unsupported spec: {spec!r}")
+
+
+def _conform_coll_of(spec, value, path, via, location, problems):
+    if not _sequence(value) or (
+        spec.kind is not None and not _matches(spec.kind, value)
+    ):
+        return _invalid(
+            spec.kind or "sequential?", value, path, via, location, problems
+        )
+    if (
+        spec.count is not None
+        and len(value) != spec.count
+        or spec.min_count is not None
+        and len(value) < spec.min_count
+        or spec.max_count is not None
+        and len(value) > spec.max_count
+        or spec.distinct
+        and len(set(value)) != len(value)
+    ):
+        return _invalid(spec, value, path, via, location, problems)
+    for index, item in enumerate(value):
+        if (
+            _conform(spec.spec, item, path, via, (*location, index), problems)
+            is INVALID
+        ):
+            return INVALID
+    return value
+
+
+def _conform_map_of(spec, value, path, via, location, problems):
+    if not _mapping(value):
+        return _invalid("map?", value, path, via, location, problems)
+    for key, item in value.items():
+        if (
+            _conform(spec.key_spec, key, path, via, (*location, key), problems)
+            is INVALID
+        ):
+            return INVALID
+        if (
+            _conform(spec.value_spec, item, path, via, (*location, key), problems)
+            is INVALID
+        ):
+            return INVALID
+    return value
+
+
+def _conform_keys(spec, value, path, via, location, problems):
+    if not _mapping(value):
+        return _invalid("map?", value, path, via, location, problems)
+    for key in spec.required:
+        if key not in value:
+            return _invalid(key, value, path, via, location, problems)
+    for key in (*spec.required, *spec.optional):
+        if (
+            key in value
+            and _conform(key, value[key], path, via, (*location, key), problems)
+            is INVALID
+        ):
+            return INVALID
+    return value
+
+
+def _conform_tuple(spec, value, path, via, location, problems):
+    if not _sequence(value) or len(value) != len(spec.specs):
+        return _invalid(spec, value, path, via, location, problems)
+    for index, (child, item) in enumerate(zip(spec.specs, value)):
+        if (
+            _conform(child, item, (*path, index), via, (*location, index), problems)
+            is INVALID
+        ):
+            return INVALID
+    return value
+
+
+def _invalid(pred, value, path, via, location, problems):
+    if problems is not None:
+        problems.append(
+            lmap.map(
+                {
+                    _PATH: vec.v(*path),
+                    _PRED: pred,
+                    _VAL: value,
+                    _VIA: vec.v(*via),
+                    _IN: vec.v(*location),
+                }
+            )
+        )
+    return INVALID
+
+
+def _matches(pred: Any, value: Any) -> bool:
+    return bool(pred(value)) if callable(pred) else value == pred
+
+
+def _mapping(value: Any) -> bool:
+    return isinstance(value, (Mapping, IPersistentMap))
+
+
+def _sequence(value: Any) -> bool:
+    return isinstance(value, Sequence) and not isinstance(value, (bytes, str))

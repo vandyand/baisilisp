@@ -1,0 +1,60 @@
+(ns tests.basilisp.test-spec-alpha
+  (:require
+   [basilisp.spec.alpha :as s]
+   [basilisp.test :refer [deftest is]]))
+
+(def name-key :tests.spec/name)
+(def age-key :tests.spec/age)
+
+(s/def name-key string?)
+(s/def age-key #(and (int? %) (<= 0 %)))
+
+(deftest named-predicate-and-explain-data-test
+  (is (s/valid? name-key "Ada"))
+  (is (not (s/valid? name-key 42)))
+  (is (= "Ada" (s/conform name-key "Ada")))
+  (is (= s/invalid (s/conform name-key 42)))
+  (let [problems (:basilisp.spec.alpha/problems (s/explain-data name-key 42))
+        problem  (first problems)]
+    (is (= 1 (count problems)))
+    (is (= [] (:path problem)))
+    (is (= 42 (:val problem)))
+    (is (= [name-key] (:via problem)))
+    (is (= [] (:in problem)))))
+
+(deftest composition-and-conforming-test
+  (let [positive-even (s/and int? pos? even?)
+        choice        (s/or :name string? :age age-key)]
+    (is (s/valid? positive-even 8))
+    (is (not (s/valid? positive-even 3)))
+    (is (= [:name "Ada"] (s/conform choice "Ada")))
+    (is (= [:age 42] (s/conform choice 42)))
+    (is (= s/invalid (s/conform choice :invalid)))
+    (is (s/valid? (s/nilable string?) nil))))
+
+(deftest collection-map-and-key-specs-test
+  (let [ages       (s/coll-of age-key :kind vector? :min-count 1)
+        name->age  (s/map-of string? age-key)
+        person     (s/keys :req [name-key age-key])
+        point      (s/tuple int? int?)]
+    (is (= [1 2] (s/conform ages [1 2])))
+    (is (= s/invalid (s/conform ages [1 -1])))
+    (is (= {"Ada" 42} (s/conform name->age {"Ada" 42})))
+    (is (= s/invalid (s/conform name->age {"Ada" -1})))
+    (is (s/valid? person {name-key "Ada" age-key 42}))
+    (is (not (s/valid? person {name-key "Ada"})))
+    (is (= [1 2] (s/conform point [1 2])))
+    (is (= s/invalid (s/conform point [1 "two"])))))
+
+(deftest multi-spec-test
+  (let [cat-key :tests.spec/cat
+        dog-key :tests.spec/dog]
+    (s/def :type #{cat-key dog-key})
+    (s/def :lives int?)
+    (s/def :barks boolean?)
+    (s/def cat-key (s/keys :req [:type :lives]))
+    (s/def dog-key (s/keys :req [:type :barks]))
+    (let [pet (s/multi-spec :type)]
+      (is (s/valid? pet {:type cat-key :lives 9}))
+      (is (s/valid? pet {:type dog-key :barks true}))
+      (is (not (s/valid? pet {:type cat-key :barks true}))))))
