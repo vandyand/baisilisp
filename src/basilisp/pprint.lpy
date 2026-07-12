@@ -740,6 +740,191 @@
       (pprint-newline :linear)
       (write-out contents))))
 
+;;;;;;;;;;;;;;;;;;;
+;; Code Dispatch ;;
+;;;;;;;;;;;;;;;;;;;
+
+(def ^:private reader-macros
+  {'quote                 "'"
+   'deref                 "@"
+   'basilisp.core/deref   "@"
+   'var                   "#'"})
+
+(defn ^:private pprint-reader-macro
+  "Print lists that correspond to reader macro syntax."
+  [forms]
+  (when-let [macro-char (get reader-macros (first forms))]
+    (when (= 2 (count forms))
+      (.write *out* macro-char)
+      (write-out (second forms))
+      true)))
+
+(defn ^:private print-simple-code-list
+  "Pretty print a list form using code indentation conventions."
+  [forms]
+  (pprint-logical-block :prefix "(" :suffix ")"
+    (pprint-indent :block 1)
+    (print-length-loop [remaining (seq forms)]
+      (when remaining
+        (write-out (first remaining))
+        (when-let [more (next remaining)]
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (recur more))))))
+
+(defn ^:private print-code-binding-form
+  "Pretty print bindings as condition/value pairs."
+  [bindings]
+  (pprint-logical-block :prefix "[" :suffix "]"
+    (print-length-loop [remaining (seq bindings)]
+      (when remaining
+        (pprint-logical-block
+         (write-out (first remaining))
+         (when-let [value (next remaining)]
+           (.write *out* " ")
+           (pprint-newline :miser)
+           (write-out (first value))))
+        (when-let [more (next (next remaining))]
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (recur more))))))
+
+(defn ^:private print-code-let
+  "Pretty print forms with a vector of bindings as their first argument."
+  [forms]
+  (if (and (next forms) (vector? (second forms)))
+    (pprint-logical-block :prefix "(" :suffix ")"
+      (write-out (first forms))
+      (.write *out* " ")
+      (pprint-indent :block 1)
+      (pprint-newline :linear)
+      (print-code-binding-form (second forms))
+      (print-length-loop [remaining (next (next forms))]
+        (when remaining
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (write-out (first remaining))
+          (when-let [more (next remaining)]
+            (recur more)))))
+    (print-simple-code-list forms)))
+
+(defn ^:private print-code-defn
+  "Pretty print ``defn``-style forms, preserving the declaration structure."
+  [forms]
+  (if (next forms)
+    (let [[_ name & remaining] forms
+          [docstring remaining] (if (string? (first remaining))
+                                  [(first remaining) (next remaining)]
+                                  [nil remaining])
+          [attr-map remaining] (if (map? (first remaining))
+                                 [(first remaining) (next remaining)]
+                                 [nil remaining])]
+      (pprint-logical-block :prefix "(" :suffix ")"
+        (write-out (first forms))
+        (.write *out* " ")
+        (pprint-indent :block 1)
+        (pprint-newline :linear)
+        (write-out name)
+        (when docstring
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (write-out docstring))
+        (when attr-map
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (write-out attr-map))
+        (print-length-loop [body remaining]
+          (when body
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (write-out (first body))
+            (when-let [more (next body)]
+              (recur more))))))
+    (print-simple-code-list forms)))
+
+(defn ^:private print-code-cond
+  "Pretty print condition/result pairs in ``cond``-style forms."
+  [forms]
+  (pprint-logical-block :prefix "(" :suffix ")"
+    (pprint-indent :block 1)
+    (write-out (first forms))
+    (when-let [remaining (next forms)]
+      (.write *out* " ")
+      (pprint-newline :linear)
+      (print-length-loop [pairs remaining]
+        (when pairs
+          (pprint-logical-block
+           (write-out (first pairs))
+           (when-let [result (next pairs)]
+             (.write *out* " ")
+             (pprint-newline :miser)
+             (write-out (first result))))
+          (when-let [more (next (next pairs))]
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (recur more)))))))
+
+(def ^:private code-formatters
+  {"defn"      print-code-defn
+   "defn-"     print-code-defn
+   "defmacro"  print-code-defn
+   "defasync"  print-code-defn
+   "fn"        print-code-defn
+   "let"       print-code-let
+   "loop"      print-code-let
+   "binding"   print-code-let
+   "with-open" print-code-let
+   "when-let"  print-code-let
+   "if-let"    print-code-let
+   "doseq"     print-code-let
+   "dotimes"   print-code-let
+   "when-first" print-code-let
+   "cond"      print-code-cond})
+
+(defn ^:private code-formatter
+  [form]
+  (when (and (symbol? form)
+             (or (nil? (namespace form))
+                 (= "basilisp.core" (namespace form))))
+    (get code-formatters (name form))))
+
+(defn ^:private print-code-list
+  [forms]
+  (when-not (pprint-reader-macro forms)
+    (if-let [formatter (code-formatter (first forms))]
+      (formatter forms)
+      (print-simple-code-list forms))))
+
+(def ^:private ^:dynamic *code-symbols* {})
+
+(defn ^:private print-code-symbol
+  [sym]
+  (if-let [replacement (get *code-symbols* sym)]
+    (print replacement)
+    (if *print-suppress-namespaces*
+      (print (name sym))
+      (pr sym))))
+
+(defmulti code-dispatch type)
+
+(defmethod code-dispatch basilisp.lang.interfaces/ISeq
+  [obj]
+  (print-code-list obj))
+
+(defmethod code-dispatch basilisp.lang.interfaces/IPersistentList
+  [obj]
+  (print-code-list obj))
+
+(prefer-method code-dispatch basilisp.lang.interfaces/IPersistentList basilisp.lang.interfaces/ISeq)
+
+(defmethod code-dispatch basilisp.lang.symbol/Symbol
+  [obj]
+  (print-code-symbol obj))
+
+(defmethod code-dispatch :default
+  [obj]
+  (simple-dispatch obj))
+
 (alter-var-root #'*print-pprint-dispatch* (constantly simple-dispatch))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

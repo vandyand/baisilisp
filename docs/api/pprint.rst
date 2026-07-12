@@ -49,6 +49,16 @@ Custom Pretty Print Dispatch Function
 The default dispatch function is :lpy:fn:`simple-dispatch` which can print most builtin Basilisp types.
 Using the builtin macros and utilities, it is possible to create a custom dispatch function.
 
+For printing Basilisp forms as source code, use :lpy:fn:`code-dispatch` with
+:lpy:fn:`with-pprint-dispatch`. It applies code-oriented indentation to common
+definition, binding, conditional, and reader-macro forms while leaving the
+default data printer unchanged.
+
+.. code-block::
+
+ (pprint/with-pprint-dispatch pprint/code-dispatch
+   (pprint/pprint '(defn add [x y] (+ x y))))
+
 .. _pretty_printing_concepts:
 
 Pretty Printing Concepts
@@ -96,7 +106,6 @@ Unimplemented Features
 The following features from ``clojure.pprint`` are not currently implemented:
 
 - ``:fill`` newlines
-- ``code-dispatch`` for printing code
 - ``cl-format``
 
 .. _pprint_references:

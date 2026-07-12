@@ -343,6 +343,37 @@
  [:abcdefghijklmn :a]]" 25
       "[:abcdefghijklmnop [:abcdefghijklmn :a]]" 50)))
 
+(deftest pprint-code-dispatch-test
+  (testing "definition forms"
+    (is (= "(defn \n  add \n  \"Adds two numbers.\" \n  [x y] \n  (+ x y))"
+           (trim-and-replace-newlines
+            (binding [pprint/*print-right-margin* 26]
+              (with-out-str
+                (pprint/with-pprint-dispatch pprint/code-dispatch
+                  (pprint/pprint
+                   '(defn add "Adds two numbers." [x y] (+ x y))))))))))
+
+  (testing "binding forms"
+    (is (= "(let \n  [first-name \"Ada\" last-name \n                    \"Lovelace\"] \n  (str \n    first-name \n    last-name))"
+           (trim-and-replace-newlines
+            (binding [pprint/*print-right-margin* 26]
+              (with-out-str
+                (pprint/with-pprint-dispatch pprint/code-dispatch
+                  (pprint/pprint
+                   '(let [first-name "Ada" last-name "Lovelace"]
+                      (str first-name last-name))))))))))
+
+  (testing "reader macros"
+    (are [expected form]
+      (= expected
+         (str/rtrim
+          (with-out-str
+            (pprint/with-pprint-dispatch pprint/code-dispatch
+              (pprint/pprint form)))))
+      "'value"  '(quote value)
+      "@value"  '(deref value)
+      "#'value" '(var value))))
+
 (deftest pprint-print-level-test
   (are [res plen expr] (= res (trim-and-replace-newlines
                                (binding [*print-level* plen]
