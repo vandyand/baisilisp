@@ -248,9 +248,13 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   precision integers mean its ``*-exact`` functions do not overflow, and its
   ``round`` function does not have JVM ``long`` saturation behavior.
 * :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint`` (excluding support for ``cl-format``)
+* :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
+  of ``clojure.core.reducers``. It does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell``
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``
+* :lpy:ns:`basilisp.test.tap` is a port of ``clojure.test.tap`` for REPL test
+  runners. ``clojure.test.junit`` remains JVM-specific and is not provided.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``

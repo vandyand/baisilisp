@@ -604,44 +604,38 @@ must not become a required dependency.
 ~~~~~~~~~~~~~~~~~
 
 Basilisp already has serial ``reduce``, transducers, ``eduction``, and custom
-reduction protocols. A ``basilisp.reducers`` namespace is justified only for
-the missing foldable abstraction, not as a second collection traversal API.
-Its first scope should be a serial, deterministic ``reducer``/``folder`` and
-``fold`` contract over explicitly splittable Basilisp vectors and maps, plus
-the reducer transforms ``map``, ``filter``, ``remove``, ``take``, ``drop``,
-``mapcat``, and ``cat``. It must preserve ``reduced`` short-circuiting and use
-the supplied combining function's zero-argument identity exactly as Clojure
-does.
+reduction protocols. ``basilisp.reducers`` now supplies the missing foldable
+abstraction without becoming a second general collection API: deterministic
+``reducer``/``folder`` and ``fold``, plus ``map``, ``filter``, ``remove``,
+``take``, ``drop``, ``mapcat``, ``flatten``, and ``cat``. It preserves
+``reduced`` short-circuiting, map key/value reduction, and the supplied
+combining function's zero-argument identity.
 
 Parallel folding is a separate, opt-in execution policy. Threads do not make
 CPU-bound Python reduction parallel under the GIL; process pools impose
 pickling, importability, cancellation, exception, and data-copy constraints.
-Therefore the default ``fold`` is serial. A later ``:executor`` option may
+Therefore ``basilisp.reducers/fold`` is serial. A later ``:executor`` option may
 accept an application-owned executor only when the collection and reducing
 functions pass an explicit portability check. It must neither create global
-worker pools nor promise speedup. The implementation should be internal and
+worker pools nor promise speedup. The implementation remains internal and
 protocol-based; no third-party package supplies Clojure's fold/reduced contract.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``basilisp.test`` already centralizes report events, which makes a small
-``basilisp.test.tap`` a good portable addition. Implement the five Clojure TAP
-operations (plan, pass, fail, diagnostic, and ``with-tap-output``) as a report
-binding that emits TAP version 13 to an explicit writer or dynamically bound
-``*out*``. It should emit ``ok``/``not ok`` assertion events in reporting
-order, escape one-line descriptions, and emit a plan after the wrapped run.
-The basic ``#`` diagnostics format requires no dependency; YAML diagnostics are
-an optional later enhancement.
+``basilisp.test.tap`` now supplies the five Clojure TAP operations (plan, pass,
+fail, diagnostic, and ``with-tap-output``). Its report binding emits
+Clojure-compatible ``ok``/``not ok`` assertion lines, ``#`` diagnostics, and a
+plan to the dynamically bound ``*out*``. The basic diagnostics format requires
+no dependency; YAML diagnostics are an optional later enhancement.
 
-Before adding the public TAP namespace, refactor the Basilisp test runner so
-test summaries, uncaught test errors, and fixture failures flow through the
-same ``report`` dispatch as assertions. The current direct ``println`` paths
-would otherwise mix human text with TAP or leave an error out of the plan.
-The default report handler remains the existing human renderer, while a TAP
-handler owns all output during ``with-tap-output``. Golden fixtures and a parser
-consumer should validate output; ``tap.py`` and ``pytest-tap`` are useful
-interoperability checks, not runtime dependencies.
+The Basilisp test runner now routes summaries, uncaught test errors, hook
+errors, and fixture failures through the same ``report`` dispatch as
+assertions. The default report handler keeps the human renderer, while the TAP
+handler owns all output during ``with-tap-output`` so no human text contaminates
+the stream and every reported failure is included in the plan. Golden fixtures
+cover assertion, uncaught-test, and fixture-error output; ``tap.py`` and
+``pytest-tap`` remain useful interoperability checks rather than dependencies.
 
 ``clojure.test.junit`` is intentionally omitted. Its contract is tied to JUnit
 classes and XML/reporting conventions already covered by Python test runners.

@@ -1,0 +1,273 @@
+(ns basilisp.reducers
+  "Reducible and foldable collection transformations.
+
+  This is a serial Python-hosted implementation of the portable
+  ``clojure.core.reducers`` contract. Executor-backed parallel folds are outside
+  this namespace's initial scope."
+  (:refer-basilisp :exclude [cat drop filter flatten map mapcat reduce remove take take-while])
+  (:require [basilisp.core.protocols :as core-protocols]))
+
+(defn reduce
+  "Like :lpy:fn:`basilisp.core/reduce`, but maps reduce key/value pairs."
+  ([f coll]
+   (reduce f (f) coll))
+  ([f init coll]
+   (if (map? coll)
+     (basilisp.core/reduce-kv f init coll)
+     (basilisp.core/reduce f init coll))))
+
+(defn- reduce-preserving
+  "Reduce while retaining a nested ``reduced`` signal for an outer reducer."
+  [f init coll]
+  (let [halted? (volatile! false)
+        result   (reduce (fn
+                           ([ret value]
+                            (let [next (f ret value)]
+                              (when (reduced? next)
+                                (vreset! halted? true))
+                              next))
+                           ([ret key value]
+                            (let [next (f ret key value)]
+                              (when (reduced? next)
+                                (vreset! halted? true))
+                              next)))
+                         init
+                         coll)]
+    (if @halted? (reduced result) result)))
+
+(defprotocol CollFold
+  "A collection that can participate in :lpy:fn:`fold`."
+  (coll-fold [coll n combinef reducef]))
+
+(defn fold
+  "Reduce ``coll`` with ``reducef`` and an associative ``combinef``.
+
+  Folding is serial by default. ``n`` is retained in the API so a future,
+  explicitly configured executor policy can partition compatible collections
+  without changing callers."
+  ([reducef coll]
+   (fold reducef reducef coll))
+  ([combinef reducef coll]
+   (fold 512 combinef reducef coll))
+  ([n combinef reducef coll]
+   (when-not (pos? n)
+     (throw (python/ValueError "fold partition size must be positive")))
+   (if (satisfies? CollFold coll)
+     (coll-fold coll n combinef reducef)
+     (reduce reducef (combinef) coll))))
+
+(deftype Reducer [coll xf])
+
+(defn reducer
+  "Return a reducible ``coll`` transformed by reducing-function transformer ``xf``."
+  [coll xf]
+  (Reducer coll xf))
+
+(deftype Folder [coll xf])
+
+(defn folder
+  "Return a reducible and foldable ``coll`` transformed by ``xf``."
+  [coll xf]
+  (Folder coll xf))
+
+(defn- map-rf
+  [f f1]
+  (fn
+    ([] (f1))
+    ([ret value] (f1 ret (f value)))
+    ([ret key value] (f1 ret (f key value)))))
+
+(defn map
+  "Apply ``f`` to every value in the reduction of ``coll``."
+  ([f]
+   (fn [coll] (map f coll)))
+  ([f coll]
+   (folder coll (fn [f1] (map-rf f f1)))))
+
+(defn- mapcat-rf
+  [f f1]
+  (fn
+    ([] (f1))
+    ([ret value]
+     (reduce-preserving f1 ret (f value)))
+    ([ret key value]
+     (reduce-preserving f1 ret (f key value)))))
+
+(defn mapcat
+  "Apply ``f`` to each input and concatenate the resulting reductions."
+  ([f]
+   (fn [coll] (mapcat f coll)))
+  ([f coll]
+   (folder coll (fn [f1] (mapcat-rf f f1)))))
+
+(defn- filter-rf
+  [pred f1]
+  (fn
+    ([] (f1))
+    ([ret value]
+     (if (pred value) (f1 ret value) ret))
+    ([ret key value]
+     (if (pred key value) (f1 ret key value) ret))))
+
+(defn filter
+  "Retain values in ``coll`` for which ``pred`` returns truthy."
+  ([pred]
+   (fn [coll] (filter pred coll)))
+  ([pred coll]
+   (folder coll (fn [f1] (filter-rf pred f1)))))
+
+(defn remove
+  "Remove values in ``coll`` for which ``pred`` returns truthy."
+  ([pred]
+   (fn [coll] (remove pred coll)))
+  ([pred coll]
+   (folder coll
+           (fn [f1]
+             (filter-rf (fn
+                          ([value] (not (pred value)))
+                          ([key value] (not (pred key value))))
+                        f1)))))
+
+(defn- flatten-rf
+  [f1]
+  (fn
+    ([] (f1))
+    ([ret value]
+     (if (sequential? value)
+       (reduce-preserving (flatten-rf f1) ret value)
+       (f1 ret value)))
+    ([ret key value]
+     (f1 ret key value))))
+
+(defn flatten
+  "Flatten nested sequential values into a foldable collection."
+  ([]
+   (fn [coll] (flatten coll)))
+  ([coll]
+   (folder coll flatten-rf)))
+
+(defn- take-while-rf
+  [pred f1]
+  (fn
+    ([] (f1))
+    ([ret value]
+     (if (pred value) (f1 ret value) (reduced ret)))
+    ([ret key value]
+     (if (pred key value) (f1 ret key value) (reduced ret)))))
+
+(defn take-while
+  "End the reduction when ``pred`` first returns false."
+  ([pred]
+   (fn [coll] (take-while pred coll)))
+  ([pred coll]
+   (reducer coll (fn [f1] (take-while-rf pred f1)))))
+
+(defn- take-rf
+  [n f1]
+  (let [remaining (atom n)]
+    (fn
+      ([] (f1))
+      ([ret value]
+       (let [left (swap! remaining dec)]
+         (if (neg? left) (reduced ret) (f1 ret value))))
+      ([ret key value]
+       (let [left (swap! remaining dec)]
+         (if (neg? left) (reduced ret) (f1 ret key value)))))))
+
+(defn take
+  "End the reduction after consuming ``n`` values."
+  ([n]
+   (fn [coll] (take n coll)))
+  ([n coll]
+   (reducer coll (fn [f1] (take-rf n f1)))))
+
+(defn- drop-rf
+  [n f1]
+  (let [remaining (atom n)]
+    (fn
+      ([] (f1))
+      ([ret value]
+       (if (neg? (swap! remaining dec)) (f1 ret value) ret))
+      ([ret key value]
+       (if (neg? (swap! remaining dec)) (f1 ret key value) ret)))))
+
+(defn drop
+  "Elide the first ``n`` values from the reduction."
+  ([n]
+   (fn [coll] (drop n coll)))
+  ([n coll]
+   (reducer coll (fn [f1] (drop-rf n f1)))))
+
+(deftype Cat [cnt left right]
+  (__len__ [_] cnt)
+  (__iter__ [_] (python/iter (concat left right))))
+
+(defn- reducer-coll-reduce
+  ([this f]
+   (reduce ((.-xf this) f) (f) (.-coll this)))
+  ([this f init]
+   (reduce ((.-xf this) f) init (.-coll this))))
+
+(defn- folder-coll-fold
+  [this n combinef reducef]
+  (fold n combinef ((.-xf this) reducef) (.-coll this)))
+
+(defn- cat-coll-reduce
+  ([this f]
+   (core-protocols/coll-reduce this f (f)))
+  ([this f init]
+   (basilisp.core/reduce f
+                         (basilisp.core/reduce f init (.-left this))
+                         (.-right this))))
+
+(defn- cat-coll-fold
+  [this n combinef reducef]
+  (combinef (fold n combinef reducef (.-left this))
+            (fold n combinef reducef (.-right this))))
+
+(extend Reducer
+  core-protocols/CollReduce
+  {:coll-reduce reducer-coll-reduce})
+
+(extend Folder
+  core-protocols/CollReduce
+  {:coll-reduce reducer-coll-reduce}
+  CollFold
+  {:coll-fold folder-coll-fold})
+
+(extend Cat
+  core-protocols/CollReduce
+  {:coll-reduce cat-coll-reduce}
+  CollFold
+  {:coll-fold cat-coll-fold})
+
+(defn cat
+  "Return a high-performance reducible concatenation of two collections."
+  ([] (python/list))
+  ([ctor]
+   (fn
+     ([] (ctor))
+     ([left right] (cat left right))))
+  ([left right]
+   (cond
+     (zero? (count left)) right
+     (zero? (count right)) left
+     :else (Cat (+ (count left) (count right)) left right))))
+
+(defn append!
+  "Append ``x`` to mutable ``acc`` and return ``acc``."
+  [acc x]
+  (.append acc x)
+  acc)
+
+(defn foldcat
+  "Fold ``coll`` into a mutable Python list by concatenation."
+  [coll]
+  (fold cat append! coll))
+
+(defn monoid
+  "Build a combining function from associative ``op`` and zero-arg ``ctor``."
+  [op ctor]
+  (fn
+    ([] (ctor))
+    ([left right] (op left right))))

@@ -1,0 +1,75 @@
+(ns tests.basilisp.test-reducers
+  (:require
+   [basilisp.reducers :as r]
+   [basilisp.test :refer [deftest is testing]]))
+
+(deftest reducer-transformations-test
+  (is (= 14 (r/reduce + (r/map inc [1 2 3 4]))))
+  (is (= [2 4] (into [] (r/filter even? [1 2 3 4]))))
+  (is (= [1 3] (into [] (r/remove even? [1 2 3 4]))))
+  (is (= [1 1 2 2] (into [] (r/mapcat #(vector % %) [1 2]))))
+  (is (= [1 2 3] (into [] (r/flatten [1 [2 [3]]]))))
+  (is (= [1 2] (into [] ((r/flatten) [[1] [2]]))))
+  (is (= [1 2] (into [] (r/take 2 [1 2 3 4]))))
+  (is (= [3 4] (into [] (r/drop 2 [1 2 3 4]))))
+  (is (= [1 2] (into [] (r/take-while #(< % 3) [1 2 3 4]))))
+  (is (= [2 3 4] (into [] ((r/map inc) [1 2 3])))))
+
+(deftest reducers-preserve-keyed-map-reduction-test
+  (is (= {:a 2 :b 3}
+         (r/reduce (fn [acc [key value]]
+                     (assoc acc key value))
+                   {}
+                   (r/map (fn [k value]
+                            [k (inc value)])
+                          {:a 1 :b 2}))))
+  (is (= {:b 2}
+         (r/reduce (fn [acc k value]
+                     (assoc acc k value))
+                   {}
+                   (r/filter (fn [k _value] (= :b k))
+                             {:a 1 :b 2})))))
+
+(deftest reducers-stop-early-test
+  (let [calls (volatile! 0)
+        result (r/reduce (fn [acc value]
+                           (vswap! calls inc)
+                           (if (= value 3)
+                             (reduced acc)
+                             (conj acc value)))
+                         []
+                         (r/mapcat #(vector % %) [1 2 3 4]))]
+    (is (= [1 1 2 2] result))
+    (is (= 5 @calls))))
+
+(deftest reducer-composition-stress-test
+  (doseq [size (range 40)]
+    (let [values   (range size)
+          expected (into [] (take 7 (filter odd? (map inc values))))
+          actual   (into [] (r/take 7 (r/filter odd? (r/map inc values))))]
+      (is (= expected actual))))
+  (doseq [limit (range 16)]
+    (let [expected (into [] (take limit (mapcat #(vector % (inc %)) (range 20))))
+          actual   (into [] (r/take limit
+                                      (r/mapcat #(vector % (inc %)) (range 20))))]
+      (is (= expected actual)))))
+
+(deftest folder-and-fold-test
+  (is (= 10 (r/fold + [1 2 3 4])))
+  (is (= 10 (r/fold 2 + + [1 2 3 4])))
+  (is (= 9 (r/fold + (r/map inc [1 2 3]))))
+  (is (= 0 (r/fold + nil)))
+  (is (thrown? python/ValueError (r/fold 0 + + [1])))
+  (is (= [[1 2] [3 4]]
+         (vec (r/foldcat [[1 2] [3 4]])))))
+
+(deftest concatenation-and-monoid-test
+  (let [cat (r/cat [1 2] [3 4])]
+    (is (= 4 (count cat)))
+    (is (= [1 2 3 4] (into [] cat))))
+  (let [join (r/monoid str (fn [] ""))]
+    (is (= "ab" (join "a" "b")))
+    (is (= "" (join))))
+  (let [acc (python/list)]
+    (is (identical? acc (r/append! acc :value)))
+    (is (= [:value] (vec acc)))))
