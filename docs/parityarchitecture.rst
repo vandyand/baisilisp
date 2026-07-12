@@ -629,10 +629,17 @@ protocol-based; no third-party package supplies Clojure's fold/reduced contract.
 ``basilisp.test.tap`` a good portable addition. Implement the five Clojure TAP
 operations (plan, pass, fail, diagnostic, and ``with-tap-output``) as a report
 binding that emits TAP version 13 to an explicit writer or dynamically bound
-``*out*``. Number assertion events in reporting order, escape one-line
-descriptions, emit a plan after the wrapped run, and put structured failure
-details in YAML diagnostics only when the optional serializer is available.
-The basic text format requires no dependency. Golden fixtures and a parser
+``*out*``. It should emit ``ok``/``not ok`` assertion events in reporting
+order, escape one-line descriptions, and emit a plan after the wrapped run.
+The basic ``#`` diagnostics format requires no dependency; YAML diagnostics are
+an optional later enhancement.
+
+Before adding the public TAP namespace, refactor the Basilisp test runner so
+test summaries, uncaught test errors, and fixture failures flow through the
+same ``report`` dispatch as assertions. The current direct ``println`` paths
+would otherwise mix human text with TAP or leave an error out of the plan.
+The default report handler remains the existing human renderer, while a TAP
+handler owns all output during ``with-tap-output``. Golden fixtures and a parser
 consumer should validate output; ``tap.py`` and ``pytest-tap`` are useful
 interoperability checks, not runtime dependencies.
 
