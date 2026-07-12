@@ -1,0 +1,18 @@
+(ns basilisp.instant
+  "Portable RFC3339-like timestamp parsing for Python datetime values."
+  (:import basilisp.lang.instant))
+
+(defn parse-timestamp
+  "Parse ``cs`` and pass its ten numeric timestamp components to ``new-instant``."
+  [new-instant cs]
+  (basilisp.lang.instant/parse_timestamp new-instant cs))
+
+(defn validated
+  "Wrap ``new-instance`` with timestamp component validation."
+  [new-instance]
+  (basilisp.lang.instant/validated new-instance))
+
+(defn read-instant
+  "Read ``cs`` as a timezone-aware Python datetime normalized to UTC."
+  [cs]
+  (basilisp.lang.instant/read_instant cs))

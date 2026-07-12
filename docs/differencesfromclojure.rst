@@ -240,6 +240,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.data` is a port of ``clojure.data``
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
+* :lpy:ns:`basilisp.instant` provides the portable timestamp parser from
+  ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`
+  values rather than Java date, calendar, or timestamp classes.
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io``
 * :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
   precision integers mean its ``*-exact`` functions do not overflow, and its

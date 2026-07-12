@@ -1,0 +1,10 @@
+(ns tests.basilisp.test-instant
+  (:require
+   [basilisp.instant :as instant]
+   [basilisp.test :refer [deftest is]]))
+
+(deftest public-instant-api-test
+  (is (= [2024 1 1 0 0 0 0 0 0 0]
+         (instant/parse-timestamp vector "2024")))
+  (is (= #inst "2024-02-28T22:32:03.123456+00:00"
+         (instant/read-instant "2024-02-29T01:02:03.123456789+02:30"))))
