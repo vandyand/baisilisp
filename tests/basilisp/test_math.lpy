@@ -1,0 +1,85 @@
+(ns tests.basilisp.test-math
+  (:require
+   [basilisp.test :refer [deftest is testing]]
+   [basilisp.math :as math]))
+
+(defn close? [expected actual]
+  (< (abs (- expected actual)) 1e-12))
+
+(defn nan? [x] (not (= x x)))
+
+(deftest constants-and-elementary-functions-test
+  (is (close? 2.718281828459045 math/E))
+  (is (close? 3.141592653589793 math/PI))
+  (is (close? 1.0 (math/sin (/ math/PI 2))))
+  (is (close? -1.0 (math/cos math/PI)))
+  (is (close? 1.0 (math/tan (/ math/PI 4))))
+  (is (close? 0.5 (math/asin 0.479425538604203)))
+  (is (close? (/ math/PI 3) (math/acos 0.5)))
+  (is (close? (/ math/PI 4) (math/atan 1.0)))
+  (is (close? math/PI (math/to-radians 180.0)))
+  (is (close? 180.0 (math/to-degrees math/PI)))
+  (is (close? 8.0 (math/exp (math/log 8.0))))
+  (is (= 3.0 (math/log10 1000.0)))
+  (is (= 3.0 (math/sqrt 9.0)))
+  (is (close? -3.0 (math/cbrt -27.0)))
+  (is (= -1.0 (math/IEEE-remainder 7.0 4.0)))
+  (is (= -1.0 (math/IEEE-remainder 3.0 4.0))))
+
+(deftest domains-signed-zero-and-special-values-test
+  (doseq [value [(math/asin 2.0)
+                 (math/acos -2.0)
+                 (math/sqrt -1.0)
+                 (math/log -1.0)
+                 (math/log10 -1.0)
+                 (math/log1p -2.0)
+                 (math/pow -1.0 0.5)
+                 (math/IEEE-remainder 1.0 0.0)]]
+    (is (nan? value)))
+  (is (= ##-Inf (math/log 0.0)))
+  (is (= ##-Inf (math/log10 0.0)))
+  (is (= ##-Inf (math/log1p -1.0)))
+  (is (= (python/float "5e-324") (math/next-up 0.0)))
+  (is (= (python/float "-5e-324") (math/next-down 0.0)))
+  (is (= (python/float "5e-324") (math/ulp 0.0)))
+  (is (= ##Inf (math/exp 10000.0)))
+  (is (= ##Inf (math/cosh 10000.0)))
+  (is (= ##-Inf (math/sinh -10000.0)))
+  (is (= ##Inf (math/pow -1e200 2.0)))
+  (is (= ##-Inf (math/pow -1e200 3.0))))
+
+(deftest rounding-integer-and-scaling-test
+  (is (= 2.0 (math/rint 2.5)))
+  (is (= 2.0 (math/rint 1.5)))
+  (is (= 3 (math/round 2.5)))
+  (is (= -1 (math/round -1.5)))
+  (is (= 0 (math/round ##NaN)))
+  (is (= 1000000000000000000000000000000
+         (math/add-exact 999999999999999999999999999999 1)))
+  (is (= -3 (math/subtract-exact 2 5)))
+  (is (= 42 (math/multiply-exact 6 7)))
+  (is (= 4 (math/increment-exact 3)))
+  (is (= 2 (math/decrement-exact 3)))
+  (is (= -3 (math/negate-exact 3)))
+  (is (= -3 (math/floor-div 7 -3)))
+  (is (= -2 (math/floor-mod 7 -3)))
+  (is (= 3.0 (math/scalb 0.75 2)))
+  (is (= ##Inf (math/scalb 1.0 100000))))
+
+(deftest binary-and-floating-point-helpers-test
+  (is (= (/ math/PI 4) (math/atan2 1.0 1.0)))
+  (is (= 256.0 (math/pow 2.0 8.0)))
+  (is (= 1.0 (math/signum 0.5)))
+  (is (= -1.0 (math/signum -0.5)))
+  (is (= 0.0 (math/sinh 0.0)))
+  (is (= 1.0 (math/cosh 0.0)))
+  (is (= 1.0 (math/tanh ##Inf)))
+  (is (= 5.0 (math/hypot 3.0 4.0)))
+  (is (close? 1e-12 (math/expm1 1e-12)))
+  (is (close? 1e-12 (math/log1p 1e-12)))
+  (is (= -3.0 (math/copy-sign 3.0 -1.0)))
+  (is (= 3 (math/get-exponent 8.0)))
+  (is (= -1023 (math/get-exponent (python/float "5e-324"))))
+  (is (= 1024 (math/get-exponent ##Inf)))
+  (is (= 1.0000000000000002 (math/next-after 1.0 2.0)))
+  (is (and (<= 0.0 (math/random)) (< (math/random) 1.0))))

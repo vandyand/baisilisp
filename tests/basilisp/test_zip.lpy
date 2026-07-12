@@ -164,13 +164,18 @@
                        zip/down
                        zip/right
                        (zip/append-child {:tag :nested})
-                       zip/root)]
+                       zip/root)
+        empty-meta-seq-result (-> (zip/seq-zip (with-meta '(:only) {:tag :seq-root}))
+                                  zip/down
+                                  zip/remove
+                                  zip/root)]
     (is (= '((:a :b) :C) seq-result))
     (is (= {:tag :seq-root} (meta seq-result)))
     (is (= {:tag :root
             :content [{:tag :left} {:tag :right :content [{:tag :nested}]}]}
            xml-result))
-    (is (nil? (-> (zip/seq-zip '(:only)) zip/down zip/remove zip/root)))))
+    (is (nil? (-> (zip/seq-zip '(:only)) zip/down zip/remove zip/root)))
+    (is (nil? empty-meta-seq-result))))
 
 (deftest custom-zipper-test
   (let [root {:value :root :children [{:value :leaf}]}

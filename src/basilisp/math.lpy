@@ -1,0 +1,209 @@
+;; Copyright (c) Rich Hickey. All rights reserved.
+;; The use and distribution terms for this software are covered by the
+;; Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php).
+
+(ns basilisp.math
+  "Clojure-compatible mathematical functions backed by Python's ``math`` module.
+
+  Functions follow Clojure's ``clojure.math`` where Python has a corresponding
+  floating-point operation. Python integers have arbitrary precision, so the
+  ``*-exact`` functions never overflow and :lpy:fn:`round` has no fixed-width
+  saturation behavior."
+  (:refer-clojure :exclude [ceil floor random round])
+  (:import math))
+
+(import* [operator :as pyoperator]
+         [random :as pyrandom]
+         [sys :as pysys])
+
+(def E math/e)
+(def PI math/pi)
+
+(defn- nan [] (python/float "nan"))
+(defn- pos-inf [] (python/float "inf"))
+(defn- neg-inf [] (python/float "-inf"))
+
+(defn- nan-on-value-error
+  [f & args]
+  (try
+    (apply f args)
+    (catch python/ValueError _ (nan))))
+
+(defn- signed-inf
+  [x]
+  (math/copysign (pos-inf) x))
+
+(defn- pow-overflow
+  [x y]
+  (if (and (neg? x)
+           (math/isfinite y)
+           (= y (math/floor y))
+           (even? (python/int y)))
+    (pos-inf)
+    (signed-inf x)))
+
+(defn- cbrt-fallback
+  [x]
+  (cond
+    (math/isnan x) x
+    (math/isinf x) x
+    (zero? x) x
+    :else (let [magnitude (if (neg? x) (- x) x)
+                guess (math/pow magnitude (/ 1.0 3.0))
+                result (/ (+ (* 2.0 guess)
+                             (/ magnitude (* guess guess)))
+                          3.0)]
+            (if (neg? x) (- result) result))))
+
+(defn sin "Return the sine of ``x``." [x] (math/sin x))
+(defn cos "Return the cosine of ``x``." [x] (math/cos x))
+(defn tan "Return the tangent of ``x``." [x] (math/tan x))
+(defn asin "Return the arc sine of ``x``, or NaN outside [-1, 1]." [x]
+  (nan-on-value-error math/asin x))
+(defn acos "Return the arc cosine of ``x``, or NaN outside [-1, 1]." [x]
+  (nan-on-value-error math/acos x))
+(defn atan "Return the arc tangent of ``x``." [x] (math/atan x))
+(defn to-radians "Convert degrees to radians." [degrees] (math/radians degrees))
+(defn to-degrees "Convert radians to degrees." [radians] (math/degrees radians))
+
+(defn exp "Return e raised to ``x``." [x]
+  (try
+    (math/exp x)
+    (catch python/OverflowError _ (pos-inf))))
+
+(defn log "Return the natural logarithm of ``x``." [x]
+  (cond
+    (zero? x) (neg-inf)
+    :else (nan-on-value-error math/log x)))
+
+(defn log10 "Return the base-10 logarithm of ``x``." [x]
+  (cond
+    (zero? x) (neg-inf)
+    :else (nan-on-value-error math/log10 x)))
+
+(defn sqrt "Return the positive square root of ``x``." [x]
+  (nan-on-value-error math/sqrt x))
+
+(defn cbrt "Return the cube root of ``x`` while preserving a signed zero." [x]
+  (if (python/hasattr math "cbrt")
+    ((python/getattr math "cbrt") x)
+    (cbrt-fallback x)))
+
+(defn IEEE-remainder
+  "Return the IEEE 754 remainder of ``dividend`` divided by ``divisor``."
+  [dividend divisor]
+  (nan-on-value-error math/remainder dividend divisor))
+
+(defn ceil "Return the smallest floating-point integer greater than or equal to ``x``." [x]
+  (if (or (zero? x) (not (math/isfinite x)))
+    x
+    (let [result (python/float (math/ceil x))]
+      (if (zero? result)
+        (math/copysign result x)
+        result))))
+
+(defn floor "Return the largest floating-point integer less than or equal to ``x``." [x]
+  (if (or (zero? x) (not (math/isfinite x)))
+    x
+    (python/float (math/floor x))))
+
+(defn rint
+  "Return the nearest floating-point integer, choosing the even value at ties."
+  [x]
+  (if (or (zero? x) (not (math/isfinite x)))
+    x
+    (python/float (python/round x))))
+
+(defn atan2 "Return the angle for rectangular coordinates ``y`` and ``x``." [y x]
+  (math/atan2 y x))
+
+(defn pow "Return ``x`` raised to ``y``." [x y]
+  (try
+    (math/pow x y)
+    (catch python/ValueError _ (nan))
+    (catch python/OverflowError _ (pow-overflow x y))))
+
+(defn round
+  "Return the closest integer to ``x``, choosing the value toward positive infinity at ties.
+
+  ``NaN`` returns ``0``. Infinite values cannot be represented as Python integers
+  and raise ``OverflowError``."
+  [x]
+  (cond
+    (math/isnan x) 0
+    (math/isinf x) (throw (python/OverflowError "cannot round an infinity"))
+    :else (math/floor (+ x 0.5))))
+
+(defn random "Return a pseudorandom floating-point value in [0.0, 1.0)." []
+  (pyrandom/random))
+
+(defn add-exact "Return the integer sum of ``x`` and ``y``." [x y]
+  (+ (python/int x) (python/int y)))
+(defn subtract-exact "Return the integer difference of ``x`` and ``y``." [x y]
+  (- (python/int x) (python/int y)))
+(defn multiply-exact "Return the integer product of ``x`` and ``y``." [x y]
+  (* (python/int x) (python/int y)))
+(defn increment-exact "Return ``x`` incremented by one." [x] (+ (python/int x) 1))
+(defn decrement-exact "Return ``x`` decremented by one." [x] (- (python/int x) 1))
+(defn negate-exact "Return the integer negation of ``x``." [x] (- (python/int x)))
+
+(defn floor-div "Return integer division of ``x`` by ``y`` rounded toward negative infinity." [x y]
+  (pyoperator/floordiv (python/int x) (python/int y)))
+
+(defn floor-mod "Return the modulus of ``x`` and ``y`` using floor division." [x y]
+  (pyoperator/mod (python/int x) (python/int y)))
+
+(defn ulp "Return the unit in the last place of ``x``." [x] (math/ulp x))
+
+(defn signum "Return -1.0, 0.0, or 1.0 according to the sign of ``x``." [x]
+  (cond
+    (math/isnan x) x
+    (zero? x) x
+    :else (math/copysign 1.0 x)))
+
+(defn sinh "Return the hyperbolic sine of ``x``." [x]
+  (try
+    (math/sinh x)
+    (catch python/OverflowError _ (signed-inf x))))
+
+(defn cosh "Return the hyperbolic cosine of ``x``." [x]
+  (try
+    (math/cosh x)
+    (catch python/OverflowError _ (pos-inf))))
+
+(defn tanh "Return the hyperbolic tangent of ``x``." [x] (math/tanh x))
+(defn hypot "Return sqrt(x*x + y*y) without intermediate overflow." [x y]
+  (math/hypot x y))
+
+(defn expm1 "Return e raised to ``x`` minus one." [x]
+  (try
+    (math/expm1 x)
+    (catch python/OverflowError _ (pos-inf))))
+
+(defn log1p "Return log(1 + ``x``)." [x]
+  (cond
+    (= x -1) (neg-inf)
+    :else (nan-on-value-error math/log1p x)))
+
+(defn copy-sign "Return the magnitude of ``magnitude`` with the sign of ``sign``." [magnitude sign]
+  (math/copysign magnitude sign))
+
+(defn get-exponent "Return the unbiased binary exponent of ``x``." [x]
+  (cond
+    (or (math/isnan x) (math/isinf x)) 1024
+    (or (zero? x)
+        (< (python/abs x)
+           (python/getattr (python/getattr pysys "float_info") "min"))) -1023
+    :else (dec (second (math/frexp x)))))
+
+(defn next-after "Return the adjacent floating-point value from ``start`` toward ``direction``." [start direction]
+  (math/nextafter start direction))
+(defn next-up "Return the adjacent floating-point value toward positive infinity." [x]
+  (math/nextafter x (pos-inf)))
+(defn next-down "Return the adjacent floating-point value toward negative infinity." [x]
+  (math/nextafter x (neg-inf)))
+
+(defn scalb "Return ``x`` scaled by 2 raised to ``scale-factor``." [x scale-factor]
+  (try
+    (math/ldexp x (python/int scale-factor))
+    (catch python/OverflowError _ (signed-inf x))))

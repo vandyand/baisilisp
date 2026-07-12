@@ -232,6 +232,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.data` is a port of ``clojure.data``
 * :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io``
+* :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
+  precision integers mean its ``*-exact`` functions do not overflow, and its
+  ``round`` function does not have JVM ``long`` saturation behavior.
 * :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint`` (excluding support for ``cl-format``)
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell``

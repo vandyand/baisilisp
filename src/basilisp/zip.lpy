@@ -28,7 +28,9 @@
   (zipper seq?
           identity
           (fn [node children]
-            (with-meta children (meta node)))
+            (if children
+              (with-meta children (meta node))
+              children))
           root))
 
 (defn vector-zip
