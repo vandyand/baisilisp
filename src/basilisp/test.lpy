@@ -332,14 +332,12 @@
       (is (= 0 (+ -1 1))))
 
   This may be convenient for generating large numbers of identically formed assertions
-  with different arguments.
-
-  Note that assertions generated with ``are`` typically lose line numbers in test
-  failure reports, due to the nature of the macro generation.
+  with different arguments. Assertion failures report the line of the ``are`` form.
 
   ``are`` assertions must appear inside of a :lpy:fn:`deftest` form."
   [argv expr & args]
-  `(template/do-template ~argv (is ~expr) ~@args))
+  (let [assertion-form (with-meta `(is ~expr) (meta &form))]
+    `(template/do-template ~argv ~assertion-form ~@args)))
 
 (defmacro testing
   "Wrapper for test cases to provide additional messaging and context around the test

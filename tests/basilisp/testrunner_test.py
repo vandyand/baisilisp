@@ -113,9 +113,7 @@ class TestTestrunner:
 
         run_result.stdout.fnmatch_lines(
             [
-                # Note the lack of line number, since `are` assertions generally lose
-                # the original line number during templating
-                "FAIL in (assertion-test) (test_testrunner.lpy)",
+                "FAIL in (assertion-test) (test_testrunner.lpy:25)",
                 '     are assertions :: Test failure: (= "true" false)',
                 "",
                 '    expected: "true"',
