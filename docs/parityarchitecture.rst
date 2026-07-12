@@ -128,3 +128,233 @@ Each milestone must include:
 The recommended execution order is protocol metadata, compiler correctness and
 diagnostics, pprint, project configuration, pREPL, native channels, then the
 separate STM, spec, and library-portability projects.
+
+Detailed Design Decisions
+-------------------------
+
+These decisions resolve the areas where a name-for-name port would otherwise
+hide a materially different runtime contract. They are implementation plans,
+not claims that the named feature is already available.
+
+Transactional Memory
+^^^^^^^^^^^^^^^^^^^^^
+
+The public ``stm`` package is not a viable dependency: its last release was in
+2013 and it has no declared license. Zope's maintained ``transaction`` package
+is a useful transaction coordinator for storage backends, but it does not
+provide optimistic snapshots over in-memory refs. Neither supplies Clojure's
+``dosync`` semantics.
+
+The right first implementation is an internal, synchronous optimistic STM in
+``basilisp.lang.stm`` with a thin ``basilisp.stm`` public namespace. It should
+not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
+
+* A ``Ref`` holds an immutable value, a monotonically increasing version, a
+  validator, watches, and a lock. Normal dereference reads the latest committed
+  value.
+* ``dosync`` is a macro that passes a thunk to the transaction runner. A
+  ``contextvars.ContextVar`` holds the current transaction, making nested
+  transactions join the outer transaction while remaining safe for thread-pool
+  and async-task context propagation.
+* A transaction records first-read versions and staged writes. Dereference
+  returns a staged value when present; ``alter`` and ``ref-set`` run only
+  against that in-transaction value.
+* Commit acquires every read/write ref lock in a stable identity order,
+  validates every recorded version, validates staged values, installs all
+  values, increments versions, and releases locks before running watches.
+  A conflict discards the attempt and reruns the thunk with bounded backoff.
+* Transactions are synchronous and must not await. Retried bodies make external
+  effects unsafe; ``io!`` should reject a dynamically marked impure operation
+  while a transaction is active. Deferred agent sends belong after commit only.
+
+The first milestone intentionally excludes ``commute``, history tuning,
+``ensure``, and asynchronous transactions. ``commute`` requires replaying its
+function against a newer committed value; ``ensure`` requires read locks that
+survive the transaction; both deserve a separate correctness proof. The test
+gate is a deterministic barrier-driven two-ref conflict test, randomized
+operation histories checked against a serialized model, validator and watch
+ordering tests, nested transaction tests, and a high-contention stress suite.
+
+Channels And Async Interoperability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Do not make an external channel package the runtime primitive. ``aiochan`` is
+Apache-licensed and a useful semantic reference, but its last release predates
+the project's supported Python range. ``cs-queues`` is actively released but
+GPLv3-licensed and thread-oriented. An ``asyncio.Queue`` alone is insufficient:
+its zero capacity means unbounded rather than rendezvous, and Python versions
+supported by Basilisp do not share a uniform close and selection API.
+
+The first implementation should be ``basilisp.concurrent.channel`` plus
+``basilisp.concurrent`` wrappers:
+
+* ``chan`` creates a loop-bound, awaitable channel with an explicit buffer
+  policy: rendezvous, fixed, sliding, or dropping.
+* ``put!``, ``take!``, ``close!``, ``closed?``, ``offer!``, and ``poll!`` are
+  the first surface. ``nil`` is rejected on put, preserving Clojure's ability
+  to use ``nil`` as the closed-channel take result.
+* The implementation owns queues of pending put and take futures. Cancellation
+  must remove its waiter atomically, close must wake every waiter, and a fixed
+  buffer must apply backpressure without growing.
+* ``alts!`` and ``timeout`` come after the single-channel contract. Selection
+  needs a shared winner token so a value is neither lost nor delivered twice.
+  Transducers, pipelines, pub/sub, and transducers-on-channels are later work.
+
+This is initially an ``asyncio`` API: callers use it from ``defasync`` with
+``await``. A ``go`` macro is explicitly deferred because Python coroutines do
+not permit an await to cross an arbitrary ordinary function boundary. Calling
+the result ``core.async`` before it offers the documented core operations would
+be misleading. Cross-thread adapters may use ``run_coroutine_threadsafe`` but
+must be opt-in and must document event-loop ownership. AnyIO is an optional
+adapter layer only; it should not become the language runtime.
+
+The test gate includes cancellation while blocked in both directions, close
+races, FIFO fairness, every buffer policy, timeout and ``alts!`` races, and
+randomized producer/consumer traces checked for loss, duplication, and blocked
+waiters after shutdown.
+
+pREPL
+^^^^^
+
+Basilisp already has an nREPL server with per-client evaluation state. pREPL
+should share an extracted evaluator/session service with it, not duplicate
+reader, compiler, source-location, and dynamic-binding behavior.
+
+The internal service receives code plus session state and emits ordered events.
+Its initial event model is the Clojure pREPL contract:
+
+* exactly one ``{:tag :ret :val ... :ns ... :ms ... :form ...}`` event per
+  successfully read form;
+* zero or more ``:out`` and ``:err`` events during evaluation;
+* ``:exception true`` plus structured Basilisp exception data on evaluation or
+  reader failure; and
+* explicitly unsupported values represented through a safe printed form rather
+  than arbitrary Python object serialization.
+
+``prepl`` first operates over supplied readers and callbacks for deterministic
+tests. ``io-prepl`` writes one EDN map per line, using ``pr-str`` for return
+values. ``remote-prepl`` then adds a loopback-default socket server, one
+isolated session per connection, request ordering, size limits, and clean
+shutdown. This is deliberately distinct from nREPL's bencode transport. The
+test gate is transcript fixtures for values, output, stderr, reader errors,
+compiler errors with source locations, session namespace isolation, and
+concurrent independent connections.
+
+Project Configuration And Packaging
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``pyproject.toml`` is already Basilisp's packaging contract and uses a PEP 517
+backend through Maturin. The project configuration feature should extend that
+single contract rather than introduce a second dependency resolver.
+
+The first configuration schema is::
+
+   [tool.basilisp]
+   source-paths = ["src"]
+   test-paths = ["tests"]
+
+   [tool.basilisp.compiler]
+   warn-on-arity-mismatch = true
+
+Configuration discovery walks from the requested working directory to the
+nearest ``pyproject.toml``. Paths are resolved relative to that file and are
+deduplicated before being applied to CLI, REPL, nREPL, and test-runner import
+contexts. Explicit CLI flags override configuration; configuration overrides
+defaults; environment variables retain their existing role for process-level
+overrides. Python 3.10 support requires a conditional ``tomli`` dependency,
+because ``tomllib`` is only standard library from Python 3.11.
+
+``basilisp.edn`` may later be accepted as a small compatibility marker with a
+strictly limited ``:paths`` surface, but it must not resolve Maven coordinates
+or alter Python dependency resolution. Likewise, a self-hosting PEP 517 backend
+is a separate project: first prove that a sample ``.lpy`` package builds an
+sdist and wheel containing source and valid namespace cache artifacts through
+the existing Maturin backend. Only then decide whether a wrapper backend is
+necessary. An interactive ``add-lib`` must manage an explicitly selected Python
+environment and require a restart when imports cannot be made safe; it must not
+silently invoke a second package manager in the running process.
+
+Pretty Printing
+^^^^^^^^^^^^^^^
+
+The existing XP-style printer already has logical blocks, conditional newline
+tokens, and ``simple-dispatch``. The narrow next change is to add ``:fill`` to
+the newline validator and writer decision table. A fill break is emitted when
+the next individual element does not fit, rather than forcing every later
+linear break in the enclosing block. That behavior needs token-level tests at
+several margins before it is used by dispatch functions.
+
+``code-dispatch`` should then be a separate multimethod layered over the same
+writer. Begin with generic code-list behavior and well-defined special forms:
+``def``, ``defn``, ``fn``, ``let``/``loop``/``binding``, ``if``, ``when``,
+``cond``, ``case``, ``try``/``catch``/``finally``, ``ns``, and ``require``.
+Each method must gracefully fall back to generic list printing for incomplete
+or malformed forms. Golden fixtures should assert output at narrow and wide
+margins, with metadata, nested collections, print-level, print-length, and
+reader round trips where printed code is data-readable.
+
+Compiler Correctness And Diagnostics
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The macro-in-``try`` failure cannot be fixed by a late runtime binding: macro
+expansion happens before the containing compilation unit executes. The viable
+solution is a compiler phase boundary. The analyzer must recognize a local
+``defmacro`` whose value is needed by a later form in a sequential context,
+compile and install that definition before expanding the later form, and retain
+the original source span and exception context. This must be designed alongside
+``do`` and ``try`` rather than special-casing one macro.
+
+The ``loop`` closure bug should be addressed independently by inspecting the
+generated binding cells. A function created before ``recur`` must close over
+the old iteration values, while a later iteration receives fresh rebound local
+names. Tests should exercise one and multiple loop locals, nested closures,
+lazy realization after loop exit, and no recursion growth.
+
+``deftype`` and ``reify`` have enough declared protocol/interface information
+to report method-signature mismatches at analysis time. The check should compare
+method name, fixed arities excluding ``self``, and variadic lower bounds;
+inherited interface methods must be included. It should initially emit an
+opt-in compiler warning with source location and expected/actual arities, with
+an explicit metadata suppression key. It must not inspect arbitrary Python
+callables or claim signature certainty where Python permits dynamic calls.
+
+Finally, structured compiler diagnostics should be the common format for CLI,
+nREPL, pREPL, and custom tracebacks: phase, message, source, line, column,
+form, cause chain, and a filtered Basilisp frame list. Human rendering is a
+presentation layer. This gives editor protocols stable data while retaining a
+verbose Python traceback switch for compiler development.
+
+Spec And Python Interoperability
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``basilisp.spec.alpha`` should start as a pure value-validation library:
+``s/def``, ``valid?``, ``conform``, ``unform``, ``explain-data``, ``and``,
+``or``, ``nilable``, ``coll-of``, ``map-of``, ``keys``, ``tuple``, and
+``multi-spec``. Explain data must be a stable Basilisp data structure before
+human-readable explanation or instrumentation is added. Generators and function
+instrumentation are later because they require a shrinking/property-testing
+model and callable boundary policy. Hypothesis is a good optional test adapter,
+not the implementation of the spec contract.
+
+Python interoperability should remain direct rather than imitate Java
+interoperability. The next native layer should add narrow, explicit adapters for
+dataclasses, ``attrs``, Pydantic models, mappings, sequences, and asynchronous
+iterables. Each adapter must state conversion direction, metadata policy,
+validation/error representation, and whether it copies or views data. Python
+type hints can enrich generated call boundaries only when they are declarative;
+they must never cause runtime imports or change dynamic dispatch. JVM-only
+facilities such as ``gen-class``, classpath mutation, Java beans, JDBC streams,
+and primitive arrays remain intentional omissions rather than aliases for
+unrelated Python types.
+
+Library Portability
+^^^^^^^^^^^^^^^^^^^
+
+Portable source is a source-level question, not a dependency-coordinate
+question. A candidate Clojure library must have ``.cljc`` or otherwise portable
+source, a ``:lpy`` reader path where host behavior differs, no required JVM
+macros or classes, and dependencies that have the same classification. The
+fork should publish a small manifest per port recording upstream revision,
+reader features, substitutions, tests run, and remaining deviations. A Python
+distribution containing the port is the deployment unit; no JAR loader or
+Maven resolver belongs in the Basilisp runtime.
