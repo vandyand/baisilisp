@@ -64,7 +64,10 @@ However, ClojureScript's own `"Differences from Clojure" <https://clojurescript.
 That said, there are some fundamental differences and omissions in Basilisp that make it differ from Clojure.
 
 * Atoms work just as in Clojure.
-* Basilisp does not include Ref types or software transactional memory (STM) support.
+* ``basilisp.stm`` provides an experimental, synchronous ``Ref`` and ``dosync``
+  implementation. It is not yet part of ``basilisp.core`` and intentionally
+  omits ``commute``, ``ensure``, history controls, ``io!``, and transactional
+  agent sends.
 * Basilisp provides executor-backed Agents.
 * All Vars are reified at runtime and users may use the :lpy:fn:`binding` macro as in Clojure.
 
@@ -168,7 +171,12 @@ basilisp.core
 Refs and Transactions
 ---------------------
 
-Neither refs nor transactions are supported.
+``basilisp.stm`` provides an experimental optimistic transaction implementation
+with versioned refs, retrying ``dosync``, validators, and watches. It is not
+yet a complete replacement for Clojure's ``Ref`` API and is deliberately kept
+outside :lpy:ns:`basilisp.core` until its wider concurrency contract is proven.
+Transaction bodies must be synchronous and side-effect free because a conflict
+can cause them to run more than once. See :ref:`concurrency`.
 
 .. _agents_differences:
 

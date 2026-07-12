@@ -570,6 +570,112 @@ are documented. For typed binary data, use a separate Python-native
 compatibility. For database cursors and URLs, expose cursor and
 ``urllib.parse`` adapters rather than ``resultset-seq`` and ``uri?``.
 
+Remaining Standard Namespace Decisions
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+The remaining standard namespaces split into small portable contracts and
+JVM-hosted contracts. They should not all be treated as equally valuable
+"missing namespaces." The following decisions define what a credible next
+implementation would contain.
+
+``instant``
+~~~~~~~~~~~
+
+Add a Python-native ``basilisp.instant`` namespace, rather than aliases for
+``java.util.Date``, ``Calendar``, or ``java.sql.Timestamp``. Its core should be
+``parse-timestamp`` with Clojure's documented partial-timestamp grammar: a year
+is required, trailing date/time components are optional, and a missing offset
+means UTC. The parser must pass the ten integer components (year through offset
+minutes) to a caller-supplied constructor, making the grammar independently
+testable. ``read-instant`` should construct an aware Python
+``datetime.datetime`` normalized to UTC.
+
+The public contract must state Python's microsecond precision and reject leap
+seconds rather than silently rounding them. The ``#inst`` reader is a separate
+compatibility choice: changing its current ``datetime.fromisoformat`` behavior
+could break existing source, so it should move to the shared parser only after
+fixtures cover both accepted inputs and error translation. ``read-instant-date``,
+``read-instant-calendar``, and ``read-instant-timestamp`` remain JVM-only
+names. ``datetime``, ``zoneinfo``, and the standard library are sufficient;
+``python-dateutil`` would broaden parsing behavior beyond Clojure's grammar and
+must not become a required dependency.
+
+``core.reducers``
+~~~~~~~~~~~~~~~~~
+
+Basilisp already has serial ``reduce``, transducers, ``eduction``, and custom
+reduction protocols. A ``basilisp.reducers`` namespace is justified only for
+the missing foldable abstraction, not as a second collection traversal API.
+Its first scope should be a serial, deterministic ``reducer``/``folder`` and
+``fold`` contract over explicitly splittable Basilisp vectors and maps, plus
+the reducer transforms ``map``, ``filter``, ``remove``, ``take``, ``drop``,
+``mapcat``, and ``cat``. It must preserve ``reduced`` short-circuiting and use
+the supplied combining function's zero-argument identity exactly as Clojure
+does.
+
+Parallel folding is a separate, opt-in execution policy. Threads do not make
+CPU-bound Python reduction parallel under the GIL; process pools impose
+pickling, importability, cancellation, exception, and data-copy constraints.
+Therefore the default ``fold`` is serial. A later ``:executor`` option may
+accept an application-owned executor only when the collection and reducing
+functions pass an explicit portability check. It must neither create global
+worker pools nor promise speedup. The implementation should be internal and
+protocol-based; no third-party package supplies Clojure's fold/reduced contract.
+
+``test.tap`` and ``test.junit``
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``basilisp.test`` already centralizes report events, which makes a small
+``basilisp.test.tap`` a good portable addition. Implement the five Clojure TAP
+operations (plan, pass, fail, diagnostic, and ``with-tap-output``) as a report
+binding that emits TAP version 13 to an explicit writer or dynamically bound
+``*out*``. Number assertion events in reporting order, escape one-line
+descriptions, emit a plan after the wrapped run, and put structured failure
+details in YAML diagnostics only when the optional serializer is available.
+The basic text format requires no dependency. Golden fixtures and a parser
+consumer should validate output; ``tap.py`` and ``pytest-tap`` are useful
+interoperability checks, not runtime dependencies.
+
+``clojure.test.junit`` is intentionally omitted. Its contract is tied to JUnit
+classes and XML/reporting conventions already covered by Python test runners.
+Pytest's JUnit XML option and ``unittest`` are host-level integrations, so a
+Basilisp alias would add a familiar name without compatible behavior.
+
+``core.specs.alpha``
+~~~~~~~~~~~~~~~~~~~~
+
+Do not port ``clojure.core.specs.alpha`` as a general application namespace.
+Its specifications describe Clojure reader, namespace, ``:import``, and
+``:gen-class`` grammar, including Java-specific clauses. Basilisp's analyzer is
+the authority for its distinct grammar, and a stale public spec layer would
+mislead tooling. Extract reusable predicates only where they are meaningful to
+the Basilisp compiler, beginning with even binding forms, function declarations,
+destructuring, and ``ns`` clauses. Keep them in a private analyzer schema module
+until external tools need a stable, versioned diagnostics schema. Java import,
+class, and ``gen-class`` specifications remain omissions rather than weakened
+copies.
+
+Java-hosted helper namespaces
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+``clojure.java.io``, ``clojure.java.shell``, ``clojure.java.process``,
+``clojure.java.browse``, ``clojure.java.javadoc``, JDBC helpers, classpath
+mutation, and Java bean/reflection helpers need individual classification.
+Existing ``basilisp.io``, ``shell``, ``process``, ``reflect``, and ``url``
+namespaces are Python-native ports where their data contract is useful. Further
+work should extend those namespaces with standard-library values such as
+``pathlib.Path``, ``subprocess.CompletedProcess``, ``urllib.parse`` results,
+and Python inspection data. It must not provide Java package aliases, classpath
+changes, JDBC result-set sequences, browser/Javadoc wrappers, or Java-bean
+coercion. Those APIs expose services that Python already models differently.
+
+``clojure.xml`` is a separate adapter candidate: ``xml.etree.ElementTree`` can
+parse and emit XML, but its mutable elements, namespace representation, mixed
+content, and streaming APIs do not match Clojure's data maps. Before adding it,
+define an immutable Basilisp data representation, whitespace and namespace
+policy, malformed-input error data, and streaming boundary. Until then it is a
+documented gap rather than a misleading thin wrapper.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 
