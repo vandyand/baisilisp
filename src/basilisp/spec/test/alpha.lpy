@@ -1,0 +1,16 @@
+(ns basilisp.spec.test.alpha
+  "Opt-in instrumentation for registered ``basilisp.spec.alpha`` function specs."
+  (:import basilisp.lang.spec))
+
+(defn instrument
+  "Instrument registered Basilisp Vars, or the explicitly supplied Vars.
+
+  Instrumentation validates calls through the Var and its current namespace module
+  binding. It does not patch existing references to the original Python callable."
+  [& targets]
+  (apply basilisp.lang.spec/instrument targets))
+
+(defn unstrument
+  "Restore bindings installed by ``instrument`` when they have not been redefined."
+  [& targets]
+  (apply basilisp.lang.spec/unstrument targets))

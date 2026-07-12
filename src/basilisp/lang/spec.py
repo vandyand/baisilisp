@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -10,8 +11,10 @@ from typing import Any
 from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
 from basilisp.lang import vector as vec
+from basilisp.lang.exception import ExceptionInfo
 from basilisp.lang.interfaces import IPersistentMap, IPersistentSet
 from basilisp.lang.runtime import Var
+from basilisp.lang.util import munge
 
 INVALID = kw.keyword("invalid", ns="basilisp.spec.alpha")
 _PROBLEMS = kw.keyword("problems", ns="basilisp.spec.alpha")
@@ -22,7 +25,14 @@ _VIA = kw.keyword("via")
 _IN = kw.keyword("in")
 _REGISTRY: dict[kw.Keyword, Any] = {}
 _FUNCTION_SPECS: dict[Any, "_FSpec"] = {}
+_INSTRUMENTED: dict[Var, "_Instrumented"] = {}
 _REGISTRY_LOCK = threading.RLock()
+_MISSING = object()
+
+_CALL_ARGS = kw.keyword("args")
+_CALL_RET = kw.keyword("ret")
+_CALL_TARGET = kw.keyword("target", ns="basilisp.spec.test.alpha")
+_CALL_KEYWORD_ARGS = kw.keyword("keyword-args", ns="basilisp.spec.test.alpha")
 
 
 class _Spec:
@@ -38,6 +48,14 @@ class _FSpec(_Spec):
     args: Any | None = None
     ret: Any | None = None
     fn: Any | None = None
+
+
+@dataclass(frozen=True)
+class _Instrumented:
+    original: Callable[..., Any]
+    module_name: str
+    module_value: Any
+    wrapper: Callable[..., Any]
 
 
 @dataclass(frozen=True)
@@ -153,6 +171,155 @@ def fdef(
 def get_fspec(target: Any) -> _FSpec | None:
     with _REGISTRY_LOCK:
         return _FUNCTION_SPECS.get(target)
+
+
+def instrument(*targets: Var) -> tuple[Var, ...]:
+    """Instrument registered, non-dynamic Basilisp Vars in place.
+
+    Calls routed through a Var or through its current namespace module binding are
+    validated against the registered ``:args``, ``:ret``, and ``:fn`` specs.
+    Existing references to the original callable are deliberately not patched.
+    """
+    with _REGISTRY_LOCK:
+        selected = targets or tuple(_FUNCTION_SPECS)
+        for target in selected:
+            _validate_instrument_target(target)
+        for target in selected:
+            _instrument(target)
+        return tuple(selected)
+
+
+def unstrument(*targets: Var) -> tuple[Var, ...]:
+    """Restore the bindings changed by :func:`instrument` when still installed."""
+    with _REGISTRY_LOCK:
+        selected = targets or tuple(_INSTRUMENTED)
+        for target in selected:
+            _unstrument(target)
+        return tuple(selected)
+
+
+def _validate_instrument_target(target: Var) -> None:
+    if not isinstance(target, Var):
+        raise TypeError("instrument targets must be Basilisp Vars")
+    if target.dynamic:
+        raise TypeError("cannot instrument dynamic Vars")
+    if target in _INSTRUMENTED:
+        return
+
+    function_spec = _FUNCTION_SPECS.get(target)
+    if function_spec is None:
+        raise ValueError("cannot instrument a Var without an fdef")
+
+    original = target.root
+    if not callable(original):
+        raise TypeError("can only instrument Vars with callable roots")
+
+
+def _instrument(target: Var) -> None:
+    if target in _INSTRUMENTED:
+        return
+
+    original = target.root
+
+    module_name = _module_binding_name(target)
+    module_value = getattr(target.ns.module, module_name, _MISSING)
+
+    @functools.wraps(original)
+    def wrapped(*args: Any, **kwargs: Any) -> Any:
+        return _validate_call(target, original, args, kwargs)
+
+    target.bind_root(wrapped)
+    setattr(target.ns.module, module_name, wrapped)
+    _INSTRUMENTED[target] = _Instrumented(
+        original=original,
+        module_name=module_name,
+        module_value=module_value,
+        wrapper=wrapped,
+    )
+
+
+def _unstrument(target: Var) -> None:
+    if not isinstance(target, Var):
+        raise TypeError("unstrument targets must be Basilisp Vars")
+    instrumented = _INSTRUMENTED.pop(target, None)
+    if instrumented is None:
+        return
+
+    if target.root is instrumented.wrapper:
+        target.bind_root(instrumented.original)
+    if (
+        getattr(target.ns.module, instrumented.module_name, _MISSING)
+        is instrumented.wrapper
+    ):
+        if instrumented.module_value is _MISSING:
+            delattr(target.ns.module, instrumented.module_name)
+        else:
+            setattr(
+                target.ns.module, instrumented.module_name, instrumented.module_value
+            )
+
+
+def _module_binding_name(target: Var) -> str:
+    name = target.name.name
+    safe_name = munge(name)
+    if safe_name in vars(target.ns.module):
+        return safe_name
+    builtin_safe_name = munge(name, allow_builtins=True)
+    if builtin_safe_name in vars(target.ns.module):
+        return builtin_safe_name
+    return safe_name
+
+
+def _validate_call(
+    target: Var,
+    original: Callable[..., Any],
+    args: tuple[Any, ...],
+    kwargs: dict[str, Any],
+) -> Any:
+    function_spec = _FUNCTION_SPECS.get(target)
+    if function_spec is None:
+        return original(*args, **kwargs)
+
+    call_args = vec.v(*args)
+    if function_spec.args is not None:
+        if kwargs:
+            raise ExceptionInfo(
+                "Cannot validate keyword arguments against an fdef :args spec",
+                lmap.map(
+                    {
+                        _CALL_TARGET: _var_symbol(target),
+                        _CALL_ARGS: call_args,
+                        _CALL_KEYWORD_ARGS: lmap.map(kwargs),
+                    }
+                ),
+            )
+        _validate_function_value(target, ":args", function_spec.args, call_args)
+
+    result = original(*args, **kwargs)
+    if function_spec.ret is not None:
+        _validate_function_value(target, ":ret", function_spec.ret, result)
+    if function_spec.fn is not None:
+        _validate_function_value(
+            target,
+            ":fn",
+            function_spec.fn,
+            lmap.map({_CALL_ARGS: call_args, _CALL_RET: result}),
+        )
+    return result
+
+
+def _validate_function_value(target: Var, role: str, contract: Any, value: Any) -> None:
+    details = explain_data(contract, value)
+    if details is None:
+        return
+    raise ExceptionInfo(
+        f"Call to {_var_symbol(target)} did not conform to its {role} spec",
+        details.assoc(_CALL_TARGET, _var_symbol(target)),
+    )
+
+
+def _var_symbol(target: Var) -> str:
+    return f"{target.ns.name}/{target.name.name}"
 
 
 def valid(spec: Any, value: Any) -> bool:

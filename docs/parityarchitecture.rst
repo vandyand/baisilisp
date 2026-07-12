@@ -102,10 +102,10 @@ golden output fixtures covering metadata, nesting, widths, print level, and
 print length. ``cl-format`` is a separate formatting-language project and is
 not bundled into that milestone.
 
-``basilisp.spec.alpha`` should begin with portable validation, conforming, and
-explain-data behavior. Function instrumentation and generator support are later
-milestones. Python model integrations such as Pydantic, attrs, and dataclasses
-belong in adapters rather than replacing spec semantics.
+``basilisp.spec.alpha`` provides portable validation, conforming, explain-data,
+and opt-in function-spec instrumentation. Generated checking and shrinking are
+later milestones. Python model integrations such as Pydantic, attrs, and
+dataclasses belong in adapters rather than replacing spec semantics.
 
 Clojure Library Portability
 ---------------------------
@@ -525,10 +525,12 @@ explain-data for ``s/def``, ``valid?``, ``conform``, ``unform``, ``and``,
 ``multi-spec``. Its portable sequence grammar now includes ``cat``, ``alt``,
 ``*``, ``+``, ``?``, and ``&`` with full-input conformance and unforming.
 Explain data is a stable Basilisp data structure before human-readable
-explanation or instrumentation is added. Function specs, generators, and
-function instrumentation are later because they require a shrinking/property-
-testing model and callable boundary policy. Hypothesis is a good optional test
-adapter, not the implementation of the spec contract.
+explanation is added. ``fspec``/``fdef`` descriptors and Var-only
+instrumentation validate ``:args``, ``:ret``, and ``:fn`` at an explicit call
+boundary; they do not patch arbitrary Python callables or existing references
+to an original callable. Generated checks remain later because they require a
+shrinking/property-testing model. Hypothesis is a good optional test adapter,
+not the implementation of the spec contract.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for
@@ -555,9 +557,9 @@ produce a regular spec and retain conversion details in metadata. They need
 separate policies for aliases, defaults, unknown fields, coercion, and error
 translation. Hypothesis belongs in ``basilisp.spec.test`` as an optional
 generator adapter after descriptors are stable; it must not decide what
-``conform`` or ``explain-data`` means. Function instrumentation follows with
-explicit Var wrapping and ``unstrument`` restoration, never monkey-patching
-arbitrary Python callables.
+``conform`` or ``explain-data`` means. ``basilisp.spec.test.alpha`` now
+supplies explicit Var wrapping and ``unstrument`` restoration, never
+monkey-patching arbitrary Python callables.
 
 The adapter policy is deliberately conservative because the three model systems
 do not mean the same thing by validation. Dataclasses primarily describe field

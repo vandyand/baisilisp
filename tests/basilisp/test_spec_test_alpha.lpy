@@ -1,0 +1,34 @@
+(ns tests.basilisp.test-spec-test-alpha
+  (:require
+   [basilisp.spec.alpha :as s]
+   [basilisp.spec.test.alpha :as st]
+   [basilisp.test :refer [deftest is]]))
+
+(defn typed-identity [value] value)
+(defn invalid-return [value] "not an integer")
+(defn increment [value] (+ value 1))
+
+(s/fdef typed-identity :args (s/cat :value int?) :ret int?)
+(s/fdef invalid-return :args (s/cat :value int?) :ret int?)
+(s/fdef increment
+        :args (s/cat :value int?)
+        :ret int?
+        :fn (fn [{:keys [args ret]}] (= (+ (first args) 1) ret)))
+
+(deftest instruments-direct-and-var-calls
+  (st/instrument (var typed-identity))
+  (try
+    (is (= 2 (typed-identity 2)))
+    (is (= 3 ((var typed-identity) 3)))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo (typed-identity "bad")))
+    (finally
+      (st/unstrument (var typed-identity))))
+  (is (= "no longer checked" (typed-identity "no longer checked"))))
+
+(deftest instruments-return-and-relation-specs
+  (st/instrument (var invalid-return) (var increment))
+  (try
+    (is (thrown? basilisp.lang.exception/ExceptionInfo (invalid-return 1)))
+    (is (= 3 (increment 2)))
+    (finally
+      (st/unstrument (var invalid-return) (var increment)))))

@@ -254,9 +254,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   of ``clojure.core.reducers``. It does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell``
-* :lpy:ns:`basilisp.spec.alpha` provides portable validation, conforming, and
-  sequence specs. It does not yet provide function instrumentation, generators,
-  or function specs.
+* :lpy:ns:`basilisp.spec.alpha` provides portable validation, conforming,
+  sequence specs, and ``fspec``/``fdef`` descriptors. Its opt-in
+  :lpy:ns:`basilisp.spec.test.alpha` instrumentation validates calls through
+  Basilisp Vars only; generated checking and shrinking are not yet provided.
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``
