@@ -54,6 +54,7 @@ class TestCurrentNamespaceCompletions:
                     "methods",
                     "min",
                     "min-key",
+                    "mix-collection-hash",
                     "mod",
                     "munge",
                 ),
