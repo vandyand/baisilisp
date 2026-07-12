@@ -58,7 +58,14 @@ initial ``go``-block use case.
 Transactions
 ------------
 
-This namespace does not yet provide ``ref`` or ``dosync``. A transactional
-reference API must establish conflict detection, retry behavior, atomic
-multi-reference commit, and a policy for side effects before it can offer a
-credible compatibility contract.
+``basilisp.stm`` provides an experimental, synchronous ``Ref`` and ``dosync``
+surface. ``dosync`` retries a transaction when an observed Ref version changes
+before commit, and commits all staged ``alter`` and ``ref-set`` writes together.
+Refs support the usual validators, metadata, and watches. Transaction bodies
+must be side-effect free and must not return awaitables because they can run
+more than once.
+
+This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute``,
+``ensure``, history controls, ``io!``, and deferred agent sends remain
+unimplemented until the base transaction contract has broader contention and
+state-machine coverage.

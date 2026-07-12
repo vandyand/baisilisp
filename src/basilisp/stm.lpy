@@ -1,0 +1,35 @@
+(ns basilisp.stm
+  "Experimental optimistic software transactional memory for Basilisp."
+  (:import basilisp.lang.stm))
+
+(defn ref
+  "Create a versioned reference for use inside ``dosync``.
+
+  ``:meta`` and ``:validator`` follow the existing reference conventions."
+  [value & {:keys [meta validator]}]
+  (basilisp.lang.stm/Ref value ** :meta meta :validator validator))
+
+(defn run-transaction
+  "Run a zero-argument ``thunk`` transactionally."
+  [thunk]
+  (basilisp.lang.stm/run-transaction thunk))
+
+(defmacro dosync
+  "Evaluate ``body`` in a retryable transaction and return its final value."
+  [& body]
+  `(run-transaction (fn [] ~@body)))
+
+(defn alter
+  "Stage the result of applying ``f`` to ``ref`` and ``args`` in the transaction."
+  [ref f & args]
+  (apply basilisp.lang.stm/alter ref f args))
+
+(defn ref-set
+  "Stage ``value`` as the new value of ``ref`` in the transaction."
+  [ref value]
+  (basilisp.lang.stm/ref-set ref value))
+
+(defn in-transaction?
+  "Return true when evaluating inside ``dosync``."
+  []
+  (basilisp.lang.stm/in-transaction))

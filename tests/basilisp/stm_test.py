@@ -1,0 +1,138 @@
+import concurrent.futures
+import threading
+import time
+
+import pytest
+
+import basilisp.lang.interfaces
+from basilisp.lang import stm
+from basilisp.lang.exception import ExceptionInfo
+
+
+def test_ref_implements_reference_interfaces_and_commits_multiple_writes():
+    first = stm.Ref(1)
+    second = stm.Ref(2)
+
+    assert isinstance(first, basilisp.lang.interfaces.IRef)
+    assert isinstance(first, basilisp.lang.interfaces.IReference)
+
+    def body():
+        assert 1 == first.deref()
+        assert 2 == second.deref()
+        assert 3 == stm.alter(first, lambda value, amount: value + amount, 2)
+        assert 6 == stm.ref_set(second, 6)
+        return "committed"
+
+    assert "committed" == stm.run_transaction(body)
+    assert 3 == first.deref()
+    assert 6 == second.deref()
+
+
+def test_nested_transaction_joins_outer_transaction_and_watches_run_after_commit():
+    ref = stm.Ref(1)
+    watched = []
+    ref.add_watch("record", lambda _key, _ref, old, new: watched.append((old, new)))
+
+    def outer():
+        assert 2 == stm.alter(ref, lambda value: value + 1)
+        assert 3 == stm.run_transaction(lambda: stm.alter(ref, lambda value: value + 1))
+        return ref.deref()
+
+    assert 3 == stm.run_transaction(outer)
+    assert 3 == ref.deref()
+    assert [(1, 3)] == watched
+
+
+def test_validator_failure_aborts_every_staged_write():
+    even = stm.Ref(0, validator=lambda value: value % 2 == 0)
+    other = stm.Ref("unchanged")
+
+    def body():
+        stm.alter(other, lambda _value: "new")
+        return stm.alter(even, lambda value: value + 1)
+
+    with pytest.raises(ExceptionInfo, match="Invalid reference state"):
+        stm.run_transaction(body)
+
+    assert 0 == even.deref()
+    assert "unchanged" == other.deref()
+
+
+def test_conflicting_transactions_retry_and_preserve_both_updates():
+    ref = stm.Ref(0)
+    barrier = threading.Barrier(2)
+    attempts = []
+    attempts_lock = threading.Lock()
+
+    def increment():
+        local_attempts = 0
+
+        def body():
+            nonlocal local_attempts
+            local_attempts += 1
+            value = ref.deref()
+            if local_attempts == 1:
+                barrier.wait(timeout=2)
+            return stm.ref_set(ref, value + 1)
+
+        result = stm.run_transaction(body)
+        with attempts_lock:
+            attempts.append(local_attempts)
+        return result
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        assert {1, 2} == {
+            future.result(timeout=2)
+            for future in [
+                executor.submit(increment),
+                executor.submit(increment),
+            ]
+        }
+
+    assert 2 == ref.deref()
+    assert sum(attempts) == 3
+
+
+def test_transaction_rejects_async_body_and_alter_requires_a_transaction():
+    ref = stm.Ref(0)
+
+    async def async_body():
+        return 1
+
+    with pytest.raises(TypeError, match="must not return an awaitable"):
+        stm.run_transaction(async_body)
+    with pytest.raises(RuntimeError, match="requires an active transaction"):
+        stm.alter(ref, lambda value: value + 1)
+    with pytest.raises(RuntimeError, match="requires an active transaction"):
+        stm.ref_set(ref, 1)
+
+
+def test_high_contention_preserves_all_multi_ref_updates():
+    first = stm.Ref(0)
+    second = stm.Ref(0)
+    workers = 8
+    updates_per_worker = 25
+
+    def update_both():
+        def body():
+            first_value = first.deref()
+            second_value = second.deref()
+            time.sleep(0)
+            stm.ref_set(first, first_value + 1)
+            return stm.ref_set(second, second_value + 1)
+
+        return stm.run_transaction(body)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(lambda: [update_both() for _ in range(updates_per_worker)])
+            for _ in range(workers)
+        ]
+        for future in futures:
+            future.result(timeout=10)
+
+    expected = workers * updates_per_worker
+    assert expected == first.deref()
+    assert expected == second.deref()
+    assert expected == first.version
+    assert expected == second.version

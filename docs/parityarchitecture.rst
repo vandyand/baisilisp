@@ -61,11 +61,11 @@ Python STM dependency is not sufficient unless it provides retrying,
 multi-reference atomic commit, conflict detection, side-effect restrictions,
 and a compatible licensing and maintenance posture.
 
-An experimental ``basilisp.stm`` namespace must precede ``basilisp.core/ref``.
-Its first milestone needs versioned immutable references, transaction-local
-read/write sets, stable lock ordering, validation at commit, conflict retries,
-and state-machine contention tests. ``commute``, history controls, deferred
-agent sends, and ``io!`` follow only after that base contract is proven.
+``basilisp.stm`` precedes ``basilisp.core/ref``. Its first implementation has
+versioned references, transaction-local read/write sets, stable lock ordering,
+validation at commit, conflict retries, and deterministic contention coverage.
+``commute``, history controls, deferred agent sends, and ``io!`` follow only
+after that base contract gains broader state-machine coverage.
 
 Project Configuration And Builds
 --------------------------------

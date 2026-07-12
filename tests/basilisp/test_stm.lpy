@@ -1,0 +1,23 @@
+(ns tests.basilisp.test-stm
+  (:require
+   [basilisp.stm :as stm]
+   [basilisp.test :refer [deftest is]]))
+
+(deftest basic-transaction-test
+  (let [first  (stm/ref 1)
+        second (stm/ref 2)]
+    (is (= :result
+           (stm/dosync
+            (is (stm/in-transaction?))
+            (stm/alter first + 2)
+            (stm/ref-set second 6)
+            :result)))
+    (is (= 3 @first))
+    (is (= 6 @second))))
+
+(deftest nested-transaction-test
+  (let [value (stm/ref 1)]
+    (stm/dosync
+     (stm/alter value inc)
+     (stm/dosync (stm/alter value inc)))
+    (is (= 3 @value))))
