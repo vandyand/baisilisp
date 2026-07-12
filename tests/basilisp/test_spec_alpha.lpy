@@ -99,3 +99,11 @@
     (is (= [1 2 3] (s/conform small-ints [1 2 3])))
     (is (= s/invalid (s/conform small-ints [1 2 3 4])))
     (is (= s/invalid (s/conform small-ints [1 "two"])))))
+
+(defn spec-function [value] value)
+
+(deftest function-spec-registry-test
+  (let [function-spec (s/fdef spec-function :args (s/cat :value int?) :ret int?)]
+    (is (= function-spec (s/get-fspec (var spec-function))))
+    (is (s/valid? function-spec spec-function))
+    (is (not (s/valid? function-spec 42)))))

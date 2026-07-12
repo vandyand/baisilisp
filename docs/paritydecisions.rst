@@ -122,14 +122,15 @@ Function Specs, Generators, And Python Models
 **Decision:** complete portable ``spec.alpha`` first; make function checking
 and Python model integrations opt-in layers over that core.
 
-The first function-spec milestone should add a ``FunctionSpec`` descriptor and
-a separate function-spec registry keyed by fully-qualified Basilisp Var symbol:
+The first function-spec milestone now provides an ``fspec`` descriptor and a
+separate function-spec registry keyed by an interned Basilisp ``Var``:
 
 * ``fdef`` records ``:args``, ``:ret``, and optional ``:fn`` specifications.
 * ``fspec`` describes a callable result, including higher-order return values.
   Merely checking that a Python value is callable cannot prove its argument or
   result behavior, so ``valid?`` must not imply that it has executed a function
-  contract.
+  contract. Argument, return, and relation validation begins only with an
+  explicitly instrumented call or generated check.
 * ``basilisp.spec.test.alpha/instrument`` validates arguments at calls through
   an instrumented Basilisp Var. It must update the Var and its current module
   binding, preserve the original callable for ``unstrument``, and decline to

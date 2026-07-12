@@ -11,6 +11,7 @@ from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
 from basilisp.lang import vector as vec
 from basilisp.lang.interfaces import IPersistentMap, IPersistentSet
+from basilisp.lang.runtime import Var
 
 INVALID = kw.keyword("invalid", ns="basilisp.spec.alpha")
 _PROBLEMS = kw.keyword("problems", ns="basilisp.spec.alpha")
@@ -20,6 +21,7 @@ _VAL = kw.keyword("val")
 _VIA = kw.keyword("via")
 _IN = kw.keyword("in")
 _REGISTRY: dict[kw.Keyword, Any] = {}
+_FUNCTION_SPECS: dict[Any, "_FSpec"] = {}
 _REGISTRY_LOCK = threading.RLock()
 
 
@@ -29,6 +31,13 @@ class _Spec:
 
 class _Regex(_Spec):
     pass
+
+
+@dataclass(frozen=True)
+class _FSpec(_Spec):
+    args: Any | None = None
+    ret: Any | None = None
+    fn: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -116,6 +125,34 @@ def define(key: kw.Keyword, spec: Any) -> kw.Keyword:
 def get_spec(key: kw.Keyword) -> Any | None:
     with _REGISTRY_LOCK:
         return _REGISTRY.get(key)
+
+
+def fspec(
+    *, args: Any | None = None, ret: Any | None = None, fn: Any | None = None
+) -> _FSpec:
+    """Create a descriptor for a callable's argument, return, and relation specs."""
+    return _FSpec(args, ret, fn)
+
+
+def fdef(
+    target: Any,
+    *,
+    args: Any | None = None,
+    ret: Any | None = None,
+    fn: Any | None = None,
+) -> _FSpec:
+    """Register and return a function spec for a Basilisp Var."""
+    if not isinstance(target, Var):
+        raise TypeError("fdef targets must be Basilisp Vars")
+    spec = fspec(args=args, ret=ret, fn=fn)
+    with _REGISTRY_LOCK:
+        _FUNCTION_SPECS[target] = spec
+    return spec
+
+
+def get_fspec(target: Any) -> _FSpec | None:
+    with _REGISTRY_LOCK:
+        return _FUNCTION_SPECS.get(target)
 
 
 def valid(spec: Any, value: Any) -> bool:
@@ -232,6 +269,12 @@ def _conform(
 ) -> Any:
     if isinstance(spec, _Regex):
         return _conform_regex(spec, value, path, via, location, problems)
+    if isinstance(spec, _FSpec):
+        return (
+            value
+            if callable(value)
+            else _invalid(spec, value, path, via, location, problems)
+        )
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:

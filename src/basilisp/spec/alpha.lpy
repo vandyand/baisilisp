@@ -7,6 +7,17 @@
 
 (defn def [key spec] (basilisp.lang.spec/define key spec))
 (defn get-spec [key] (basilisp.lang.spec/get-spec key))
+(defn get-fspec [target] (basilisp.lang.spec/get-fspec target))
+(defn fspec [& {:keys [args ret fn]}]
+  (basilisp.lang.spec/fspec ** :args args :ret ret :fn fn))
+(defn fdef* [target args ret fn]
+  (basilisp.lang.spec/fdef target ** :args args :ret ret :fn fn))
+(defmacro fdef [target & opts]
+  (let [options (apply hash-map opts)]
+    `(fdef* (var ~target)
+            ~(:args options)
+            ~(:ret options)
+            ~(:fn options))))
 (defn valid? [spec value] (basilisp.lang.spec/valid spec value))
 (defn conform [spec value] (basilisp.lang.spec/conform spec value))
 (defn unform [spec value] (basilisp.lang.spec/unform spec value))
