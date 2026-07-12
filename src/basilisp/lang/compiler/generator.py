@@ -814,6 +814,7 @@ _PY_CLASSMETHOD_FN_NAME = _load_attr("classmethod")
 _PY_PROPERTY_FN_NAME = _load_attr("property")
 _PY_STATICMETHOD_FN_NAME = _load_attr("staticmethod")
 _TRAMPOLINE_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._trampoline")
+_ASYNC_TRAMPOLINE_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._trampoline_async")
 _TRAMPOLINE_ARGS_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._TrampolineArgs")
 
 
@@ -2623,7 +2624,7 @@ def _loop_to_py_ast(ctx: GeneratorContext, node: Loop) -> GeneratedPyAST:
     assert node.op == NodeOp.LOOP
 
     with ctx.new_symbol_table("loop"):
-        binding_names = []
+        initial_binding_names = []
         init_bindings: list[PyASTNode] = []
         for binding in node.bindings:
             init_node = binding.init
@@ -2631,7 +2632,7 @@ def _loop_to_py_ast(ctx: GeneratorContext, node: Loop) -> GeneratedPyAST:
             init_ast = gen_py_ast(ctx, init_node)
             init_bindings.extend(init_ast.dependencies)
             binding_name = genname(munge(binding.name))
-            binding_names.append(binding_name)
+            initial_binding_names.append(binding_name)
             init_bindings.append(
                 ast.Assign(
                     targets=[ast.Name(id=binding_name, ctx=ast.Store())],
@@ -2642,42 +2643,95 @@ def _loop_to_py_ast(ctx: GeneratorContext, node: Loop) -> GeneratedPyAST:
                 sym.symbol(binding.name), binding_name, LocalType.LOOP
             )
 
-        loop_result_name = genname(_LOOP_RESULT_PREFIX)
-        with ctx.new_recur_point(
-            node.loop_id, RecurType.LOOP, binding_names=binding_names
-        ):
-            loop_body_ast: list[ast.stmt] = []
-            body_ast = _synthetic_do_to_py_ast(ctx, node.body)
-            loop_body_ast.extend(map(statementize, body_ast.dependencies))
-            loop_body_ast.append(
-                ast.Assign(
-                    targets=[ast.Name(id=loop_result_name, ctx=ast.Store())],
-                    value=body_ast.node,
-                )
-            )
-            loop_body_ast.append(ast.Break())
+        loop_fn_name = genname("loop")
+        func_ctx = node.body.env.func_ctx
+        is_async = (
+            func_ctx is not None
+            and func_ctx.function_type == FunctionContextType.ASYNC_FUNCTION
+        )
 
-            return GeneratedPyAST(
-                node=_load_attr(loop_result_name),
-                dependencies=list(
-                    chain(
-                        [
-                            ast.Assign(
-                                targets=[
-                                    ast.Name(id=loop_result_name, ctx=ast.Store())
-                                ],
-                                value=ast.Constant(None),
-                            )
-                        ],
-                        init_bindings,
-                        [
-                            ast.While(
-                                test=ast.Constant(True), body=loop_body_ast, orelse=[]
-                            )
-                        ],
+        if func_ctx is not None and func_ctx.is_generator:
+            loop_result_name = genname(_LOOP_RESULT_PREFIX)
+            with ctx.new_recur_point(
+                node.loop_id, RecurType.LOOP, binding_names=initial_binding_names
+            ):
+                loop_body_ast: list[ast.stmt] = []
+                body_ast = _synthetic_do_to_py_ast(ctx, node.body)
+                loop_body_ast.extend(map(statementize, body_ast.dependencies))
+                loop_body_ast.append(
+                    ast.Assign(
+                        targets=[ast.Name(id=loop_result_name, ctx=ast.Store())],
+                        value=body_ast.node,
                     )
-                ),
-            )
+                )
+                loop_body_ast.append(ast.Break())
+
+                return GeneratedPyAST(
+                    node=_load_attr(loop_result_name),
+                    dependencies=list(
+                        chain(
+                            [
+                                ast.Assign(
+                                    targets=[
+                                        ast.Name(id=loop_result_name, ctx=ast.Store())
+                                    ],
+                                    value=ast.Constant(None),
+                                )
+                            ],
+                            init_bindings,
+                            [
+                                ast.While(
+                                    test=ast.Constant(True),
+                                    body=loop_body_ast,
+                                    orelse=[],
+                                )
+                            ],
+                        )
+                    ),
+                )
+
+        with ctx.new_symbol_table(loop_fn_name, is_context_boundary=True):
+            loop_args = []
+            for binding in node.bindings:
+                binding_name = genname(munge(binding.name))
+                loop_args.append(ast.arg(arg=binding_name))
+                ctx.symbol_table.new_symbol(
+                    sym.symbol(binding.name), binding_name, LocalType.LOOP
+                )
+
+            with ctx.new_recur_point(node.loop_id, RecurType.FN, is_variadic=False):
+                body_ast = _synthetic_do_to_py_ast(ctx, node.body)
+
+            loop_body_ast = list(map(statementize, body_ast.dependencies))
+            loop_body_ast.append(ast.Return(value=body_ast.node))
+
+        loop_fn = (ast.AsyncFunctionDef if is_async else ast.FunctionDef)(
+            name=loop_fn_name,
+            args=ast.arguments(
+                posonlyargs=[],
+                args=loop_args,
+                kwarg=None,
+                vararg=None,
+                kwonlyargs=[],
+                defaults=[],
+                kw_defaults=[],
+            ),
+            body=loop_body_ast,
+            decorator_list=[
+                _ASYNC_TRAMPOLINE_FN_NAME if is_async else _TRAMPOLINE_FN_NAME
+            ],
+            returns=None,
+        )
+        loop_call = ast.Call(
+            func=ast.Name(id=loop_fn_name, ctx=ast.Load()),
+            args=[ast.Name(id=name, ctx=ast.Load()) for name in initial_binding_names],
+            keywords=[],
+        )
+
+        return GeneratedPyAST(
+            node=ast.Await(value=loop_call) if is_async else loop_call,
+            dependencies=list(chain(init_bindings, [loop_fn])),
+        )
 
 
 @_with_ast_loc

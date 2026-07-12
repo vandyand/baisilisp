@@ -4187,6 +4187,42 @@ class TestLoop:
             (apply str accum)))"""
         assert "tester" == lcompile(code)
 
+    def test_loop_closures_capture_their_iteration_values(self, lcompile: CompileFn):
+        assert vec.v(1, 2) == lcompile("""
+        (loop* [f    (fn* [] [1])
+                recur? true]
+          (if recur?
+            (recur (fn* [] (conj (f) 2)) false)
+            (f)))
+        """)
+
+    def test_async_loop_with_recur(self, lcompile: CompileFn):
+        loop_var: runtime.Var = lcompile("""
+        (import* asyncio)
+        (def async-loop
+          (fn ^:async async-loop []
+            (loop* [n 2
+                    accum []]
+              (if (zero? n)
+                accum
+                (do
+                  (await (asyncio/sleep 0))
+                  (recur (dec n) (conj accum n)))))))
+        """)
+        assert vec.v(2, 1) == async_to_sync(loop_var.value)
+
+    def test_generator_loop_with_recur(self, lcompile: CompileFn):
+        generator = lcompile("""
+        (fn []
+          (loop* [n 2]
+            (if (zero? n)
+              nil
+              (do
+                (yield n)
+                (recur (dec n))))))
+        """)
+        assert [2, 1] == list(generator())
+
 
 class TestMacros:
     def test_macro_expansion(self, lcompile: CompileFn):

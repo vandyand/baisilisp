@@ -2160,6 +2160,22 @@ def _trampoline(f):
     return trampoline
 
 
+def _trampoline_async(f):
+    """Async equivalent of :func:`_trampoline`."""
+
+    @functools.wraps(f)
+    async def trampoline(*args, **kwargs):
+        while True:
+            ret = await f(*args, **kwargs)
+            if isinstance(ret, _TrampolineArgs):
+                args = ret.args
+                kwargs = ret.kwargs
+                continue
+            return ret
+
+    return trampoline
+
+
 def _lisp_fn_apply_kwargs(f):
     """Convert a Python function into a Lisp function.
 
