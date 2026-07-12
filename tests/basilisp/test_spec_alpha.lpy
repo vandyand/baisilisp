@@ -93,3 +93,9 @@
            (s/unform pairs {:pairs [{:x 1 :y 2} {:x 3 :y 4}] :end "done"})))
     (is (= s/invalid (s/conform pairs [1 2 "extra" "done"])))
     (is (= s/invalid (s/conform (s/alt :name string? :age int?) ["Ada" 42])))))
+
+(deftest sequence-conjunction-spec-test
+  (let [small-ints (s/& (s/+ int?) #(< (count %) 4))]
+    (is (= [1 2 3] (s/conform small-ints [1 2 3])))
+    (is (= s/invalid (s/conform small-ints [1 2 3 4])))
+    (is (= s/invalid (s/conform small-ints [1 "two"])))))

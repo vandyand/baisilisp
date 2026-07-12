@@ -517,12 +517,12 @@ Spec And Python Interoperability
 explain-data for ``s/def``, ``valid?``, ``conform``, ``unform``, ``and``,
 ``or``, ``nilable``, ``coll-of``, ``map-of``, ``keys``, ``tuple``, and
 ``multi-spec``. Its portable sequence grammar now includes ``cat``, ``alt``,
-``*``, ``+``, and ``?`` with full-input conformance and unforming. Explain data
-is a stable Basilisp data structure before human-readable explanation or
-instrumentation is added. ``&``, function specs, generators, and function
-instrumentation are later because they require a shrinking/property-testing
-model and callable boundary policy. Hypothesis is a good optional test adapter,
-not the implementation of the spec contract.
+``*``, ``+``, ``?``, and ``&`` with full-input conformance and unforming.
+Explain data is a stable Basilisp data structure before human-readable
+explanation or instrumentation is added. Function specs, generators, and
+function instrumentation are later because they require a shrinking/property-
+testing model and callable boundary policy. Hypothesis is a good optional test
+adapter, not the implementation of the spec contract.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for

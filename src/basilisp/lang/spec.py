@@ -99,6 +99,12 @@ class _Maybe(_Regex):
     spec: Any
 
 
+@dataclass(frozen=True)
+class _Amp(_Regex):
+    spec: Any
+    predicates: tuple[Any, ...]
+
+
 def define(key: kw.Keyword, spec: Any) -> kw.Keyword:
     if not isinstance(key, kw.Keyword):
         raise TypeError("spec names must be keywords")
@@ -208,6 +214,12 @@ def plus(spec: Any) -> _Repeat:
 
 def maybe(spec: Any) -> _Maybe:
     return _Maybe(spec)
+
+
+def amp(spec: Any, *predicates: Any) -> _Amp:
+    if not predicates:
+        raise ValueError("& requires at least one predicate")
+    return _Amp(spec, predicates)
 
 
 def _conform(
@@ -412,6 +424,20 @@ def _match_regex(spec, values, position, path, via, location, problems):
     if isinstance(spec, _Maybe):
         matched = _match_regex(spec.spec, values, position, path, via, location, None)
         return (None, position) if matched is None else matched
+    if isinstance(spec, _Amp):
+        matched = _match_regex(
+            spec.spec, values, position, path, via, location, problems
+        )
+        if matched is None:
+            return None
+        conformed, next_position = matched
+        for predicate in spec.predicates:
+            conformed = _conform(
+                predicate, conformed, path, via, (*location, position), problems
+            )
+            if conformed is INVALID:
+                return None
+        return conformed, next_position
     if position >= len(values):
         _invalid(spec, None, path, via, (*location, position), problems)
         return None
@@ -477,6 +503,8 @@ def _unform_regex(spec, value):
         return unformed
     if isinstance(spec, _Maybe):
         return [] if value is None else _unform_regex(spec.spec, value)
+    if isinstance(spec, _Amp):
+        return _unform_regex(spec.spec, value)
     return [unform(spec, value)]
 
 

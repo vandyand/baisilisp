@@ -254,7 +254,7 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell``
 * :lpy:ns:`basilisp.spec.alpha` provides portable validation, conforming, and
   sequence specs. It does not yet provide function instrumentation, generators,
-  function specs, or the ``&`` regex operator.
+  or function specs.
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``
