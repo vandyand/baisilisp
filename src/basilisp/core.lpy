@@ -18,6 +18,7 @@
          re
          basilisp.lang.agent
          basilisp.lang.regex
+         basilisp.lang.typing
          threading
          [time :as py-time]
          uuid)
@@ -5075,10 +5076,12 @@
   ([form]
    (eval form *ns*))
   ([form namespace]
-   (let [ctx (basilisp.lang.compiler.CompilerContext. "<Eval Input>")]
-     (basilisp.lang.compiler/compile-and-exec-form form
-                                                   ctx
-                                                   namespace))))
+   (if (basilisp.lang.typing/is-reader-form form)
+     (let [ctx (basilisp.lang.compiler.CompilerContext. "<Eval Input>")]
+       (basilisp.lang.compiler/compile-and-exec-form form
+                                                     ctx
+                                                     namespace))
+     form)))
 
 (defn load-reader
   "Read and evaluate the set of forms in the :external:py:class:`io.TextIOBase` instance

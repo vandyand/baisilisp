@@ -1,9 +1,10 @@
+import re
 import uuid
 from datetime import datetime
 from decimal import Decimal
 from fractions import Fraction
 from re import Pattern
-from typing import Any, Protocol, Union
+from typing import Any, Protocol, TypeGuard, Union
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
@@ -51,6 +52,41 @@ LispForm = Union[
 PyCollectionForm = Union[dict, list, set, tuple]
 ReaderForm = Union[LispForm, IRecord, ISeq, IType, PyCollectionForm, TaggedLiteral]
 SpecialForm = Union[llist.PersistentList, ISeq]
+
+_READER_FORM_TYPES = (
+    bool,
+    bytes,
+    complex,
+    datetime,
+    Decimal,
+    dict,
+    float,
+    Fraction,
+    int,
+    IRecord,
+    ISeq,
+    IType,
+    kw.Keyword,
+    list,
+    llist.PersistentList,
+    lmap.PersistentMap,
+    lqueue.PersistentQueue,
+    lset.PersistentSet,
+    type(None),
+    type(re.compile("")),
+    set,
+    str,
+    sym.Symbol,
+    TaggedLiteral,
+    tuple,
+    uuid.UUID,
+    vec.PersistentVector,
+)
+
+
+def is_reader_form(form: object) -> TypeGuard[ReaderForm]:
+    """Return whether ``form`` may be compiled as a Basilisp reader form."""
+    return isinstance(form, _READER_FORM_TYPES)
 
 
 class Comparable(Protocol):

@@ -561,6 +561,11 @@
 ;;;;;;;;;;
 
 (deftest eval-test
+  (testing "runtime values are returned unchanged"
+    (let [f (fn [x] x)]
+      (is (identical? f (eval f))))
+    (is (= "value" (eval "value"))))
+
   (testing "can ns after in-ns"
     (binding [*ns* *ns*]
       (eval '(in-ns 'test-core-fns.ns-after-in-ns))
