@@ -590,6 +590,13 @@ commit, source checksum, reader-feature substitutions, test command, supported
 Python versions, and known deviations. This is more maintainable than a central
 claim that a changing Maven ecosystem can be loaded at runtime.
 
+``scripts/portability_manifest.py`` creates the initial JSON manifest from a
+source tree without fetching dependencies or executing code. It records every
+``.clj``, ``.cljc``, and ``.lpy`` file with its checksum, reader features,
+requires, and blockers. A tree is classified as ``portable``,
+``needs-lpy-port``, or ``jvm-only``; the latter two states require a reviewed
+port or explicit omission before publication.
+
 Libraries that are primarily useful abstractions but depend on Java services
 should receive a native Basilisp implementation only when their public contract
 is valuable independently of the JVM. Otherwise, document the missing runtime
