@@ -55,6 +55,7 @@ Contents
    differencesfromclojure
    parityroadmap
    parityarchitecture
+   paritydecisions
    concepts
    concurrency
    reference
