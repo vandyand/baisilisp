@@ -29,7 +29,8 @@ Basilisp already supports a substantial amount of idiomatic Clojure:
 * Python interop through imports, member access, keyword arguments, and
   Python literals
 * ports of core libraries including ``data``, ``edn``, ``io``, ``pprint``,
-  ``set``, ``shell``, ``stacktrace``, ``string``, ``test``, and ``walk``
+  ``set``, ``shell``, ``stacktrace``, ``string``, ``test``, ``walk``, and
+  ``zip``
 
 The largest compatibility gaps are not only missing individual functions.
 They are clustered around project tooling, test compatibility, persistent
@@ -112,7 +113,6 @@ interop. They also reduce friction when porting small Clojure libraries.
 Initial targets:
 
 * ``basilisp.math`` (`#681 <https://github.com/basilisp-lang/basilisp/issues/681>`_)
-* ``basilisp.zip`` (`#517 <https://github.com/basilisp-lang/basilisp/issues/517>`_)
 * ``datafy`` and ``nav`` (`#626 <https://github.com/basilisp-lang/basilisp/issues/626>`_)
 * pREPL server (`#628 <https://github.com/basilisp-lang/basilisp/issues/628>`_)
 * ``pprint/code-dispatch`` (`#1266 <https://github.com/basilisp-lang/basilisp/issues/1266>`_)

@@ -1,0 +1,248 @@
+;; Copyright (c) Rich Hickey. All rights reserved.
+;; The use and distribution terms for this software are covered by the
+;; Eclipse Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php).
+
+(ns basilisp.zip
+  "Functional hierarchical zippers for navigation, editing, and enumeration.
+
+  Zippers provide immutable navigation and editing over nested data structures.
+  A location carries the current node together with the information needed to
+  reconstruct the root after an edit."
+  (:refer-clojure :exclude [next remove replace]))
+
+(defn zipper
+  "Create a zipper rooted at ``root``.
+
+  ``branch?`` identifies nodes that can have children, ``children`` returns a
+  branch node's children, and ``make-node`` rebuilds a branch node from an
+  existing node and replacement children."
+  [branch? children make-node root]
+  (with-meta [root nil]
+             {:zip/branch? branch?
+              :zip/children children
+              :zip/make-node make-node}))
+
+(defn seq-zip
+  "Return a zipper for nested sequences rooted at ``root``."
+  [root]
+  (zipper seq?
+          identity
+          (fn [node children]
+            (with-meta children (meta node)))
+          root))
+
+(defn vector-zip
+  "Return a zipper for nested vectors rooted at ``root``."
+  [root]
+  (zipper vector?
+          seq
+          (fn [node children]
+            (with-meta (vec children) (meta node)))
+          root))
+
+(defn xml-zip
+  "Return a zipper for XML element maps rooted at ``root``."
+  [root]
+  (zipper (complement string?)
+          (comp seq :content)
+          (fn [node children]
+            (assoc node :content (and children (apply vector children))))
+          root))
+
+(defn node
+  "Return the node at ``loc``."
+  [loc]
+  (loc 0))
+
+(defn branch?
+  "Return true if the node at ``loc`` is a branch."
+  [loc]
+  ((:zip/branch? (meta loc)) (node loc)))
+
+(defn children
+  "Return the children of the branch node at ``loc``.
+
+  Raise an exception when called on a leaf node."
+  [loc]
+  (if (branch? loc)
+    ((:zip/children (meta loc)) (node loc))
+    (throw (python/Exception "called children on a leaf node"))))
+
+(defn make-node
+  "Return a replacement branch node using ``loc``'s node constructor."
+  [loc node children]
+  ((:zip/make-node (meta loc)) node children))
+
+(defn path
+  "Return the nodes leading to ``loc``."
+  [loc]
+  (:pnodes (loc 1)))
+
+(defn lefts
+  "Return the left siblings of ``loc`` in left-to-right order."
+  [loc]
+  (seq (:l (loc 1))))
+
+(defn rights
+  "Return the right siblings of ``loc``."
+  [loc]
+  (:r (loc 1)))
+
+(defn down
+  "Return the leftmost child location of ``loc``, or nil when none exists."
+  [loc]
+  (when (branch? loc)
+    (let [[node path] loc
+          [child & child-next :as child-seq] (children loc)]
+      (when child-seq
+        (with-meta [child {:l      []
+                          :pnodes (if path (conj (:pnodes path) node) [node])
+                          :ppath  path
+                          :r      child-next}]
+                   (meta loc))))))
+
+(defn up
+  "Return the parent location of ``loc``, or nil when it is the root."
+  [loc]
+  (let [[node {left :l parent-path :ppath parent-nodes :pnodes
+               right :r changed? :changed? :as path}] loc]
+    (when parent-nodes
+      (let [parent-node (peek parent-nodes)]
+        (with-meta
+          (if changed?
+            [(make-node loc parent-node (concat left (cons node right)))
+             (and parent-path (assoc parent-path :changed? true))]
+            [parent-node parent-path])
+          (meta loc))))))
+
+(defn root
+  "Return the root node for ``loc``, reflecting all edits."
+  [loc]
+  (if (= :end (loc 1))
+    (node loc)
+    (if-let [parent (up loc)]
+      (recur parent)
+      (node loc))))
+
+(defn right
+  "Return the right sibling location of ``loc``, or nil."
+  [loc]
+  (let [[node {left :l [right & right-next :as right-seq] :r :as path}] loc]
+    (when (and path right-seq)
+      (with-meta [right (assoc path :l (conj left node) :r right-next)]
+                 (meta loc)))))
+
+(defn rightmost
+  "Return the rightmost sibling location of ``loc``, or ``loc`` itself."
+  [loc]
+  (let [[node {left :l right :r :as path}] loc]
+    (if (and path right)
+      (with-meta [(last right)
+                  (assoc path :l (apply conj left node (butlast right)) :r nil)]
+                 (meta loc))
+      loc)))
+
+(defn left
+  "Return the left sibling location of ``loc``, or nil."
+  [loc]
+  (let [[node {left :l right :r :as path}] loc]
+    (when (and path (seq left))
+      (with-meta [(peek left) (assoc path :l (pop left) :r (cons node right))]
+                 (meta loc)))))
+
+(defn leftmost
+  "Return the leftmost sibling location of ``loc``, or ``loc`` itself."
+  [loc]
+  (let [[node {left :l right :r :as path}] loc]
+    (if (and path (seq left))
+      (with-meta [(first left)
+                  (assoc path :l [] :r (concat (rest left) [node] right))]
+                 (meta loc))
+      loc)))
+
+(defn insert-left
+  "Insert ``item`` as the left sibling of ``loc`` without moving."
+  [loc item]
+  (let [[node {left :l :as path}] loc]
+    (if (nil? path)
+      (throw (python/Exception "Insert at top"))
+      (with-meta [node (assoc path :l (conj left item) :changed? true)]
+                 (meta loc)))))
+
+(defn insert-right
+  "Insert ``item`` as the right sibling of ``loc`` without moving."
+  [loc item]
+  (let [[node {right :r :as path}] loc]
+    (if (nil? path)
+      (throw (python/Exception "Insert at top"))
+      (with-meta [node (assoc path :r (cons item right) :changed? true)]
+                 (meta loc)))))
+
+(defn replace
+  "Replace the node at ``loc`` with ``node`` without moving."
+  [loc node]
+  (let [[_ path] loc]
+    (with-meta [node (assoc path :changed? true)] (meta loc))))
+
+(defn edit
+  "Replace the node at ``loc`` with ``(apply f (node loc) args)``."
+  [loc f & args]
+  (replace loc (apply f (node loc) args)))
+
+(defn insert-child
+  "Insert ``item`` as the leftmost child of the node at ``loc``."
+  [loc item]
+  (replace loc (make-node loc (node loc) (cons item (children loc)))))
+
+(defn append-child
+  "Insert ``item`` as the rightmost child of the node at ``loc``."
+  [loc item]
+  (replace loc (make-node loc (node loc) (concat (children loc) [item]))))
+
+(defn next
+  "Move to the next location in a depth-first traversal.
+
+  At the end of the traversal this returns a distinguished location detectable
+  with :lpy:fn:`end?`; applying ``next`` to that location returns itself."
+  [loc]
+  (if (= :end (loc 1))
+    loc
+    (or (and (branch? loc) (down loc))
+        (right loc)
+        (loop [parent loc]
+          (if-let [up-loc (up parent)]
+            (or (right up-loc) (recur up-loc))
+            [(node parent) :end])))))
+
+(defn prev
+  "Move to the previous location in a depth-first traversal, or nil at root."
+  [loc]
+  (if-let [left-loc (left loc)]
+    (loop [loc left-loc]
+      (if-let [child (and (branch? loc) (down loc))]
+        (recur (rightmost child))
+        loc))
+    (up loc)))
+
+(defn end?
+  "Return true if ``loc`` represents the end of a depth-first traversal."
+  [loc]
+  (= :end (loc 1)))
+
+(defn remove
+  "Remove the node at ``loc`` and return its depth-first predecessor."
+  [loc]
+  (let [[node {left :l parent-path :ppath parent-nodes :pnodes
+               right :r :as path}] loc]
+    (if (nil? path)
+      (throw (python/Exception "Remove at top"))
+      (if (pos? (count left))
+        (loop [loc (with-meta [(peek left)
+                               (assoc path :l (pop left) :changed? true)]
+                              (meta loc))]
+          (if-let [child (and (branch? loc) (down loc))]
+            (recur (rightmost child))
+            loc))
+        (with-meta [(make-node loc (peek parent-nodes) right)
+                    (and parent-path (assoc parent-path :changed? true))]
+                   (meta loc))))))

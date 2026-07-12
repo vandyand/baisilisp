@@ -1,0 +1,184 @@
+(ns tests.basilisp.test-zip
+  (:require
+   [basilisp.test :refer [deftest is testing]]
+   [basilisp.zip :as zip]))
+
+(def sample-tree [[:a :b] :c [:d [:e :f]]])
+
+(defn nodes-in-order
+  [loc]
+  (loop [loc loc
+         nodes []]
+    (if (zip/end? loc)
+      nodes
+      (recur (zip/next loc) (conj nodes (zip/node loc))))))
+
+(defn last-loc
+  [loc]
+  (loop [loc loc]
+    (let [next-loc (zip/next loc)]
+      (if (zip/end? next-loc)
+        loc
+        (recur next-loc)))))
+
+(defn nodes-in-reverse-order
+  [loc]
+  (loop [loc loc
+         nodes []]
+    (if loc
+      (recur (zip/prev loc) (conj nodes (zip/node loc)))
+      nodes)))
+
+(deftest constructors-and-navigation-test
+  (let [root-loc (zip/vector-zip sample-tree)
+        first-child (zip/down root-loc)
+        middle-child (zip/right first-child)
+        final-child (zip/right middle-child)
+        nested-child (zip/down final-child)]
+    (testing "constructors and accessors"
+      (is (= sample-tree (zip/node root-loc)))
+      (is (zip/branch? root-loc))
+      (is (= (seq sample-tree) (zip/children root-loc)))
+      (is (= [[:a :b] :c [:d [:e :f]]]
+             (zip/node (zip/seq-zip [[:a :b] :c [:d [:e :f]]]))))
+      (is (= {:tag :root :content []}
+             (zip/node (zip/xml-zip {:tag :root :content []})))))
+      (is (not (zip/branch?
+                (zip/down
+                 (zip/xml-zip {:tag :root :content ["text"]})))))
+
+    (testing "parent and sibling navigation"
+      (is (= [:a :b] (zip/node first-child)))
+      (is (= [sample-tree] (zip/path first-child)))
+      (is (nil? (zip/left first-child)))
+      (is (= '(:c [:d [:e :f]]) (zip/rights first-child)))
+      (is (= :c (zip/node middle-child)))
+      (is (= [[:a :b]] (zip/lefts middle-child)))
+      (is (= [[:d [:e :f]]] (zip/rights middle-child)))
+      (is (= [:d [:e :f]] (zip/node final-child)))
+      (is (= :d (zip/node nested-child)))
+      (is (= final-child (zip/up nested-child)))
+      (is (= first-child (zip/leftmost final-child)))
+      (is (= final-child (zip/rightmost first-child)))
+      (is (nil? (zip/down middle-child)))
+      (is (nil? (zip/up root-loc))))))
+
+(deftest depth-first-traversal-test
+  (let [root-loc (zip/vector-zip sample-tree)
+        nodes (nodes-in-order root-loc)
+        end-loc (loop [loc root-loc]
+                  (if (zip/end? loc)
+                    loc
+                    (recur (zip/next loc))))
+        last-loc (last-loc root-loc)]
+    (is (= [sample-tree [:a :b] :a :b :c [:d [:e :f]] :d [:e :f] :e :f]
+           nodes))
+    (is (zip/end? end-loc))
+    (is (= end-loc (zip/next end-loc)))
+    (is (= sample-tree (zip/root end-loc)))
+    (is (= :f (zip/node last-loc)))
+    (is (= :e (zip/node (zip/prev last-loc))))
+    (is (nil? (zip/prev end-loc)))
+    (is (nil? (zip/prev root-loc)))))
+
+(deftest edit-and-reconstruction-test
+  (let [root-loc (zip/vector-zip sample-tree)
+        first-child (zip/down root-loc)
+        middle-child (zip/right first-child)]
+    (testing "node replacement"
+      (is (= [[:a :b] :C [:d [:e :f]]]
+             (zip/root (zip/replace middle-child :C))))
+      (is (= [[:a :b] "c" [:d [:e :f]]]
+             (zip/root (zip/edit middle-child name)))))
+
+    (testing "sibling insertion"
+      (is (= [[:a :b] :before :c [:d [:e :f]]]
+             (zip/root (zip/insert-left middle-child :before))))
+      (is (= [[:a :b] :c :after [:d [:e :f]]]
+             (zip/root (zip/insert-right middle-child :after)))))
+
+    (testing "child insertion"
+      (is (= [:first [:a :b] :c [:d [:e :f]]]
+             (zip/root (zip/insert-child root-loc :first))))
+      (is (= [[:a :b] :c [:d [:e :f]] :last]
+             (zip/root (zip/append-child root-loc :last)))))))
+
+(deftest removal-test
+  (let [root-loc (zip/vector-zip sample-tree)
+        middle-child (-> root-loc zip/down zip/right)
+        prior-loc (zip/remove middle-child)]
+    (is (= :b (zip/node prior-loc)))
+    (is (= [[:a :b] [:d [:e :f]]]
+           (zip/root prior-loc)))
+    (is (= [:c [:d [:e :f]]]
+           (zip/root (zip/remove (zip/down root-loc)))))
+    (is (thrown? python/Exception (zip/remove root-loc)))
+    (is (thrown? python/Exception (zip/insert-left root-loc :x)))
+    (is (thrown? python/Exception (zip/insert-right root-loc :x)))
+    (is (thrown? python/Exception (zip/children (zip/right (zip/down root-loc)))))))
+
+(deftest traversal-edit-stress-test
+  (let [tree [[1 [2 3]] [4 [5 [6 7]]] 8]
+        result (loop [loc (zip/vector-zip tree)]
+                 (if (zip/end? loc)
+                   (zip/root loc)
+                   (let [loc (if (number? (zip/node loc))
+                               (zip/edit loc inc)
+                               loc)]
+                     (recur (zip/next loc)))))]
+    (is (= [[2 [3 4]] [5 [6 [7 8]]] 9] result))))
+
+(defn traversal-invariant?
+  [tree]
+  (let [loc (zip/vector-zip tree)
+        ordered (nodes-in-order loc)
+        end-loc (loop [loc loc]
+                  (if (zip/end? loc)
+                    loc
+                    (recur (zip/next loc))))]
+    (and (= tree (zip/root end-loc))
+         (= (reverse ordered) (nodes-in-reverse-order (last-loc loc))))))
+
+(deftest traversal-invariant-test
+  (is (traversal-invariant? []))
+  (is (traversal-invariant? [1]))
+  (is (traversal-invariant? [1 2 3]))
+  (is (traversal-invariant? [[1] [2 [3]]]))
+  (is (traversal-invariant? [[:a []] [:b [:c :d]] :e]))
+  (is (traversal-invariant? [[[[]]]])))
+
+(deftest wide-and-deep-traversal-stress-test
+  (let [tree (vec (map (fn [n] [n [(* 2 n) [(* 3 n)]]]) (range 64)))]
+    (is (traversal-invariant? tree))
+    (is (= 385 (count (nodes-in-order (zip/vector-zip tree)))))))
+
+(deftest seq-and-xml-reconstruction-test
+  (let [seq-tree (with-meta '((:a :b) :c) {:tag :seq-root})
+        seq-result (-> (zip/seq-zip seq-tree)
+                       zip/down
+                       zip/right
+                       (zip/replace :C)
+                       zip/root)
+        xml-tree {:tag :root :content [{:tag :left} {:tag :right}]}
+        xml-result (-> (zip/xml-zip xml-tree)
+                       zip/down
+                       zip/right
+                       (zip/append-child {:tag :nested})
+                       zip/root)]
+    (is (= '((:a :b) :C) seq-result))
+    (is (= {:tag :seq-root} (meta seq-result)))
+    (is (= {:tag :root
+            :content [{:tag :left} {:tag :right :content [{:tag :nested}]}]}
+           xml-result))
+    (is (nil? (-> (zip/seq-zip '(:only)) zip/down zip/remove zip/root)))))
+
+(deftest custom-zipper-test
+  (let [root {:value :root :children [{:value :leaf}]}
+        loc (zip/zipper map?
+                        :children
+                        (fn [node children]
+                          (assoc node :children (vec children)))
+                        root)]
+    (is (= {:value :root :children [{:value :leaf} {:value :added}]}
+           (zip/root (zip/append-child loc {:value :added}))))
+    (is (= {:value :leaf} (zip/node (zip/down loc))))))
