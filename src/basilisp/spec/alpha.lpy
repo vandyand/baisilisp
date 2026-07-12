@@ -1,5 +1,6 @@
 (ns basilisp.spec.alpha
   "Portable value validation and conforming inspired by clojure.spec.alpha."
+  (:refer-basilisp :exclude [* + ? alt cat])
   (:import basilisp.lang.spec))
 
 (def invalid basilisp.lang.spec/INVALID)
@@ -20,3 +21,8 @@
   (basilisp.lang.spec/keys (if req req []) (if opt opt [])))
 (defn tuple [& specs] (apply basilisp.lang.spec/tuple_ specs))
 (defn multi-spec [dispatch] (basilisp.lang.spec/multi-spec dispatch))
+(defn cat [& tagged-specs] (apply basilisp.lang.spec/cat tagged-specs))
+(defn alt [& tagged-specs] (apply basilisp.lang.spec/alt tagged-specs))
+(defn * [spec] (basilisp.lang.spec/star spec))
+(defn + [spec] (basilisp.lang.spec/plus spec))
+(defn ? [spec] (basilisp.lang.spec/maybe spec))

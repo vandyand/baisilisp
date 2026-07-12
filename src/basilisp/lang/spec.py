@@ -27,6 +27,10 @@ class _Spec:
     pass
 
 
+class _Regex(_Spec):
+    pass
+
+
 @dataclass(frozen=True)
 class _And(_Spec):
     specs: tuple[Any, ...]
@@ -74,6 +78,27 @@ class _MultiSpec(_Spec):
     dispatch: Callable[[Any], kw.Keyword]
 
 
+@dataclass(frozen=True)
+class _Cat(_Regex):
+    branches: tuple[tuple[kw.Keyword, Any], ...]
+
+
+@dataclass(frozen=True)
+class _Alt(_Regex):
+    branches: tuple[tuple[kw.Keyword, Any], ...]
+
+
+@dataclass(frozen=True)
+class _Repeat(_Regex):
+    spec: Any
+    minimum: int
+
+
+@dataclass(frozen=True)
+class _Maybe(_Regex):
+    spec: Any
+
+
 def define(key: kw.Keyword, spec: Any) -> kw.Keyword:
     if not isinstance(key, kw.Keyword):
         raise TypeError("spec names must be keywords")
@@ -96,6 +121,8 @@ def conform(spec: Any, value: Any) -> Any:
 
 
 def unform(spec: Any, value: Any) -> Any:
+    if isinstance(spec, _Regex):
+        return vec.v(*_unform_regex(spec, value))
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         return value if resolved is None else unform(resolved, value)
@@ -163,6 +190,26 @@ def multi_spec(dispatch: Callable[[Any], kw.Keyword]) -> _MultiSpec:
     return _MultiSpec(dispatch)
 
 
+def cat(*tagged_specs: Any) -> _Cat:
+    return _Cat(_tagged_specs("cat", tagged_specs))
+
+
+def alt(*tagged_specs: Any) -> _Alt:
+    return _Alt(_tagged_specs("alt", tagged_specs))
+
+
+def star(spec: Any) -> _Repeat:
+    return _Repeat(spec, 0)
+
+
+def plus(spec: Any) -> _Repeat:
+    return _Repeat(spec, 1)
+
+
+def maybe(spec: Any) -> _Maybe:
+    return _Maybe(spec)
+
+
 def _conform(
     spec: Any,
     value: Any,
@@ -171,6 +218,8 @@ def _conform(
     location: tuple[Any, ...],
     problems: list[IPersistentMap] | None,
 ) -> Any:
+    if isinstance(spec, _Regex):
+        return _conform_regex(spec, value, path, via, location, problems)
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:
@@ -305,6 +354,88 @@ def _conform_tuple(spec, value, path, via, location, problems):
     return value
 
 
+def _conform_regex(spec, value, path, via, location, problems):
+    if not _regex_sequence(value):
+        return _invalid(spec, value, path, via, location, problems)
+    values = tuple(value)
+    matched = _match_regex(spec, values, 0, path, via, location, problems)
+    if matched is None:
+        return INVALID
+    conformed, position = matched
+    if position != len(values):
+        return _invalid(spec, value, path, via, (*location, position), problems)
+    return conformed
+
+
+def _match_regex(spec, values, position, path, via, location, problems):
+    if isinstance(spec, _Cat):
+        result: dict[kw.Keyword, Any] = {}
+        for tag, child in spec.branches:
+            matched = _match_regex(
+                child, values, position, path, via, location, problems
+            )
+            if matched is None:
+                return None
+            conformed, position = matched
+            result[tag] = conformed
+        return lmap.map(result), position
+    if isinstance(spec, _Alt):
+        for tag, child in spec.branches:
+            matched = _match_regex(child, values, position, path, via, location, None)
+            if matched is not None:
+                conformed, next_position = matched
+                return vec.v(tag, conformed), next_position
+        if problems is not None:
+            for _tag, child in spec.branches:
+                _match_regex(child, values, position, path, via, location, problems)
+        if position >= len(values):
+            _invalid(spec, None, path, via, (*location, position), problems)
+        return None
+    if isinstance(spec, _Repeat):
+        matches = []
+        while True:
+            matched = _match_regex(
+                spec.spec, values, position, path, via, location, None
+            )
+            if matched is None:
+                break
+            conformed, next_position = matched
+            if next_position == position:
+                raise ValueError("a repeated regex spec must consume an input value")
+            matches.append(conformed)
+            position = next_position
+        if len(matches) < spec.minimum:
+            if problems is not None:
+                _match_regex(spec.spec, values, position, path, via, location, problems)
+            return None
+        return vec.v(*matches), position
+    if isinstance(spec, _Maybe):
+        matched = _match_regex(spec.spec, values, position, path, via, location, None)
+        return (None, position) if matched is None else matched
+    if position >= len(values):
+        _invalid(spec, None, path, via, (*location, position), problems)
+        return None
+    conformed = _conform(
+        spec, values[position], path, via, (*location, position), problems
+    )
+    if conformed is INVALID:
+        return None
+    return conformed, position + 1
+
+
+def _tagged_specs(
+    name: str, tagged_specs: tuple[Any, ...]
+) -> tuple[tuple[kw.Keyword, Any], ...]:
+    if len(tagged_specs) % 2:
+        raise ValueError(f"{name} requires tagged spec pairs")
+    branches = []
+    for tag, spec in zip(tagged_specs[::2], tagged_specs[1::2]):
+        if not isinstance(tag, kw.Keyword):
+            raise TypeError(f"{name} tags must be keywords")
+        branches.append((tag, spec))
+    return tuple(branches)
+
+
 def _invalid(pred, value, path, via, location, problems):
     if problems is not None:
         problems.append(
@@ -321,6 +452,34 @@ def _invalid(pred, value, path, via, location, problems):
     return INVALID
 
 
+def _unform_regex(spec, value):
+    if isinstance(spec, _Cat):
+        if not _mapping(value):
+            return [value]
+        unformed = []
+        for tag, child in spec.branches:
+            unformed.extend(_unform_regex(child, value[tag]))
+        return unformed
+    if isinstance(spec, _Alt):
+        if not _sequence(value) or len(value) != 2:
+            return [value]
+        tag, conformed = value
+        for branch_tag, child in spec.branches:
+            if branch_tag == tag:
+                return _unform_regex(child, conformed)
+        return [value]
+    if isinstance(spec, _Repeat):
+        if not _sequence(value):
+            return [value]
+        unformed = []
+        for conformed in value:
+            unformed.extend(_unform_regex(spec.spec, conformed))
+        return unformed
+    if isinstance(spec, _Maybe):
+        return [] if value is None else _unform_regex(spec.spec, value)
+    return [unform(spec, value)]
+
+
 def _matches(pred: Any, value: Any) -> bool:
     return bool(pred(value)) if callable(pred) else value == pred
 
@@ -331,3 +490,9 @@ def _mapping(value: Any) -> bool:
 
 def _sequence(value: Any) -> bool:
     return isinstance(value, Sequence) and not isinstance(value, (bytes, str))
+
+
+def _regex_sequence(value: Any) -> bool:
+    return isinstance(value, Iterable) and not isinstance(
+        value, (bytes, str, Mapping, IPersistentMap)
+    )

@@ -58,3 +58,38 @@
       (is (s/valid? pet {:type cat-key :lives 9}))
       (is (s/valid? pet {:type dog-key :barks true}))
       (is (not (s/valid? pet {:type cat-key :barks true}))))))
+
+(deftest sequence-regex-spec-test
+  (let [person (s/cat :name string? :age int?)]
+    (is (s/valid? person ["Ada" 42]))
+    (is (= {:name "Ada" :age 42}
+           (s/conform person ["Ada" 42])))
+    (is (= {:name "Ada" :age 42}
+           (s/conform person (list "Ada" 42))))
+    (is (= ["Ada" 42]
+           (s/unform person {:name "Ada" :age 42})))
+    (is (= s/invalid (s/conform person ["Ada" "old"])))
+    (is (= [1]
+           (:in (first (:basilisp.spec.alpha/problems
+                         (s/explain-data person ["Ada" "old"])))))))
+  (let [choice (s/alt :name string? :age int?)]
+    (is (= [:name "Ada"] (s/conform choice ["Ada"])))
+    (is (= [:age 42] (s/conform choice [42])))
+    (is (= [42] (s/unform choice [:age 42]))))
+  (let [many (s/cat :head string? :tail (s/* int?))]
+    (is (= {:head "values" :tail [1 2 3]}
+           (s/conform many ["values" 1 2 3])))
+    (is (= [] (s/conform (s/* int?) [])))
+    (is (= [1 2] (s/conform (s/+ int?) [1 2])))
+    (is (= s/invalid (s/conform (s/+ int?) [])))
+    (is (= nil (s/conform (s/? int?) [])))
+    (is (= 1 (s/conform (s/? int?) [1])))
+    (is (= s/invalid (s/conform (s/? int?) [1 2]))))
+  (let [pairs (s/cat :pairs (s/+ (s/cat :x int? :y int?))
+                     :end   string?)]
+    (is (= {:pairs [{:x 1 :y 2} {:x 3 :y 4}] :end "done"}
+           (s/conform pairs [1 2 3 4 "done"])))
+    (is (= [1 2 3 4 "done"]
+           (s/unform pairs {:pairs [{:x 1 :y 2} {:x 3 :y 4}] :end "done"})))
+    (is (= s/invalid (s/conform pairs [1 2 "extra" "done"])))
+    (is (= s/invalid (s/conform (s/alt :name string? :age int?) ["Ada" 42])))))

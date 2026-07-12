@@ -516,8 +516,10 @@ Spec And Python Interoperability
 ``basilisp.spec.alpha`` now provides pure value validation, conforming, and
 explain-data for ``s/def``, ``valid?``, ``conform``, ``unform``, ``and``,
 ``or``, ``nilable``, ``coll-of``, ``map-of``, ``keys``, ``tuple``, and
-``multi-spec``. Explain data is a stable Basilisp data structure before
-human-readable explanation or instrumentation is added. Generators and function
+``multi-spec``. Its portable sequence grammar now includes ``cat``, ``alt``,
+``*``, ``+``, and ``?`` with full-input conformance and unforming. Explain data
+is a stable Basilisp data structure before human-readable explanation or
+instrumentation is added. ``&``, function specs, generators, and function
 instrumentation are later because they require a shrinking/property-testing
 model and callable boundary policy. Hypothesis is a good optional test adapter,
 not the implementation of the spec contract.
