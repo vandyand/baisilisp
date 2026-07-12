@@ -33,27 +33,41 @@
 (def ^:dynamic *test-line* nil)
 (def ^:dynamic *testing-vars* [])
 (def ^:dynamic *test-results* nil)
+(def ^:dynamic *test-output* true)
 
 (defmulti ^:dynamic report
   "Report an assertion event. Applications may add methods to customize reporting.
   The default methods preserve Basilisp's structured test results."
   (fn [m] (:type m)))
 
+(defn record-report!
+  "Record an assertion event in the active test result.
+
+  Custom report renderers should call this before producing output so that a
+  test's structured result remains independent of its presentation."
+  [m]
+  (case (:type m)
+    :pass    (vswap! *test-passes* inc)
+    :fail    (vswap! *test-failures* conj (assoc m :type :failure))
+    :failure (vswap! *test-failures* conj m)
+    :error   (vswap! *test-failures* conj m)
+    nil))
+
 (defmethod report :pass
-  [_]
-  (vswap! *test-passes* inc))
+  [m]
+  (record-report! m))
 
 (defmethod report :fail
   [m]
-  (vswap! *test-failures* conj (assoc m :type :failure)))
+  (record-report! m))
 
 (defmethod report :failure
   [m]
-  (vswap! *test-failures* conj m))
+  (record-report! m))
 
 (defmethod report :error
   [m]
-  (vswap! *test-failures* conj m))
+  (record-report! m))
 
 (defmethod report :default
   [m]
@@ -491,7 +505,7 @@
 
 (defn ^:private fixture-error-summary
   [e]
-  (println "ERROR in test fixture:" (python/repr e))
+  (report {:type :fixture-error :exception e})
   {:test 0 :pass 0 :fail 0 :error 1})
 
 (defn ^:private run-with-fixtures
@@ -518,10 +532,13 @@
   (try
     (let [result ((test-function v))]
       (doseq [failure (:failures result)]
-        (report-test-failure (:name (meta v)) failure))
+        (when *test-output*
+          (report-test-failure (:name (meta v)) failure)))
       (summarize-test-result result))
     (catch python/Exception e
-      (println (str "ERROR in (" (:name (meta v)) "): " (python/repr e)))
+      (report {:type :test-error
+               :test-name (:name (meta v))
+               :exception e})
       {:test 1 :pass 0 :fail 0 :error 1})))
 
 (defn ^:private test-var?
@@ -565,7 +582,8 @@
   selecting test Vars. Direct ``deftest`` calls made by the hook are aggregated."
   [ns]
   (let [ns (the-ns ns)]
-    (println "Testing" (.-name ns))
+    (when *test-output*
+      (println "Testing" (.-name ns)))
     (if-let [hook (get (ns-interns ns) 'test-ns-hook)]
       (binding [*test-results* (volatile! [])]
         (let [hook-outcome (try
@@ -575,7 +593,8 @@
               results      (deref *test-results*)
               test-summary (reduce (fn [summary {:keys [name result]}]
                                      (doseq [failure (:failures result)]
-                                       (report-test-failure name failure))
+                                       (when *test-output*
+                                         (report-test-failure name failure)))
                                      (merge-summaries summary
                                                       (summarize-test-result result)))
                                    (empty-summary)
@@ -583,8 +602,8 @@
               hook-summary (cond
                              (:error hook-outcome)
                              (do
-                               (println "ERROR in test-ns-hook:"
-                                        (python/repr (:error hook-outcome)))
+                               (report {:type :hook-error
+                                        :exception (:error hook-outcome)})
                                {:test 0 :pass 0 :fail 0 :error 1})
 
                              (seq results) (empty-summary)
@@ -601,11 +620,32 @@
                 " assertions."))
   (println (:fail summary) "failures," (:error summary) "errors."))
 
+(defmethod report :fixture-error
+  [m]
+  (when *test-output*
+    (println "ERROR in test fixture:" (python/repr (:exception m)))))
+
+(defmethod report :test-error
+  [m]
+  (when *test-output*
+    (println (str "ERROR in (" (:test-name m) "): "
+                  (python/repr (:exception m))))))
+
+(defmethod report :hook-error
+  [m]
+  (when *test-output*
+    (println "ERROR in test-ns-hook:" (python/repr (:exception m)))))
+
+(defmethod report :summary
+  [summary]
+  (when *test-output*
+    (report-summary summary)))
+
 (defn run-test-var
   "Run a single test Var with its namespace fixtures and print a summary."
   [v]
   (let [summary (assoc (test-vars [v]) :type :summary)]
-    (report-summary summary)
+    (report summary)
     summary))
 
 (defmacro run-test
@@ -619,7 +659,7 @@
                                (empty-summary)
                                (map test-ns namespaces))
                        :type :summary)]
-    (report-summary summary)
+    (report summary)
     summary))
 
 (defn run-tests

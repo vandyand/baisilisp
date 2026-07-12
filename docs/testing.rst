@@ -69,6 +69,26 @@ or errors.
 can directly call selected ``deftest`` functions; their results are combined into
 the normal namespace summary.
 
+TAP Output
+----------
+
+``basilisp.test.tap`` renders ``basilisp.test`` results as the Test Anything
+Protocol (TAP). Wrap a REPL runner call in ``with-tap-output`` to emit ``ok`` or
+``not ok`` assertion lines, diagnostics, and a final plan while suppressing the
+normal human-oriented runner output.
+
+.. code-block:: clojure
+
+   (require '[basilisp.test :as test]
+            '[basilisp.test.tap :as tap])
+
+   (tap/with-tap-output
+     (test/run-tests 'my-project.core-test))
+
+The wrapped call still returns the ordinary test summary map. Fixture, uncaught
+test, and ``test-ns-hook`` errors are reported as failing TAP events so the
+plan remains accurate.
+
 Custom Assertions and Definition Tests
 --------------------------------------
 

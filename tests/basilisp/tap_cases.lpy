@@ -1,0 +1,11 @@
+(ns tests.basilisp.tap-cases
+  (:require [basilisp.test :as t]))
+
+(t/deftest passing-test
+  (t/is (= 2 (+ 1 1))))
+
+(t/deftest failing-test
+  (t/is (= 3 (+ 1 1))))
+
+(t/deftest throwing-test
+  (throw (python/Exception "uncaught test error")))
