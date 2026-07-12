@@ -256,6 +256,194 @@ conditionals contain a viable ``:lpy`` path, and its tests pass with documented
 substitutions. The manifest is the proof artifact. Basilisp will not load JARs
 or resolve Maven coordinates; native ports ship as Python distributions.
 
+Detailed Resolution Boundaries
+------------------------------
+
+The remaining gaps are not all implementation backlogs. Some need an adapter,
+some need a compiler proof, and some are intentionally unportable. The
+following decisions make that distinction concrete before a public API is
+added.
+
+STM Dependencies And History
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** do not replace ``basilisp.lang.stm`` with a package. Use external
+transaction packages only behind an explicitly separate storage integration.
+
+The candidate space has two materially different kinds of project:
+
+* `Atomix STM <https://pypi.org/project/atomix-stm/>`_ advertises STM-like
+  behavior, but its GPLv3 license, Python 3.13+ baseline, and independent
+  ``Ref`` model rule it out as a Basilisp runtime dependency. It can inform
+  adversarial scenarios only.
+* `ZODB transaction <https://transaction.readthedocs.io/en/stable/>`_ is a
+  maintained two-phase coordinator for resource managers. It does not own a
+  versioned snapshot of in-memory Basilisp ``Ref`` values, and its transaction
+  boundary is not a retryable ``dosync`` body. It is a possible future
+  ``basilisp.contrib.zodb`` integration, not an STM engine.
+
+The in-tree engine remains responsible for read-set validation, atomic
+multi-Ref publication, retry boundaries, validator and watch order, and
+deferred after-commit actions. A storage adapter may register an after-commit
+action or participate in a separately documented two-phase commit; it may not
+silently make a ``dosync`` durable or distributed.
+
+Ref history should remain absent until a workload demonstrates starvation or
+unacceptable retry behavior. The decision input is a repeatable workload with
+contention shape, completion distribution, retry percentiles, and a serialized
+reference-model check. If history is then needed, add bounded per-Ref committed
+versions solely to retain a read snapshot; do not expose JVM-specific tuning
+knobs by name. Bounded ``max-attempts`` and structured conflict information are
+the application-level escape hatch. No backoff policy should be introduced by
+default because it changes both scheduling and observable retry behavior.
+
+Async Pipelines And ``go``
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** extend the local channel with Python-native pipeline helpers;
+do not claim ``core.async`` or add a ``go`` alias.
+
+The first API should live in ``basilisp.concurrent`` and be deliberately
+small: a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
+transducer, and a separately named asynchronous pipeline when a real consumer
+requires one. ``pipeline!`` accepts a concurrency limit, input and output
+channels, a transducer, an explicit close-output option, and an explicit error
+handler. It returns an application-owned task or supervisor handle rather than
+hiding background work. Each input is transformed independently, may produce
+zero or more results, and output order is retained by sequence number. This
+matches the important contract of `core.async pipeline
+<https://clojure.github.io/core.async/reference.html>`_ without pretending that
+the execution substrate is the JVM.
+
+The implementation should use the existing reducer/transducer protocol, not
+reimplement the transformations for channels. It needs a bounded work queue,
+one ordered result queue, cancellation propagation in both directions, and a
+single point that closes the output once all admitted work has either completed
+or failed. A closed output must stop upstream consumption; a closed input must
+drain admitted work before output close. Error handling must state whether the
+failing element is dropped, transformed to a replacement result, or terminates
+the pipeline.
+
+The required test suite is deterministic first: ordered fan-out, reduced
+completion, early output close, input close while work is pending, and handler
+failure. It then needs randomized producer/consumer cancellation schedules
+that prove no duplicate, lost, or post-close values and that every task is
+joined. Only after that is stable should asynchronous mapping be considered.
+``defasync`` and ``await`` remain the supported spelling for async work.
+Implementing ``go`` correctly would require a compiler-produced resumable state
+machine and defined rejection for unsupported Python control flow; a macro that
+merely wraps ``defasync`` would misrepresent that contract.
+
+AnyIO And Task Ownership
+^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** no general AnyIO wrapper. A future optional adapter is limited to
+the AnyIO asyncio backend and performs explicit value transfer.
+
+AnyIO memory streams genuinely support zero-capacity rendezvous, but they have
+separate send/receive endpoints, clone lifetimes, and close exceptions that do
+not match ``Channel``. They also run on Trio, whereas a Basilisp ``Channel`` is
+intentionally bound to an asyncio event loop. `AnyIO's stream contract
+<https://anyio.readthedocs.io/en/stable/streams.html>`_ makes a transparent
+bidirectional wrapper incorrect on both sides.
+
+When a consumer justifies it, ``basilisp.contrib.anyio`` should require the
+AnyIO asyncio backend and expose two one-way coroutines, conceptually
+``copy-channel-to-send!`` and ``copy-receive-to-channel!``. Each receives a
+caller-owned source and destination, defines whether it closes the destination
+on normal source completion, and propagates cancellation without closing
+resources it does not own. It must reject a non-asyncio backend clearly. A
+Trio-capable Basilisp channel would be a separate backend abstraction project,
+not an adapter patch.
+
+Pydantic And Python Data Models
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** keep Pydantic optional and target V2 only when an application
+needs it. It is a validation and serialization boundary, never a global spec
+provider.
+
+The adapter should mirror the dataclass and attrs shape while making Pydantic's
+coercion visible:
+
+* ``datafy`` calls ``model_dump`` with explicit options, defaults to field
+  names rather than aliases, and records the original object/class as metadata.
+  It must document whether nested models are recursively projected.
+* ``from-data`` accepts only a model class and a map with unqualified keyword
+  or string keys, converts keys to strings, and calls ``model_validate``.
+  It exposes ``:strict?``, ``:by-alias?``, and ``:by-name?`` rather than
+  silently inheriting a surprising conversion policy.
+* Validation errors remain Pydantic errors with a structured Basilisp wrapper
+  containing the input-key policy and the original error data. It must neither
+  drop unknown input before validation nor bypass validation with
+  ``model_construct``.
+
+Pydantic documents both coercive validation and a strict mode, along with
+``model_dump`` and ``model_validate`` as its primary boundary APIs; see its
+`model documentation <https://pydantic.dev/docs/validation/latest/concepts/models/>`_. Required
+fixtures cover aliases, defaults, extras under each model policy, nested
+models, strict and coercive validation, computed/private fields, and a V1
+model rejection. This is explicitly distinct from ``spec.alpha`` conformance.
+
+Diagnostics And Method Signatures
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** normalize existing exception data for every renderer, and improve
+method-signature feedback only when Python introspection is authoritative.
+
+There should be one internal diagnostic normalizer, not a new exception class.
+It consumes ``CompilerException.data``, ``ExceptionInfo.data``, and foreign
+exceptions and produces a persistent map containing phase, message, exception
+class, source span, form when available, and an ordered cause chain. CLI text,
+pREPL EDN events, nREPL response data, and human tracebacks then render that
+same map. Transport-specific fields such as request id, stream text, and
+bencode status remain adapters outside the core diagnostic data. Transcript
+fixtures must assert the same nested compiler/runtime error reports equivalent
+phase, locations, causes, and messages across all four surfaces.
+
+The analyzer already checks known abstract members and can inspect ordinary
+Python signatures when ``:warn-on-arity-mismatch`` is active. The next step is
+to give that warning a source span and structured diagnostic data, not to
+convert every mismatch into an error. It may issue a precise diagnostic only
+when the base class is statically resolved and ``inspect.signature`` succeeds
+with an unambiguous positional contract. Builtins, extension methods,
+decorators without recoverable signatures, defaults, keyword-only parameters,
+and dynamically resolved bases should retain the existing conservative warning
+or runtime behavior. `inspect.signature
+<https://docs.python.org/3/library/inspect.html#inspect.signature>`_ explicitly
+does not guarantee introspection for every callable. Tests must distinguish
+known exact matches, known wrong fixed/variadic arity, uninspectable methods,
+and dynamic bases; no guesswork should turn valid Python interop into a compile
+error.
+
+Python-Native Host Interop
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+**Decision:** expose Python facilities under Python-native namespaces and add
+adapters only where a stable data contract exists. Do not create Java-named
+facades for different host concepts.
+
+``bean``, Java primitive arrays, JDBC result sets, Java streams, and Java URI
+objects should remain intentional omissions. Their appropriate Python-native
+counterparts are ``datafy`` adapters for declared models, ``array`` and
+``memoryview`` for binary data, DB-API cursors for rows, iterators/async
+iterators for streams, and the existing ``basilisp.url``/``urllib.parse``
+support for URLs. Future integrations should be separate optional namespaces,
+for example a DB-API row projection that rejects duplicate column names unless
+the caller supplies a policy, or a binary buffer adapter that documents byte
+order and mutability. Neither belongs in ``basilisp.core`` or should be named
+``resultset-seq`` or ``uri?``.
+
+XML, if it has a consumer, is one such adapter. Make ``defusedxml`` an optional
+parser dependency for untrusted input and retain a separate immutable semantic
+tree for namespace/prefix and mixed-content fidelity. Python's XML security
+guidance identifies denial-of-service concerns and points to defusedxml for
+defensive parsing; see `the standard library XML security notes
+<https://docs.python.org/3/library/xml.html#xml-vulnerabilities>`_. A first
+implementation needs namespace-scope, malformed-input, mixed-content,
+serialization, and size-limit fixtures before it is exposed as a general XML
+library.
+
 Execution Order
 ---------------
 

@@ -186,8 +186,9 @@ Agents
 ------
 
 Basilisp provides executor-backed agents with serialized actions, error handling,
-and bounded waiting. They do not provide JVM executor controls or the
-transactional integration offered by Clojure's STM. In particular,
+and bounded waiting. Agent sends within an experimental ``basilisp.stm/dosync``
+transaction are deferred until the transaction successfully commits. Agents do
+not provide JVM executor controls. In particular,
 ``set-agent-send-executor!``, ``set-agent-send-off-executor!``, and
 ``shutdown-agents`` are intentionally unavailable because Python executors have
 explicit application ownership. See :ref:`concurrency`.
