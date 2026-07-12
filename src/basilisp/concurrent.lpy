@@ -1,6 +1,7 @@
 (ns basilisp.concurrent
   "Python-native concurrency helpers for Basilisp applications."
   (:import asyncio
+           basilisp.concurrent_channel
            inspect
            [basilisp.lang.futures :as futures]))
 
@@ -66,3 +67,30 @@
 
 (defn queue-empty? [queue]
   (.empty queue))
+
+(defn chan
+  "Create an awaitable channel with an optional capacity and buffer policy.
+
+  A zero-capacity channel is a rendezvous channel. Positive-capacity channels
+  use ``:fixed`` (the default), ``:sliding``, or ``:dropping`` buffering."
+  ([] (basilisp.concurrent_channel/Channel))
+  ([capacity] (basilisp.concurrent_channel/Channel capacity))
+  ([capacity policy] (basilisp.concurrent_channel/Channel capacity ** :policy (name policy))))
+
+(defn put! [channel value]
+  (.put channel value))
+
+(defn take! [channel]
+  (.take channel))
+
+(defn close! [channel]
+  (.close channel))
+
+(defn closed? [channel]
+  (.-closed channel))
+
+(defn offer! [channel value]
+  (.offer channel value))
+
+(defn poll! [channel]
+  (.poll channel))

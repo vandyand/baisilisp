@@ -17,6 +17,12 @@
     (await (concurrent/queue-put! queue :queued))
     (await (concurrent/queue-get! queue))))
 
+(defasync channel-roundtrip []
+  (let [channel (concurrent/chan)
+        putter  (asyncio/create-task (concurrent/put! channel :chan))]
+    (let [value (await (concurrent/take! channel))]
+      [value (await putter)])))
+
 (deftest executor-test
   (let [executor (concurrent/thread-executor 1)]
     (try
@@ -39,5 +45,6 @@
       (is (concurrent/awaitable? awaitable))
       (is (= :resolved task-result))
       (is (= :queued queue-result))
+      (is (= [:chan true] (asyncio/run (channel-roundtrip))))
       (finally
         (.close awaitable)))))

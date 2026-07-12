@@ -232,8 +232,7 @@ GPLv3-licensed and thread-oriented. An ``asyncio.Queue`` alone is insufficient:
 its zero capacity means unbounded rather than rendezvous, and Python versions
 supported by Basilisp do not share a uniform close and selection API.
 
-The first implementation should be ``basilisp.concurrent.channel`` plus
-``basilisp.concurrent`` wrappers:
+``basilisp.concurrent`` now provides the first channel surface:
 
 * ``chan`` creates a loop-bound, awaitable channel with an explicit buffer
   policy: rendezvous, fixed, sliding, or dropping.
@@ -243,9 +242,9 @@ The first implementation should be ``basilisp.concurrent.channel`` plus
 * The implementation owns queues of pending put and take futures. Cancellation
   must remove its waiter atomically, close must wake every waiter, and a fixed
   buffer must apply backpressure without growing.
-* ``alts!`` and ``timeout`` come after the single-channel contract. Selection
-  needs a shared winner token so a value is neither lost nor delivered twice.
-  Transducers, pipelines, pub/sub, and transducers-on-channels are later work.
+``alts!`` and ``timeout`` come after the single-channel contract. Selection
+needs a shared winner token so a value is neither lost nor delivered twice.
+Transducers, pipelines, pub/sub, and transducers-on-channels are later work.
 
 This is initially an ``asyncio`` API: callers use it from ``defasync`` with
 ``await``. A ``go`` macro is explicitly deferred because Python coroutines do

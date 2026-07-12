@@ -31,6 +31,23 @@ Basilisp intentionally does not implement global executor replacement or
 replacing or shutting down shared process-wide executors would make unrelated
 work fail unpredictably.
 
+Async Channels
+--------------
+
+``basilisp.concurrent`` includes awaitable, ``asyncio``-native channels for
+use inside ``defasync`` functions. ``chan`` creates a rendezvous channel by
+default; pass a positive capacity for a fixed buffer, or a ``:sliding`` or
+``:dropping`` policy for non-blocking buffer behavior.
+
+Use ``await`` with ``put!`` and ``take!``. ``close!`` wakes blocked puts with
+``false`` and causes future takes to return ``nil`` after buffered values are
+drained. ``offer!`` and ``poll!`` provide non-blocking operations. Channels do
+not accept ``nil`` values, reserving it as the closed-channel take result.
+
+``alts!``, timeout channels, transducers, and a ``go`` macro are not yet
+implemented. ``defasync`` and ``await`` are the intended Python-native
+equivalent of the initial ``go``-block use case.
+
 Transactions
 ------------
 
