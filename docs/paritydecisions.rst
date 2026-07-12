@@ -256,7 +256,9 @@ The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
 2. Add STM state-machine coverage. Do not begin ``commute`` until retry
-   boundaries are covered by randomized operation histories.
+   boundaries are covered by randomized operation histories. The initial
+   Hypothesis transfer-model suite is in place; extend it before adding new STM
+   write modes.
 3. Implement ``fdef`` plus Var-only instrumentation, then add optional
    Hypothesis-backed checking and ``fspec`` generation.
 4. Run the sample package build/install probe before considering a new backend.

@@ -48,6 +48,7 @@ Changelog = "https://github.com/basilisp-lang/basilisp/blob/main/CHANGELOG.md"
 dev = [
     "black >=24.0.0",
     "docutils",
+    "hypothesis >=6.0",
     "isort",
     "maturin",
     "pygments",
