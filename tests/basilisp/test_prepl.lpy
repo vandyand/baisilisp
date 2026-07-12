@@ -75,6 +75,10 @@
         (.server_close server)
         (.join thread)))))
 
+(deftest remote-prepl-server-rejects-non-loopback-host-test
+  (is (thrown? python/ValueError
+               (prepl/server-make {:host "0.0.0.0"}))))
+
 (deftest remote-prepl-isolates-connection-namespaces-test
   (let [server (prepl/server-make {})
         thread (threading/Thread ** :target #(.serve_forever server) :daemon true)]

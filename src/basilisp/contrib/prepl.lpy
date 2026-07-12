@@ -133,12 +133,16 @@
 (defn server-make
   "Create a loopback-only TCP server which serves newline-delimited EDN pREPL events.
 
-  ``opts`` accepts ``:host`` (default ``127.0.0.1``) and ``:port`` (default
-  ``0``, selecting an available port). Each accepted connection has an isolated
-  evaluation namespace and terminates when the client closes its write side."
+  ``opts`` accepts ``:port`` (default ``0``, selecting an available port) and
+  ``:max-input-chars`` (default ``1048576``). ``:host`` may only be
+  ``127.0.0.1``. Each accepted connection has an isolated evaluation
+  namespace and terminates when the client closes its write side."
   [opts]
   (let [{:keys [host port max-input-chars]
          :or   {host "127.0.0.1" port 0 max-input-chars 1048576}} opts
+        _       (when-not (= "127.0.0.1" host)
+                  (throw (python/ValueError
+                          "pREPL servers may only bind to 127.0.0.1")))
         handler (python/type (name (gensym "pREPLTCPHandler"))
                              #py (socketserver/StreamRequestHandler)
                              #py {"handle" #(on-connect % max-input-chars)})

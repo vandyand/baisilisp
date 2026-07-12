@@ -22,7 +22,9 @@ transport boundary.
 events. Each connection gets an isolated namespace and ends when its client
 closes the write side of the socket. Input is incrementally buffered so source
 text remains available to ``prepl`` and is bounded to 1 MiB by default; pass
-``:max-input-chars`` in the options map to change that limit.
+``:max-input-chars`` in the options map to change that limit. The listener is
+fixed to ``127.0.0.1``; unauthenticated pREPL evaluation is not exposed to a
+network interface.
 
 CLI exposure, authentication, and interruption controls remain later
 milestones.
