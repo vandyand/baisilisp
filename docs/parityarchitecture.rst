@@ -290,12 +290,12 @@ supported by Basilisp do not share a uniform close and selection API.
   must remove its waiter atomically, close must wake every waiter, and a fixed
   buffer must apply backpressure without growing.
 
-``alts!`` and ``timeout`` come after the single-channel contract. Selection
-needs a shared winner token so a value is neither lost nor delivered twice.
+``alts!`` and ``timeout`` complete the first selection surface. Selection uses
+a shared winner token so a value is neither lost nor delivered twice.
 Transducers, pipelines, pub/sub, and transducers-on-channels are later work.
 
-The next compatibility-shaped operation is ``(alts! ports & opts)``. ``ports``
-accepts take channels and ``[channel value]`` put pairs; it returns
+``(alts! ports & opts)`` accepts take channels and ``[channel value]`` put
+pairs; it returns
 ``[value port]``, with put values represented by their boolean completion
 result. ``:priority true`` attempts ready ports in supplied order. Otherwise,
 ready ports must be selected fairly rather than accidentally following deque

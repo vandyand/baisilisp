@@ -94,3 +94,21 @@
 
 (defn poll! [channel]
   (.poll channel))
+
+(defasync alts!
+  "Await exactly one take channel or ``[channel value]`` put operation.
+
+  ``:priority true`` checks ready operations in order. ``:default`` returns
+  immediately as ``[value :default]`` when no operation is ready."
+  [ports & {:keys [priority default] :as opts}]
+  (let [[value port] (await (basilisp.concurrent_channel/alts
+                             ports
+                             ** :priority (boolean priority)
+                             :default default
+                             :has-default (contains? opts :default)))]
+    [value port]))
+
+(defn timeout
+  "Create a channel that closes after ``delay-ms`` milliseconds."
+  [delay-ms]
+  (basilisp.concurrent_channel/timeout delay-ms))

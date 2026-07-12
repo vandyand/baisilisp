@@ -44,9 +44,16 @@ Use ``await`` with ``put!`` and ``take!``. ``close!`` wakes blocked puts with
 drained. ``offer!`` and ``poll!`` provide non-blocking operations. Channels do
 not accept ``nil`` values, reserving it as the closed-channel take result.
 
-``alts!``, timeout channels, transducers, and a ``go`` macro are not yet
-implemented. ``defasync`` and ``await`` are the intended Python-native
-equivalent of the initial ``go``-block use case.
+``alts!`` awaits exactly one take channel or ``[channel value]`` put operation
+and returns ``[value channel]``. ``:priority true`` checks ready operations in
+order; otherwise ready operations are selected fairly. ``:default value``
+returns ``[value :default]`` without waiting. ``timeout`` creates a one-shot
+channel that closes after its delay. A cancelled ``alts!`` call removes all of
+its pending operations.
+
+Transducers, pipelines, pub/sub, and a ``go`` macro are not yet implemented.
+``defasync`` and ``await`` are the intended Python-native equivalent of the
+initial ``go``-block use case.
 
 Transactions
 ------------

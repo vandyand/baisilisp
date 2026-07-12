@@ -23,6 +23,29 @@
     (let [value (await (concurrent/take! channel))]
       [value (await putter)])))
 
+(defasync alts-roundtrip []
+  (let [first  (concurrent/chan 1)
+        second (concurrent/chan 1)]
+    (await (concurrent/put! first :first))
+    (await (concurrent/put! second :second))
+    (let [[value selected] (await (concurrent/alts! [second first] :priority true))
+          [fallback port]  (await (concurrent/alts! [(concurrent/chan)] :default :fallback))]
+      [value (identical? selected second) fallback port])))
+
+(defasync timeout-roundtrip []
+  (let [timer (concurrent/timeout 1)]
+    (await (concurrent/take! timer))))
+
+(defasync alts-put-roundtrip []
+  (let [first    (concurrent/chan)
+        second   (concurrent/chan)
+        selector (asyncio/create-task
+                  (concurrent/alts! [[first :first] [second :second]]))]
+    (await (asyncio/sleep 0))
+    (let [value             (await (concurrent/take! second))
+          [result selected] (await selector)]
+      [value (= true result) (identical? selected second)])))
+
 (deftest executor-test
   (let [executor (concurrent/thread-executor 1)]
     (try
@@ -46,5 +69,9 @@
       (is (= :resolved task-result))
       (is (= :queued queue-result))
       (is (= [:chan true] (asyncio/run (channel-roundtrip))))
+      (is (= [:second true :fallback :default]
+             (asyncio/run (alts-roundtrip))))
+      (is (nil? (asyncio/run (timeout-roundtrip))))
+      (is (= [:second true true] (asyncio/run (alts-put-roundtrip))))
       (finally
         (.close awaitable)))))
