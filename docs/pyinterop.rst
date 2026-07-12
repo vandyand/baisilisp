@@ -124,6 +124,33 @@ The adapter does not recursively convert field values, register a spec, or
 change global ``datafy`` behavior. Supplying unknown or non-init fields to
 ``from-data`` is an error.
 
+.. _attrs_interop:
+
+attrs
+-----
+
+``basilisp.contrib.attrs`` follows the same explicit boundary for
+`attrs <https://www.attrs.org/>`_ models. ``datafy`` is shallow and reads the
+declared attribute values without running converters or validators.
+``from-data`` accepts declared attribute names as unqualified keyword or string
+keys and passes values unchanged to the generated attrs initializer. attrs then
+runs its normal converters before validators; defaults remain the initializer's
+responsibility.
+
+.. code-block:: clojure
+
+   (require '[basilisp.contrib.attrs :as attrs])
+
+   (attrs/datafy account)
+   ;; => {:name "Ada" :level 2}
+
+   (attrs/from-data Account {:name "Grace" :level "2"})
+   ;; attrs conversion determines the resulting field value
+
+The adapter does not recursively convert values, register specs, or change
+global ``datafy`` behavior. Attribute names, rather than attrs constructor
+aliases, are the public data keys; unknown and non-init fields are errors.
+
 .. _referencing_module_members:
 
 Referencing Module Members

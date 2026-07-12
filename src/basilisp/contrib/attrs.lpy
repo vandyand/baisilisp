@@ -1,0 +1,13 @@
+(ns basilisp.contrib.attrs
+  "Explicit adapters between Python attrs models and Basilisp data."
+  (:import basilisp.lang.attrs))
+
+(defn datafy
+  "Project an attrs instance to a keyword-keyed Basilisp map."
+  [instance]
+  (basilisp.lang.attrs/datafy instance))
+
+(defn from-data
+  "Construct attrs ``cls`` from keyword- or string-keyed ``data``."
+  [cls data]
+  (basilisp.lang.attrs/from_data cls data))

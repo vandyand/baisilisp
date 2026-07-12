@@ -153,9 +153,10 @@ Python models are adapters, not implicit specs. The dataclass adapter establishe
 the pattern: an explicit shallow data projection and a separately named,
 non-coercing construction operation. The next adapters should be:
 
-* ``basilisp.contrib.attrs``: project declared attrs fields without invoking
-  converters or validators. Construction must say explicitly that attrs
-  converters run before validators, as documented by `attrs
+* **Completed locally:** ``basilisp.contrib.attrs`` projects declared attrs
+  fields without invoking converters or validators. Its ``from-data`` adapter
+  passes values to the generated attrs initializer, where attrs converters run
+  before validators as documented by `attrs
   <https://www.attrs.org/en/stable/init.html>`_.
 * ``basilisp.contrib.pydantic``: an optional dependency with a projection based
   on ``model_dump`` and a separately named validation construction operation.
@@ -264,8 +265,8 @@ The most appropriate next work is:
 3. Broaden explicit ``fspec`` generation only where a portable descriptor has a
    well-defined Hypothesis strategy; do not synthesize arbitrary predicates.
 4. Run the sample package build/install probe before considering a new backend.
-5. Add an attrs adapter only when its explicit conversion contract is tested;
-   defer Pydantic and AnyIO adapters until there is a consumer.
+5. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
+   separately tested conversion and ownership contract.
 
 This sequence closes high-value semantic gaps while preserving the distinction
 between Clojure compatibility and Python-native capabilities.
