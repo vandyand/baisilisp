@@ -257,8 +257,8 @@ The most appropriate next work is:
 2. Measure STM contention before considering history controls. The Hypothesis
    transfer, commute, and ensure-model suite is in place; do not claim JVM STM
    internals without a measurable need and a separate proof.
-3. Add optional Hypothesis-backed checking and ``fspec`` generation on top of
-   the completed ``fdef`` and Var-only instrumentation layer.
+3. Broaden explicit ``fspec`` generation only where a portable descriptor has a
+   well-defined Hypothesis strategy; do not synthesize arbitrary predicates.
 4. Run the sample package build/install probe before considering a new backend.
 5. Add an attrs adapter only when its explicit conversion contract is tested;
    defer Pydantic and AnyIO adapters until there is a consumer.

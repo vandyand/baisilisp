@@ -14,3 +14,10 @@
   "Restore bindings installed by ``instrument`` when they have not been redefined."
   [& targets]
   (apply basilisp.lang.spec/unstrument targets))
+
+(defn check
+  "Run Hypothesis-backed generated checks for one registered Basilisp Var.
+
+  ``:num-tests`` defaults to 100. ``:seed`` makes a run reproducible."
+  [target & {:keys [num-tests seed]}]
+  (basilisp.lang.spec/check target ** :num-tests (or num-tests 100) :seed seed))

@@ -103,9 +103,10 @@ print length. ``cl-format`` is a separate formatting-language project and is
 not bundled into that milestone.
 
 ``basilisp.spec.alpha`` provides portable validation, conforming, explain-data,
-and opt-in function-spec instrumentation. Generated checking and shrinking are
-later milestones. Python model integrations such as Pydantic, attrs, and
-dataclasses belong in adapters rather than replacing spec semantics.
+opt-in function-spec instrumentation, and bounded Hypothesis-backed checking.
+Broader generator coverage is a later milestone. Python model integrations such
+as Pydantic, attrs, and dataclasses belong in adapters rather than replacing
+spec semantics.
 
 Clojure Library Portability
 ---------------------------
@@ -528,9 +529,11 @@ Explain data is a stable Basilisp data structure before human-readable
 explanation is added. ``fspec``/``fdef`` descriptors and Var-only
 instrumentation validate ``:args``, ``:ret``, and ``:fn`` at an explicit call
 boundary; they do not patch arbitrary Python callables or existing references
-to an original callable. Generated checks remain later because they require a
-shrinking/property-testing model. Hypothesis is a good optional test adapter,
-not the implementation of the spec contract.
+to an original callable. ``basilisp.spec.test.alpha/check`` uses Hypothesis
+shrinking for known portable descriptor domains and returns structured pass or
+failure data. Arbitrary predicates require ``with-gen`` with an explicit
+strategy; Hypothesis is an optional test adapter, not the implementation of the
+spec contract.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for
@@ -558,8 +561,8 @@ separate policies for aliases, defaults, unknown fields, coercion, and error
 translation. Hypothesis belongs in ``basilisp.spec.test`` as an optional
 generator adapter after descriptors are stable; it must not decide what
 ``conform`` or ``explain-data`` means. ``basilisp.spec.test.alpha`` now
-supplies explicit Var wrapping and ``unstrument`` restoration, never
-monkey-patching arbitrary Python callables.
+supplies explicit Var wrapping, ``unstrument`` restoration, and bounded
+generated checks, never monkey-patching arbitrary Python callables.
 
 The adapter policy is deliberately conservative because the three model systems
 do not mean the same thing by validation. Dataclasses primarily describe field

@@ -33,6 +33,9 @@ _CALL_ARGS = kw.keyword("args")
 _CALL_RET = kw.keyword("ret")
 _CALL_TARGET = kw.keyword("target", ns="basilisp.spec.test.alpha")
 _CALL_KEYWORD_ARGS = kw.keyword("keyword-args", ns="basilisp.spec.test.alpha")
+_CHECK_PASS = kw.keyword("pass?", ns="basilisp.spec.test.alpha")
+_CHECK_FAILURE = kw.keyword("failure", ns="basilisp.spec.test.alpha")
+_CHECK_NUM_TESTS = kw.keyword("num-tests", ns="basilisp.spec.test.alpha")
 
 
 class _Spec:
@@ -48,6 +51,12 @@ class _FSpec(_Spec):
     args: Any | None = None
     ret: Any | None = None
     fn: Any | None = None
+
+
+@dataclass(frozen=True)
+class _WithGen(_Spec):
+    spec: Any
+    generator: Any
 
 
 @dataclass(frozen=True)
@@ -152,6 +161,11 @@ def fspec(
     return _FSpec(args, ret, fn)
 
 
+def with_gen(spec: Any, generator: Any) -> _WithGen:
+    """Attach an explicit Hypothesis strategy or strategy factory to ``spec``."""
+    return _WithGen(spec, generator)
+
+
 def fdef(
     target: Any,
     *,
@@ -196,6 +210,208 @@ def unstrument(*targets: Var) -> tuple[Var, ...]:
         for target in selected:
             _unstrument(target)
         return tuple(selected)
+
+
+def check(
+    *targets: Var, num_tests: int = 100, seed: int | None = None
+) -> tuple[IPersistentMap, ...]:
+    """Run generated checks for registered function specs using Hypothesis.
+
+    Only descriptors with a known native generation strategy are supported. Wrap
+    arbitrary predicate specs with :func:`with_gen` to provide a strategy.
+    """
+    if isinstance(num_tests, bool) or not isinstance(num_tests, int) or num_tests < 1:
+        raise ValueError("num_tests must be a positive integer")
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+        raise TypeError("seed must be an integer or None")
+
+    with _REGISTRY_LOCK:
+        selected = targets or tuple(_FUNCTION_SPECS)
+        return tuple(_check_function(target, num_tests, seed) for target in selected)
+
+
+def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersistentMap:
+    if not isinstance(target, Var):
+        raise TypeError("check targets must be Basilisp Vars")
+    if target.dynamic:
+        raise TypeError("cannot generate checks for dynamic Vars")
+
+    function_spec = _FUNCTION_SPECS.get(target)
+    if function_spec is None:
+        raise ValueError("cannot check a Var without an fdef")
+    if function_spec.args is None:
+        raise ValueError("cannot generate checks without an fdef :args spec")
+
+    argument_strategy = _strategy_for_regex(function_spec.args)
+    original = _INSTRUMENTED.get(target, None)
+    callable_target = original.original if original is not None else target.root
+    if not callable(callable_target):
+        raise TypeError("can only generate checks for Vars with callable roots")
+
+    try:
+        from hypothesis import given
+        from hypothesis import seed as hypothesis_seed
+        from hypothesis import settings
+    except ImportError as exc:  # pragma: no cover - development dependency
+        raise RuntimeError(
+            "generated function checks require the optional Hypothesis dependency"
+        ) from exc
+
+    @given(argument_strategy)
+    @settings(
+        database=None, deadline=None, derandomize=seed is None, max_examples=num_tests
+    )
+    def check_one(call_args: vec.PersistentVector) -> None:
+        result = callable_target(*call_args)
+        if function_spec.ret is not None:
+            _validate_function_value(target, ":ret", function_spec.ret, result)
+        if function_spec.fn is not None:
+            _validate_function_value(
+                target,
+                ":fn",
+                function_spec.fn,
+                lmap.map({_CALL_ARGS: call_args, _CALL_RET: result}),
+            )
+
+    if seed is not None:
+        check_one = hypothesis_seed(seed)(check_one)
+
+    try:
+        check_one()
+    except Exception as exc:  # Hypothesis reraises the minimized failure.
+        return lmap.map(
+            {
+                _CALL_TARGET: _var_symbol(target),
+                _CHECK_PASS: False,
+                _CHECK_NUM_TESTS: num_tests,
+                _CHECK_FAILURE: exc,
+            }
+        )
+    return lmap.map(
+        {
+            _CALL_TARGET: _var_symbol(target),
+            _CHECK_PASS: True,
+            _CHECK_NUM_TESTS: num_tests,
+        }
+    )
+
+
+def _strategy_for_regex(spec: Any) -> Any:
+    values = _strategy_for_regex_values(spec)
+    return values.map(lambda generated: vec.v(*generated))
+
+
+def _strategy_for_regex_values(spec: Any) -> Any:
+    strategies = _hypothesis_strategies()
+    if isinstance(spec, _WithGen):
+        generated = _resolve_strategy(spec.generator)
+        return (
+            generated
+            if isinstance(spec.spec, _Regex)
+            else generated.map(lambda value: (value,))
+        )
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        if resolved is None:
+            raise TypeError(f"cannot generate values for undefined spec {spec}")
+        return _strategy_for_regex_values(resolved)
+    if isinstance(spec, _Cat):
+        return strategies.tuples(
+            *(_strategy_for_regex_values(child) for _tag, child in spec.branches)
+        ).map(_flatten_generated_values)
+    if isinstance(spec, _Alt):
+        return strategies.one_of(
+            *(_strategy_for_regex_values(child) for _tag, child in spec.branches)
+        )
+    if isinstance(spec, _Repeat):
+        return strategies.lists(
+            _strategy_for_regex_values(spec.spec), min_size=spec.minimum, max_size=8
+        ).map(_flatten_generated_values)
+    if isinstance(spec, _Maybe):
+        return strategies.one_of(
+            strategies.just(()), _strategy_for_regex_values(spec.spec)
+        )
+    if isinstance(spec, _Amp):
+        raise TypeError("cannot generate values for s/&; wrap it with with-gen")
+    return _strategy_for_value(spec).map(lambda value: (value,))
+
+
+def _strategy_for_value(spec: Any) -> Any:
+    strategies = _hypothesis_strategies()
+    if isinstance(spec, _WithGen):
+        return _resolve_strategy(spec.generator)
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        if resolved is None:
+            raise TypeError(f"cannot generate values for undefined spec {spec}")
+        return _strategy_for_value(resolved)
+    if isinstance(spec, _Nilable):
+        return strategies.one_of(strategies.none(), _strategy_for_value(spec.spec))
+    if isinstance(spec, _Or):
+        return strategies.one_of(
+            *(_strategy_for_value(child) for _tag, child in spec.branches)
+        )
+    if isinstance(spec, _Tuple):
+        return strategies.tuples(*(_strategy_for_value(child) for child in spec.specs))
+    if isinstance(spec, _CollOf):
+        if spec.kind not in (None, list, tuple, vec.PersistentVector):
+            raise TypeError(
+                "cannot generate values for coll-of with an arbitrary :kind"
+            )
+        min_size = spec.count if spec.count is not None else spec.min_count or 0
+        max_size = spec.count if spec.count is not None else spec.max_count or 8
+        generated = strategies.lists(
+            _strategy_for_value(spec.spec),
+            min_size=min_size,
+            max_size=max_size,
+            unique=spec.distinct,
+        )
+        if spec.kind is tuple:
+            return generated.map(tuple)
+        if spec.kind is vec.PersistentVector:
+            return generated.map(lambda values: vec.v(*values))
+        return generated
+    if isinstance(spec, IPersistentSet) or isinstance(spec, (set, frozenset)):
+        return strategies.sampled_from(tuple(spec))
+    if spec is int:
+        return strategies.integers()
+    if spec is str:
+        return strategies.text()
+    if spec is bool:
+        return strategies.booleans()
+    if spec is float:
+        return strategies.floats(allow_nan=False)
+    if spec is bytes:
+        return strategies.binary()
+    if spec is type(None):
+        return strategies.none()
+    raise TypeError(f"cannot generate values for {spec!r}; wrap it with with-gen")
+
+
+def _hypothesis_strategies() -> Any:
+    try:
+        from hypothesis import strategies
+    except ImportError as exc:  # pragma: no cover - development dependency
+        raise RuntimeError(
+            "generated function checks require the optional Hypothesis dependency"
+        ) from exc
+    return strategies
+
+
+def _resolve_strategy(generator: Any) -> Any:
+    strategy = generator() if callable(generator) else generator
+    if not hasattr(strategy, "example") or not hasattr(strategy, "map"):
+        raise TypeError(
+            "with-gen requires a Hypothesis strategy or zero-argument factory"
+        )
+    return strategy
+
+
+def _flatten_generated_values(values: Iterable[Any]) -> tuple[Any, ...]:
+    flattened: list[Any] = []
+    for value in values:
+        flattened.extend(value)
+    return tuple(flattened)
 
 
 def _validate_instrument_target(target: Var) -> None:
@@ -333,6 +549,8 @@ def conform(spec: Any, value: Any) -> Any:
 def unform(spec: Any, value: Any) -> Any:
     if isinstance(spec, _Regex):
         return vec.v(*_unform_regex(spec, value))
+    if isinstance(spec, _WithGen):
+        return unform(spec.spec, value)
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         return value if resolved is None else unform(resolved, value)
@@ -442,6 +660,8 @@ def _conform(
             if callable(value)
             else _invalid(spec, value, path, via, location, problems)
         )
+    if isinstance(spec, _WithGen):
+        return _conform(spec.spec, value, path, via, location, problems)
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:
@@ -487,6 +707,12 @@ def _conform(
         if not isinstance(selected, kw.Keyword):
             return _invalid(spec.dispatch, value, path, via, location, problems)
         return _conform(selected, value, path, via, location, problems)
+    if isinstance(spec, type):
+        return (
+            value
+            if isinstance(value, spec)
+            else _invalid(spec, value, path, via, location, problems)
+        )
     if callable(spec):
         try:
             matches = bool(spec(value))

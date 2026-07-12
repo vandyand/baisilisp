@@ -1,6 +1,7 @@
 from unittest.mock import patch
 
 import pytest
+from hypothesis import strategies as st
 
 from basilisp.lang import atom as atom
 from basilisp.lang import keyword as kw
@@ -25,6 +26,8 @@ def test_fdef_registers_a_callable_descriptor(function_var):
     descriptor = spec.fdef(function_var, args=int, ret=int, fn=lambda _args, _ret: True)
 
     assert spec.get_fspec(function_var) is descriptor
+    assert spec.valid(int, 0)
+    assert not spec.valid(int, "0")
     assert spec.valid(descriptor, function_var.root)
     assert not spec.valid(descriptor, 42)
 
@@ -112,3 +115,51 @@ def test_instrument_preflight_does_not_partially_wrap_a_batch(function_var):
 
     assert function_var.root is original
     assert function_var.ns.module.identity is original
+
+
+def test_check_generates_known_values_and_reports_contract_failures(function_var):
+    spec.fdef(function_var, args=spec.cat(kw.keyword("value"), int), ret=int)
+
+    passed = spec.check(function_var, num_tests=20, seed=17)[0]
+
+    assert passed.val_at(kw.keyword("pass?", ns="basilisp.spec.test.alpha"))
+    assert passed.val_at(kw.keyword("num-tests", ns="basilisp.spec.test.alpha")) == 20
+
+    broken = Var.intern(
+        function_var.ns,
+        sym.symbol("broken"),
+        lambda _value: "not an integer",
+    )
+    spec.fdef(broken, args=spec.cat(kw.keyword("value"), int), ret=int)
+
+    failed = spec.check(broken, num_tests=20, seed=17)[0]
+
+    assert not failed.val_at(kw.keyword("pass?", ns="basilisp.spec.test.alpha"))
+    assert isinstance(
+        failed.val_at(kw.keyword("failure", ns="basilisp.spec.test.alpha")),
+        ExceptionInfo,
+    )
+
+
+def test_check_accepts_explicit_generators_and_rejects_unknown_predicates(function_var):
+    even = lambda value: value % 2 == 0
+    generated_even = spec.with_gen(even, st.integers().map(lambda value: value * 2))
+    assert spec.valid(generated_even, 2)
+    assert not spec.valid(generated_even, 3)
+    assert spec.unform(generated_even, 2) == 2
+    spec.fdef(
+        function_var,
+        args=spec.cat(
+            kw.keyword("value"),
+            generated_even,
+        ),
+        ret=int,
+    )
+
+    assert spec.check(function_var, num_tests=20, seed=3)[0].val_at(
+        kw.keyword("pass?", ns="basilisp.spec.test.alpha")
+    )
+
+    spec.fdef(function_var, args=spec.cat(kw.keyword("value"), even), ret=int)
+    with pytest.raises(TypeError, match="with-gen"):
+        spec.check(function_var, num_tests=1)

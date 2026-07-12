@@ -2,13 +2,16 @@
   (:require
    [basilisp.spec.alpha :as s]
    [basilisp.spec.test.alpha :as st]
-   [basilisp.test :refer [deftest is]]))
+   [basilisp.test :refer [deftest is]])
+  (:import hypothesis.strategies))
 
 (defn typed-identity [value] value)
 (defn invalid-return [value] "not an integer")
 (defn increment [value] (+ value 1))
 
-(s/fdef typed-identity :args (s/cat :value int?) :ret int?)
+(s/fdef typed-identity
+        :args (s/cat :value (s/with-gen int? (hypothesis.strategies/integers)))
+        :ret int?)
 (s/fdef invalid-return :args (s/cat :value int?) :ret int?)
 (s/fdef increment
         :args (s/cat :value int?)
@@ -32,3 +35,7 @@
     (is (= 3 (increment 2)))
     (finally
       (st/unstrument (var invalid-return) (var increment)))))
+
+(deftest generated-function-check-test
+  (let [result (first (st/check (var typed-identity) :num-tests 10 :seed 5))]
+    (is (:basilisp.spec.test.alpha/pass? result))))
