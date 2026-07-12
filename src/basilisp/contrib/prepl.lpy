@@ -1,22 +1,10 @@
 (ns basilisp.contrib.prepl
   "A local structured REPL evaluator compatible with Clojure pREPL events."
-  (:import basilisp.contrib.prepl_server
+  (:import basilisp.contrib.repl_session
+           basilisp.contrib.prepl_server
            io
            socketserver
-           threading
-           time))
-
-(definterface ^:private IStreamOut
-  (flush [])
-  (write [value]))
-
-(deftype ^:private StreamOutFn [out-fn tag]
-  IStreamOut
-  (flush [_self]
-    nil)
-  (write [_self value]
-    (out-fn {:tag tag :val value})
-    (count value)))
+           threading))
 
 (defn- exception-value
   [e phase]
@@ -36,63 +24,60 @@
   ``stdin`` may be supplied as a keyword argument to control the value bound to
   :lpy:var:`basilisp.core/*in*` while forms are evaluated."
   [in-reader out-fn & {:keys [stdin namespace] :or {namespace 'basilisp.user}}]
-  (let [eval-ns (create-ns namespace)
-        _       (.refer-all eval-ns (the-ns 'basilisp.core))
+  (let [session (basilisp.contrib.repl_session.ReplSession/create namespace)
+        ctx     (basilisp.lang.compiler.CompilerContext. "<pREPL Input>")
+        emit    (fn [tag value]
+                  (out-fn {:tag (keyword tag) :val value}))
         tapfn   #(out-fn {:tag :tap :val %})]
-    (binding [*ns*  eval-ns
-              *in*  (or stdin in-reader)
-              *out* (StreamOutFn out-fn :out)
-              *err* (StreamOutFn out-fn :err)
-              *1    nil
-              *2    nil
-              *3    nil
-              *e    nil]
-      (add-tap tapfn)
-      (try
-        (loop []
-          (let [continue? (let [read-result (try
-                                              (read+string {:eof nil} in-reader)
-                                              (catch python/Exception e
-                                                (out-fn {:tag       :ret
-                                                         :val       (exception-value e :read-source)
-                                                         :ns        (str *ns*)
-                                                         :exception true})
-                                                :reader-error))]
-                            (cond
-                              (= :reader-error read-result)
-                              true
+    (add-tap tapfn)
+    (try
+      (loop []
+        (let [read-result (try
+                            (binding [*ns* (.-namespace session)]
+                              (read+string {:eof nil} in-reader))
+                            (catch python/Exception e
+                              (out-fn {:tag       :ret
+                                       :val       (exception-value e :read-source)
+                                       :ns        (str (.-namespace session))
+                                       :exception true})
+                              :reader-error))]
+          (cond
+            (= :reader-error read-result)
+            (recur)
 
-                              (nil? read-result)
-                              false
+            (nil? read-result)
+            nil
 
-                              :else
-                              (let [[form source] read-result]
-                                (try
-                                  (let [start  (time/perf_counter_ns)
-                                        result (eval form)
-                                        ms     (int (/ (- (time/perf_counter_ns) start) 1000000))]
-                                    (when-not (= :repl/quit result)
-                                      (set! *3 *2)
-                                      (set! *2 *1)
-                                      (set! *1 result)
-                                      (out-fn {:tag  :ret
-                                               :val  result
-                                               :ns   (str *ns*)
-                                               :ms   ms
-                                               :form source}))
-                                    (not= :repl/quit result))
-                                  (catch python/Exception e
-                                    (set! *e e)
-                                    (out-fn {:tag       :ret
-                                             :val       (exception-value e :execution)
-                                             :ns        (str *ns*)
-                                             :form      source
-                                             :exception true})
-                                    true)))))]
-            (when continue?
-              (recur))))
-        (finally
-          (remove-tap tapfn))))))
+            :else
+            (let [[form source] read-result
+                  evaluation    (basilisp.contrib.repl_session/evaluate-form
+                                 session form
+                                 ** :context ctx
+                                    :emit emit
+                                    :stdin (or stdin in-reader))]
+              (cond
+                (.-quit evaluation)
+                nil
+
+                (.-error evaluation)
+                (do
+                  (out-fn {:tag       :ret
+                           :val       (exception-value (.-error evaluation) :execution)
+                           :ns        (str (.-namespace evaluation))
+                           :form      source
+                           :exception true})
+                  (recur))
+
+                :else
+                (do
+                  (out-fn {:tag  :ret
+                           :val  (.-value evaluation)
+                           :ns   (str (.-namespace evaluation))
+                           :ms   (.-elapsed_ms evaluation)
+                           :form source})
+                  (recur)))))))
+      (finally
+        (remove-tap tapfn)))))
 
 (defn- make-io-emitter
   [out valf]

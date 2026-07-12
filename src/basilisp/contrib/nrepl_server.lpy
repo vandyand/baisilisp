@@ -4,7 +4,8 @@
   "A port of `nbb <https://github.com/babashka/nbb>`_ 's nREPL server implementation to Basilisp."
   (:require [basilisp.contrib.bencode :as bc]
             [basilisp.string :as str])
-  (:import basilisp.logconfig
+  (:import basilisp.contrib.repl_session
+           basilisp.logconfig
            logging
            os
            socketserver
@@ -32,21 +33,6 @@
 (defmacro ^:private error [& values]
   `(when (.isEnabledFor logger logging/ERROR)
      (.log logger logging/ERROR (str/join " " [~@values]))))
-
-(definterface ^:private IStdOut
-  ;; Pythonic interface for creating `sys/stdout` like File objects.
-  (flush [])
-  (write [value]))
-
-(deftype ^:private StreamOutFn [out-fn]
-  ;; A type to use as replacement binding for writing to `sys/stdout`
-  ;; stream, so that the output ``value`` is passed to ``out-fn``
-  ;; instead.
-  IStdOut
-  (flush [_self]
-    nil)
-  (write [_self value]
-    (out-fn value)))
 
 (defn- response-for-mw [handler]
   (fn [{:keys [id session] :as request} response]
@@ -126,37 +112,47 @@
   to the result."
   [{:keys [client* code ns file column line] :as request} send-fn]
   (let [{:keys [*1 *2 *3 *e eval-ns]} @client*
-        out-stream                    (StreamOutFn #(send-fn request {"out" %}))
         ctx                           (basilisp.lang.compiler.CompilerContext. (or file "<nREPL Input>"))
         eval-ns                       (if ns
                                         (create-ns (symbol ns))
-                                        eval-ns)]
-    (binding [*ns*  eval-ns
-              *out* out-stream
-              *1    *1
-              *2    *2
-              *3    *3
-              *e    *e]
-      (try
-        (let [result (last
-                      (for [form (read-seq (cond-> {}
-                                             line   (assoc :init-line   line)
-                                             column (assoc :init-column column))
-                                           (io/StringIO code))]
-                        (basilisp.lang.compiler/compile-and-exec-form form
-                                                                      ctx
-                                                                      *ns*)))]
-          (send-value request send-fn [result {:ns (str *ns*)}]))
-        (catch python/Exception e
-          (debug :eval-exception e)
-          (let [msg (->> (basilisp.lang.exception/format_exception e (type e) (.-__traceback__ e)
-                                                                   ** :disable-color true)
-                         (str/join ""))]
-            (handle-error send-fn (assoc request :ns (str *ns*)) msg)))
-        (finally
-          (swap! client* assoc :eval-ns *ns*)
-          (send-fn request {"ns"     (str *ns*)
-                            "status" ["done"]}))))))
+                                        eval-ns)
+        session                       (basilisp.contrib.repl_session/restore-session
+                                       eval-ns *1 *2 *3 *e)
+        emit                          (fn [tag value]
+                                        (send-fn request
+                                                 (hash-map (if (= tag "out") "out" "err")
+                                                           value)))]
+    (try
+      (let [forms  (binding [*ns* eval-ns]
+                     (vec (read-seq (cond-> {}
+                                    line   (assoc :init-line   line)
+                                    column (assoc :init-column column))
+                                    (io/StringIO code))))
+            result (loop [remaining (seq forms)
+                          last-value nil]
+                     (if remaining
+                       (let [outcome (basilisp.contrib.repl_session/evaluate-form
+                                      session (first remaining)
+                                      ** :context        ctx
+                                         :emit           emit
+                                         :stdin          *in*
+                                         :record-history false
+                                         :stop-on-quit   false)]
+                         (if-let [error (.-error outcome)]
+                           (throw error)
+                           (recur (next remaining) (.-value outcome))))
+                       last-value))]
+        (send-value request send-fn [result {:ns (str (.-namespace session))}]))
+      (catch python/Exception e
+        (debug :eval-exception e)
+        (let [msg (->> (basilisp.lang.exception/format_exception e (type e) (.-__traceback__ e)
+                                                                 ** :disable-color true)
+                       (str/join ""))]
+          (handle-error send-fn (assoc request :ns (str (.-namespace session))) msg)))
+      (finally
+        (swap! client* assoc :eval-ns (.-namespace session))
+        (send-fn request {"ns"     (str (.-namespace session))
+                          "status" ["done"]})))))
 
 (defn- handle-eval [request send-fn]
   (do-handle-eval request send-fn))

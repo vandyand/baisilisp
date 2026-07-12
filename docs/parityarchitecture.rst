@@ -349,11 +349,12 @@ pREPL
 ^^^^^
 
 Basilisp now has local ``prepl`` and ``io-prepl`` APIs, alongside the existing
-nREPL server. The local implementation preserves reader source text, dynamic
-REPL history, output/error events, tap forwarding, and structured exceptions.
-Before adding a remote server, the two protocols should share an extracted
-evaluator/session service rather than continuing to duplicate reader,
-compiler, source-location, and dynamic-binding behavior.
+nREPL server. ``basilisp.contrib.repl_session`` owns namespace and history
+bindings, compiler execution, namespace transitions, and output/error streams.
+pREPL preserves reader source text, tap forwarding, and structured event
+serialization; nREPL preserves its bencode batch-result and history protocol.
+This removes the duplicated dynamic-binding/compiler path before any remote
+server work.
 
 The internal service receives code plus session state and emits ordered events.
 Its initial event model is the Clojure pREPL contract:
@@ -375,13 +376,13 @@ bencode transport. The next remote phases are request identifiers,
 authentication hooks, cancellation, CLI exposure, and concurrent-connection
 stress transcripts.
 
-The evaluator boundary should be a small Python service rather than a network
-handler: ``evaluate(form_text, session, emit) -> session``. ``session`` owns
-the current namespace, dynamic bindings, history, and a cancellation token;
-``emit`` receives only Basilisp values. ``prepl`` supplies a reader and callback
-to that service. ``io-prepl`` serializes each event as one EDN value per line.
-Only then should ``remote-prepl`` add framed sockets, authentication hooks,
-message-size limits, and loopback-by-default binding.
+The evaluator boundary is a small Python service rather than a network handler:
+``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
+the current namespace and dynamic history; ``emit`` receives only stream text.
+``prepl`` supplies reader/source framing and event callbacks, while ``io-prepl``
+serializes each event as one EDN value per line. A future ``remote-prepl`` still
+needs framed sockets, authentication hooks, message-size limits, and
+loopback-by-default binding.
 
 This preserves the important pREPL properties: one ``:ret`` event for every
 successfully read form, any number of ordered ``:out`` and ``:err`` events,

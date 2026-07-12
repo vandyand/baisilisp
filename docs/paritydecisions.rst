@@ -176,11 +176,13 @@ pREPL And Diagnostics
 socket server local-only until there is a complete remote-execution security
 model.
 
-The existing local pREPL and loopback server demonstrate the event format, but
-they should next share a Python session service with nREPL. It owns reader
-input, namespace, dynamic bindings, history, source text, output/error
-capture, and ordered event delivery. Socket and EDN-line transports are then
-small adapters over that service.
+**Completed locally:** ``basilisp.contrib.repl_session`` is the shared Python
+form evaluator used by pREPL and nREPL. It owns namespace and dynamic history
+bindings, compiler execution, namespace transitions, and output/error stream
+capture. pREPL retains reader/source text and structured events; nREPL retains
+its request batching, bencode response formatting, and final-result history
+semantics. Socket and EDN-line transports are therefore adapters rather than
+independent evaluators.
 
 Remote pREPL is remote code execution. A configurable non-loopback host is not
 an adequate security design. The next hardening patch should either constrain
@@ -257,7 +259,9 @@ Execution Order
 
 The most appropriate next work is:
 
-1. Harden the pREPL listener boundary and extract the shared session evaluator.
+1. Unify pREPL, nREPL, CLI, and human-facing diagnostic rendering around the
+   existing structured exception data before adding cancellation or remote
+   transport features.
 2. Repeat ``scripts/stm_contention_probe.py`` at realistic production-like
    workloads before considering history controls. The current forced-yield
    sample shows retry cost but no starvation; do not claim JVM STM internals
