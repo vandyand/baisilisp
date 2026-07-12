@@ -164,6 +164,49 @@ escape hatch for Python-native use. The resulting decisions are:
   patches. Their remaining changes require explicit intermediate boundaries:
   printer tokens for ``:fill`` and analyzer phases for macro-producing forms.
 
+Resolution Matrix
+^^^^^^^^^^^^^^^^^
+
+The following choices distinguish a compatible surface from an adapter or an
+intentional omission. They are the default for new work; changing one requires
+an explicit compatibility fixture and migration story.
+
+* **Coordinated mutable state:** implement ``Ref`` and ``dosync`` internally.
+  Maintained Python transaction and object-database libraries are useful
+  persistence integrations, but not substitutes for in-process multi-Ref
+  transactions.
+* **Asynchronous message passing:** keep the native channel state machine in
+  ``basilisp.concurrent``. Add an AnyIO bridge only as an optional dependency
+  after the native contract covers selection and timeout. Do not expose
+  third-party stream endpoints as Basilisp channels.
+* **Data validation:** implement ``basilisp.spec.alpha`` around portable
+  Basilisp values and Clojure-shaped conform/explain data. Model frameworks are
+  opt-in boundary adapters: ``datafy`` is the preferred object-to-data hook,
+  while model construction remains an explicit application operation.
+* **Python model frameworks:** place dataclass, attrs, and Pydantic support in
+  optional ``basilisp.contrib`` adapters. Each adapter must expose a lossless
+  read projection and a separately named construction/coercion operation; it
+  must never register a spec, import a model, or coerce a value implicitly.
+* **Packaging and dependencies:** use ``pyproject.toml`` for project settings
+  and the selected Python frontend, such as ``uv`` or ``pip``, for environment
+  resolution and installation. A future ``add-lib`` may invoke a configured
+  frontend in a child process, report the exact environment mutation, and
+  require a restart. It must not resolve Maven coordinates or mutate a live
+  interpreter's import graph.
+* **Reloading:** retain explicit ``:reload`` and ``:reload-all`` behavior over
+  Basilisp modules and serialize reload requests with a process-local lock.
+  Reload cannot update existing Python object references, instances, closures,
+  native extensions, or already imported foreign names.
+* **JVM service APIs:** use direct Python facilities under Python-native names:
+  ``array``/``memoryview`` for typed binary data, DB-API cursors for result
+  iteration, ``urllib.parse`` values for URLs, and Python iterators or async
+  iterators for streams. Do not claim Java array, JDBC, URI, bean, or Stream
+  compatibility for those adapters.
+* **Portable Clojure libraries:** port source and tests into Python
+  distributions only when their full transitive dependency graph is portable.
+  A port manifest records its upstream revision, substitutions, and deviations;
+  Basilisp does not become a Maven/JAR loader.
+
 The sections below record the concrete consequences of those choices, rejected
 alternatives, and the gates required before each feature can be advertised.
 
@@ -184,16 +227,18 @@ not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
   validator, watches, and a lock. Normal dereference reads the latest committed
   value.
 * ``dosync`` is a macro that passes a thunk to the transaction runner. A
-  ``contextvars.ContextVar`` holds the current transaction, making nested
-  transactions join the outer transaction while remaining safe for thread-pool
-  and async-task context propagation.
+  ``contextvars.ContextVar`` makes nested calls in one execution context join
+  the outer transaction. A transaction never crosses a thread or process
+  boundary; callers must start a separate transaction there.
 * A transaction records first-read versions and staged writes. Dereference
   returns a staged value when present; ``alter`` and ``ref-set`` run only
   against that in-transaction value.
 * Commit acquires every read/write ref lock in a stable identity order,
   validates every recorded version, validates staged values, installs all
   values, increments versions, and releases locks before running watches.
-  A conflict discards the attempt and reruns the thunk with bounded backoff.
+  A conflict discards the attempt and reruns the thunk. Compatibility mode
+  retries until success or user code throws; the experimental namespace may
+  expose an explicit attempt/time limit that reports structured conflict data.
 * Transactions are synchronous and must not await. Retried bodies make external
   effects unsafe; ``io!`` should reject a dynamically marked impure operation
   while a transaction is active. Deferred agent sends belong after commit only.
@@ -214,13 +259,15 @@ separate storage adapter, but it must not participate in a ``dosync`` commit
 until that adapter can validate and atomically publish with the Ref write set.
 
 The initial engine must reject an attempt to await and report conflicts through
-structured exception data when an explicitly configured timeout or cancellation
-policy stops a retry. Awaiting allows another task to observe speculative control
-flow. As with Clojure Refs, host objects are accepted but users must treat a
-stored value as immutable: mutation outside a transaction voids snapshot
-guarantees and cannot be detected reliably for arbitrary Python objects. The
-exception data should identify the transaction, conflicting Ref identities, and
-attempt count, so applications can recover without a fabricated MVCC guarantee.
+structured exception data when an explicitly configured timeout or attempt
+limit stops a retry. Awaiting allows another task to observe speculative
+control flow. As with Clojure Refs, host objects are accepted but users must
+treat a stored value as immutable: mutation outside a transaction voids
+snapshot guarantees and cannot be detected reliably for arbitrary Python
+objects. The exception data should identify the transaction, conflicting Ref
+identities, and attempt count, so applications can recover without a
+fabricated MVCC guarantee. Locks, not an implementation-specific assumption
+about the GIL, establish the commit boundary.
 
 Channels And Async Interoperability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -242,9 +289,21 @@ supported by Basilisp do not share a uniform close and selection API.
 * The implementation owns queues of pending put and take futures. Cancellation
   must remove its waiter atomically, close must wake every waiter, and a fixed
   buffer must apply backpressure without growing.
+
 ``alts!`` and ``timeout`` come after the single-channel contract. Selection
 needs a shared winner token so a value is neither lost nor delivered twice.
 Transducers, pipelines, pub/sub, and transducers-on-channels are later work.
+
+The next compatibility-shaped operation is ``(alts! ports & opts)``. ``ports``
+accepts take channels and ``[channel value]`` put pairs; it returns
+``[value port]``, with put values represented by their boolean completion
+result. ``:priority true`` attempts ready ports in supplied order. Otherwise,
+ready ports must be selected fairly rather than accidentally following deque
+order. ``:default value`` returns ``[value :default]`` without registering any
+waiter. The internal registration protocol must reserve a single winner before
+matching a put or take, deregister every losing waiter, and handle cancellation
+and close races. ``timeout`` should be a one-shot channel backed by the owning
+event loop's timer and must remove its timer handle when closed early.
 
 This is initially an ``asyncio`` API: callers use it from ``defasync`` with
 ``await``. A ``go`` macro is explicitly deferred because Python coroutines do
@@ -491,6 +550,17 @@ generator adapter after descriptors are stable; it must not decide what
 ``conform`` or ``explain-data`` means. Function instrumentation follows with
 explicit Var wrapping and ``unstrument`` restoration, never monkey-patching
 arbitrary Python callables.
+
+The adapter policy is deliberately conservative because the three model systems
+do not mean the same thing by validation. Dataclasses primarily describe field
+layout, attrs can run converters before validators, and Pydantic may parse and
+coerce values. Therefore an adapter's default read path must produce ordinary
+Basilisp data without validation side effects. Its construction path must make
+coercion explicit, preserve field aliases and defaults in metadata, and convert
+framework validation failures into ordinary, documented problem data rather
+than pretending they are native spec failures. The first deliverable should be
+a dataclass ``datafy`` adapter because it needs no optional dependency; attrs
+and Pydantic follow as isolated contrib packages with contract fixtures.
 
 Python interop should similarly prefer narrow vocabulary over Java-shaped
 aliases. Add adapters for mappings, sequences, asynchronous iterables, and
