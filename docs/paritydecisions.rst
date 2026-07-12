@@ -391,11 +391,14 @@ Diagnostics And Method Signatures
 **Decision:** normalize existing exception data for every renderer, and improve
 method-signature feedback only when Python introspection is authoritative.
 
-There should be one internal diagnostic normalizer, not a new exception class.
-It consumes ``CompilerException.data``, ``ExceptionInfo.data``, and foreign
-exceptions and produces a persistent map containing phase, message, exception
-class, source span, form when available, and an ordered cause chain. CLI text,
-pREPL EDN events, nREPL response data, and human tracebacks then render that
+**Completed locally:** ``basilisp.lang.diagnostics/exception_data`` is the
+internal normalizer, not a new exception class. It consumes
+``CompilerException.data``, ``ExceptionInfo.data``, and foreign exceptions and
+produces a persistent map containing phase, message, exception class, source
+span, form when available, and an ordered cause chain. pREPL exception events
+now use that representation while preserving their existing envelope.
+
+CLI text, nREPL response data, and human tracebacks should next render the
 same map. Transport-specific fields such as request id, stream text, and
 bencode status remain adapters outside the core diagnostic data. Transcript
 fixtures must assert the same nested compiler/runtime error reports equivalent

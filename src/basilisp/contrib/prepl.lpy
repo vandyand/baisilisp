@@ -2,16 +2,14 @@
   "A local structured REPL evaluator compatible with Clojure pREPL events."
   (:import basilisp.contrib.repl_session
            basilisp.contrib.prepl_server
+           basilisp.lang.diagnostics
            io
            socketserver
            threading))
 
 (defn- exception-value
   [e phase]
-  (cond-> {:phase   phase
-           :type    (.-__name__ (type e))
-           :message (str e)}
-    (ex-data e) (assoc :data (ex-data e))))
+  (basilisp.lang.diagnostics/exception-data e ** :phase phase))
 
 (defn prepl
   "Evaluate forms from ``in-reader`` and emit structured events to ``out-fn``.

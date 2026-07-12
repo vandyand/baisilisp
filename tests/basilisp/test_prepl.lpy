@@ -38,7 +38,9 @@
     (is (= 1 (count @events)))
     (is (= {:tag :ret :form "(/ 1 0)" :exception true}
            (select-keys (first @events) [:tag :form :exception])))
-    (is (= :execution (get-in (first @events) [:val :phase])))))
+    (is (= :execution (get-in (first @events) [:val :phase])))
+    (is (= "ZeroDivisionError" (get-in (first @events) [:val :type])))
+    (is (= "builtins.ZeroDivisionError" (get-in (first @events) [:val :class])))))
 
 (deftest prepl-session-namespace-and-quit-test
   (let [events (atom [])]
