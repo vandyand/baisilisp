@@ -25,6 +25,9 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._commuted = stm.Ref(0)
         self._model_commuted = 0
         self._commute_commits = 0
+        self._ensured = stm.Ref(0)
+        self._model_ensured = 0
+        self._ensure_commits = 0
 
     @rule(
         deltas=st.lists(
@@ -79,6 +82,34 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._model_commuted += sum(deltas)
         self._commute_commits += len(deltas)
 
+    @rule(
+        deltas=st.lists(
+            st.integers(min_value=-100, max_value=100), min_size=1, max_size=8
+        ),
+        workers=st.integers(min_value=1, max_value=4),
+    )
+    def concurrent_ensured_commutes(self, deltas: list[int], workers: int) -> None:
+        def ensure_and_commute(delta: int) -> None:
+            def add(value: int, amount: int) -> int:
+                time.sleep(0)
+                return value + amount
+
+            def body() -> None:
+                stm.ensure(self._ensured)
+                stm.commute(self._ensured, add, delta)
+
+            stm.run_transaction(body)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(workers, len(deltas))
+        ) as executor:
+            futures = [executor.submit(ensure_and_commute, delta) for delta in deltas]
+            for future in futures:
+                future.result(timeout=5)
+
+        self._model_ensured += sum(deltas)
+        self._ensure_commits += len(deltas)
+
     @invariant()
     def refs_match_the_serialized_model(self) -> None:
         assert self._model_first == self._first.deref()
@@ -88,6 +119,8 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         assert 0 == self._first.deref() + self._second.deref()
         assert self._model_commuted == self._commuted.deref()
         assert self._commute_commits == self._commuted.version
+        assert self._model_ensured == self._ensured.deref()
+        assert self._ensure_commits == self._ensured.version
 
 
 TestTransactionHistoryMachine = TransactionHistoryMachine.TestCase

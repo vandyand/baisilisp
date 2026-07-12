@@ -96,9 +96,9 @@ Python async special form; `await-agent` provides that synchronous wait
 operation instead.
 `agent-errors` is now available as Clojure's deprecated one-item wrapper around
 `agent-error`.
-Experimental `basilisp.stm/commute` is available, but it is intentionally not
-an alias for the missing `basilisp.core/commute` until the full Ref surface is
-verified.
+Experimental `basilisp.stm/commute` and `basilisp.stm/ensure` are available,
+but they are intentionally not aliases for the missing `basilisp.core` names
+until the full Ref surface is verified.
 
 ### Version identity and unchecked arithmetic
 

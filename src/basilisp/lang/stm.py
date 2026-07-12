@@ -71,6 +71,7 @@ class _Transaction:
         self._writes: dict[Ref[Any], Any] = {}
         self._commutes: dict[Ref[Any], list[_Commute]] = {}
         self._commuted_values: dict[Ref[Any], Any] = {}
+        self._ensures: set[Ref[Any]] = set()
         self._after_commit: list[Callable[[], Any]] = []
         self._conflicts: tuple[tuple[Ref[Any], int, int], ...] = ()
 
@@ -108,7 +109,8 @@ class _Transaction:
         elif ref in self._reads:
             value = self._reads[ref][0]
         else:
-            value, _ = ref._read_committed()
+            value, version = ref._read_committed()
+            self._reads[ref] = (value, version)
 
         result = f(value, *args)
         self._commutes.setdefault(ref, []).append((f, args))
@@ -117,6 +119,12 @@ class _Transaction:
         else:
             self._commuted_values[ref] = result
         return result
+
+    def ensure(self, ref: Ref[T]) -> T:
+        """Protect ``ref`` from version changes until this transaction commits."""
+        value = self.read(ref)
+        self._ensures.add(ref)
+        return value
 
     def after_commit(self, action: Callable[[], Any]) -> None:
         self._after_commit.append(action)
@@ -142,7 +150,8 @@ class _Transaction:
             conflicts = tuple(
                 (ref, version, ref._version)
                 for ref, (_, version) in self._reads.items()
-                if ref not in pure_commutes and ref._version != version
+                if (ref not in pure_commutes or ref in self._ensures)
+                and ref._version != version
             )
             if conflicts:
                 self._conflicts = conflicts
@@ -226,6 +235,16 @@ def commute(ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
     caller must accept last-writer-wins behavior.
     """
     return _require_transaction().commute(ref, f, *args)
+
+
+def ensure(ref: Ref[T]) -> T:
+    """Return and protect ``ref``'s in-transaction value until commit.
+
+    Ordinary reads are already validated by this optimistic engine. ``ensure``
+    is significant when a Ref is otherwise updated only by ``commute``, which
+    normally permits newer committed values at the replay point.
+    """
+    return _require_transaction().ensure(ref)
 
 
 def after_commit(action: Callable[[], Any]) -> None:

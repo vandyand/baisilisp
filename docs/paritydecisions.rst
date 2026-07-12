@@ -65,8 +65,8 @@ The next STM phases are intentionally ordered:
    commute must not silently become an ``alter``: concurrent changes to a
    commuted Ref are permitted, so callers remain responsible for commutativity
    and retry-safe functions.
-4. Add ``ensure`` now that commute can advance a Ref without a retry. It must
-   mark a read Ref for version validation and return its in-transaction value.
+4. **Completed locally:** ``ensure`` returns the in-transaction value and marks
+   a Ref for version validation when it would otherwise be a pure commute.
 5. Do not add Clojure's adaptive history queue until contention measurements
    show that the simpler validation model causes material retry starvation.
    History is an optimization for snapshot retention, not a prerequisite for
@@ -253,9 +253,9 @@ Execution Order
 The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
-2. Design and implement STM ``ensure`` with an explicit read-protection proof.
-   The Hypothesis transfer and commute-model suite is in place; extend it with
-   ensure/write interleavings before claiming Clojure compatibility.
+2. Measure STM contention before considering history controls. The Hypothesis
+   transfer, commute, and ensure-model suite is in place; do not claim JVM STM
+   internals without a measurable need and a separate proof.
 3. Implement ``fdef`` plus Var-only instrumentation, then add optional
    Hypothesis-backed checking and ``fspec`` generation.
 4. Run the sample package build/install probe before considering a new backend.

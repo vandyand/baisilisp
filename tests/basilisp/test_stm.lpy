@@ -57,3 +57,7 @@
                  (stm/dosync
                   (stm/commute value inc)
                   (stm/ref-set value 0))))))
+
+(deftest ensure-returns-the-in-transaction-value-test
+  (let [value (stm/ref 1)]
+    (is (= 1 (stm/dosync (stm/ensure value))))))

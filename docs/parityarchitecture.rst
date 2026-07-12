@@ -66,7 +66,8 @@ versioned references, transaction-local read/write sets, stable lock ordering,
 validation at commit, conflict retries, and deterministic contention coverage.
 ``io!`` and deferred agent sends are implemented as explicit retry-safety
 guards. Experimental ``commute`` records/replays commutative updates under
-commit locks; ``ensure`` and history controls remain deferred.
+commit locks; experimental ``ensure`` opts a Ref back into normal version
+validation; history controls remain deferred.
 
 Project Configuration And Builds
 --------------------------------
@@ -248,12 +249,13 @@ The current milestone includes experimental ``commute``: it records each
 operation separately, returns its in-transaction result, and replays each
 operation against the newest committed value under the commit locks. A normal
 write after commute is rejected, while a commute after a normal write remains
-a normal validated write. History tuning, ``ensure``, and asynchronous
-transactions remain excluded. ``ensure`` requires a separate proof for read
-protection across the transaction. The test gate includes deterministic
+a normal validated write. Experimental ``ensure`` provides optimistic
+read-protection by retaining version validation for a Ref that would otherwise
+be a pure commute; it does not recreate the JVM's long-held read locks. History
+tuning and asynchronous transactions remain excluded. The test gate includes deterministic
 barrier-driven conflicts, randomized operation histories checked against a
-serialized model, commute replay/interleaving fixtures, validator/watch
-ordering tests, nested transaction tests, and high-contention stress coverage.
+serialized model, commute/ensure replay interleavings, validator/watch ordering
+tests, nested transaction tests, and high-contention stress coverage.
 
 This is a compatibility feature, not a general-purpose database transaction
 API. The external ``stm`` distribution is unlicensed and unmaintained, and

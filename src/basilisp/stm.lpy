@@ -42,6 +42,14 @@
   [ref f & args]
   (apply basilisp.lang.stm/commute ref f args))
 
+(defn ensure
+  "Return and protect ``ref``'s in-transaction value until commit.
+
+  Ordinary reads are already validated by the optimistic STM. ``ensure`` is
+  significant when a Ref would otherwise be updated only by ``commute``."
+  [ref]
+  (basilisp.lang.stm/ensure ref))
+
 (defn after-commit
   "Schedule a zero-argument ``action`` to run once after ``dosync`` commits.
 

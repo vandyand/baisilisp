@@ -267,6 +267,73 @@ def test_normal_writes_cannot_follow_a_commute_but_can_precede_one():
     assert [1] == calls
 
 
+def test_ensure_requires_a_retry_when_a_commuted_ref_changes():
+    ref = stm.Ref(0)
+    reader_ready = threading.Event()
+    writer_committed = threading.Event()
+    attempts = 0
+
+    def ensured_commute():
+        nonlocal attempts
+        attempts += 1
+        expected = 0 if attempts == 1 else 1
+        assert expected == stm.ensure(ref)
+        if attempts == 1:
+            reader_ready.set()
+            assert writer_committed.wait(timeout=2)
+        return stm.commute(ref, lambda value: value + 10)
+
+    def write_new_value():
+        assert reader_ready.wait(timeout=2)
+        stm.run_transaction(lambda: stm.ref_set(ref, 1))
+        writer_committed.set()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        commuter = executor.submit(lambda: stm.run_transaction(ensured_commute))
+        writer = executor.submit(write_new_value)
+        assert 11 == commuter.result(timeout=2)
+        writer.result(timeout=2)
+
+    assert 2 == attempts
+    assert 11 == ref.deref()
+
+
+def test_ensure_after_commute_retains_the_initial_version_for_validation():
+    ref = stm.Ref(0)
+    reader_ready = threading.Event()
+    writer_committed = threading.Event()
+    attempts = 0
+
+    def commute_then_ensure():
+        nonlocal attempts
+        attempts += 1
+        result = stm.commute(ref, lambda value: value + 10)
+        assert result == stm.ensure(ref)
+        if attempts == 1:
+            reader_ready.set()
+            assert writer_committed.wait(timeout=2)
+        return result
+
+    def write_new_value():
+        assert reader_ready.wait(timeout=2)
+        stm.run_transaction(lambda: stm.ref_set(ref, 1))
+        writer_committed.set()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        commuter = executor.submit(lambda: stm.run_transaction(commute_then_ensure))
+        writer = executor.submit(write_new_value)
+        assert 11 == commuter.result(timeout=2)
+        writer.result(timeout=2)
+
+    assert 2 == attempts
+    assert 11 == ref.deref()
+
+
+def test_ensure_requires_an_active_transaction():
+    with pytest.raises(RuntimeError, match="requires an active transaction"):
+        stm.ensure(stm.Ref(0))
+
+
 def test_after_commit_requires_a_transaction_and_callable():
     with pytest.raises(RuntimeError, match="requires an active transaction"):
         stm.after_commit(lambda: None)
