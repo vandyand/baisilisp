@@ -380,30 +380,20 @@ differently.
 Pretty Printing
 ^^^^^^^^^^^^^^^
 
-The existing XP-style printer already has logical blocks, conditional newline
-tokens, and ``simple-dispatch``. The narrow next change is to add ``:fill`` to
-the newline validator and writer decision table. A fill break is emitted when
-the next individual element does not fit, rather than forcing every later
-linear break in the enclosing block. That behavior needs token-level tests at
-several margins before it is used by dispatch functions.
+The existing XP-style printer has logical blocks, conditional newline tokens,
+``simple-dispatch``, and an opt-in ``code-dispatch``. ``:fill`` newline support
+uses a local token look-ahead section: it breaks only when the next element
+does not fit and does not force later sibling breaks in the enclosing block.
+The writer also tracks an inner break separately so nested logical blocks
+correctly influence parent fill decisions. Golden tests cover narrow and wide
+margins, nested blocks, reader macros, and default data-printing behavior.
 
-``code-dispatch`` should then be a separate multimethod layered over the same
-writer. Begin with generic code-list behavior and well-defined special forms:
-``def``, ``defn``, ``fn``, ``let``/``loop``/``binding``, ``if``, ``when``,
-``cond``, ``case``, ``try``/``catch``/``finally``, ``ns``, and ``require``.
-Each method must gracefully fall back to generic list printing for incomplete
-or malformed forms. Golden fixtures should assert output at narrow and wide
-margins, with metadata, nested collections, print-level, print-length, and
-reader round trips where printed code is data-readable.
-
-``:fill`` cannot be implemented as an alias for ``:linear``. It needs a token
-stream with a local look-ahead group: retain intervening spaces while the next
-element fits, then emit one break without forcing later siblings to break. The
-current printer's conditional-section bookkeeping lacks that retained context,
-so the first change is an internal token representation with width annotations
-and a renderer that consumes it. Preserve the existing public dispatch API
-while adding golden tests first; code dispatch should use the same token stream
-rather than duplicate layout logic.
+``code-dispatch`` is a separate multimethod layered over the same writer. It
+handles generic code lists and symbols, reader macros, definition forms,
+binding forms, and ``cond``-style pairs, and falls back to ordinary list
+printing for incomplete or unrecognized forms. Future dispatch additions such
+as ``case``, ``try``/``catch``/``finally``, ``ns``, and ``require`` should use
+the same fallback and golden-test approach.
 
 ``cl-format`` remains deliberately out of scope. It is a separate, large
 format-language implementation with its own argument-consumption and locale

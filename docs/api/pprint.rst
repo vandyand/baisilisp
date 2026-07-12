@@ -75,7 +75,7 @@ There are three basic concepts in the XP algorithm which are necessary in order 
   A dispatch function can emit a logical block using the :lpy:fn:`pprint-logical-block` macro.
 
 - *Conditional newlines* can be emitted anywhere a newline may need inserted into the output stream.
-  Newlines can be one of 3 different types which hints to the pretty printer when a newline should be emitted.
+  Newlines can be one of 4 different types which hints to the pretty printer when a newline should be emitted.
 
   Dispatch functions can emit newlines in any supported style using the :lpy:fn:`pprint-newline` function.
 
@@ -86,6 +86,10 @@ There are three basic concepts in the XP algorithm which are necessary in order 
 
   - ``:miser`` style newlines are emitted only when the output will occur in the "miser" region as defined by :lpy:var:`*print-miser-width*`.
     This allows additional newlines to be emitted as the output nests closer to the right margin.
+
+  - ``:fill`` style newlines are emitted when the next element does not fit on
+    the current line. Unlike ``:linear``, a fill break does not force later
+    sibling breaks in the same logical block.
 
 - *Indentation* commands indicate how indentation of subsequent lines in a logical block should be defined.
   Indentation may be defined relative to either the starting column of the current logical block or to the current column of the output.
@@ -105,7 +109,6 @@ Unimplemented Features
 
 The following features from ``clojure.pprint`` are not currently implemented:
 
-- ``:fill`` newlines
 - ``cl-format``
 
 .. _pprint_references:

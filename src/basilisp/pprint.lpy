@@ -145,9 +145,9 @@
 
 ;; `indent` may be changed later by an indent token, whereas `start-col` is fixed at
 ;; the point the start block token is encountered in the stream.
-(deftype ^:private LogicalBlock [parent prefix per-line-prefix suffix ^:mutable indent ^:mutable start-col ^:mutable force-nl?]
+(deftype ^:private LogicalBlock [parent prefix per-line-prefix suffix ^:mutable indent ^:mutable start-col ^:mutable force-nl? ^:mutable intra-block-nl?]
   (__repr__ [self]
-    (str [(python/id self) (python/repr parent) prefix suffix indent force-nl?])))
+    (str [(python/id self) (python/repr parent) prefix suffix indent force-nl? intra-block-nl?])))
 
 (deftype ^:private StartBlock [block start end]
   (__repr__ [self]
@@ -228,6 +228,17 @@
                           (ancestor? (.-block token) block)))]
     (split-queue-with comparator (pop buffer))))
 
+(defn ^:private get-subsection
+  "Get the local look-ahead section used by ``:fill`` newlines."
+  [buffer]
+  (let [nl    (first buffer)
+        block (.-block nl)
+        comparator (fn [token]
+                     (and (instance? Newline token)
+                          (or (identical? (.-block token) block)
+                              (ancestor? (.-block token) block))))]
+    (first (split-queue-with comparator (pop buffer)))))
+
 (defprotocol PrettyWriter
   "Protocol defining a writer type for pretty printing with the XP algorithm.
 
@@ -259,7 +270,7 @@
   ([writer max-columns]
    (let [lock   (threading/RLock)
          writer (get-column-writer writer max-columns)
-         state  (volatile! {:block  (LogicalBlock nil nil nil nil 0 0 false)
+         state  (volatile! {:block  (LogicalBlock nil nil nil nil 0 0 false false)
                             :buffer (queue)
                             :pos    0})]
      (letfn [;; Private helpers can only be called while the lock is held
@@ -271,14 +282,17 @@
                  (or (nil? max)
                      (pos? (- max (+ col (buffer-length tokens)))))))
 
-             ;; Set `force-nl?` on the current logical block to ensure that any
-             ;; remaining `:linear` newlines associated with the block are emitted.
-             (set-block-force-nl! [block]
-               (loop [block block]
-                 (when block
-                   (when-not (.-force-nl? block)
-                     (set! (.-force-nl? block) true)
-                     (recur (.-parent block))))))
+             ;; Record an emitted newline. Ancestors inherit the forced-newline
+             ;; state and remember that a nested block has already broken, which
+             ;; is required for correct `:fill` behavior.
+             (set-block-newline-state! [block]
+               (set! (.-force-nl? block) true)
+               (set! (.-intra-block-nl? block) false)
+               (loop [parent (.-parent block)]
+                 (when parent
+                   (set! (.-force-nl? parent) true)
+                   (set! (.-intra-block-nl? parent) true)
+                   (recur (.-parent parent)))))
 
              ;; Set the `indent` and `start-col` of the current logical block to match
              ;; the current column position of the base writer.
@@ -292,24 +306,31 @@
                (or (.-force-nl? (.-block token))
                    (not (tokens-fit? section))))
 
+             ;; Return `true` if a `:miser` newline should be emitted.
+             (emit-miser-nl? [token section]
+               (let [miser-width *print-miser-width*
+                     max-col     (:max @writer)]
+                 (and miser-width
+                      max-col
+                      (>= (.-start-col (.-block token)) (- max-col miser-width))
+                      (emit-linear-nl? token section))))
+
              ;; Return `true` if the given newline type should be emitted.
-             (emit-nl? [token section]
+             (emit-nl? [token section subsection]
                (condp = (.-kind token)
                  :mandatory true
                  :linear    (emit-linear-nl? token section)
-                 :miser     (let [miser-width *print-miser-width*
-                                  max-col     (:max @writer)]
-                              (and miser-width
-                                   max-col
-                                   (>= (.-start-col (.-block token)) (- max-col miser-width))
-                                   (emit-linear-nl? token section)))))
+                 :miser     (emit-miser-nl? token section)
+                 :fill      (or (.-intra-block-nl? (.-block token))
+                                (not (tokens-fit? subsection))
+                                (emit-miser-nl? token section))))
 
              ;; Generate the newline and subsequent indent from a newline token token.
              (gen-nl [token]
                (let [block  (.-block token)
                      indent (or (.-indent block) 0)
                      prefix (or (.-per-line-prefix block) "")]
-                 (set-block-force-nl! block)
+                 (set-block-newline-state! block)
                  (str os/linesep prefix (.ljust "" indent))))
 
              ;; Write a sequence of tokens to the base writer.
@@ -318,7 +339,8 @@
                  (when-let [s (condp instance? token
                                 Blob       (.-data token)
                                 Newline    (when (or (= (.-kind token) :mandatory)
-                                                     (.-force-nl? (.-block token)))
+                                                     (and (not= (.-kind token) :fill)
+                                                          (.-force-nl? (.-block token))))
                                              (gen-nl token))
                                 Indent     (let [block  (.-block token)
                                                  indent (+ (.-offset token)
@@ -345,7 +367,8 @@
                  (when (seq buf)
                    (let [[section remainder] (get-section buf)
                          maybe-nl            (first buf)
-                         buf                 (if (emit-nl? maybe-nl section)
+                         subsection          (get-subsection buf)
+                         buf                 (if (emit-nl? maybe-nl section subsection)
                                                (do
                                                  (.write writer (gen-nl maybe-nl))
                                                  (pop buf))
@@ -413,7 +436,7 @@
         (start-block [self prefix per-line-prefix suffix]
           (with [_ lock]
                 (let [current-block     (:block @state)
-                      new-block         (LogicalBlock current-block prefix per-line-prefix suffix 0 0 false)
+                      new-block         (LogicalBlock current-block prefix per-line-prefix suffix 0 0 false false)
                       [old-pos new-pos] (update-pos prefix)
                       start-block       (StartBlock new-block old-pos new-pos)]
                   (vswap! state #(-> %
@@ -512,11 +535,13 @@
     doesn't fit on one line
   - ``:mandatory``, which the pretty writer will emit in all cases
   - ``:miser``, which will emit a newline whenever the output column is in the
-    miser region, as configured by :lpy:var:`*print-miser-width*`"
+    miser region, as configured by :lpy:var:`*print-miser-width*`
+  - ``:fill``, which emits a newline only when the next element does not fit on
+    the current line, allowing later elements to continue on the same line"
   [kind]
-  (when-not (#{:linear :mandatory :miser} kind)
+  (when-not (#{:fill :linear :mandatory :miser} kind)
     (throw
-     (ex-info "Newline must be one of: :linear, :mandatory, :miser"
+     (ex-info "Newline must be one of: :fill, :linear, :mandatory, :miser"
               {:kind kind})))
   (pp-newline *out* kind))
 

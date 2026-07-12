@@ -343,6 +343,44 @@
  [:abcdefghijklmn :a]]" 25
       "[:abcdefghijklmnop [:abcdefghijklmn :a]]" 50)))
 
+(defn fill-dispatch
+  [obj]
+  (if (vector? obj)
+    (pprint/pprint-logical-block :prefix "[" :suffix "]"
+      (loop [items (seq obj)]
+        (when items
+          (pprint/write-out (first items))
+          (when-let [more (next items)]
+            (.write *out* " ")
+            (pprint/pprint-newline :fill)
+            (recur more)))))
+    (pr obj)))
+
+(deftest pprint-fill-test
+  (are [expected margin]
+    (= expected
+       (-> (binding [pprint/*print-right-margin* margin]
+             (with-out-str
+               (pprint/with-pprint-dispatch fill-dispatch
+                 (pprint/pprint ["aa" "bbb" "cccc" "dd" "eee"]))))
+           trim-and-replace-newlines
+           (str/replace " \n" "\n")))
+    "[\"aa\"\n \"bbb\"\n \"cccc\"\n \"dd\"\n \"eee\"]" 8
+    "[\"aa\"\n \"bbb\"\n \"cccc\"\n \"dd\"\n \"eee\"]" 12
+    "[\"aa\"\n \"bbb\"\n \"cccc\"\n \"dd\" \"eee\"]" 16
+    "[\"aa\"\n \"bbb\"\n \"cccc\" \"dd\" \"eee\"]" 22
+    "[\"aa\" \"bbb\" \"cccc\" \"dd\" \"eee\"]" 80
+    "[\"aa\" \"bbb\" \"cccc\" \"dd\" \"eee\"]" nil))
+
+(deftest pprint-fill-nested-test
+  (is (= "[[\"aaaa\" \"bbbb\"]\n \"cc\" \"dd\" [\"eeee\" \"ffff\"] \"gg\"]"
+         (-> (binding [pprint/*print-right-margin* 40]
+               (with-out-str
+                 (pprint/with-pprint-dispatch fill-dispatch
+                   (pprint/pprint [["aaaa" "bbbb"] "cc" "dd" ["eeee" "ffff"] "gg"]))))
+             trim-and-replace-newlines
+             (str/replace " \n" "\n")))))
+
 (deftest pprint-code-dispatch-test
   (testing "definition forms"
     (is (= "(defn \n  add \n  \"Adds two numbers.\" \n  [x y] \n  (+ x y))"
