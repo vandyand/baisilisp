@@ -6,6 +6,7 @@ import sys
 
 import pytest
 
+from basilisp.lang import keyword as kw
 from basilisp.lang import runtime
 from basilisp.lang import symbol as sym
 
@@ -218,6 +219,140 @@ def test_fixtures(pytester: pytest.Pytester):
     assert 0 == get_volatile("once-cleanup")
     assert 2 == get_volatile("each-no-cleanup")
     assert 0 == get_volatile("each-cleanup")
+
+
+def test_clojure_style_each_fixtures(pytester: pytest.Pytester):
+    code = """
+    (ns test-clojure-style-each-fixtures
+      (:require [basilisp.test :refer [deftest is use-fixtures]]))
+
+    (def events (atom []))
+
+    (defn outer [f]
+      (swap! events conj :outer-before)
+      (f)
+      (swap! events conj :outer-after))
+
+    (defn inner [f]
+      (swap! events conj :inner-before)
+      (f)
+      (swap! events conj :inner-after))
+
+    (use-fixtures :each outer inner)
+
+    (deftest first-test
+      (swap! events conj :first)
+      (is true))
+
+    (deftest second-test
+      (swap! events conj :second)
+      (is true))
+    """
+    pytester.makefile(".lpy", test_clojure_style_each_fixtures=code)
+    pytester.syspathinsert()
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=2)
+
+    events = runtime.Var.find_safe(
+        sym.symbol("events", ns="test-clojure-style-each-fixtures")
+    ).value.deref()
+    assert list(events) == [
+        kw.keyword("outer-before"),
+        kw.keyword("inner-before"),
+        kw.keyword("first"),
+        kw.keyword("inner-after"),
+        kw.keyword("outer-after"),
+        kw.keyword("outer-before"),
+        kw.keyword("inner-before"),
+        kw.keyword("second"),
+        kw.keyword("inner-after"),
+        kw.keyword("outer-after"),
+    ]
+
+
+def test_clojure_style_once_fixture_wraps_all_namespace_tests(
+    pytester: pytest.Pytester,
+):
+    code = """
+    (ns test-clojure-style-once-fixture
+      (:require [basilisp.test :refer [deftest is use-fixtures]]))
+
+    (def events (atom []))
+
+    (defn once-fixture [f]
+      (swap! events conj :before)
+      (f)
+      (swap! events conj :after))
+
+    (use-fixtures :once once-fixture)
+
+    (deftest first-test
+      (swap! events conj :first)
+      (is true))
+
+    (deftest second-test
+      (swap! events conj :second)
+      (is true))
+    """
+    pytester.makefile(".lpy", test_clojure_style_once_fixture=code)
+    pytester.syspathinsert()
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=2)
+
+    events = runtime.Var.find_safe(
+        sym.symbol("events", ns="test-clojure-style-once-fixture")
+    ).value.deref()
+    assert list(events) == [
+        kw.keyword("before"),
+        kw.keyword("first"),
+        kw.keyword("second"),
+        kw.keyword("after"),
+    ]
+
+
+def test_mixed_once_fixture_styles_preserve_nesting(pytester: pytest.Pytester):
+    code = """
+    (ns test-mixed-once-fixtures
+      (:require [basilisp.test :refer [deftest is use-fixtures]]))
+
+    (def events (atom []))
+
+    (defn yielding-fixture []
+      (swap! events conj :yield-before)
+      (yield)
+      (swap! events conj :yield-after))
+
+    (defn wrapping-fixture [f]
+      (swap! events conj :thunk-before)
+      (f)
+      (swap! events conj :thunk-after))
+
+    (use-fixtures :once yielding-fixture wrapping-fixture)
+
+    (deftest first-test
+      (swap! events conj :first)
+      (is true))
+
+    (deftest second-test
+      (swap! events conj :second)
+      (is true))
+    """
+    pytester.makefile(".lpy", test_mixed_once_fixtures=code)
+    pytester.syspathinsert()
+    result = pytester.runpytest()
+    result.assert_outcomes(passed=2)
+
+    events = runtime.Var.find_safe(
+        sym.symbol("events", ns="test-mixed-once-fixtures")
+    ).value.deref()
+    assert list(events) == [
+        kw.keyword("yield-before"),
+        kw.keyword("thunk-before"),
+        kw.keyword("first"),
+        kw.keyword("second"),
+        kw.keyword("thunk-after"),
+        kw.keyword("yield-after"),
+    ]
 
 
 @pytest.mark.parametrize(

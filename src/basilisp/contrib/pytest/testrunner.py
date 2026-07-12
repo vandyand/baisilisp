@@ -8,8 +8,10 @@ from collections.abc import Callable, Iterable, Iterator
 from functools import cache
 from pathlib import Path
 from types import GeneratorType
+from typing import cast
 
 import pytest
+from _pytest.runner import runtestprotocol
 
 from basilisp import main as basilisp
 from basilisp.lang import keyword as kw
@@ -121,7 +123,7 @@ class TestFailuresInfo(Exception):
 
 TestFunction = Callable[[], lmap.PersistentMap]
 FixtureTeardown = Iterator[None]
-FixtureFunction = Callable[[], FixtureTeardown | None]
+FixtureFunction = Callable[..., FixtureTeardown | None]
 
 
 class FixtureManager:
@@ -131,8 +133,33 @@ class FixtureManager:
     __slots__ = ("_fixtures", "_teardowns")
 
     def __init__(self, fixtures: Iterable[FixtureFunction]):
-        self._fixtures: Iterable[FixtureFunction] = fixtures
+        self._fixtures = tuple(fixtures)
         self._teardowns: Iterable[FixtureTeardown] = ()
+
+    @staticmethod
+    def _takes_thunk(fixture: FixtureFunction) -> bool:
+        """Return whether a fixture uses the Clojure-style single thunk argument.
+
+        Prefer the established zero-argument behavior whenever both calls are
+        valid (for example a variadic fixture), preserving existing fixtures.
+        """
+        signature = inspect.signature(fixture)
+        try:
+            signature.bind()
+        except TypeError:
+            try:
+                signature.bind(lambda: None)
+            except TypeError as exc:
+                raise TypeError(
+                    "Basilisp test fixtures must accept either zero arguments or "
+                    "one test thunk"
+                ) from exc
+            return True
+        return False
+
+    @property
+    def requires_wrapped_execution(self) -> bool:
+        return any(self._takes_thunk(fixture) for fixture in self._fixtures)
 
     @staticmethod
     def _run_fixture(fixture: FixtureFunction) -> Iterator[None] | None:
@@ -193,6 +220,28 @@ class FixtureManager:
         self._teardown_fixtures(self._teardowns)
         self._teardowns = ()
 
+    def run(self, f: Callable[[], object]) -> object:
+        """Run ``f`` inside zero-argument and thunk-taking fixtures in order."""
+
+        def wrap(fixture: FixtureFunction, inner: Callable[[], object]):
+            if self._takes_thunk(fixture):
+                return lambda: fixture(inner)
+
+            def run_zero_arg_fixture():
+                teardown = self._run_fixture(fixture)
+                try:
+                    return inner()
+                finally:
+                    if teardown is not None:
+                        self._teardown_fixtures((teardown,))
+
+            return run_zero_arg_fixture
+
+        wrapped = f
+        for fixture in reversed(self._fixtures):
+            wrapped = wrap(fixture, wrapped)
+        return wrapped()
+
 
 def _is_package(path: Path) -> bool:
     """Return `True` if the given path refers to a Python or Basilisp package."""
@@ -231,6 +280,8 @@ class BasilispFile(pytest.File):
     def __init__(self, **kwargs) -> None:
         super().__init__(**kwargs)
         self._fixture_manager: FixtureManager | None = None
+        self._items: list[BasilispTestItem] = []
+        self._once_items_ran = False
 
     @staticmethod
     def _collected_fixtures(
@@ -269,11 +320,31 @@ class BasilispFile(pytest.File):
 
     def setup(self) -> None:
         assert self._fixture_manager is not None
-        self._fixture_manager.setup()
+        if not self._fixture_manager.requires_wrapped_execution:
+            self._fixture_manager.setup()
 
     def teardown(self) -> None:
         assert self._fixture_manager is not None
-        self._fixture_manager.teardown()
+        if not self._fixture_manager.requires_wrapped_execution:
+            self._fixture_manager.teardown()
+
+    @property
+    def requires_wrapped_once_execution(self) -> bool:
+        assert self._fixture_manager is not None
+        return self._fixture_manager.requires_wrapped_execution
+
+    def run_once_items(self, nextitem) -> None:
+        """Run all items inside a Clojure-style namespace fixture."""
+        assert self._fixture_manager is not None
+
+        def run_items():
+            for index, item in enumerate(self._items):
+                item_next = (
+                    self._items[index + 1] if index + 1 < len(self._items) else nextitem
+                )
+                runtestprotocol(item, nextitem=item_next)
+
+        self._fixture_manager.run(run_items)
 
     def _import_module(self) -> runtime.BasilispModule:
         modnames = _get_fully_qualified_module_names(self.path)
@@ -310,11 +381,12 @@ class BasilispFile(pytest.File):
 
         once_fixtures, each_fixtures = self._collected_fixtures(ns)
         self._fixture_manager = FixtureManager(once_fixtures)
+        self._items = []
         for test in self._collected_tests(ns):
             assert test.meta is not None
             test_meta = test.meta.val_at(_TEST_META_KW)
             f: TestFunction = test_meta if callable(test_meta) else test.value
-            yield BasilispTestItem.from_parent(
+            item = BasilispTestItem.from_parent(
                 self,
                 name=test.name.name,
                 run_test=f,
@@ -322,6 +394,8 @@ class BasilispFile(pytest.File):
                 filename=filename,
                 fixture_manager=FixtureManager(each_fixtures),
             )
+            self._items.append(item)
+            yield item
 
 
 _ACTUAL_KW = kw.keyword("actual")
@@ -382,17 +456,26 @@ class BasilispTestItem(pytest.Item):
         )
 
     def setup(self) -> None:
-        self._fixture_manager.setup()
+        if not self._fixture_manager.requires_wrapped_execution:
+            self._fixture_manager.setup()
 
     def teardown(self) -> None:
-        self._fixture_manager.teardown()
+        if not self._fixture_manager.requires_wrapped_execution:
+            self._fixture_manager.teardown()
 
     def runtest(self):
         """Run the tests associated with this test item.
 
         If any tests fail, raise an ExceptionInfo exception with the test failures.
         PyTest will invoke self.repr_failure to display the failures to the user."""
-        results: lmap.PersistentMap = self._run_test()
+        results = cast(
+            lmap.PersistentMap,
+            (
+                self._fixture_manager.run(self._run_test)
+                if self._fixture_manager.requires_wrapped_execution
+                else self._run_test()
+            ),
+        )
         failures: vec.PersistentVector | None = results.val_at(_FAILURES_KW)
         if runtime.to_seq(failures):
             raise TestFailuresInfo("Test failures", lmap.map(results))
@@ -451,3 +534,23 @@ class BasilispTestItem(pytest.Item):
                 f"      actual: {lrepr(actual)}",
             ]
         )
+
+
+@pytest.hookimpl(tryfirst=True)
+def pytest_runtest_protocol(item, nextitem):
+    """Run namespace-scoped thunk fixtures around their collected test items."""
+    if not isinstance(item, BasilispTestItem):
+        return None
+
+    test_file = item.parent
+    assert isinstance(test_file, BasilispFile)
+    if not test_file.requires_wrapped_once_execution:
+        return None
+
+    if test_file._once_items_ran:
+        return True
+
+    assert test_file._items and item is test_file._items[0]
+    test_file._once_items_ran = True
+    test_file.run_once_items(nextitem)
+    return True

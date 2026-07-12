@@ -67,7 +67,16 @@
                                         (binding [*state* 1]
                                           (yield)))]
                         (yield)))]
-      (is (= 1 *state*)))))
+      (is (= 1 *state*))))
+
+  (testing "Clojure-style thunk fixtures"
+    (let [events (atom [])]
+      (with-fixtures [(fn [f]
+                        (swap! events conj :before)
+                        (f)
+                        (swap! events conj :after))]
+        (swap! events conj :during))
+      (is (= [:before :during :after] @events)))))
 
 (deftest join-fixtures-test
   (testing "applied in order"

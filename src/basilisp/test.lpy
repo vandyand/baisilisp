@@ -19,7 +19,9 @@
   Tests may take advantage of Basilisp fixtures via :lpy:fn:`use-fixtures` to perform
   setup and teardown functions for each test or namespace. Fixtures are not the same
   (nor are they compatible with) PyTest fixtures."
-  (:import types)
+  (:import
+   inspect
+   types)
   (:require
    [basilisp.template :as template]))
 
@@ -75,10 +77,10 @@
   - ``:each`` to specify that a fixture should be run before each test
   - ``:once`` to specify that a fixture should be run once per test namespace
 
-  Fixture functions are functions of 0 arguments which must either return a value
-  or temporarily ``yield`` control back to the test runner after performing some setup.
-  If the ``yield`` approach is taken, the test runner will return control to the
-  fixture whenever the test or tests have finished executing.
+  Fixtures may use either of two forms. A zero-argument fixture may return a value
+  or temporarily ``yield`` control back to the test runner after setup. A
+  one-argument fixture receives a thunk which it calls to run the test or tests;
+  setup runs before calling the thunk and teardown runs after it returns.
 
   For example, to define a fixture with setup and teardown functions, your fixture
   may take this form::
@@ -104,6 +106,21 @@
   [x]
   (instance? types/GeneratorType x))
 
+(defn fixture-takes-thunk?
+  "Return true when ``fixture`` accepts a test thunk but not a zero-argument call."
+  [fixture]
+  (let [signature (inspect/signature fixture)]
+    (try
+      (.bind signature)
+      false
+      (catch python/TypeError _
+        (try
+          (.bind signature (fn [] nil))
+          true
+          (catch python/TypeError _
+            (throw (python/TypeError
+                    "Basilisp test fixtures must accept either zero arguments or one test thunk"))))))))
+
 (defmethod use-fixtures :each
   [_ & fixtures]
   (alter-meta! *ns* assoc ::each-fixtures fixtures))
@@ -119,16 +136,19 @@
   (assert (vector? fixtures) "Expected a literal vector of fixtures")
   (let [result (gensym "result")]
     (reduce (fn [form fixture]
-              `(let [~result (~fixture)]
-                 (if (generator? ~result)
-                   (try
-                     (python/next ~result)
-                     ~form
-                     (finally
+              `(let [fixture# ~fixture]
+                 (if (fixture-takes-thunk? fixture#)
+                   (fixture# (fn [] ~form))
+                   (let [~result (fixture#)]
+                     (if (generator? ~result)
                        (try
                          (python/next ~result)
-                         (catch python/StopIteration ~'_ nil))))
-                   ~form)))
+                         ~form
+                         (finally
+                           (try
+                             (python/next ~result)
+                             (catch python/StopIteration ~'_ nil))))
+                       ~form)))))
             `(do ~@body)
             (reverse fixtures))))
 
