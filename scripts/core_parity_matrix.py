@@ -5,21 +5,19 @@ from __future__ import annotations
 
 import argparse
 import csv
+import shlex
 import signal
 import subprocess
 import sys
 from pathlib import Path
 from typing import Iterable
 
-
 CLOJURE_CORE_PUBLICS = (
-    "(doseq [n (sort (map name (keys (ns-publics 'clojure.core))))] "
-    "(println n))"
+    "(doseq [n (sort (map name (keys (ns-publics 'clojure.core))))] " "(println n))"
 )
 
 BASILISP_CORE_PUBLICS = (
-    "(doseq [n (sort (map name (keys (ns-publics 'basilisp.core))))] "
-    "(println n))"
+    "(doseq [n (sort (map name (keys (ns-publics 'basilisp.core))))] " "(println n))"
 )
 
 
@@ -63,11 +61,21 @@ def main() -> int:
         type=Path,
         help="CSV file to write. Defaults to stdout.",
     )
+    parser.add_argument(
+        "--basilisp-command",
+        default="basilisp run -c",
+        help=(
+            "command prefix used to evaluate Basilisp (default: 'basilisp run -c'); "
+            "quote it when it contains spaces"
+        ),
+    )
     args = parser.parse_args()
 
-    clojure_publics = _run_publics_command(["clojure", "-M", "-e", CLOJURE_CORE_PUBLICS])
+    clojure_publics = _run_publics_command(
+        ["clojure", "-M", "-e", CLOJURE_CORE_PUBLICS]
+    )
     basilisp_publics = _run_publics_command(
-        ["poetry", "run", "basilisp", "run", "-c", BASILISP_CORE_PUBLICS]
+        [*shlex.split(args.basilisp_command), BASILISP_CORE_PUBLICS]
     )
 
     output = args.output.open("w", newline="") if args.output else sys.stdout

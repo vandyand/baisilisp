@@ -1,7 +1,8 @@
 # Clojure Core Parity Classification
 
-This document classifies the 143 symbols reported missing by the initial
-`core_parity_matrix.py` run on 2026-07-10. The matrix is a raw public-var
+This document classifies the 92 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-12 (587 shared Vars and 57 Basilisp
+extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
 

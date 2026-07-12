@@ -105,7 +105,8 @@ Near-term deliverable:
   the corresponding Clojure public vars, with each missing symbol classified as
   implement, omit, host-specific, or needs design
 * use ``scripts/core_parity_matrix.py`` as the initial raw source for that
-  matrix
+  matrix. Its ``--basilisp-command`` option accepts a frontend-specific command
+  prefix, for example ``uv run basilisp run -c`` when measuring this checkout.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
