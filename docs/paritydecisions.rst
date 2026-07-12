@@ -60,15 +60,13 @@ The next STM phases are intentionally ordered:
 2. **Completed locally:** experimental ``run-transaction`` accepts a bounded
    retry count and raises structured conflict data on exhaustion. Compatibility
    ``dosync`` retains retry-until-success behavior.
-3. Add ``commute`` by recording operation functions and arguments separately
-   from normal writes. At commit, replay those operations against the latest
-   committed value under the same commit locks. A commute must not silently
-   become an ``alter``: concurrent changes to a commuted Ref are permitted, so
-   callers remain responsible for commutativity and retry-safe functions.
-4. Add ``ensure`` only with the commute phase. Before commute, the current
-   engine validates every read at commit, so ``ensure`` would add no behavior.
-   Once commuted reads can advance, ``ensure`` must mark a read Ref for version
-   validation and return its in-transaction value.
+3. **Completed locally:** ``commute`` records operation functions and arguments
+   separately from normal writes, then replays them under the commit locks. A
+   commute must not silently become an ``alter``: concurrent changes to a
+   commuted Ref are permitted, so callers remain responsible for commutativity
+   and retry-safe functions.
+4. Add ``ensure`` now that commute can advance a Ref without a retry. It must
+   mark a read Ref for version validation and return its in-transaction value.
 5. Do not add Clojure's adaptive history queue until contention measurements
    show that the simpler validation model causes material retry starvation.
    History is an optimization for snapshot retention, not a prerequisite for
@@ -255,10 +253,9 @@ Execution Order
 The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
-2. Add STM state-machine coverage. Do not begin ``commute`` until retry
-   boundaries are covered by randomized operation histories. The initial
-   Hypothesis transfer-model suite is in place; extend it before adding new STM
-   write modes.
+2. Design and implement STM ``ensure`` with an explicit read-protection proof.
+   The Hypothesis transfer and commute-model suite is in place; extend it with
+   ensure/write interleavings before claiming Clojure compatibility.
 3. Implement ``fdef`` plus Var-only instrumentation, then add optional
    Hypothesis-backed checking and ``fspec`` generation.
 4. Run the sample package build/install probe before considering a new backend.

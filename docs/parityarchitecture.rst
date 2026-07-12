@@ -65,8 +65,8 @@ and a compatible licensing and maintenance posture.
 versioned references, transaction-local read/write sets, stable lock ordering,
 validation at commit, conflict retries, and deterministic contention coverage.
 ``io!`` and deferred agent sends are implemented as explicit retry-safety
-guards; ``commute`` and history controls still require broader state-machine
-coverage.
+guards. Experimental ``commute`` records/replays commutative updates under
+commit locks; ``ensure`` and history controls remain deferred.
 
 Project Configuration And Builds
 --------------------------------
@@ -244,13 +244,16 @@ not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
   effects unsafe; ``io!`` rejects a dynamically marked impure operation while a
   transaction is active. Agent sends are queued until after commit only.
 
-The first milestone intentionally excludes ``commute``, history tuning,
-``ensure``, and asynchronous transactions. ``commute`` requires replaying its
-function against a newer committed value; ``ensure`` requires read locks that
-survive the transaction; both deserve a separate correctness proof. The test
-gate is a deterministic barrier-driven two-ref conflict test, randomized
-operation histories checked against a serialized model, validator and watch
-ordering tests, nested transaction tests, and a high-contention stress suite.
+The current milestone includes experimental ``commute``: it records each
+operation separately, returns its in-transaction result, and replays each
+operation against the newest committed value under the commit locks. A normal
+write after commute is rejected, while a commute after a normal write remains
+a normal validated write. History tuning, ``ensure``, and asynchronous
+transactions remain excluded. ``ensure`` requires a separate proof for read
+protection across the transaction. The test gate includes deterministic
+barrier-driven conflicts, randomized operation histories checked against a
+serialized model, commute replay/interleaving fixtures, validator/watch
+ordering tests, nested transaction tests, and high-contention stress coverage.
 
 This is a compatibility feature, not a general-purpose database transaction
 API. The external ``stm`` distribution is unlicensed and unmaintained, and

@@ -16,6 +16,7 @@ from basilisp.lang.reference import RefBase
 
 T = TypeVar("T")
 R = TypeVar("R")
+_Commute = tuple[Callable[..., Any], tuple[Any, ...]]
 
 _ATTEMPTS = kw.keyword("attempts", ns="basilisp.stm")
 _CONFLICTS = kw.keyword("conflicts", ns="basilisp.stm")
@@ -68,12 +69,16 @@ class _Transaction:
     def __init__(self) -> None:
         self._reads: dict[Ref[Any], tuple[Any, int]] = {}
         self._writes: dict[Ref[Any], Any] = {}
+        self._commutes: dict[Ref[Any], list[_Commute]] = {}
+        self._commuted_values: dict[Ref[Any], Any] = {}
         self._after_commit: list[Callable[[], Any]] = []
         self._conflicts: tuple[tuple[Ref[Any], int, int], ...] = ()
 
     def read(self, ref: Ref[T]) -> T:
         if ref in self._writes:
             return self._writes[ref]
+        if ref in self._commuted_values:
+            return self._commuted_values[ref]
         read = self._reads.get(ref)
         if read is None:
             read = ref._read_committed()
@@ -81,14 +86,37 @@ class _Transaction:
         return read[0]
 
     def alter(self, ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
+        if ref in self._commutes:
+            raise RuntimeError("cannot alter a Ref after commute")
         value = f(self.read(ref), *args)
         self._writes[ref] = value
         return value
 
     def ref_set(self, ref: Ref[T], value: T) -> T:
+        if ref in self._commutes:
+            raise RuntimeError("cannot ref-set a Ref after commute")
         self.read(ref)
         self._writes[ref] = value
         return value
+
+    def commute(self, ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
+        """Stage a commutative update for replay against the committed value."""
+        if ref in self._writes:
+            value = self._writes[ref]
+        elif ref in self._commuted_values:
+            value = self._commuted_values[ref]
+        elif ref in self._reads:
+            value = self._reads[ref][0]
+        else:
+            value, _ = ref._read_committed()
+
+        result = f(value, *args)
+        self._commutes.setdefault(ref, []).append((f, args))
+        if ref in self._writes:
+            self._writes[ref] = result
+        else:
+            self._commuted_values[ref] = result
+        return result
 
     def after_commit(self, action: Callable[[], Any]) -> None:
         self._after_commit.append(action)
@@ -104,20 +132,28 @@ class _Transaction:
 
     def commit(self) -> list[tuple[Ref[Any], Any, Any]] | None:
         """Commit all writes, or return ``None`` when a read version changed."""
-        refs = sorted(set(self._reads) | set(self._writes), key=id)
+        pure_commutes = set(self._commutes) - set(self._writes)
+        refs = sorted(
+            set(self._reads) | set(self._writes) | set(self._commutes), key=id
+        )
         with ExitStack() as locks:
             for ref in refs:
                 locks.enter_context(ref._lock)
             conflicts = tuple(
                 (ref, version, ref._version)
                 for ref, (_, version) in self._reads.items()
-                if ref._version != version
+                if ref not in pure_commutes and ref._version != version
             )
             if conflicts:
                 self._conflicts = conflicts
                 return None
 
             changes = [(ref, ref._state, value) for ref, value in self._writes.items()]
+            for ref in pure_commutes:
+                value = ref._state
+                for f, args in self._commutes[ref]:
+                    value = f(value, *args)
+                changes.append((ref, ref._state, value))
             for ref, _old, value in changes:
                 ref._validate(value)
             for ref, _old, value in changes:
@@ -180,6 +216,16 @@ def alter(ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
 def ref_set(ref: Ref[T], value: T) -> T:
     """Stage ``value`` as the new in-transaction value of ``ref``."""
     return _require_transaction().ref_set(ref, value)
+
+
+def commute(ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
+    """Stage ``f`` for commit-time replay against ``ref``'s latest value.
+
+    ``f`` runs once against the in-transaction value and again during a
+    successful commit. It must therefore be retry-safe and commutative, or the
+    caller must accept last-writer-wins behavior.
+    """
+    return _require_transaction().commute(ref, f, *args)
 
 
 def after_commit(action: Callable[[], Any]) -> None:

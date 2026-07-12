@@ -22,6 +22,9 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._model_first = 0
         self._model_second = 0
         self._commits = 0
+        self._commuted = stm.Ref(0)
+        self._model_commuted = 0
+        self._commute_commits = 0
 
     @rule(
         deltas=st.lists(
@@ -52,6 +55,30 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._model_second -= sum(deltas)
         self._commits += len(deltas)
 
+    @rule(
+        deltas=st.lists(
+            st.integers(min_value=-100, max_value=100), min_size=1, max_size=8
+        ),
+        workers=st.integers(min_value=1, max_value=4),
+    )
+    def concurrent_commutes(self, deltas: list[int], workers: int) -> None:
+        def commute(delta: int) -> None:
+            def add(value: int, amount: int) -> int:
+                time.sleep(0)
+                return value + amount
+
+            stm.run_transaction(lambda: stm.commute(self._commuted, add, delta))
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(workers, len(deltas))
+        ) as executor:
+            futures = [executor.submit(commute, delta) for delta in deltas]
+            for future in futures:
+                future.result(timeout=5)
+
+        self._model_commuted += sum(deltas)
+        self._commute_commits += len(deltas)
+
     @invariant()
     def refs_match_the_serialized_model(self) -> None:
         assert self._model_first == self._first.deref()
@@ -59,6 +86,8 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         assert self._commits == self._first.version
         assert self._commits == self._second.version
         assert 0 == self._first.deref() + self._second.deref()
+        assert self._model_commuted == self._commuted.deref()
+        assert self._commute_commits == self._commuted.version
 
 
 TestTransactionHistoryMachine = TransactionHistoryMachine.TestCase

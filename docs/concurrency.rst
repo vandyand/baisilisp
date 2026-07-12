@@ -65,11 +65,13 @@ Refs support the usual validators, metadata, and watches. Transaction bodies
 must be side-effect free and must not return awaitables because they can run
 more than once.
 
-This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute``,
-``ensure``, and history controls remain unimplemented. ``io!`` is an explicit
-guard for known impure operations, and agent dispatches inside ``dosync`` are
-deferred until a successful commit; neither mechanism can detect arbitrary
-Python side effects in a retried transaction body.
+This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute`` is
+available in the experimental namespace: it replays its update function against
+the latest committed value and therefore requires a retry-safe, commutative
+function. ``ensure`` and history controls remain unimplemented. ``io!`` is an
+explicit guard for known impure operations, and agent dispatches inside
+``dosync`` are deferred until a successful commit; neither mechanism can detect
+arbitrary Python side effects in a retried transaction body.
 
 ``dosync`` retries until it can commit. The experimental ``run-transaction``
 function accepts a positive ``:max-attempts`` option for callers that need a

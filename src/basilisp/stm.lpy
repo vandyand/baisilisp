@@ -33,6 +33,15 @@
   [ref value]
   (basilisp.lang.stm/ref-set ref value))
 
+(defn commute
+  "Stage ``f`` to be replayed against ``ref``'s latest committed value.
+
+  ``f`` runs once for the transaction body and again at a successful commit, so
+  it must be retry-safe and commutative. ``alter`` and ``ref-set`` may not
+  target the same Ref after it has been commuted."
+  [ref f & args]
+  (apply basilisp.lang.stm/commute ref f args))
+
 (defn after-commit
   "Schedule a zero-argument ``action`` to run once after ``dosync`` commits.
 

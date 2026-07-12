@@ -66,9 +66,10 @@ That said, there are some fundamental differences and omissions in Basilisp that
 * Atoms work just as in Clojure.
 * ``basilisp.stm`` provides an experimental, synchronous ``Ref`` and ``dosync``
   implementation. It is not yet part of ``basilisp.core`` and intentionally
-  omits ``commute``, ``ensure``, and history controls. ``io!`` is available as
-  an explicit side-effect guard, and agent dispatches are deferred until a
-  successful transaction commit.
+  provides ``commute`` only in that experimental namespace; ``ensure`` and
+  history controls remain omitted. ``io!`` is available as an explicit
+  side-effect guard, and agent dispatches are deferred until a successful
+  transaction commit.
 * Basilisp provides executor-backed Agents.
 * All Vars are reified at runtime and users may use the :lpy:fn:`binding` macro as in Clojure.
 

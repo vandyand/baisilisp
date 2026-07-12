@@ -169,6 +169,104 @@ def test_max_attempts_allows_successful_outer_transactions_only():
         stm.run_transaction(lambda: stm.run_transaction(lambda: None, max_attempts=1))
 
 
+def test_commute_returns_the_transaction_value_and_replays_at_commit():
+    ref = stm.Ref(1)
+    calls = []
+
+    def add(value, amount):
+        calls.append(value)
+        return value + amount
+
+    assert 3 == stm.run_transaction(lambda: stm.commute(ref, add, 2))
+    assert 3 == ref.deref()
+    assert [1, 1] == calls
+
+
+def test_commute_replays_on_a_newer_value_without_retrying_the_body():
+    ref = stm.Ref(0)
+    reader_ready = threading.Event()
+    writer_committed = threading.Event()
+    attempts = 0
+
+    def commute_body():
+        nonlocal attempts
+        attempts += 1
+        ref.deref()
+        if attempts == 1:
+            reader_ready.set()
+            assert writer_committed.wait(timeout=2)
+        return stm.commute(ref, lambda value: value + 10)
+
+    def write_new_value():
+        assert reader_ready.wait(timeout=2)
+        stm.run_transaction(lambda: stm.ref_set(ref, 1))
+        writer_committed.set()
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        commuter = executor.submit(lambda: stm.run_transaction(commute_body))
+        writer = executor.submit(write_new_value)
+        assert 10 == commuter.result(timeout=2)
+        writer.result(timeout=2)
+
+    assert 1 == attempts
+    assert 11 == ref.deref()
+
+
+def test_concurrent_commutes_preserve_every_update():
+    ref = stm.Ref(0)
+    calls = 0
+    calls_lock = threading.Lock()
+    start = threading.Barrier(2)
+
+    def add(value):
+        nonlocal calls
+        with calls_lock:
+            calls += 1
+        return value + 1
+
+    def increment():
+        def body():
+            start.wait(timeout=2)
+            return stm.commute(ref, add)
+
+        return stm.run_transaction(body)
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+        futures = [executor.submit(increment) for _ in range(2)]
+        results = [future.result(timeout=2) for future in futures]
+
+    assert len(results) == 2
+    assert 2 == ref.deref()
+    assert 2 == ref.version
+    assert 4 == calls
+
+
+def test_normal_writes_cannot_follow_a_commute_but_can_precede_one():
+    ref = stm.Ref(0)
+
+    def commute_then_alter():
+        stm.commute(ref, lambda value: value + 1)
+        stm.alter(ref, lambda value: value + 1)
+
+    with pytest.raises(RuntimeError, match="after commute"):
+        stm.run_transaction(commute_then_alter)
+    assert 0 == ref.deref()
+
+    calls = []
+
+    def add(value):
+        calls.append(value)
+        return value + 10
+
+    def alter_then_commute():
+        stm.alter(ref, lambda value: value + 1)
+        return stm.commute(ref, add)
+
+    assert 11 == stm.run_transaction(alter_then_commute)
+    assert 11 == ref.deref()
+    assert [1] == calls
+
+
 def test_after_commit_requires_a_transaction_and_callable():
     with pytest.raises(RuntimeError, match="requires an active transaction"):
         stm.after_commit(lambda: None)

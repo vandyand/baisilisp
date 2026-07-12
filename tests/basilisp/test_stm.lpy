@@ -48,3 +48,12 @@
 (deftest run-transaction-validates-max-attempts-test
   (is (thrown? python/ValueError
                (stm/run-transaction (fn [] nil) :max-attempts 0))))
+
+(deftest commute-replays-commutative-writes-test
+  (let [value (stm/ref 1)]
+    (is (= 3 (stm/dosync (stm/commute value + 2))))
+    (is (= 3 @value))
+    (is (thrown? python/RuntimeError
+                 (stm/dosync
+                  (stm/commute value inc)
+                  (stm/ref-set value 0))))))
