@@ -130,6 +130,12 @@ def lstr(o: Any) -> str:
     return str(o)
 
 
+@lstr.register(BaseException)
+def _lstr_exception(o: BaseException) -> str:
+    """Render exceptions with their type, as Clojure's ``str`` does."""
+    return f"{type(o).__name__}: {o}"
+
+
 @lstr.register(type(re.compile("")))
 def _lstr_pattern(o: Pattern) -> str:
     return o.pattern
