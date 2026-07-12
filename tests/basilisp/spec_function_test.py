@@ -163,3 +163,38 @@ def test_check_accepts_explicit_generators_and_rejects_unknown_predicates(functi
     spec.fdef(function_var, args=spec.cat(kw.keyword("value"), even), ret=int)
     with pytest.raises(TypeError, match="with-gen"):
         spec.check(function_var, num_tests=1)
+
+
+def test_check_generates_map_of_and_keys_descriptors(function_var):
+    spec.fdef(
+        function_var,
+        args=spec.cat(kw.keyword("value"), spec.map_of(str, int)),
+        ret=dict,
+    )
+    assert spec.check(function_var, num_tests=20, seed=19)[0].val_at(
+        kw.keyword("pass?", ns="basilisp.spec.test.alpha")
+    )
+
+    name = kw.keyword("name", ns="tests.generated")
+    count = kw.keyword("count", ns="tests.generated")
+    spec.define(name, str)
+    spec.define(count, int)
+    spec.fdef(
+        function_var,
+        args=spec.cat(kw.keyword("value"), spec.keys([name], [count])),
+        ret=dict,
+    )
+    assert spec.check(function_var, num_tests=20, seed=23)[0].val_at(
+        kw.keyword("pass?", ns="basilisp.spec.test.alpha")
+    )
+
+
+def test_check_rejects_undefined_keyword_and_empty_set_domains(function_var):
+    undefined = kw.keyword("undefined", ns="tests.generated")
+    spec.fdef(function_var, args=spec.cat(kw.keyword("value"), undefined), ret=int)
+    with pytest.raises(TypeError, match="undefined spec"):
+        spec.check(function_var, num_tests=1)
+
+    spec.fdef(function_var, args=spec.cat(kw.keyword("value"), set()), ret=int)
+    with pytest.raises(TypeError, match="empty set"):
+        spec.check(function_var, num_tests=1)

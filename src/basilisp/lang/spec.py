@@ -371,8 +371,21 @@ def _strategy_for_value(spec: Any) -> Any:
         if spec.kind is vec.PersistentVector:
             return generated.map(lambda values: vec.v(*values))
         return generated
+    if isinstance(spec, _MapOf):
+        return strategies.dictionaries(
+            _strategy_for_value(spec.key_spec),
+            _strategy_for_value(spec.value_spec),
+            max_size=8,
+        )
+    if isinstance(spec, _Keys):
+        required = {key: _strategy_for_registered_keyword(key) for key in spec.required}
+        optional = {key: _strategy_for_registered_keyword(key) for key in spec.optional}
+        return strategies.fixed_dictionaries(required, optional=optional)
     if isinstance(spec, IPersistentSet) or isinstance(spec, (set, frozenset)):
-        return strategies.sampled_from(tuple(spec))
+        values = tuple(spec)
+        if not values:
+            raise TypeError("cannot generate values from an empty set spec")
+        return strategies.sampled_from(values)
     if spec is int:
         return strategies.integers()
     if spec is str:
@@ -386,6 +399,13 @@ def _strategy_for_value(spec: Any) -> Any:
     if spec is type(None):
         return strategies.none()
     raise TypeError(f"cannot generate values for {spec!r}; wrap it with with-gen")
+
+
+def _strategy_for_registered_keyword(key: kw.Keyword) -> Any:
+    resolved = get_spec(key)
+    if resolved is None:
+        raise TypeError(f"cannot generate values for undefined spec {key}")
+    return _strategy_for_value(resolved)
 
 
 def _hypothesis_strategies() -> Any:

@@ -143,11 +143,13 @@ separate function-spec registry keyed by an interned Basilisp ``Var``:
   <https://clojure.org/guides/spec>`_: instrumentation checks callers' args;
   generative checking evaluates the implementation.
 
-Hypothesis should be an optional ``spec-test`` dependency. Use native
-strategies for descriptors with known domains and require ``with-gen`` for an
-arbitrary predicate rather than filtering random values until one happens to
-conform. Hypothesis supplies shrinking and reproducible seeds; it must not
-define ``conform`` or ``explain-data`` semantics.
+Hypothesis is an optional ``spec-test`` dependency. Native strategies now cover
+portable scalar classes, regex argument grammars, ``nilable``, ``or``, tuples,
+collections, ``map-of``, and ``keys`` descriptors. Require ``with-gen`` for an
+arbitrary predicate, ``and``/``&`` relation, multi-spec, or any other domain
+without a constructive generator rather than filtering random values until one
+happens to conform. Hypothesis supplies shrinking and reproducible seeds; it
+must not define ``conform`` or ``explain-data`` semantics.
 
 Python models are adapters, not implicit specs. The dataclass adapter establishes
 the pattern: an explicit shallow data projection and a separately named,
