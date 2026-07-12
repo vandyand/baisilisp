@@ -424,6 +424,29 @@ def test_basilisp_test_noargs(pytester: pytest.Pytester):
     assert result.returncode == 0
 
 
+def test_basilisp_test_uses_configured_test_path(pytester: pytest.Pytester):
+    runtime.Namespace.remove(sym.symbol("configured.test-path"))
+
+    code = """
+    (ns configured.test-path
+      (:require
+       [basilisp.test :refer [deftest is]]))
+    (deftest passing-test
+      (is true))
+    """
+    pytester.makefile(".lpy", **{"./custom-tests/configured/test_path": code})
+    (pytester.path / "pyproject.toml").write_text(
+        '[tool.basilisp]\ntest-paths = ["custom-tests"]\n'
+    )
+
+    basilisp = shutil.which("basilisp")
+    cmd = [basilisp, "test", "--include-default-test-path=false"]
+    result = subprocess.run(cmd, capture_output=True, text=True, cwd=pytester.path)
+
+    assert "==== 1 passed" in result.stdout.strip()
+    assert result.returncode == 0
+
+
 class TestCollection:
     @pytest.fixture(autouse=True)
     def reset_collection_config(self):

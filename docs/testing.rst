@@ -87,7 +87,17 @@ Testing and ``PYTHONPATH``
 
 Typical Clojure projects will have parallel ``src/`` and ``test/`` folders in the project root.
 Project management tooling typically constructs the Java classpath to include both parallel trees for development and only ``src/`` for deployed software.
-Basilisp does not currently have such tooling, though it is planned.
+Basilisp uses Python packaging for dependencies and can declare source and test
+import paths in ``pyproject.toml``:
+
+.. code-block:: toml
+
+   [tool.basilisp]
+   source-paths = ["src"]
+   test-paths = ["test"]
+
+With this configuration, ``basilisp test`` discovers and imports test
+namespaces from ``test`` without an additional ``--include-path`` flag.
 
 The easiest solution to facilitate test discovery with Pytest (Basilisp's default test runner) is to create a ``tests`` directory:
 
@@ -126,7 +136,9 @@ In this case, the test namespace can start at ``myproject``:
    (ns myproject.core-test)
 
 
-However, the ``test`` directory must be explicitly added to the ``PYTHONPATH`` using the ``--include-path`` (or ``-p`` or the ``PYTHONPATH`` environment variable) option when running the tests:
+Without project configuration, the ``test`` directory can be explicitly added
+to the ``PYTHONPATH`` using the ``--include-path`` (or ``-p`` or the
+``PYTHONPATH`` environment variable) option when running the tests:
 
 .. code-block:: shell
 

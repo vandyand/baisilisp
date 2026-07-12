@@ -58,8 +58,11 @@ Initial targets:
 
 Near-term deliverable:
 
-* define a minimal ``pyproject.toml``-first Basilisp project contract with
-  source paths, test paths, dependency expectations, and packaging behavior
+* **Completed locally:** a minimal ``pyproject.toml``-first Basilisp project
+  contract with source paths, test paths, and compiler options for CLI tools
+* next, prove a sample Basilisp package can build and install through the
+  existing Maturin backend before deciding whether a dedicated PEP 517 wrapper
+  is needed
 
 2. Test Compatibility
 ^^^^^^^^^^^^^^^^^^^^^

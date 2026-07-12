@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any, Union
 
 from basilisp import main as basilisp
+from basilisp import project as project
 from basilisp.lang import compiler as compiler
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
@@ -80,21 +81,31 @@ def bootstrap_repl(ctx: compiler.CompilerContext, which_ns: str) -> types.Module
     return importlib.import_module(REPL_NS)
 
 
-def init_path(args: argparse.Namespace, unsafe_path: str = "") -> None:
-    """Prepend any import group arguments to `sys.path`, including `unsafe_path` (which
-    defaults to the empty string) if --include-unsafe-path is specified."""
+def init_path(
+    args: argparse.Namespace,
+    unsafe_path: str = "",
+    project_paths: Sequence[Path] = (),
+    default_paths: Sequence[Path] = (),
+) -> None:
+    """Prepend project and CLI import paths to ``sys.path`` by precedence."""
 
-    def prepend_once(path: str) -> None:
-        if path in sys.path:
-            return
-        sys.path.insert(0, path)
+    def prepend_paths(
+        paths: Sequence[Path | str], override: bool = False, resolve: bool = True
+    ) -> None:
+        for path in reversed(paths):
+            resolved = str(pathlib.Path(path).resolve()) if resolve else str(path)
+            if resolved in sys.path:
+                if not override:
+                    continue
+                sys.path.remove(resolved)
+            sys.path.insert(0, resolved)
 
-    for pth in args.include_path or []:
-        p = pathlib.Path(pth).resolve()
-        prepend_once(str(p))
+    prepend_paths(default_paths)
+    prepend_paths(project_paths, override=True)
+    prepend_paths(args.include_path or [], override=True)
 
     if args.include_unsafe_path:
-        prepend_once(unsafe_path)
+        prepend_paths((unsafe_path,), override=True, resolve=False)
 
 
 def _to_bool(v: str | None) -> bool | None:
@@ -253,18 +264,33 @@ def _add_compiler_arg_group(parser: argparse.ArgumentParser) -> None:
     )
 
 
-def _compiler_opts(args: argparse.Namespace) -> CompilerOpts:
+def _compiler_opts(
+    args: argparse.Namespace, project_config: project.ProjectConfig | None = None
+) -> CompilerOpts:
+    project_opts = project_config.compiler_opts if project_config else {}
+
+    def option(name: str) -> bool | None:
+        cli_value = getattr(args, name.replace("-", "_"))
+        return cli_value if cli_value is not None else project_opts.get(name)
+
     return compiler.compiler_opts(
-        generate_auto_inlines=args.generate_auto_inlines,
-        inline_functions=args.inline_functions,
-        warn_on_arity_mismatch=args.warn_on_arity_mismatch,
-        warn_on_shadowed_name=args.warn_on_shadowed_name,
-        warn_on_shadowed_var=args.warn_on_shadowed_var,
-        warn_on_non_dynamic_set=args.warn_on_non_dynamic_set,
-        warn_on_unused_names=args.warn_on_unused_names,
-        use_var_indirection=args.use_var_indirection,
-        warn_on_var_indirection=args.warn_on_var_indirection,
+        generate_auto_inlines=option("generate-auto-inlines"),
+        inline_functions=option("inline-functions"),
+        warn_on_arity_mismatch=option("warn-on-arity-mismatch"),
+        warn_on_shadowed_name=option("warn-on-shadowed-name"),
+        warn_on_shadowed_var=option("warn-on-shadowed-var"),
+        warn_on_non_dynamic_set=option("warn-on-non-dynamic-set"),
+        warn_on_unused_names=option("warn-on-unused-names"),
+        use_var_indirection=option("use-var-indirection"),
+        warn_on_var_indirection=option("warn-on-var-indirection"),
     )
+
+
+def _resolve_project(parser: argparse.ArgumentParser) -> project.ProjectConfig | None:
+    try:
+        return project.resolve_project(Path.cwd())
+    except project.ProjectConfigError as exc:
+        parser.error(str(exc))
 
 
 def _add_debug_arg_group(parser: argparse.ArgumentParser) -> None:
@@ -483,11 +509,12 @@ def _add_bootstrap_subcommand(parser: argparse.ArgumentParser) -> None:
 
 
 def nrepl_server(
-    _,
+    parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> None:
-    basilisp.init(_compiler_opts(args))
-    init_path(args)
+    project_config = _resolve_project(parser)
+    basilisp.init(_compiler_opts(args, project_config))
+    init_path(args, project_paths=project_config.source_paths if project_config else ())
     nrepl_server_mod = importlib.import_module(munge(NREPL_SERVER_NS))
     nrepl_server_mod.start_server__BANG__(
         lmap.map(
@@ -530,12 +557,13 @@ def _add_nrepl_server_subcommand(parser: argparse.ArgumentParser) -> None:
 
 
 def repl(
-    _,
+    parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> None:
-    opts = _compiler_opts(args)
+    project_config = _resolve_project(parser)
+    opts = _compiler_opts(args, project_config)
     basilisp.init(opts)
-    init_path(args)
+    init_path(args, project_paths=project_config.source_paths if project_config else ())
     ctx = compiler.CompilerContext(filename=REPL_INPUT_FILE_PATH, opts=opts)
     prompter = get_prompter()
     eof = object()
@@ -625,6 +653,7 @@ def run(
     parser: argparse.ArgumentParser,
     args: argparse.Namespace,
 ) -> None:
+    project_config = _resolve_project(parser)
     target = args.file_or_ns_or_code
     if args.load_namespace:
         if args.in_ns is not None:
@@ -635,7 +664,7 @@ def run(
     else:
         in_ns = target if args.in_ns is not None else runtime.REPL_DEFAULT_NS
 
-    opts = _compiler_opts(args)
+    opts = _compiler_opts(args, project_config)
     basilisp.init(opts)
     ctx = compiler.CompilerContext(
         filename=(
@@ -659,7 +688,10 @@ def run(
             cli_args_var.bind_root(vec.vector(args.args))
 
         if args.code:
-            init_path(args)
+            init_path(
+                args,
+                project_paths=project_config.source_paths if project_config else (),
+            )
             eval_str(target, ctx, ns, eof)
         elif args.load_namespace:
             # Set the requested namespace as the *main-ns*
@@ -667,13 +699,23 @@ def run(
             assert main_ns_var is not None
             main_ns_var.bind_root(sym.symbol(target))
 
-            init_path(args)
+            init_path(
+                args,
+                project_paths=project_config.source_paths if project_config else (),
+            )
             importlib.import_module(munge(target))
         elif target == STDIN_FILE_NAME:
-            init_path(args)
+            init_path(
+                args,
+                project_paths=project_config.source_paths if project_config else (),
+            )
             eval_stream(io.TextIOWrapper(sys.stdin.buffer, encoding="utf-8"), ctx, ns)
         else:
-            init_path(args, unsafe_path=str(pathlib.Path(target).resolve().parent))
+            init_path(
+                args,
+                unsafe_path=str(pathlib.Path(target).resolve().parent),
+                project_paths=project_config.source_paths if project_config else (),
+            )
             eval_file(target, ctx, ns)
 
 
@@ -736,17 +778,20 @@ def test(
     args: argparse.Namespace,
     extra: list[str],
 ) -> None:  # pragma: no cover
+    project_config = _resolve_project(parser)
     # Add `test` or `tests` directory to the current working directory
+    default_test_paths = []
     if args.include_default_test_path:
-        if not getattr(args, "include_path", []):
-            args.include_path = []
         for d in ("tests", "test"):
             p = Path.cwd() / d
             if p.exists():
-                args.include_path.append(str(p))
+                default_test_paths.append(p)
 
-    init_path(args)
-    basilisp.init(_compiler_opts(args))
+    project_paths: Sequence[Path] = ()
+    if project_config:
+        project_paths = (*project_config.source_paths, *project_config.test_paths)
+    init_path(args, project_paths=project_paths, default_paths=default_test_paths)
+    basilisp.init(_compiler_opts(args, project_config))
 
     # parse_known_args leaves the `--` separator as the first element if it is present
     # but retaining that causes PyTest to interpret all the arguments as positional

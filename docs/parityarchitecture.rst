@@ -370,12 +370,12 @@ must require confirmation for non-Basilisp modules and preserve the old module
 if a reload fails. Native extensions, modules with external side effects, and
 modules without an import spec are intentionally unsupported.
 
-The project resolver should be independently testable as
-``resolve_project(cwd, cli_options, environ)``. It returns absolute paths and
-compiler options without modifying ``sys.path``. The CLI, test runner, REPL,
-and build wrapper apply that resolved model at their entry points. This prevents
-test discovery, a REPL, and packaging from interpreting the same project
-differently.
+The project resolver is independently testable as ``resolve_project(cwd)``.
+It returns absolute paths and compiler options without modifying ``sys.path``.
+The CLI, REPL, nREPL server, and test command apply that resolved model at
+their entry points. This prevents test discovery and interactive tools from
+interpreting the same project differently. Build-backend integration remains a
+separate packaging milestone.
 
 Pretty Printing
 ^^^^^^^^^^^^^^^

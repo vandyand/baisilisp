@@ -21,6 +21,22 @@ Generally the Basilisp CLI configuration options are simple passthroughs that co
 
 Basilisp uses the ``PYTHONPATH`` environment variable and :external:py:data:`sys.path` to determine where to look for Basilisp code when :ref:`requiring namespaces <namespace_requires>`.
 Additional values may be set using the ``-p`` (or ``--include-path``) CLI flags.
+Projects may also declare paths and compiler defaults in the nearest
+``pyproject.toml`` file:
+
+.. code-block:: toml
+
+   [tool.basilisp]
+   source-paths = ["src"]
+   test-paths = ["tests"]
+
+   [tool.basilisp.compiler]
+   warn-on-arity-mismatch = true
+
+Configured paths are resolved relative to ``pyproject.toml``. ``repl``,
+``nrepl-server``, and ``run`` use ``source-paths``; ``test`` uses both source
+and test paths. Explicit ``-p`` paths take precedence over configured paths,
+which take precedence over the test command's ``test``/``tests`` defaults.
 Depending on how Basilisp is invoked from the CLI, an additional entry will automatically be added unless explicitly disabled using ``--include-unsafe-path=false``:
 
 * An empty string (which implies the current working directory) will be prepended to the ``sys.path`` in the following cases:

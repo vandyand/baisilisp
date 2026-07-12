@@ -1,3 +1,4 @@
+import argparse
 import importlib
 import io
 import os
@@ -18,7 +19,9 @@ from unittest.mock import patch
 import attr
 import pytest
 
+from basilisp import cli, project
 from basilisp.cli import BOOL_FALSE, BOOL_TRUE, invoke_cli
+from basilisp.lang import keyword as kw
 from basilisp.prompt import Prompter
 
 
@@ -357,6 +360,108 @@ class TestRun:
     def test_run_ns_and_code_mutually_exclusive(self, run_cli):
         with pytest.raises(SystemExit):
             run_cli(["run", "-c", "-n"])
+
+    class TestProjectConfiguration:
+        @staticmethod
+        def _compiler_args(**overrides):
+            values = {
+                "generate_auto_inlines": None,
+                "inline_functions": None,
+                "warn_on_arity_mismatch": None,
+                "warn_on_shadowed_name": None,
+                "warn_on_shadowed_var": None,
+                "warn_on_unused_names": None,
+                "warn_on_non_dynamic_set": None,
+                "use_var_indirection": None,
+                "warn_on_var_indirection": None,
+            }
+            values.update(overrides)
+            return argparse.Namespace(**values)
+
+        def test_compiler_options_apply_config_then_cli_override(self, tmp_path):
+            config = project.ProjectConfig(
+                root=tmp_path,
+                source_paths=(),
+                test_paths=(),
+                compiler_opts={"warn-on-arity-mismatch": False},
+            )
+
+            configured = cli._compiler_opts(self._compiler_args(), config)
+            overridden = cli._compiler_opts(
+                self._compiler_args(warn_on_arity_mismatch=True), config
+            )
+
+            option = kw.keyword("warn-on-arity-mismatch")
+            assert configured.val_at(option) is False
+            assert overridden.val_at(option) is True
+
+        def test_run_namespace_uses_configured_source_path(
+            self, isolated_filesystem, run_cli
+        ):
+            pathlib.Path("pyproject.toml").write_text(
+                '[tool.basilisp]\nsource-paths = ["src"]\n'
+            )
+            source = pathlib.Path("src")
+            source.mkdir()
+            (source / "configured_source.lpy").write_text(
+                "(ns configured-source) (prn :configured)"
+            )
+
+            result = run_cli(
+                ["run", "--include-unsafe-path=false", "-n", "configured-source"]
+            )
+
+            assert ":configured" == result.lisp_out.rstrip()
+
+        def test_cli_include_path_overrides_configured_source_path(
+            self, isolated_filesystem, run_cli
+        ):
+            pathlib.Path("pyproject.toml").write_text(
+                '[tool.basilisp]\nsource-paths = ["src"]\n'
+            )
+            source = pathlib.Path("src")
+            override = pathlib.Path("override")
+            source.mkdir()
+            override.mkdir()
+            (source / "configured_override.lpy").write_text(
+                "(ns configured-override) (prn :configured)"
+            )
+            (override / "configured_override.lpy").write_text(
+                "(ns configured-override) (prn :cli)"
+            )
+
+            result = run_cli(
+                [
+                    "run",
+                    "--include-unsafe-path=false",
+                    "-p",
+                    str(override),
+                    "-n",
+                    "configured-override",
+                ]
+            )
+
+            assert ":cli" == result.lisp_out.rstrip()
+
+        def test_path_precedence(self, monkeypatch, tmp_path: pathlib.Path):
+            default_path = tmp_path / "default"
+            project_path = tmp_path / "project"
+            cli_path = tmp_path / "cli"
+            monkeypatch.setattr(sys, "path", [])
+
+            cli.init_path(
+                argparse.Namespace(
+                    include_path=[str(cli_path)], include_unsafe_path=False
+                ),
+                project_paths=(project_path,),
+                default_paths=(default_path,),
+            )
+
+            assert sys.path == [
+                str(cli_path),
+                str(project_path),
+                str(default_path),
+            ]
 
     class TestRunCode:
         def test_run_code(self, run_cli):
