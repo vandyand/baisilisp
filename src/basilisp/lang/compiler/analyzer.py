@@ -1800,6 +1800,11 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
 
     field_names = frozenset(fields)
     member_names = frozenset(deftype_or_reify_python_member_names(members))
+    method_members = {
+        member.python_name: member
+        for member in members
+        if isinstance(member, DefTypeMethod)
+    }
     all_member_names = field_names.union(member_names)
     all_interface_methods: set[str] = set()
     for interface in interfaces:
@@ -1888,6 +1893,45 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
                 )
 
             all_interface_methods.update(interface_names)
+            if ctx.warn_on_arity_mismatch:
+                for method_name in interface_method_names:
+                    member = method_members.get(method_name)
+                    if member is None:
+                        continue
+                    try:
+                        params = tuple(
+                            inspect.signature(
+                                getattr(interface_type, method_name)
+                            ).parameters.values()
+                        )
+                    except (TypeError, ValueError):
+                        continue
+                    if any(
+                        param.kind
+                        not in {
+                            inspect.Parameter.POSITIONAL_ONLY,
+                            inspect.Parameter.POSITIONAL_OR_KEYWORD,
+                        }
+                        or param.default is not inspect.Parameter.empty
+                        for param in params
+                    ):
+                        continue
+                    expected_arity = len(params) - 1
+                    supports_arity = expected_arity in {
+                        arity.fixed_arity for arity in member.arities
+                    } or (
+                        member.is_variadic and expected_arity >= member.max_fixed_arity
+                    )
+                    if not supports_arity:
+                        logger.warning(
+                            "%s implements method '%s' with arities %s; expected %s",
+                            special_form,
+                            method_name,
+                            ", ".join(
+                                str(arity.fixed_arity) for arity in member.arities
+                            ),
+                            expected_arity,
+                        )
             supertype_possibly_weakref.append(__is_type_weakref(interface_type))
         else:
             raise ctx.AnalyzerException(

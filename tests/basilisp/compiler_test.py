@@ -1568,6 +1568,25 @@ class TestDefType:
             assert (1, 2, 3) == (pt.x, pt.y, pt.z)
 
     class TestDefTypeMethod:
+        def test_deftype_warns_on_interface_method_arity_mismatch(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithMethod
+              (python/type "WithMethod"
+                           #py (abc/ABC)
+                           #py {"method"
+                                (abc/abstractmethod (fn [self value]))}))
+            (deftype* Point []
+              :implements [WithMethod]
+              (method [this] :incorrect))
+            """)
+            assert any(
+                "implements method 'method' with arities 0; expected 1" in message
+                for _, _, message in caplog.record_tuples
+            )
+
         def test_deftype_fields_and_methods(self, lcompile: CompileFn):
             Point = lcompile("""
             (import* collections.abc)
