@@ -1,0 +1,58 @@
+(ns tests.basilisp.test-prepl
+  (:require
+   [basilisp.contrib.prepl :as prepl]
+   [basilisp.test :refer [deftest is testing]])
+  (:import io))
+
+(deftest prepl-return-and-output-events-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(println \"hello\")\n(+ 1 2)")
+                #(swap! events conj %))
+    (is (= [{:tag :out :val "hello"}
+            {:tag :out :val "\n"}
+            {:tag :ret :val nil :ns "basilisp.user" :form "(println \"hello\")"}
+            {:tag :ret :val 3 :ns "basilisp.user" :form "(+ 1 2)"}]
+           (mapv #(dissoc % :ms) @events)))))
+
+(deftest prepl-error-output-events-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(.write *err* \"warning\")")
+                #(swap! events conj %))
+    (is (= [{:tag :err :val "warning"}
+            {:tag :ret :val 7 :ns "basilisp.user" :form "(.write *err* \"warning\")"}]
+           (mapv #(dissoc % :ms) @events)))))
+
+(deftest prepl-reader-error-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(") #(swap! events conj %))
+    (is (= 1 (count @events)))
+    (is (= :ret (:tag (first @events))))
+    (is (true? (:exception (first @events))))
+    (is (= :read-source (get-in (first @events) [:val :phase])))))
+
+(deftest prepl-evaluation-error-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(/ 1 0)") #(swap! events conj %))
+    (is (= 1 (count @events)))
+    (is (= {:tag :ret :form "(/ 1 0)" :exception true}
+           (select-keys (first @events) [:tag :form :exception])))
+    (is (= :execution (get-in (first @events) [:val :phase])))))
+
+(deftest prepl-session-namespace-and-quit-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(ns prepl-session)\n(+ 1 2)\n:repl/quit\n(+ 3 4)")
+                #(swap! events conj %))
+    (is (= ["prepl-session" "prepl-session"]
+           (mapv :ns @events)))
+    (is (= ["(ns prepl-session)" "(+ 1 2)"]
+           (mapv :form @events)))
+    (is (= [nil 3] (mapv :val @events)))
+    (remove-ns 'prepl-session)))
+
+(deftest io-prepl-serializes-readable-events-test
+  (let [in  (io/StringIO "(+ 1 2)")
+        out (io/StringIO)]
+    (binding [*in* in *out* out]
+      (prepl/io-prepl))
+    (is (= {:tag :ret :val "3" :ns "basilisp.user" :form "(+ 1 2)"}
+           (dissoc (read-string (.getvalue out)) :ms)))))

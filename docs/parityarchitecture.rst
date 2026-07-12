@@ -280,9 +280,12 @@ should become a core dependency.
 pREPL
 ^^^^^
 
-Basilisp already has an nREPL server with per-client evaluation state. pREPL
-should share an extracted evaluator/session service with it, not duplicate
-reader, compiler, source-location, and dynamic-binding behavior.
+Basilisp now has local ``prepl`` and ``io-prepl`` APIs, alongside the existing
+nREPL server. The local implementation preserves reader source text, dynamic
+REPL history, output/error events, tap forwarding, and structured exceptions.
+Before adding a remote server, the two protocols should share an extracted
+evaluator/session service rather than continuing to duplicate reader,
+compiler, source-location, and dynamic-binding behavior.
 
 The internal service receives code plus session state and emits ordered events.
 Its initial event model is the Clojure pREPL contract:
@@ -295,12 +298,12 @@ Its initial event model is the Clojure pREPL contract:
 * explicitly unsupported values represented through a safe printed form rather
   than arbitrary Python object serialization.
 
-``prepl`` first operates over supplied readers and callbacks for deterministic
-tests. ``io-prepl`` writes one EDN map per line, using ``pr-str`` for return
-values. ``remote-prepl`` then adds a loopback-default socket server, one
-isolated session per connection, request ordering, size limits, and clean
-shutdown. This is deliberately distinct from nREPL's bencode transport. The
-test gate is transcript fixtures for values, output, stderr, reader errors,
+``prepl`` operates over supplied readers and callbacks for deterministic tests.
+``io-prepl`` writes one EDN map per line, using ``pr-str`` for return values.
+``remote-prepl`` remains the next phase: it needs a loopback-default socket
+server, one isolated session per connection, request ordering, size limits, and
+clean shutdown. It is deliberately distinct from nREPL's bencode transport.
+The test gate is transcript fixtures for values, output, stderr, reader errors,
 compiler errors with source locations, session namespace isolation, and
 concurrent independent connections.
 

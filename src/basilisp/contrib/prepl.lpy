@@ -1,0 +1,114 @@
+(ns basilisp.contrib.prepl
+  "A local structured REPL evaluator compatible with Clojure pREPL events."
+  (:import threading
+           time))
+
+(definterface ^:private IStreamOut
+  (flush [])
+  (write [value]))
+
+(deftype ^:private StreamOutFn [out-fn tag]
+  IStreamOut
+  (flush [_self]
+    nil)
+  (write [_self value]
+    (out-fn {:tag tag :val value})
+    (count value)))
+
+(defn- exception-value
+  [e phase]
+  (cond-> {:phase   phase
+           :type    (.-__name__ (type e))
+           :message (str e)}
+    (ex-data e) (assoc :data (ex-data e))))
+
+(defn prepl
+  "Evaluate forms from ``in-reader`` and emit structured events to ``out-fn``.
+
+  Each successful form produces one ``:ret`` event. Evaluation output is emitted
+  as ordered ``:out`` and ``:err`` events, and reader or evaluation failures are
+  represented by a ``:ret`` event with ``:exception true``. Passing a form which
+  evaluates to ``:repl/quit`` stops evaluation without emitting a return event.
+
+  ``stdin`` may be supplied as a keyword argument to control the value bound to
+  :lpy:var:`basilisp.core/*in*` while forms are evaluated."
+  [in-reader out-fn & {:keys [stdin]}]
+  (let [eval-ns (create-ns 'basilisp.user)
+        _       (.refer-all eval-ns (the-ns 'basilisp.core))
+        tapfn   #(out-fn {:tag :tap :val %})]
+    (binding [*ns*  eval-ns
+              *in*  (or stdin in-reader)
+              *out* (StreamOutFn out-fn :out)
+              *err* (StreamOutFn out-fn :err)
+              *1    nil
+              *2    nil
+              *3    nil
+              *e    nil]
+      (add-tap tapfn)
+      (try
+        (loop []
+          (let [continue? (let [read-result (try
+                                              (read+string {:eof nil} in-reader)
+                                              (catch python/Exception e
+                                                (out-fn {:tag       :ret
+                                                         :val       (exception-value e :read-source)
+                                                         :ns        (str *ns*)
+                                                         :exception true})
+                                                :reader-error))]
+                            (cond
+                              (= :reader-error read-result)
+                              true
+
+                              (nil? read-result)
+                              false
+
+                              :else
+                              (let [[form source] read-result]
+                                (try
+                                  (let [start  (time/perf_counter_ns)
+                                        result (eval form)
+                                        ms     (int (/ (- (time/perf_counter_ns) start) 1000000))]
+                                    (when-not (= :repl/quit result)
+                                      (set! *3 *2)
+                                      (set! *2 *1)
+                                      (set! *1 result)
+                                      (out-fn {:tag  :ret
+                                               :val  result
+                                               :ns   (str *ns*)
+                                               :ms   ms
+                                               :form source}))
+                                    (not= :repl/quit result))
+                                  (catch python/Exception e
+                                    (set! *e e)
+                                    (out-fn {:tag       :ret
+                                             :val       (exception-value e :execution)
+                                             :ns        (str *ns*)
+                                             :form      source
+                                             :exception true})
+                                    true)))))]
+            (when continue?
+              (recur))))
+        (finally
+          (remove-tap tapfn))))))
+
+(defn io-prepl
+  "Run :lpy:fn:`prepl` using ``*in*`` and write one readable EDN event per line.
+
+  Return and tap values are transformed with ``valf``, which defaults to
+  ``pr-str``. This keeps transport events safe for consumers which cannot
+  directly serialize arbitrary Python objects."
+  [& {:keys [valf] :or {valf pr-str}}]
+  (let [out  *out*
+        lock (threading/RLock)]
+    (prepl *in*
+           (fn [event]
+             (binding [*out* out]
+               (with [_ lock]
+                 (prn (if (#{:ret :tap} (:tag event))
+                        (try
+                          (assoc event :val (valf (:val event)))
+                          (catch python/Exception e
+                            (assoc event
+                                   :val       (valf (exception-value e :print-eval-result))
+                                   :exception true)))
+                        event))))))))
