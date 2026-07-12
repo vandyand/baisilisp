@@ -268,9 +268,11 @@ The most appropriate next work is:
    workloads before considering history controls. The current forced-yield
    sample shows retry cost but no starvation; do not claim JVM STM internals
    without a measurable need and a separate proof.
-3. Broaden explicit ``fspec`` generation only where a portable descriptor has a
-   well-defined Hypothesis strategy; do not synthesize arbitrary predicates.
-4. Run the sample package build/install probe before considering a new backend.
+3. Treat channel transducers and pipelines as the next async milestone. Do not
+   add a ``go`` macro until resumable-state-machine semantics have a separate
+   proof and rejection model.
+4. Add inherited Python method-signature diagnostics as a compiler project,
+   beginning with clear errors rather than speculative runtime adaptation.
 5. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 
