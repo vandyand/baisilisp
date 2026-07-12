@@ -1,0 +1,78 @@
+(ns tests.basilisp.test-datafy
+  (:require
+   [basilisp.core.protocols :as protocols]
+   [basilisp.datafy :as datafy]
+   [basilisp.test :refer [deftest is testing]]))
+
+(defrecord Datafied [value]
+  protocols/Datafiable
+  (datafy [this]
+    (with-meta {:value (.-value this)} {:existing true})))
+
+(defrecord PlainDatafied [value]
+  protocols/Datafiable
+  (datafy [this]
+    #py {"value" (.-value this)}))
+
+(defrecord VectorDatafied [value]
+  protocols/Datafiable
+  (datafy [this]
+    [(.-value this)]))
+
+(defrecord IdentityDatafied [value]
+  protocols/Datafiable
+  (datafy [this]
+    this))
+
+(defrecord NavigableCollection [name]
+  protocols/Navigable
+  (nav [this k v]
+    {:collection (.-name this) :key k :value v}))
+
+(deftest datafy-defaults-to-identity-test
+  (testing "values without a Datafiable implementation are returned unchanged"
+    (doseq [value [nil 1 "value" :keyword [1 2] {:a 1}]]
+      (is (identical? value (datafy/datafy value)))
+      (is (identical? value (protocols/datafy value))))))
+
+(deftest datafy-adds-provenance-metadata-test
+  (let [source (->Datafied 42)
+        result (datafy/datafy source)
+        expected-class (symbol (str (.-__module__ (python/type source))
+                                    "."
+                                    (.-__qualname__ (python/type source))))]
+    (is (= {:value 42} result))
+    (is (= true (:existing (meta result))))
+    (is (identical? source (:basilisp.datafy/obj (meta result))))
+    (is (= expected-class (:basilisp.datafy/class (meta result))))))
+
+(deftest datafy-does-not-require-metadata-support-test
+  (let [source (->PlainDatafied 42)
+        result (datafy/datafy source)]
+    (is (= 42 (get result "value")))
+    (is (nil? (meta result)))))
+
+(deftest datafy-adds-provenance-to-values-without-existing-metadata-test
+  (let [source (->VectorDatafied 42)
+        result (datafy/datafy source)]
+    (is (= [42] result))
+    (is (identical? source (:basilisp.datafy/obj (meta result))))))
+
+(deftest datafy-does-not-add-provenance-when-value-is-unchanged-test
+  (let [source (->IdentityDatafied 42)
+        result (datafy/datafy source)]
+    (is (identical? source result))
+    (is (nil? (meta result)))))
+
+(deftest nav-defaults-to-value-test
+  (let [value {:nested :value}]
+    (is (identical? value (datafy/nav {:value value} :value value)))
+    (is (identical? value (protocols/nav {:value value} :value value)))
+    (is (identical? value (datafy/nav nil nil value)))))
+
+(deftest nav-delegates-to-navigable-implementation-test
+  (let [coll (->NavigableCollection "inventory")]
+    (is (= {:collection "inventory" :key :item :value {:id 7}}
+           (datafy/nav coll :item {:id 7})))
+    (is (= {:collection "inventory" :key nil :value :root}
+           (protocols/nav coll nil :root)))))

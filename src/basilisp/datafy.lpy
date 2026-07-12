@@ -1,0 +1,40 @@
+(ns basilisp.datafy
+  "Functions for representing objects as data and navigating their values.
+
+  Custom types can participate by implementing
+  :lpy:proto:`basilisp.core.protocols/Datafiable` or
+  :lpy:proto:`basilisp.core.protocols/Navigable`."
+  (:require
+   [basilisp.core.protocols :as protocols]))
+
+(defn- class-symbol
+  [o]
+  (let [type (python/type o)]
+    (symbol (str (.-__module__ type) "." (.-__qualname__ type)))))
+
+(defn datafy
+  "Return a data representation of ``o``.
+
+  Delegates to :lpy:proto:`basilisp.core.protocols/Datafiable`. If an
+  implementation returns a distinct value which supports metadata, the returned
+  value retains its metadata and gains ``:basilisp.datafy/obj`` containing ``o``
+  and ``:basilisp.datafy/class`` containing the original object's class symbol."
+  [o]
+  (let [data (protocols/datafy o)]
+    (if (and (not (identical? data o))
+             (instance? basilisp.lang.interfaces/IWithMeta data))
+      (with-meta data
+        (assoc (meta data)
+               :basilisp.datafy/obj o
+               :basilisp.datafy/class (class-symbol o)))
+      data)))
+
+(defn nav
+  "Return a possibly transformed ``v`` in the context of collection ``coll`` and
+  key or index ``k``.
+
+  Delegates to :lpy:proto:`basilisp.core.protocols/Navigable`. Callers should
+  provide ``k`` when it is known and use ``nil`` when no key or index context is
+  available."
+  [coll k v]
+  (protocols/nav coll k v))

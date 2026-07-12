@@ -112,7 +112,6 @@ interop. They also reduce friction when porting small Clojure libraries.
 
 Initial targets:
 
-* ``datafy`` and ``nav`` (`#626 <https://github.com/basilisp-lang/basilisp/issues/626>`_)
 * pREPL server (`#628 <https://github.com/basilisp-lang/basilisp/issues/628>`_)
 * ``pprint/code-dispatch`` (`#1266 <https://github.com/basilisp-lang/basilisp/issues/1266>`_)
 * ``core.async`` or a Python-native async alternative (`#149 <https://github.com/basilisp-lang/basilisp/issues/149>`_)

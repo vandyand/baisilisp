@@ -44,3 +44,29 @@
   (kv-reduce [s f init]
     (.reduce-kv s f init)))
 
+(defprotocol Datafiable
+  "Protocol for representing an object as data. Values without a custom
+  implementation are returned unchanged."
+  (datafy [o]
+    "Return a representation of ``o`` as data."))
+
+(extend-protocol Datafiable
+  nil
+  (datafy [_]
+    nil)
+
+  python/object
+  (datafy [o]
+    o))
+
+(defprotocol Navigable
+  "Protocol for transforming values in the context of a collection. Values
+  without a custom implementation are returned unchanged."
+  (nav [coll k v]
+    "Return a possibly transformed ``v`` in the context of ``coll`` and key or
+    index ``k``."))
+
+(extend-protocol Navigable
+  python/object
+  (nav [_ _ v]
+    v))

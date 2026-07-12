@@ -23,8 +23,8 @@
   (is (= #py [#py [1 2 3] #py [:a :b :c]]
          (to-array-2d '([1 2 3] (:a :b :c)))))
 
-  (is (thrown? python/TypeError)
-      (to-array-2d [[1 2 3] :b])))
+  (is (thrown? python/TypeError
+               (to-array-2d [[1 2 3] :b]))))
 
 (deftest into-array-test
   (testing "with no type"
@@ -117,4 +117,3 @@
     (is (= 5 (aset l 0 2 5)))
     (is (= #py [#py [:a :b 5] #py [:d :e :f]] l))
     (is (thrown? python/IndexError (aset l 0 5 :cc)))))
-

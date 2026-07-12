@@ -230,6 +230,7 @@ Core Libraries
 Basilisp includes ports of some of the standard libraries from Clojure which should generally match the source in functionality.
 
 * :lpy:ns:`basilisp.data` is a port of ``clojure.data``
+* :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io``
 * :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
