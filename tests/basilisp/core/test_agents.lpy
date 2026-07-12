@@ -23,13 +23,15 @@
         error    (agent-error a)
         state    @a]
     (is (instance? python/ValueError error))
+    (is (= [error] (agent-errors a)))
     (is (= 0 state))
     (is (thrown? python/RuntimeError (send a + 1)))
     (clear-agent-errors a)
     (restart-agent a)
     (send a + 1)
     (await-agent a)
-    (is (= 1 @a))))
+    (is (= 1 @a))
+    (is (nil? (agent-errors a)))))
 
 (deftest agent-continue-mode-test
   (let [a        (agent 0 :error-mode :continue)

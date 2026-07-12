@@ -13,11 +13,11 @@ one of those names.
 
 ## Implemented
 
-The following forty-nine symbols are now implemented and no longer appear as
+The following fifty symbols are now implemented and no longer appear as
 gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
-`agent`, `agent-error`, `await-for`, `clear-agent-errors`, `error-handler`,
+`agent`, `agent-error`, `agent-errors`, `await-for`, `clear-agent-errors`, `error-handler`,
 `error-mode`, `find-protocol-impl`, `find-protocol-method`, `line-seq`,
 `list*`, `locking`, `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
 `mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
@@ -79,7 +79,7 @@ iterators, database cursors, or URL parse results for the Java types.
 
 ### Agents and software transactional memory
 
-`*agent*`, `agent-errors`, `alter`, `await`, `commute`, `dosync`,
+`*agent*`, `alter`, `await`, `commute`, `dosync`,
 `ensure`, `io!`, `ref`, `ref-history-count`, `ref-max-history`,
 `ref-min-history`, `ref-set`, `release-pending-sends`, `seque`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
@@ -94,6 +94,8 @@ and failure-blocking `await1`.
 Bare `await` remains unavailable as an agent wait function because it is a
 Python async special form; `await-agent` provides that synchronous wait
 operation instead.
+`agent-errors` is now available as Clojure's deprecated one-item wrapper around
+`agent-error`.
 
 ### Version identity and unchecked arithmetic
 

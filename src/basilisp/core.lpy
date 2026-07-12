@@ -1177,6 +1177,14 @@
 (defn ^:inline agent-error [agent]
   (.get-error agent))
 
+(defn ^:inline agent-errors
+  "DEPRECATED: return a sequence containing the agent's current error, if any.
+
+  Prefer :lpy:fn:`agent-error` for the current exception value."
+  [agent]
+  (when-let [error (agent-error agent)]
+    (list error)))
+
 (defn ^:inline error-mode [agent]
   (.get-error-mode agent))
 
