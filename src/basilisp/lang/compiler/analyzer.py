@@ -333,6 +333,7 @@ class SymbolTable:
 class AnalyzerContext:
     __slots__ = (
         "_allow_unresolved_symbols",
+        "_compile_time_def_callbacks",
         "_filename",
         "_func_ctx",
         "_is_quoted",
@@ -351,6 +352,9 @@ class AnalyzerContext:
         allow_unresolved_symbols: bool = False,
     ) -> None:
         self._allow_unresolved_symbols = allow_unresolved_symbols
+        self._compile_time_def_callbacks: collections.deque[Callable[[Def], None]] = (
+            collections.deque([])
+        )
         self._filename = DEFAULT_COMPILER_FILE_PATH if filename is None else filename
         self._func_ctx: collections.deque[FunctionContext] = collections.deque([])
         self._is_quoted: collections.deque[bool] = collections.deque([])
@@ -439,6 +443,29 @@ class AnalyzerContext:
     def should_macroexpand(self) -> bool:
         """Return True if macros should be expanded."""
         return self._should_macroexpand
+
+    @contextlib.contextmanager
+    def compile_time_defs(self, callback: Callable[[Def], None]) -> Iterator[None]:
+        """Run ``callback`` for macro definitions needed by later body forms.
+
+        The compiler installs the generated macro function while analyzing a
+        sequential body. This makes the macro available for expansion without
+        changing the runtime form, which still evaluates in source order.
+        """
+        self._compile_time_def_callbacks.append(callback)
+        try:
+            yield
+        finally:
+            self._compile_time_def_callbacks.pop()
+
+    def compile_time_def(self, node: Node) -> None:
+        """Install a macro definition for the remainder of the current body."""
+        if (
+            self._compile_time_def_callbacks
+            and isinstance(node, Def)
+            and _is_macro(node.var)
+        ):
+            self._compile_time_def_callbacks[-1](node)
 
     @property
     def func_ctx(self) -> FunctionContext | None:
@@ -755,7 +782,7 @@ def _clean_meta(meta: lmap.PersistentMap | None) -> lmap.PersistentMap | None:
 
 
 def _body_ast(
-    form: llist.PersistentList | ISeq, ctx: AnalyzerContext
+    form: Iterable[ReaderForm], ctx: AnalyzerContext
 ) -> tuple[Iterable[Node], Node]:
     """Analyze the form and produce a body of statement nodes and a single
     return expression node.
@@ -770,7 +797,11 @@ def _body_ast(
         *stmt_forms, ret_form = body_list
 
         with ctx.stmt_pos():
-            body_stmts = list(map(lambda form: _analyze_form(form, ctx), stmt_forms))
+            body_stmts = []
+            for stmt_form in stmt_forms:
+                stmt = _analyze_form(stmt_form, ctx)
+                ctx.compile_time_def(stmt)
+                body_stmts.append(stmt)
 
         with ctx.parent_pos():
             body_expr = _analyze_form(ret_form, ctx)
@@ -3408,9 +3439,17 @@ def _catch_ast(form: ISeq, ctx: AnalyzerContext) -> Catch:
 def _try_ast(form: ISeq, ctx: AnalyzerContext) -> Try:
     assert form.first == SpecialForm.TRY
 
-    try_exprs = []
+    try_forms: list[ReaderForm] = []
+    try_statements: Iterable[Node] | None = None
+    try_ret: Node | None = None
     catches = []
     finally_: Do | None = None
+
+    def analyze_try_body() -> None:
+        nonlocal try_statements, try_ret
+        if try_statements is None:
+            try_statements, try_ret = _body_ast(try_forms, ctx)
+
     for expr in form.rest:
         if isinstance(expr, (llist.PersistentList, ISeq)):
             if expr.first == SpecialForm.CATCH:
@@ -3419,6 +3458,7 @@ def _try_ast(form: ISeq, ctx: AnalyzerContext) -> Try:
                         "catch forms may not appear after finally forms in a try",
                         form=expr,
                     )
+                analyze_try_body()
                 catches.append(_catch_ast(expr, ctx))
                 continue
             elif expr.first == SpecialForm.FINALLY:
@@ -3426,11 +3466,10 @@ def _try_ast(form: ISeq, ctx: AnalyzerContext) -> Try:
                     raise ctx.AnalyzerException(
                         "try forms may not contain multiple finally forms", form=expr
                     )
+                analyze_try_body()
                 # Finally values are never returned
                 with ctx.stmt_pos():
-                    *finally_stmts, finally_ret = map(
-                        lambda form: _analyze_form(form, ctx), expr.rest
-                    )
+                    finally_stmts, finally_ret = _body_ast(expr.rest, ctx)
                 finally_ = Do(
                     form=expr.rest,
                     statements=vec.vector(finally_stmts),
@@ -3442,8 +3481,6 @@ def _try_ast(form: ISeq, ctx: AnalyzerContext) -> Try:
                 )
                 continue
 
-        lisp_node = _analyze_form(expr, ctx)
-
         if catches:
             raise ctx.AnalyzerException(
                 "try body expressions may not appear after catch forms", form=expr
@@ -3453,16 +3490,14 @@ def _try_ast(form: ISeq, ctx: AnalyzerContext) -> Try:
                 "try body expressions may not appear after finally forms", form=expr
             )
 
-        try_exprs.append(lisp_node)
+        try_forms.append(expr)
 
     assert all(
         isinstance(node, Catch) for node in catches
     ), "All catch statements must be catch ops"
 
-    if try_exprs:
-        *try_statements, try_ret = try_exprs
-    else:
-        try_statements, try_ret = [], _const_node(None, ctx)
+    analyze_try_body()
+    assert try_statements is not None and try_ret is not None
 
     return Try(
         form=form,

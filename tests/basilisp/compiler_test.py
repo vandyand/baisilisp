@@ -6006,6 +6006,44 @@ class TestThrow:
 
 
 class TestTryCatch:
+    def test_macro_defined_in_try_body_is_available_to_later_body_forms(
+        self, lcompile: CompileFn
+    ):
+        assert kw.keyword("expanded") == lcompile("""
+            (try
+              (defmacro issue-1086-macro []
+                :expanded)
+              (issue-1086-macro)
+              (catch python/Exception e
+                e))
+        """)
+
+    def test_macro_defined_in_try_body_is_available_to_catch_forms(
+        self, lcompile: CompileFn
+    ):
+        assert kw.keyword("expanded") == lcompile("""
+            (try
+              (defmacro issue-1086-macro []
+                :expanded)
+              (throw (python/Exception "trigger catch"))
+              (catch python/Exception e
+                (issue-1086-macro)))
+        """)
+
+    def test_macro_defined_in_finally_is_available_to_later_finally_forms(
+        self, lcompile: CompileFn
+    ):
+        assert kw.keyword("caught") == lcompile("""
+            (try
+              (throw (python/Exception "trigger catch"))
+              (catch python/Exception e
+                :caught)
+              (finally
+                (defmacro issue-1086-macro []
+                  :expanded)
+                (issue-1086-macro)))
+        """)
+
     def test_try_empty_body(self, lcompile: CompileFn):
         assert None is lcompile("""
           (try

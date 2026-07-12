@@ -13,6 +13,7 @@ from unittest.mock import patch
 import pytest
 
 from basilisp import importer as importer
+from basilisp.lang import keyword as kw
 from basilisp.lang import runtime as runtime
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
@@ -364,6 +365,34 @@ class TestImporter:
     ):
         using_cache = load_namespace(cached_module_ns)
         assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+    def test_import_module_with_macro_defined_in_try_from_cache(
+        self, do_cache_namespaces, make_new_module, load_namespace
+    ):
+        ns_name = "importer.namespace.macro-in-try"
+        make_new_module(
+            "importer",
+            "namespace",
+            "macro_in_try.lpy",
+            module_text=f"""
+            (ns {ns_name})
+            (def val
+              (try
+                (defmacro issue-1086-macro []
+                  :expanded)
+                (issue-1086-macro)
+                (catch python/Exception e
+                  e)))
+            """,
+        )
+
+        p = Process(target=_import_module, args=(munge(ns_name),))
+        p.start()
+        p.join()
+        assert 0 == p.exitcode
+
+        ns = load_namespace(ns_name)
+        assert kw.keyword("expanded") == ns.find(sym.symbol("val")).value
 
     def test_import_module_without_writing_cache(
         self,

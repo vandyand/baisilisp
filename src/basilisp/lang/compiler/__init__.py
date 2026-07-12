@@ -1,4 +1,5 @@
 import ast
+import contextlib
 import itertools
 import os
 import types
@@ -38,6 +39,7 @@ from basilisp.lang.compiler.generator import (
     py_module_preamble,
 )
 from basilisp.lang.compiler.generator import statementize as _statementize
+from basilisp.lang.compiler.nodes import Def
 from basilisp.lang.compiler.optimizer import PythonASTOptimizer
 from basilisp.lang.interfaces import ISeq
 from basilisp.lang.runtime import BasilispModule
@@ -140,6 +142,33 @@ def _flatmap_forms(forms: Iterable[ReaderForm]) -> Iterable[ReaderForm]:
             yield form
 
 
+@contextlib.contextmanager
+def _compile_time_macro_defs(
+    ctx: CompilerContext,
+    module: BasilispModule,
+    collect_bytecode: BytecodeCollector | None = None,
+):
+    """Install macro Vars while their enclosing sequential form is analyzed.
+
+    Macro expansion happens during analysis, whereas the enclosing expression is
+    normally only executed after the full form has compiled. Compile a macro
+    definition once at this phase so later forms can expand it; the original
+    definition remains in the enclosing AST and still executes in source order.
+    """
+
+    def compile_time_def(lisp_ast: Def) -> None:
+        _incremental_compile_module(
+            ctx.py_ast_optimizer,
+            gen_py_ast(ctx.generator_context, lisp_ast),
+            module,
+            source_filename=ctx.filename,
+            collect_bytecode=collect_bytecode,
+        )
+
+    with ctx.analyzer_context.compile_time_defs(compile_time_def):
+        yield
+
+
 _sentinel = object()
 
 
@@ -162,38 +191,41 @@ def compile_and_exec_form(
         _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, ns.module)
 
     last = _sentinel
-    for unrolled_form in _flatmap_forms([form]):
-        final_wrapped_name = genname(wrapped_fn_name)
-        lisp_ast = analyze_form(ctx.analyzer_context, unrolled_form)
-        py_ast = gen_py_ast(ctx.generator_context, lisp_ast)
-        form_ast = list(
-            map(
-                _statementize,
-                itertools.chain(
-                    py_ast.dependencies,
-                    [
-                        _expressionize(
-                            GeneratedPyAST(node=py_ast.node), final_wrapped_name
-                        )
-                    ],
-                ),
+    with _compile_time_macro_defs(ctx, ns.module, collect_bytecode=collect_bytecode):
+        for unrolled_form in _flatmap_forms([form]):
+            final_wrapped_name = genname(wrapped_fn_name)
+            lisp_ast = analyze_form(ctx.analyzer_context, unrolled_form)
+            py_ast = gen_py_ast(ctx.generator_context, lisp_ast)
+            form_ast = list(
+                map(
+                    _statementize,
+                    itertools.chain(
+                        py_ast.dependencies,
+                        [
+                            _expressionize(
+                                GeneratedPyAST(node=py_ast.node), final_wrapped_name
+                            )
+                        ],
+                    ),
+                )
             )
-        )
 
-        ast_module = ast.Module(body=form_ast, type_ignores=[])
-        ast_module = ctx.py_ast_optimizer.visit(ast_module)
-        ast.fix_missing_locations(ast_module)
+            ast_module = ast.Module(body=form_ast, type_ignores=[])
+            ast_module = ctx.py_ast_optimizer.visit(ast_module)
+            ast.fix_missing_locations(ast_module)
 
-        _emit_ast_string(ast_module)
+            _emit_ast_string(ast_module)
 
-        bytecode = compile(ast_module, ctx.filename, "exec")
-        if collect_bytecode:
-            collect_bytecode(bytecode)
-        exec(bytecode, ns.module.__dict__)  # pylint: disable=exec-used  # nosec 6102
-        try:
-            last = getattr(ns.module, final_wrapped_name)()
-        finally:
-            del ns.module.__dict__[final_wrapped_name]
+            bytecode = compile(ast_module, ctx.filename, "exec")
+            if collect_bytecode:
+                collect_bytecode(bytecode)
+            exec(
+                bytecode, ns.module.__dict__
+            )  # pylint: disable=exec-used  # nosec 6102
+            try:
+                last = getattr(ns.module, final_wrapped_name)()
+            finally:
+                del ns.module.__dict__[final_wrapped_name]
 
     assert last is not _sentinel, "Must compile at least one form"
     return last
@@ -260,17 +292,18 @@ def compile_module(
     """
     _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, module)
 
-    for form in _flatmap_forms(forms):
-        nodes = gen_py_ast(
-            ctx.generator_context, analyze_form(ctx.analyzer_context, form)
-        )
-        _incremental_compile_module(
-            ctx.py_ast_optimizer,
-            nodes,
-            module,
-            source_filename=ctx.filename,
-            collect_bytecode=collect_bytecode,
-        )
+    with _compile_time_macro_defs(ctx, module, collect_bytecode=collect_bytecode):
+        for form in _flatmap_forms(forms):
+            nodes = gen_py_ast(
+                ctx.generator_context, analyze_form(ctx.analyzer_context, form)
+            )
+            _incremental_compile_module(
+                ctx.py_ast_optimizer,
+                nodes,
+                module,
+                source_filename=ctx.filename,
+                collect_bytecode=collect_bytecode,
+            )
 
 
 def compile_bytecode(

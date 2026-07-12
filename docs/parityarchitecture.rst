@@ -413,13 +413,15 @@ under a Python-native name if one is useful.
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-The macro-in-``try`` failure cannot be fixed by a late runtime binding: macro
-expansion happens before the containing compilation unit executes. The viable
-solution is a compiler phase boundary. The analyzer must recognize a local
-``defmacro`` whose value is needed by a later form in a sequential context,
-compile and install that definition before expanding the later form, and retain
-the original source span and exception context. This must be designed alongside
-``do`` and ``try`` rather than special-casing one macro.
+The macro-in-``try`` failure is resolved by a compiler phase boundary: macro
+expansion happens before the containing compilation unit executes, so a late
+runtime binding is insufficient. While analyzing a sequential body, the
+compiler now compiles and installs each statement-position ``defmacro`` before
+expanding the following form. The original definition remains in the generated
+AST and executes in source order at runtime. This applies consistently to
+``try``, ``catch``, ``finally``, and the other bodies built through the shared
+analyzer helper; cache-loading coverage verifies the same result for compiled
+namespaces.
 
 The ``loop`` closure bug should be addressed independently by inspecting the
 generated binding cells. A function created before ``recur`` must close over
