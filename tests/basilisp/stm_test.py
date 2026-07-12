@@ -7,6 +7,7 @@ import pytest
 import basilisp.lang.interfaces
 from basilisp.lang import stm
 from basilisp.lang.exception import ExceptionInfo
+from basilisp.lang.keyword import keyword
 
 
 def test_ref_implements_reference_interfaces_and_commits_multiple_writes():
@@ -117,6 +118,55 @@ def test_after_commit_actions_run_once_for_the_successful_retry_only():
     assert 2 == attempts
     assert [2] == committed_attempts
     assert 2 == ref.deref()
+
+
+def test_max_attempts_reports_the_final_conflict_and_discards_its_actions():
+    ref = stm.Ref(0)
+    actions = []
+
+    def body():
+        value = ref.deref()
+        stm.after_commit(lambda: actions.append("committed"))
+        thread = threading.Thread(
+            target=lambda: stm.run_transaction(lambda: stm.ref_set(ref, 1))
+        )
+        thread.start()
+        thread.join(timeout=2)
+        assert not thread.is_alive()
+        return stm.ref_set(ref, value + 1)
+
+    with pytest.raises(ExceptionInfo, match="conflict limit") as exc_info:
+        stm.run_transaction(body, max_attempts=1)
+
+    data = exc_info.value.data
+    assert 1 == data.val_at(keyword("attempts", ns="basilisp.stm"))
+    conflicts = data.val_at(keyword("conflicts", ns="basilisp.stm"))
+    assert 1 == len(conflicts)
+    conflict = conflicts[0]
+    assert id(ref) == conflict.val_at(keyword("ref-id", ns="basilisp.stm"))
+    assert 0 == conflict.val_at(keyword("read-version", ns="basilisp.stm"))
+    assert 1 == conflict.val_at(keyword("current-version", ns="basilisp.stm"))
+    assert 1 == ref.deref()
+    assert [] == actions
+
+
+@pytest.mark.parametrize("max_attempts", [0, -1])
+def test_max_attempts_must_be_positive(max_attempts):
+    with pytest.raises(ValueError, match="positive integer"):
+        stm.run_transaction(lambda: None, max_attempts=max_attempts)
+
+
+@pytest.mark.parametrize("max_attempts", [True, 1.0, "1"])
+def test_max_attempts_must_be_an_integer(max_attempts):
+    with pytest.raises(TypeError, match="positive integer"):
+        stm.run_transaction(lambda: None, max_attempts=max_attempts)  # type: ignore[arg-type]
+
+
+def test_max_attempts_allows_successful_outer_transactions_only():
+    assert "committed" == stm.run_transaction(lambda: "committed", max_attempts=1)
+
+    with pytest.raises(RuntimeError, match="outer transaction"):
+        stm.run_transaction(lambda: stm.run_transaction(lambda: None, max_attempts=1))
 
 
 def test_after_commit_requires_a_transaction_and_callable():

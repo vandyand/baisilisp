@@ -44,3 +44,7 @@
       (catch python/ValueError _))
     (await-agent a)
     (is (= 0 @a))))
+
+(deftest run-transaction-validates-max-attempts-test
+  (is (thrown? python/ValueError
+               (stm/run-transaction (fn [] nil) :max-attempts 0))))

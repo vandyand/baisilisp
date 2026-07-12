@@ -10,9 +10,13 @@
   (basilisp.lang.stm/Ref value ** :meta meta :validator validator))
 
 (defn run-transaction
-  "Run a zero-argument ``thunk`` transactionally."
-  [thunk]
-  (basilisp.lang.stm/run-transaction thunk))
+  "Run a zero-argument ``thunk`` transactionally.
+
+  ``:max-attempts`` is an experimental positive retry limit for an outermost
+  transaction. Exhausting it raises ``ExceptionInfo`` with conflict data;
+  ``dosync`` always retains retry-until-success behavior."
+  [thunk & {:keys [max-attempts]}]
+  (basilisp.lang.stm/run-transaction thunk ** :max-attempts max-attempts))
 
 (defmacro dosync
   "Evaluate ``body`` in a retryable transaction and return its final value."

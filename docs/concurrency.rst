@@ -70,3 +70,9 @@ This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute``,
 guard for known impure operations, and agent dispatches inside ``dosync`` are
 deferred until a successful commit; neither mechanism can detect arbitrary
 Python side effects in a retried transaction body.
+
+``dosync`` retries until it can commit. The experimental ``run-transaction``
+function accepts a positive ``:max-attempts`` option for callers that need a
+bounded retry policy. If the final attempt conflicts it raises ``ExceptionInfo``
+with ``:basilisp.stm/attempts`` and a ``:basilisp.stm/conflicts`` vector whose
+entries include each Ref identity and the observed/current version numbers.

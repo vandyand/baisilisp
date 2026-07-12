@@ -57,9 +57,9 @@ The next STM phases are intentionally ordered:
 1. **Completed locally:** ``io!`` rejects explicitly marked impure operations,
    and transaction-local after-commit actions defer agent sends until the final
    commit. Neither mechanism can detect arbitrary Python side effects.
-2. Add structured conflict diagnostics and an experimental bounded-attempt API.
-   Compatibility ``dosync`` should retain retry-until-success behavior;
-   applications that need a limit need an explicit, non-compatible control.
+2. **Completed locally:** experimental ``run-transaction`` accepts a bounded
+   retry count and raises structured conflict data on exhaustion. Compatibility
+   ``dosync`` retains retry-until-success behavior.
 3. Add ``commute`` by recording operation functions and arguments separately
    from normal writes. At commit, replay those operations against the latest
    committed value under the same commit locks. A commute must not silently
@@ -255,8 +255,8 @@ Execution Order
 The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
-2. Add STM conflict diagnostics and bounded-attempt controls. Do not begin
-   ``commute`` until retry boundaries are covered by stateful tests.
+2. Add STM state-machine coverage. Do not begin ``commute`` until retry
+   boundaries are covered by randomized operation histories.
 3. Implement ``fdef`` plus Var-only instrumentation, then add optional
    Hypothesis-backed checking and ``fspec`` generation.
 4. Run the sample package build/install probe before considering a new backend.

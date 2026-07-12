@@ -7,12 +7,21 @@ import inspect
 from contextlib import ExitStack
 from typing import Any, Callable, Generic, TypeVar
 
+from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
+from basilisp.lang import vector as vec
+from basilisp.lang.exception import ExceptionInfo
 from basilisp.lang.interfaces import IPersistentMap, RefValidator
 from basilisp.lang.reference import RefBase
 
 T = TypeVar("T")
 R = TypeVar("R")
+
+_ATTEMPTS = kw.keyword("attempts", ns="basilisp.stm")
+_CONFLICTS = kw.keyword("conflicts", ns="basilisp.stm")
+_REF_ID = kw.keyword("ref-id", ns="basilisp.stm")
+_READ_VERSION = kw.keyword("read-version", ns="basilisp.stm")
+_CURRENT_VERSION = kw.keyword("current-version", ns="basilisp.stm")
 
 
 class Ref(RefBase[T], Generic[T]):
@@ -60,6 +69,7 @@ class _Transaction:
         self._reads: dict[Ref[Any], tuple[Any, int]] = {}
         self._writes: dict[Ref[Any], Any] = {}
         self._after_commit: list[Callable[[], Any]] = []
+        self._conflicts: tuple[tuple[Ref[Any], int, int], ...] = ()
 
     def read(self, ref: Ref[T]) -> T:
         if ref in self._writes:
@@ -87,15 +97,24 @@ class _Transaction:
     def after_commit_actions(self) -> tuple[Callable[[], Any], ...]:
         return tuple(self._after_commit)
 
+    @property
+    def conflicts(self) -> tuple[tuple[Ref[Any], int, int], ...]:
+        """Return the read versions which invalidated the last commit attempt."""
+        return self._conflicts
+
     def commit(self) -> list[tuple[Ref[Any], Any, Any]] | None:
         """Commit all writes, or return ``None`` when a read version changed."""
         refs = sorted(set(self._reads) | set(self._writes), key=id)
         with ExitStack() as locks:
             for ref in refs:
                 locks.enter_context(ref._lock)
-            if any(
-                ref._version != version for ref, (_, version) in self._reads.items()
-            ):
+            conflicts = tuple(
+                (ref, version, ref._version)
+                for ref, (_, version) in self._reads.items()
+                if ref._version != version
+            )
+            if conflicts:
+                self._conflicts = conflicts
                 return None
 
             changes = [(ref, ref._state, value) for ref, value in self._writes.items()]
@@ -117,12 +136,22 @@ def in_transaction() -> bool:
     return _CURRENT_TRANSACTION.get() is not None
 
 
-def run_transaction(thunk: Callable[[], R]) -> R:
-    """Run ``thunk`` transactionally, retrying when a read version conflicts."""
+def run_transaction(thunk: Callable[[], R], *, max_attempts: int | None = None) -> R:
+    """Run ``thunk`` transactionally, retrying when a read version conflicts.
+
+    ``max_attempts`` is an experimental outer-transaction control. When set to
+    a positive integer, exhausting it raises ``ExceptionInfo`` containing the
+    attempt count and the Ref versions which conflicted on the final attempt.
+    """
+    _validate_max_attempts(max_attempts)
     if _CURRENT_TRANSACTION.get() is not None:
+        if max_attempts is not None:
+            raise RuntimeError("max_attempts may only be set on an outer transaction")
         return _evaluate_transaction_body(thunk)
 
+    attempts = 0
     while True:
+        attempts += 1
         transaction = _Transaction()
         token = _CURRENT_TRANSACTION.set(transaction)
         try:
@@ -131,6 +160,8 @@ def run_transaction(thunk: Callable[[], R]) -> R:
         finally:
             _CURRENT_TRANSACTION.reset(token)
         if changes is None:
+            if max_attempts is not None and attempts >= max_attempts:
+                raise _conflict_error(attempts, transaction.conflicts)
             continue
         try:
             for ref, old, new in changes:
@@ -167,6 +198,38 @@ def io_bang() -> None:
     """Reject an explicitly marked impure operation within a transaction."""
     if in_transaction():
         raise RuntimeError("I/O is not allowed within a transaction")
+
+
+def _validate_max_attempts(max_attempts: int | None) -> None:
+    if max_attempts is None:
+        return
+    if isinstance(max_attempts, bool) or not isinstance(max_attempts, int):
+        raise TypeError("max_attempts must be a positive integer or None")
+    if max_attempts < 1:
+        raise ValueError("max_attempts must be a positive integer")
+
+
+def _conflict_error(
+    attempts: int, conflicts: tuple[tuple[Ref[Any], int, int], ...]
+) -> ExceptionInfo:
+    return ExceptionInfo(
+        "Transaction conflict limit exceeded",
+        lmap.map(
+            {
+                _ATTEMPTS: attempts,
+                _CONFLICTS: vec.vector(
+                    lmap.map(
+                        {
+                            _REF_ID: id(ref),
+                            _READ_VERSION: read_version,
+                            _CURRENT_VERSION: current_version,
+                        }
+                    )
+                    for ref, read_version, current_version in conflicts
+                ),
+            }
+        ),
+    )
 
 
 def _evaluate_transaction_body(thunk: Callable[[], R]) -> R:
