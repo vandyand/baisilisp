@@ -136,6 +136,37 @@ These decisions resolve the areas where a name-for-name port would otherwise
 hide a materially different runtime contract. They are implementation plans,
 not claims that the named feature is already available.
 
+Decision Rules
+^^^^^^^^^^^^^^
+
+An ambiguous feature is not admitted merely because a package has a similarly
+named class. The selected implementation must meet its Clojure-facing contract,
+fit Basilisp's supported Python versions and license, and leave a credible
+escape hatch for Python-native use. The resulting decisions are:
+
+* STM is an internal runtime facility. No available Python package supplies the
+  snapshot, retry, and multi-reference commit semantics that ``Ref`` requires.
+  Storage transaction managers may later participate through an adapter, but
+  cannot implement ``dosync``.
+* Channels are internal ``asyncio`` primitives with a deliberately small,
+  awaitable surface. AnyIO is a useful optional bridge, not the runtime, and
+  third-party channel packages are reference material rather than dependencies.
+* pREPL is a structured evaluator API first and a socket service second. It
+  shares evaluation state with nREPL but speaks EDN rather than bencode.
+* ``pyproject.toml`` is the one project configuration source. PEP 517 remains
+  a distribution hook interface; dependency installation and environment
+  selection remain Python-tool responsibilities.
+* Reloading is explicit and best-effort. Basilisp can re-execute a module but
+  cannot make existing Python references point at its new definitions.
+* Spec owns portable validation/conforming behavior. Pydantic, attrs,
+  dataclasses, and Hypothesis are adapters and must not define core semantics.
+* The printer and compiler are compiler-runtime projects, not dispatch-table
+  patches. Their remaining changes require explicit intermediate boundaries:
+  printer tokens for ``:fill`` and analyzer phases for macro-producing forms.
+
+The sections below record the concrete consequences of those choices, rejected
+alternatives, and the gates required before each feature can be advertised.
+
 Transactional Memory
 ^^^^^^^^^^^^^^^^^^^^^
 
@@ -175,6 +206,22 @@ gate is a deterministic barrier-driven two-ref conflict test, randomized
 operation histories checked against a serialized model, validator and watch
 ordering tests, nested transaction tests, and a high-contention stress suite.
 
+This is a compatibility feature, not a general-purpose database transaction
+API. The external ``stm`` distribution is unlicensed and unmaintained, and
+Zope's ``transaction`` package coordinates storage resource managers rather
+than providing a versioned in-memory snapshot. It may later be useful behind a
+separate storage adapter, but it must not participate in a ``dosync`` commit
+until that adapter can validate and atomically publish with the Ref write set.
+
+The initial engine must reject an attempt to await and report conflicts through
+structured exception data when an explicitly configured timeout or cancellation
+policy stops a retry. Awaiting allows another task to observe speculative control
+flow. As with Clojure Refs, host objects are accepted but users must treat a
+stored value as immutable: mutation outside a transaction voids snapshot
+guarantees and cannot be detected reliably for arbitrary Python objects. The
+exception data should identify the transaction, conflicting Ref identities, and
+attempt count, so applications can recover without a fabricated MVCC guarantee.
+
 Channels And Async Interoperability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -213,6 +260,23 @@ races, FIFO fairness, every buffer policy, timeout and ``alts!`` races, and
 randomized producer/consumer traces checked for loss, duplication, and blocked
 waiters after shutdown.
 
+The implementation should not wrap ``asyncio.Queue`` directly. A queue with
+``maxsize=0`` is unbounded, whereas a Clojure-style unbuffered channel is a
+rendezvous. Queue shutdown is also only available in newer Python versions,
+while Basilisp supports Python 3.10. Instead, a channel owns deques of put and
+take waiters plus an optional buffer object. Each operation is settled through a
+single state transition under the event-loop thread; cancelled futures are
+discarded before matching, and close resolves every remaining waiter exactly
+once. ``alts!`` must reserve one operation with a shared winner token before
+completing its future.
+
+AnyIO's memory object streams are well-maintained and support multiple async
+backends, but they expose split send/receive endpoints and their own close and
+exception conventions. Provide adapters only after the native contract is
+proven. ``aiochan`` is a useful semantic reference but has not released since
+2022; the actively released ``cs-queues`` is synchronous and GPLv3. Neither
+should become a core dependency.
+
 pREPL
 ^^^^^
 
@@ -239,6 +303,29 @@ shutdown. This is deliberately distinct from nREPL's bencode transport. The
 test gate is transcript fixtures for values, output, stderr, reader errors,
 compiler errors with source locations, session namespace isolation, and
 concurrent independent connections.
+
+The evaluator boundary should be a small Python service rather than a network
+handler: ``evaluate(form_text, session, emit) -> session``. ``session`` owns
+the current namespace, dynamic bindings, history, and a cancellation token;
+``emit`` receives only Basilisp values. ``prepl`` supplies a reader and callback
+to that service. ``io-prepl`` serializes each event as one EDN value per line.
+Only then should ``remote-prepl`` add framed sockets, authentication hooks,
+message-size limits, and loopback-by-default binding.
+
+This preserves the important pREPL properties: one ``:ret`` event for every
+successfully read form, any number of ordered ``:out`` and ``:err`` events,
+and a structured exception result rather than a transport failure. Arbitrary
+Python objects must never be pickled across the boundary. A return-value
+formatter may provide a readable representation, but its event still records
+that the underlying value is host-specific.
+
+Evaluation interruption needs a separate contract. Async evaluation can
+propagate ``CancelledError`` and must run cleanup in ``finally``. Python cannot
+safely terminate arbitrary synchronous code running in a thread. Therefore an
+in-process pREPL interrupt is cooperative and may only take effect at defined
+safe points; a hard-stop mode must execute the request in a worker process and
+discard that process on timeout. This is more honest than a thread-killing API
+that can leave locks, Vars, or imports corrupted.
 
 Project Configuration And Packaging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -274,6 +361,22 @@ necessary. An interactive ``add-lib`` must manage an explicitly selected Python
 environment and require a restart when imports cannot be made safe; it must not
 silently invoke a second package manager in the running process.
 
+Reloading is governed by the same boundary. ``reload`` first invalidates import
+caches, then re-executes the requested module through Basilisp's importer. It
+reports the exact module set reloaded and never claims to update objects already
+held by ``from module import name`` or by Python closures. A future ``reload!``
+may calculate an explicit dependency closure from import provenance, but it
+must require confirmation for non-Basilisp modules and preserve the old module
+if a reload fails. Native extensions, modules with external side effects, and
+modules without an import spec are intentionally unsupported.
+
+The project resolver should be independently testable as
+``resolve_project(cwd, cli_options, environ)``. It returns absolute paths and
+compiler options without modifying ``sys.path``. The CLI, test runner, REPL,
+and build wrapper apply that resolved model at their entry points. This prevents
+test discovery, a REPL, and packaging from interpreting the same project
+differently.
+
 Pretty Printing
 ^^^^^^^^^^^^^^^
 
@@ -292,6 +395,20 @@ Each method must gracefully fall back to generic list printing for incomplete
 or malformed forms. Golden fixtures should assert output at narrow and wide
 margins, with metadata, nested collections, print-level, print-length, and
 reader round trips where printed code is data-readable.
+
+``:fill`` cannot be implemented as an alias for ``:linear``. It needs a token
+stream with a local look-ahead group: retain intervening spaces while the next
+element fits, then emit one break without forcing later siblings to break. The
+current printer's conditional-section bookkeeping lacks that retained context,
+so the first change is an internal token representation with width annotations
+and a renderer that consumes it. Preserve the existing public dispatch API
+while adding golden tests first; code dispatch should use the same token stream
+rather than duplicate layout logic.
+
+``cl-format`` remains deliberately out of scope. It is a separate, large
+format-language implementation with its own argument-consumption and locale
+semantics. A Python ``format`` wrapper would not be compatible and must live
+under a Python-native name if one is useful.
 
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -324,6 +441,22 @@ form, cause chain, and a filtered Basilisp frame list. Human rendering is a
 presentation layer. This gives editor protocols stable data while retaining a
 verbose Python traceback switch for compiler development.
 
+The phase boundary should be a narrowly scoped ``compile-time def`` mechanism,
+not execution of arbitrary forms during analysis. In a sequential form such as
+``do`` or a ``try`` body, analyze a local ``defmacro``; compile and install its
+macro value; then expand the following form in the newly extended macro
+environment. The generated runtime form remains in source order, so normal
+execution and exception behavior do not move. The design must reject a macro
+definition whose initializer depends on a local runtime binding, and it must
+roll back the temporary macro environment if analysis of the enclosing unit
+fails.
+
+Diagnostics should use a serializable ``CompilerDiagnostic`` record before
+adding more output switches. Its required fields are severity, phase, message,
+source name, line, column, form data or printed form, and a causal chain. CLI
+text, Sphinx examples, nREPL, pREPL, and an eventual editor integration then
+become renderers of the same facts instead of separately parsed tracebacks.
+
 Spec And Python Interoperability
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
@@ -347,6 +480,32 @@ facilities such as ``gen-class``, classpath mutation, Java beans, JDBC streams,
 and primitive arrays remain intentional omissions rather than aliases for
 unrelated Python types.
 
+The first internal representation should be immutable descriptors plus a
+``conform(value, path, via, in_)`` protocol. Every failure returns the same
+invalid sentinel internally and collects problem maps only when requested.
+That makes ``valid?`` cheap while preserving Clojure's explain-data shape:
+``:path``, ``:pred``, ``:val``, ``:via``, and ``:in``. The registry is a
+namespaced-keyword-to-descriptor map, and ``s/def`` changes only that registry.
+No Pydantic model, Python annotation, or dataclass may implicitly register a
+spec.
+
+Dataclass, attrs, and Pydantic adapters should be opt-in constructors that
+produce a regular spec and retain conversion details in metadata. They need
+separate policies for aliases, defaults, unknown fields, coercion, and error
+translation. Hypothesis belongs in ``basilisp.spec.test`` as an optional
+generator adapter after descriptors are stable; it must not decide what
+``conform`` or ``explain-data`` means. Function instrumentation follows with
+explicit Var wrapping and ``unstrument`` restoration, never monkey-patching
+arbitrary Python callables.
+
+Python interop should similarly prefer narrow vocabulary over Java-shaped
+aliases. Add adapters for mappings, sequences, asynchronous iterables, and
+model objects only where conversion direction, copying behavior, and error data
+are documented. For typed binary data, use a separate Python-native
+``memoryview``/``array`` adapter rather than claiming Java primitive-array
+compatibility. For database cursors and URLs, expose cursor and
+``urllib.parse`` adapters rather than ``resultset-seq`` and ``uri?``.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 
@@ -358,3 +517,18 @@ fork should publish a small manifest per port recording upstream revision,
 reader features, substitutions, tests run, and remaining deviations. A Python
 distribution containing the port is the deployment unit; no JAR loader or
 Maven resolver belongs in the Basilisp runtime.
+
+The practical porting workflow is: prove a library's source and transitive
+dependencies portable; add the smallest ``:lpy`` reader branches necessary;
+port upstream tests before behavior changes; and publish the result as a Python
+package with a machine-readable manifest. The manifest records upstream tag and
+commit, source checksum, reader-feature substitutions, test command, supported
+Python versions, and known deviations. This is more maintainable than a central
+claim that a changing Maven ecosystem can be loaded at runtime.
+
+Libraries that are primarily useful abstractions but depend on Java services
+should receive a native Basilisp implementation only when their public contract
+is valuable independently of the JVM. Otherwise, document the missing runtime
+service and point users to the appropriate Python library. This distinction
+keeps the fork from accumulating compatibility names whose behavior surprises
+both Clojure and Python users.
