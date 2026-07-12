@@ -204,11 +204,12 @@ Maturin remains the build backend until a fixture proves it cannot package
 normal Basilisp source correctly.
 
 The resolver already centralizes source paths, test paths, and compiler options
-for the CLI. The next deliverable is a black-box packaging probe: build an
-otherwise ordinary sample project containing ``.lpy`` source into an sdist and
-wheel through the current backend, install each into a clean environment, and
-import/run its namespace. The probe must assert which source and cache files
-are included, not merely that a wheel command exits successfully.
+for the CLI. **Completed locally:** ``scripts/package_probe.py`` builds the
+current package into an sdist and wheel through Maturin, asserts representative
+``.lpy`` sources are included, installs each artifact into a clean environment,
+imports ``core``, ``datafy``, and ``spec.alpha``, and verifies namespace cache
+creation. It is intentionally a black-box artifact probe rather than a unit
+test of Maturin internals.
 
 Only a failing probe justifies ``basilisp.build``. A future wrapper backend
 must delegate to the established native-extension build path, implement the
