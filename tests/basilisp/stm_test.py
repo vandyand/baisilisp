@@ -93,6 +93,102 @@ def test_conflicting_transactions_retry_and_preserve_both_updates():
     assert sum(attempts) == 3
 
 
+def test_after_commit_actions_run_once_for_the_successful_retry_only():
+    ref = stm.Ref(0)
+    attempts = 0
+    committed_attempts = []
+
+    def body():
+        nonlocal attempts
+        attempts += 1
+        attempt = attempts
+        value = ref.deref()
+        stm.after_commit(lambda: committed_attempts.append(attempt))
+        if attempt == 1:
+            thread = threading.Thread(
+                target=lambda: stm.run_transaction(lambda: stm.ref_set(ref, 1))
+            )
+            thread.start()
+            thread.join(timeout=2)
+            assert not thread.is_alive()
+        return stm.ref_set(ref, value + 1)
+
+    assert 2 == stm.run_transaction(body)
+    assert 2 == attempts
+    assert [2] == committed_attempts
+    assert 2 == ref.deref()
+
+
+def test_after_commit_requires_a_transaction_and_callable():
+    with pytest.raises(RuntimeError, match="requires an active transaction"):
+        stm.after_commit(lambda: None)
+
+    with pytest.raises(TypeError, match="must be callable"):
+        stm.run_transaction(lambda: stm.after_commit(None))  # type: ignore[arg-type]
+
+
+def test_after_commit_actions_follow_ref_watches():
+    ref = stm.Ref(0)
+    events = []
+    ref.add_watch("record", lambda *_args: events.append("watch"))
+
+    def body():
+        stm.ref_set(ref, 1)
+        stm.after_commit(lambda: events.append("after-commit"))
+
+    stm.run_transaction(body)
+
+    assert ["watch", "after-commit"] == events
+
+
+def test_nested_transaction_after_commit_actions_run_with_the_outer_commit():
+    events = []
+
+    def outer():
+        stm.after_commit(lambda: events.append("outer"))
+        stm.run_transaction(lambda: stm.after_commit(lambda: events.append("inner")))
+
+    stm.run_transaction(outer)
+
+    assert ["outer", "inner"] == events
+
+
+def test_after_commit_actions_run_after_a_watcher_failure():
+    ref = stm.Ref(0)
+    events = []
+
+    def fail_watch(*_args):
+        raise RuntimeError("watch failed")
+
+    ref.add_watch("fail", fail_watch)
+
+    def body():
+        stm.ref_set(ref, 1)
+        stm.after_commit(lambda: events.append("after-commit"))
+
+    with pytest.raises(RuntimeError, match="watch failed"):
+        stm.run_transaction(body)
+
+    assert 1 == ref.deref()
+    assert ["after-commit"] == events
+
+
+def test_after_commit_failure_does_not_roll_back_committed_state():
+    ref = stm.Ref(0)
+
+    def fail_action():
+        raise RuntimeError("after-commit failed")
+
+    def body():
+        stm.ref_set(ref, 1)
+        stm.after_commit(fail_action)
+
+    with pytest.raises(RuntimeError, match="after-commit failed"):
+        stm.run_transaction(body)
+
+    assert 1 == ref.deref()
+
+
 def test_transaction_rejects_async_body_and_alter_requires_a_transaction():
     ref = stm.Ref(0)
 
@@ -105,6 +201,9 @@ def test_transaction_rejects_async_body_and_alter_requires_a_transaction():
         stm.alter(ref, lambda value: value + 1)
     with pytest.raises(RuntimeError, match="requires an active transaction"):
         stm.ref_set(ref, 1)
+    with pytest.raises(RuntimeError, match="I/O is not allowed"):
+        stm.run_transaction(stm.io_bang)
+    assert stm.io_bang() is None
 
 
 def test_high_contention_preserves_all_multi_ref_updates():

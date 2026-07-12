@@ -29,6 +29,14 @@
   [ref value]
   (basilisp.lang.stm/ref-set ref value))
 
+(defn after-commit
+  "Schedule a zero-argument ``action`` to run once after ``dosync`` commits.
+
+  Actions from aborted or retried transaction attempts are discarded. Actions
+  run after Ref watches and cannot roll back an already committed transaction."
+  [action]
+  (basilisp.lang.stm/after-commit action))
+
 (defn in-transaction?
   "Return true when evaluating inside ``dosync``."
   []

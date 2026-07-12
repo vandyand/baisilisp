@@ -64,8 +64,9 @@ and a compatible licensing and maintenance posture.
 ``basilisp.stm`` precedes ``basilisp.core/ref``. Its first implementation has
 versioned references, transaction-local read/write sets, stable lock ordering,
 validation at commit, conflict retries, and deterministic contention coverage.
-``commute``, history controls, deferred agent sends, and ``io!`` follow only
-after that base contract gains broader state-machine coverage.
+``io!`` and deferred agent sends are implemented as explicit retry-safety
+guards; ``commute`` and history controls still require broader state-machine
+coverage.
 
 Project Configuration And Builds
 --------------------------------
@@ -240,8 +241,8 @@ not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
   retries until success or user code throws; the experimental namespace may
   expose an explicit attempt/time limit that reports structured conflict data.
 * Transactions are synchronous and must not await. Retried bodies make external
-  effects unsafe; ``io!`` should reject a dynamically marked impure operation
-  while a transaction is active. Deferred agent sends belong after commit only.
+  effects unsafe; ``io!`` rejects a dynamically marked impure operation while a
+  transaction is active. Agent sends are queued until after commit only.
 
 The first milestone intentionally excludes ``commute``, history tuning,
 ``ensure``, and asynchronous transactions. ``commute`` requires replaying its

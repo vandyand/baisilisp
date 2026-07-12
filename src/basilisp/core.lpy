@@ -18,6 +18,7 @@
          re
          basilisp.lang.agent
          basilisp.lang.regex
+         basilisp.lang.stm
          basilisp.lang.typing
          threading
          [time :as py-time]
@@ -1191,16 +1192,33 @@
 (defn ^:inline error-handler [agent]
   (.get-error-handler agent))
 
+(defn- dispatch-agent-action [executor agent f args]
+  (let [bound-f (bound-fn* f)
+        action  #(.submit-args agent executor bound-f args)]
+    (if (basilisp.lang.stm/in-transaction)
+      (do
+       (basilisp.lang.stm/after-commit action)
+       agent)
+      (action))))
+
 (defn send [agent f & args]
-  (.submit-args agent *agent-send-executor* (bound-fn* f) args))
+  (dispatch-agent-action *agent-send-executor* agent f args))
 
 (defn send-off [agent f & args]
-  (.submit-args agent *agent-send-off-executor* (bound-fn* f) args))
+  (dispatch-agent-action *agent-send-off-executor* agent f args))
 
 (defn send-via
   "Dispatch an agent action using an application-owned executor."
   [executor agent f & args]
-  (.submit-args agent executor (bound-fn* f) args))
+  (dispatch-agent-action executor agent f args))
+
+(defn io!
+  "Reject an explicitly marked I/O operation within a transaction.
+
+  This guard cannot detect arbitrary Python side effects; retryable transaction
+  bodies must still avoid I/O and other externally visible work."
+  []
+  (basilisp.lang.stm/io-bang))
 
 (defn await-agent [& agents]
   "Wait until all agents have no queued or active actions."

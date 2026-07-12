@@ -54,10 +54,9 @@ It belongs, if anywhere, in a future storage adapter rather than in ``Ref``.
 
 The next STM phases are intentionally ordered:
 
-1. Add a small ``io!`` guard and transaction-local after-commit actions. The
-   guard can reject explicitly marked impure operations while a transaction is
-   active, but it cannot detect arbitrary Python side effects. Agent dispatches
-   must be queued as after-commit actions and discarded on retry or abort.
+1. **Completed locally:** ``io!`` rejects explicitly marked impure operations,
+   and transaction-local after-commit actions defer agent sends until the final
+   commit. Neither mechanism can detect arbitrary Python side effects.
 2. Add structured conflict diagnostics and an experimental bounded-attempt API.
    Compatibility ``dosync`` should retain retry-until-success behavior;
    applications that need a limit need an explicit, non-compatible control.
@@ -256,9 +255,8 @@ Execution Order
 The most appropriate next work is:
 
 1. Harden the pREPL listener boundary and extract the shared session evaluator.
-2. Add STM after-commit actions, then defer agent sends, ``io!``, and structured
-   conflict diagnostics. Do not begin ``commute`` until those retry boundaries
-   are covered by stateful tests.
+2. Add STM conflict diagnostics and bounded-attempt controls. Do not begin
+   ``commute`` until retry boundaries are covered by stateful tests.
 3. Implement ``fdef`` plus Var-only instrumentation, then add optional
    Hypothesis-backed checking and ``fspec`` generation.
 4. Run the sample package build/install probe before considering a new backend.

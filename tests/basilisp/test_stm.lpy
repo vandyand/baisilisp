@@ -21,3 +21,26 @@
      (stm/alter value inc)
      (stm/dosync (stm/alter value inc)))
     (is (= 3 @value))))
+
+(deftest after-commit-actions-and-io-guard-test
+  (let [events (atom [])
+        a      (agent 0)]
+    (stm/dosync
+     (stm/after-commit #(swap! events conj :committed))
+     (send a + 1))
+    (await-agent a)
+    (is (= [:committed] @events))
+    (is (= 1 @a))
+    (is (nil? (io!)))
+    (is (thrown? python/RuntimeError
+                 (stm/dosync (io!))))))
+
+(deftest aborted-transaction-discards-agent-actions-test
+  (let [a (agent 0)]
+    (try
+      (stm/dosync
+       (send a + 1)
+       (throw (python/ValueError "abort")))
+      (catch python/ValueError _))
+    (await-agent a)
+    (is (= 0 @a))))

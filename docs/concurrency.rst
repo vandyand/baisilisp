@@ -66,6 +66,7 @@ must be side-effect free and must not return awaitables because they can run
 more than once.
 
 This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute``,
-``ensure``, history controls, ``io!``, and deferred agent sends remain
-unimplemented until the base transaction contract has broader contention and
-state-machine coverage.
+``ensure``, and history controls remain unimplemented. ``io!`` is an explicit
+guard for known impure operations, and agent dispatches inside ``dosync`` are
+deferred until a successful commit; neither mechanism can detect arbitrary
+Python side effects in a retried transaction body.

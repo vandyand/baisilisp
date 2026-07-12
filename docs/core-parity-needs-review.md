@@ -13,13 +13,12 @@ one of those names.
 
 ## Implemented
 
-The following fifty symbols are now implemented and no longer appear as
-gaps:
+The following symbols are now implemented and no longer appear as gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
 `agent`, `agent-error`, `agent-errors`, `await-for`, `clear-agent-errors`, `error-handler`,
 `error-mode`, `find-protocol-impl`, `find-protocol-method`, `line-seq`,
-`list*`, `locking`, `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
+`io!`, `list*`, `locking`, `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
 `mix-collection-hash`, `num`, `partitionv`, `partitionv-all`, `re-groups`,
 `re-matcher`, `read+string`, `reductions`, `replicate`, `splitv-at`, `struct`,
 `struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
@@ -80,10 +79,11 @@ iterators, database cursors, or URL parse results for the Java types.
 ### Agents and software transactional memory
 
 `*agent*`, `alter`, `await`, `commute`, `dosync`,
-`ensure`, `io!`, `ref`, `ref-history-count`, `ref-max-history`,
+`ensure`, `ref`, `ref-history-count`, `ref-max-history`,
 `ref-min-history`, `ref-set`, `release-pending-sends`, `seque`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
-and `sync`.
+and `sync`. `io!` is now provided as an explicit transaction side-effect
+guard, and agent sends made during a transaction are deferred until it commits.
 
 These names depend on Clojure's agent executor and STM retry/transaction
 semantics. Python threads, `asyncio`, and locks can support a useful native

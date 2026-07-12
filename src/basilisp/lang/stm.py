@@ -59,6 +59,7 @@ class _Transaction:
     def __init__(self) -> None:
         self._reads: dict[Ref[Any], tuple[Any, int]] = {}
         self._writes: dict[Ref[Any], Any] = {}
+        self._after_commit: list[Callable[[], Any]] = []
 
     def read(self, ref: Ref[T]) -> T:
         if ref in self._writes:
@@ -78,6 +79,13 @@ class _Transaction:
         self.read(ref)
         self._writes[ref] = value
         return value
+
+    def after_commit(self, action: Callable[[], Any]) -> None:
+        self._after_commit.append(action)
+
+    @property
+    def after_commit_actions(self) -> tuple[Callable[[], Any], ...]:
+        return tuple(self._after_commit)
 
     def commit(self) -> list[tuple[Ref[Any], Any, Any]] | None:
         """Commit all writes, or return ``None`` when a read version changed."""
@@ -124,8 +132,12 @@ def run_transaction(thunk: Callable[[], R]) -> R:
             _CURRENT_TRANSACTION.reset(token)
         if changes is None:
             continue
-        for ref, old, new in changes:
-            ref._notify_watches(old, new)
+        try:
+            for ref, old, new in changes:
+                ref._notify_watches(old, new)
+        finally:
+            for action in transaction.after_commit_actions:
+                action()
         return result
 
 
@@ -137,6 +149,24 @@ def alter(ref: Ref[T], f: Callable[..., T], *args: Any) -> T:
 def ref_set(ref: Ref[T], value: T) -> T:
     """Stage ``value`` as the new in-transaction value of ``ref``."""
     return _require_transaction().ref_set(ref, value)
+
+
+def after_commit(action: Callable[[], Any]) -> None:
+    """Run ``action`` once after the current transaction commits successfully.
+
+    Actions registered by failed or retried transaction attempts are discarded.
+    An action runs after committed Ref watches and cannot roll back the already
+    published transaction state.
+    """
+    if not callable(action):
+        raise TypeError("an after-commit action must be callable")
+    _require_transaction().after_commit(action)
+
+
+def io_bang() -> None:
+    """Reject an explicitly marked impure operation within a transaction."""
+    if in_transaction():
+        raise RuntimeError("I/O is not allowed within a transaction")
 
 
 def _evaluate_transaction_body(thunk: Callable[[], R]) -> R:
