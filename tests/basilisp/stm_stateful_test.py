@@ -9,6 +9,11 @@ from hypothesis import settings
 from hypothesis import strategies as st
 from hypothesis.stateful import RuleBasedStateMachine, invariant, rule
 
+from basilisp import main
+
+main.init()
+
+import basilisp.core as core  # isort: skip
 from basilisp.lang import stm
 
 
@@ -28,6 +33,9 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._ensured = stm.Ref(0)
         self._model_ensured = 0
         self._ensure_commits = 0
+        self._core_ref = core.ref(0)
+        self._model_core = 0
+        self._core_commits = 0
 
     @rule(
         deltas=st.lists(
@@ -110,6 +118,51 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         self._model_ensured += sum(deltas)
         self._ensure_commits += len(deltas)
 
+    @rule(
+        deltas=st.lists(
+            st.integers(min_value=-100, max_value=100), min_size=1, max_size=8
+        ),
+        workers=st.integers(min_value=1, max_value=4),
+    )
+    def concurrent_core_transactions(self, deltas: list[int], workers: int) -> None:
+        """Exercise the public core wrappers under the same contention model."""
+
+        def alter_core(delta: int) -> int:
+            def body() -> int:
+                value = self._core_ref.deref()
+                time.sleep(0)
+                return core.alter(self._core_ref, lambda current: current + delta)
+
+            return core.run_transaction(body)
+
+        with concurrent.futures.ThreadPoolExecutor(
+            max_workers=min(workers, len(deltas))
+        ) as executor:
+            futures = [executor.submit(alter_core, delta) for delta in deltas]
+            for future in futures:
+                future.result(timeout=5)
+
+        self._model_core += sum(deltas)
+        self._core_commits += len(deltas)
+
+    @rule(delta=st.integers(min_value=-100, max_value=100))
+    def aborted_core_transaction_leaves_no_write(self, delta: int) -> None:
+        """A public wrapper must preserve STM's all-or-nothing failure boundary."""
+
+        before = self._core_ref.deref()
+
+        def abort() -> None:
+            core.alter(self._core_ref, lambda current: current + delta)
+            raise RuntimeError("abort this transaction")
+
+        try:
+            core.run_transaction(abort)
+        except RuntimeError as exc:
+            assert "abort this transaction" == str(exc)
+        else:  # pragma: no cover - Hypothesis makes this branch diagnostic only
+            raise AssertionError("transaction did not propagate its failure")
+        assert before == self._core_ref.deref()
+
     @invariant()
     def refs_match_the_serialized_model(self) -> None:
         assert self._model_first == self._first.deref()
@@ -121,6 +174,8 @@ class TransactionHistoryMachine(RuleBasedStateMachine):
         assert self._commute_commits == self._commuted.version
         assert self._model_ensured == self._ensured.deref()
         assert self._ensure_commits == self._ensured.version
+        assert self._model_core == self._core_ref.deref()
+        assert self._core_commits == self._core_ref.version
 
 
 TestTransactionHistoryMachine = TransactionHistoryMachine.TestCase

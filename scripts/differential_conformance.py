@@ -69,7 +69,10 @@ def _run(command_prefix: str, fixture_path: str, *, label: str) -> list[str]:
         raise RuntimeError(
             f"{label} fixture failed with exit code {result.returncode}:\n{result.stderr}"
         )
-    return [_normalize_edn(line) for line in result.stdout.splitlines() if line.strip()]
+    output = [line for line in result.stdout.splitlines() if line.strip()]
+    if not output:
+        raise RuntimeError(f"{label} fixture did not emit any EDN cases")
+    return [_normalize_edn(line) for line in output]
 
 
 def _normalize_edn(line: str) -> str:

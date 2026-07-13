@@ -34,7 +34,8 @@
       "language": "cljc",
       "path": "src/acceptance/portable_library/util.cljc",
       "reader_features": [
-        "clj"
+        "clj",
+        "lpy"
       ],
       "requires": [
         "basilisp.set",
@@ -57,7 +58,8 @@
       "language": "cljc",
       "path": "test/acceptance/portable_library/checks.cljc",
       "reader_features": [
-        "clj"
+        "clj",
+        "lpy"
       ],
       "requires": [
         "acceptance.portable-library.catalog",

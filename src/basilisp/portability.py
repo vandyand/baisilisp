@@ -19,7 +19,7 @@ _JVM_MARKERS = {
     "jvm-classpath": re.compile(r"\b(?:add-classpath|Class/forName)\b"),
 }
 _REQUIRES = re.compile(r"\[([A-Za-z][\w.-]*)")
-_READER_FEATURES = re.compile(r"#\?@?\([^)]*?:(\w[\w+\-]*)", re.DOTALL)
+_DELIMITER_PAIRS = {"(": ")", "[": "]", "{": "}"}
 
 
 @dataclass(frozen=True)
@@ -97,11 +97,146 @@ def inspect_source_file(path: Path, root: Path | None = None) -> SourceFile:
         path=relative_path.as_posix(),
         sha256=hashlib.sha256(text.encode()).hexdigest(),
         language=path.suffix[1:],
-        reader_features=tuple(sorted(set(_READER_FEATURES.findall(text)))),
+        reader_features=tuple(sorted(_reader_features(text))),
         requires=tuple(sorted(set(_REQUIRES.findall(text)))),
         blockers=blockers,
         classification=classification,
     )
+
+
+def _reader_features(text: str) -> set[str]:
+    """Return every top-level feature key in reader-conditional forms.
+
+    This is deliberately a small lexical scan rather than a full source parse:
+    source manifests must be available even when a library has dependencies
+    that cannot load in the current runtime. It nevertheless ignores comments
+    and strings and follows nested delimiters, unlike the former first-branch
+    regular expression.
+    """
+
+    features: set[str] = set()
+    for opening in _reader_conditional_openings(text):
+        features.update(_conditional_features(text, opening))
+    return features
+
+
+def _reader_conditional_openings(text: str) -> Iterable[int]:
+    """Yield the opening parenthesis of each real ``#?`` or ``#?@`` form."""
+
+    index = 0
+    while index < len(text):
+        char = text[index]
+        if char == ";":
+            index = text.find("\n", index)
+            if index == -1:
+                return
+        elif char == '"':
+            index = _skip_string(text, index)
+        elif text.startswith("#?", index):
+            opening = index + 2
+            if opening < len(text) and text[opening] == "@":
+                opening += 1
+            if opening < len(text) and text[opening] == "(":
+                yield opening
+            index = opening
+        index += 1
+
+
+def _conditional_features(text: str, opening: int) -> Iterable[str]:
+    """Yield the feature keywords directly inside one reader conditional."""
+
+    index = opening + 1
+    while index < len(text):
+        index = _skip_ignored(text, index)
+        if index >= len(text) or text[index] == ")":
+            return
+        if text[index] != ":":
+            # Keep scanning malformed source conservatively without treating
+            # arbitrary top-level keyword values as feature keys.
+            index = _skip_form(text, index)
+            continue
+        end = index + 1
+        while end < len(text) and (text[end].isalnum() or text[end] in "_+-./"):
+            end += 1
+        feature = text[index + 1 : end]
+        if feature:
+            yield feature
+        index = _skip_ignored(text, end)
+        if index >= len(text) or text[index] == ")":
+            return
+        # A reader conditional alternates feature keys and forms. Skipping the
+        # whole value is what makes a keyword value (for example ``:jvm``)
+        # unambiguously different from the following feature key.
+        index = _skip_form(text, index)
+
+
+def _skip_ignored(text: str, index: int) -> int:
+    """Skip whitespace and line comments from ``index``."""
+
+    while index < len(text):
+        if text[index].isspace():
+            index += 1
+        elif text[index] == ";":
+            index = text.find("\n", index)
+            if index == -1:
+                return len(text)
+        else:
+            return index
+    return index
+
+
+def _skip_form(text: str, index: int) -> int:
+    """Skip one reader form without resolving or evaluating it."""
+
+    index = _skip_ignored(text, index)
+    if index >= len(text):
+        return index
+    char = text[index]
+    if char == '"':
+        return _skip_string(text, index) + 1
+    if char in "'`@~":
+        return _skip_form(text, index + 1)
+    if char == "^":
+        return _skip_form(text, _skip_form(text, index + 1))
+    if char == "#":
+        next_index = index + 1
+        if next_index < len(text) and text[next_index] == "?":
+            next_index += 1
+            if next_index < len(text) and text[next_index] == "@":
+                next_index += 1
+            return _skip_form(text, next_index)
+        if next_index < len(text) and text[next_index] in _DELIMITER_PAIRS:
+            return _skip_form(text, next_index)
+    if char in _DELIMITER_PAIRS:
+        closing = _DELIMITER_PAIRS[char]
+        index += 1
+        while index < len(text):
+            index = _skip_ignored(text, index)
+            if index >= len(text):
+                return index
+            if text[index] == closing:
+                return index + 1
+            index = _skip_form(text, index)
+        return index
+    while (
+        index < len(text) and not text[index].isspace() and text[index] not in "()[]{}"
+    ):
+        index += 1
+    return index
+
+
+def _skip_string(text: str, opening: int) -> int:
+    """Return the index of a closing quote, tolerating an unterminated string."""
+
+    index = opening + 1
+    while index < len(text):
+        if text[index] == "\\":
+            index += 2
+        elif text[index] == '"':
+            return index
+        else:
+            index += 1
+    return len(text) - 1
 
 
 def manifest_json(manifest: PortManifest) -> str:
