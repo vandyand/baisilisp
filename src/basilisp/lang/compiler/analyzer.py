@@ -149,6 +149,7 @@ from basilisp.lang.compiler.nodes import (
     deftype_or_reify_python_member_names,
 )
 from basilisp.lang.interfaces import IMeta, INamed, IRecord, ISeq, IType, IWithMeta
+from basilisp.lang.obj import lrepr
 from basilisp.lang.runtime import Var
 from basilisp.lang.typing import CompilerOpts, LispForm, ReaderForm
 from basilisp.lang.util import OBJECT_DUNDER_METHODS, count, genname, is_abstract, munge
@@ -1595,12 +1596,12 @@ def __deftype_or_reify_method_node_from_arities(
         )
 
     return DefTypeMethod(
-        form=form,
+        form=arities[0].form,
         name=arities[0].name,
         max_fixed_arity=max(arity.fixed_arity for arity in arities),
         arities=vec.vector(arities),
         is_variadic=num_variadic == 1,
-        env=ctx.get_node_env(),
+        env=arities[0].env,
     )
 
 
@@ -1666,6 +1667,8 @@ def __deftype_or_reify_impls(  # pylint: disable=too-many-branches,too-many-loca
             )
 
         member = __deftype_or_reify_prop_or_method_arity(elem, ctx, special_form)
+        if (member_loc := _loc(elem)) is not None:
+            member.fix_missing_locations(member_loc)
         member_order[member.name] = True
         if isinstance(
             member, (DefTypeClassMethod, DefTypeProperty, DefTypeStaticMethod)
@@ -1954,14 +1957,60 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
                         member.is_variadic and expected_arity >= member.max_fixed_arity
                     )
                     if not supports_arity:
+                        actual_arities = ", ".join(
+                            str(arity.fixed_arity) for arity in member.arities
+                        )
+                        message = (
+                            f"{special_form} implements method '{method_name}' with "
+                            f"arities {actual_arities}; expected {expected_arity}"
+                        )
+                        source_data: dict[kw.Keyword, Any] = {FILE_KW: member.env.file}
+                        for key, value in (
+                            (LINE_KW, member.env.line),
+                            (COL_KW, member.env.col),
+                            (END_LINE_KW, member.env.end_line),
+                            (END_COL_KW, member.env.end_col),
+                        ):
+                            if value is not None:
+                                source_data[key] = value
+                        diagnostic = lmap.map(
+                            {
+                                kw.keyword("type"): "CompilerWarning",
+                                kw.keyword("class"): (
+                                    "basilisp.lang.compiler.ArityMismatchWarning"
+                                ),
+                                kw.keyword("message"): message,
+                                kw.keyword("phase"): CompilerPhase.ANALYZING.value,
+                                kw.keyword("source"): lmap.map(source_data),
+                                kw.keyword("data"): lmap.map(
+                                    {
+                                        kw.keyword("kind", ns="basilisp.compiler"): (
+                                            kw.keyword(
+                                                "inherited-method-arity-mismatch",
+                                                ns="basilisp.compiler",
+                                            )
+                                        ),
+                                        kw.keyword(
+                                            "method", ns="basilisp.compiler"
+                                        ): method_name,
+                                        kw.keyword(
+                                            "expected-arity", ns="basilisp.compiler"
+                                        ): expected_arity,
+                                        kw.keyword(
+                                            "actual-arities", ns="basilisp.compiler"
+                                        ): tuple(
+                                            arity.fixed_arity
+                                            for arity in member.arities
+                                        ),
+                                    }
+                                ),
+                            }
+                        )
                         logger.warning(
-                            "%s implements method '%s' with arities %s; expected %s",
-                            special_form,
-                            method_name,
-                            ", ".join(
-                                str(arity.fixed_arity) for arity in member.arities
-                            ),
-                            expected_arity,
+                            "%s Basilisp diagnostic: %s",
+                            message,
+                            lrepr(diagnostic),
+                            extra={"basilisp_diagnostic": diagnostic},
                         )
             supertype_possibly_weakref.append(__is_type_weakref(interface_type))
         else:

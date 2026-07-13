@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from basilisp.contrib import repl_session
 from basilisp.lang import compiler
 from basilisp.lang import keyword as kw
@@ -30,7 +32,7 @@ def test_repl_session_keeps_history_namespace_and_stream_events():
     try:
         first = _evaluate(session, '(println "hello")', events)
         assert first.value is None
-        assert events == [("out", "hello"), ("out", "\n")]
+        assert events == [("out", "hello"), ("out", os.linesep)]
 
         second = _evaluate(session, "[*1 *2 *3]", events)
         assert list(second.value) == [None, None, None]

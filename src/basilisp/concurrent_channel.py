@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import random
 from collections import deque
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from typing import Any, Deque
 
 from basilisp.lang.keyword import Keyword, keyword
+from basilisp.lang.reduced import Reduced
 
 _POLICIES = frozenset({"fixed", "sliding", "dropping"})
 _BLOCKED = object()
@@ -282,3 +283,164 @@ async def alts(
 def timeout(delay_ms: float) -> TimeoutChannel:
     """Create a channel that closes once after ``delay_ms`` milliseconds."""
     return TimeoutChannel(delay_ms)
+
+
+def _transduce_one(xform: Callable[..., Any], value: Any) -> list[Any]:
+    """Apply a synchronous transducer independently to one channel value.
+
+    A fresh reducing function is created for every value. This deliberately
+    gives ``pipeline`` per-input semantics: a transducer may emit zero, one, or
+    many values, but state is never shared accidentally between workers.
+    """
+
+    emitted: list[Any] = []
+
+    def emit(*args: Any) -> Any:
+        if not args:
+            return []
+        if len(args) == 1:
+            return args[0]
+        result, item = args
+        if item is None:
+            raise ValueError("channels do not accept nil values")
+        emitted.append(item)
+        return result
+
+    reducing_fn = xform(emit)
+    result = reducing_fn()
+    result = reducing_fn(result, value)
+    if isinstance(result, Reduced):
+        return emitted
+    reducing_fn(result)
+    return emitted
+
+
+async def _pipe(source: Channel, destination: Channel, *, close_output: bool) -> None:
+    try:
+        while (value := await source.take()) is not None:
+            if not await destination.put(value):
+                return
+    finally:
+        if close_output:
+            destination.close()
+
+
+def pipe(
+    source: Channel, destination: Channel, *, close_output: bool = True
+) -> asyncio.Task[None]:
+    """Forward values from ``source`` to ``destination`` in a caller-owned task.
+
+    Closing the source drains already-buffered values. Closing the destination
+    stops upstream consumption. By default the destination closes when the
+    source closes; pass ``close_output=False`` when another owner controls it.
+    """
+
+    return asyncio.create_task(_pipe(source, destination, close_output=close_output))
+
+
+async def _pipeline(
+    parallelism: int,
+    source: Channel,
+    destination: Channel,
+    xform: Callable[..., Any],
+    *,
+    close_output: bool,
+    error_handler: Callable[[BaseException, Any], Iterable[Any] | None] | None,
+) -> None:
+    pending: dict[int, tuple[Any, asyncio.Task[list[Any]]]] = {}
+    completed: dict[int, list[Any]] = {}
+    input_closed = False
+    next_sequence = 0
+    next_output = 0
+
+    try:
+        while not input_closed or pending:
+            while not input_closed and len(pending) < parallelism:
+                value = await source.take()
+                if value is None:
+                    input_closed = True
+                    break
+                pending[next_sequence] = (
+                    value,
+                    asyncio.create_task(
+                        asyncio.to_thread(_transduce_one, xform, value)
+                    ),
+                )
+                next_sequence += 1
+
+            if not pending:
+                continue
+
+            done, _ = await asyncio.wait(
+                [task for _, task in pending.values()],
+                return_when=asyncio.FIRST_COMPLETED,
+            )
+            for sequence, (value, task) in list(pending.items()):
+                if task not in done:
+                    continue
+                del pending[sequence]
+                try:
+                    completed[sequence] = task.result()
+                except BaseException as exc:
+                    if error_handler is None:
+                        raise
+                    replacement = await asyncio.to_thread(error_handler, exc, value)
+                    completed[sequence] = (
+                        [] if replacement is None else list(replacement)
+                    )
+
+            while next_output in completed:
+                for value in completed.pop(next_output):
+                    if not await destination.put(value):
+                        return
+                next_output += 1
+    finally:
+        for _, task in pending.values():
+            task.cancel()
+        if pending:
+            await asyncio.gather(
+                *(task for _, task in pending.values()), return_exceptions=True
+            )
+        if close_output:
+            destination.close()
+
+
+def pipeline(
+    parallelism: int,
+    source: Channel,
+    destination: Channel,
+    xform: Callable[..., Any],
+    *,
+    close_output: bool = True,
+    error_handler: Callable[[BaseException, Any], Iterable[Any] | None] | None = None,
+) -> asyncio.Task[None]:
+    """Transform source values concurrently and emit results in input order.
+
+    ``xform`` is a normal synchronous Basilisp/Python transducer. Each input is
+    processed independently and may emit zero or more values. Work admission is
+    bounded by ``parallelism``; transformations run in worker threads so a
+    blocking synchronous transform does not stall the owning event loop.
+
+    A transform failure ends the returned task unless ``error_handler`` is
+    supplied. The handler receives ``(exception, input)`` and may return an
+    iterable of replacement output values, or ``None`` to drop the input.
+    """
+
+    if isinstance(parallelism, bool) or not isinstance(parallelism, int):
+        raise TypeError("pipeline parallelism must be a positive integer")
+    if parallelism < 1:
+        raise ValueError("pipeline parallelism must be a positive integer")
+    if not callable(xform):
+        raise TypeError("pipeline xform must be callable")
+    if error_handler is not None and not callable(error_handler):
+        raise TypeError("pipeline error_handler must be callable")
+    return asyncio.create_task(
+        _pipeline(
+            parallelism,
+            source,
+            destination,
+            xform,
+            close_output=close_output,
+            error_handler=error_handler,
+        )
+    )

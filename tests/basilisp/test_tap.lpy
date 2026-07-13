@@ -3,7 +3,8 @@
    [basilisp.string :as str]
    [basilisp.test :as t]
    [basilisp.test.tap :as tap]
-   tests.basilisp.tap-cases))
+   tests.basilisp.tap-cases)
+  (:import os))
 
 (t/deftest tap-output-test
   (let [output (with-out-str
@@ -17,9 +18,9 @@
     (t/is (not (str/includes? output "Testing tests.basilisp.tap-cases")))))
 
 (t/deftest tap-printers-test
-  (t/is (= "# first\n# second\n"
+  (t/is (= (str/join os/linesep ["# first" "# second" ""])
            (with-out-str
              (tap/print-tap-diagnostic "first\nsecond"))))
-  (t/is (= "1..2\n"
+  (t/is (= (str "1..2" os/linesep)
            (with-out-str
              (tap/print-tap-plan 2)))))

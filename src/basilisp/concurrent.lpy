@@ -112,3 +112,24 @@
   "Create a channel that closes after ``delay-ms`` milliseconds."
   [delay-ms]
   (basilisp.concurrent_channel/timeout delay-ms))
+
+(defn pipe!
+  "Forward values from ``source`` to ``destination`` in a caller-owned task.
+
+  ``destination`` closes after the source drains unless ``:close-output false``
+  is supplied. Closing the destination stops upstream consumption."
+  [source destination & {:keys [close-output] :or {close-output true}}]
+  (basilisp.concurrent_channel/pipe source destination ** :close-output close-output))
+
+(defn pipeline!
+  "Run a synchronous transducer over channel values with bounded parallelism.
+
+  Results retain input order even when work completes out of order. ``xform``
+  may emit zero or more values for each input. ``:on-error`` receives the
+  exception and input and may return replacement output values; absent a
+  handler, the returned task fails."
+  [parallelism source destination xform & {:keys [close-output on-error]
+                                            :or {close-output true}}]
+  (basilisp.concurrent_channel/pipeline parallelism source destination xform
+                                        ** :close-output close-output
+                                        :error-handler on-error))

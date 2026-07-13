@@ -1586,6 +1586,31 @@ class TestDefType:
                 "implements method 'method' with arities 0; expected 1" in message
                 for _, _, message in caplog.record_tuples
             )
+            record = next(
+                record
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+            )
+            diagnostic = record.basilisp_diagnostic
+            assert "CompilerWarning" == diagnostic.val_at(kw.keyword("type"))
+            assert "basilisp.lang.compiler.ArityMismatchWarning" == diagnostic.val_at(
+                kw.keyword("class")
+            )
+            assert kw.keyword("analyzing") == diagnostic.val_at(kw.keyword("phase"))
+            source = diagnostic.val_at(kw.keyword("source"))
+            assert "<Compiler Test>" == source.val_at(kw.keyword("file"))
+            assert source.val_at(kw.keyword("line")) is not None
+            data = diagnostic.val_at(kw.keyword("data"))
+            assert kw.keyword(
+                "inherited-method-arity-mismatch", ns="basilisp.compiler"
+            ) == data.val_at(kw.keyword("kind", ns="basilisp.compiler"))
+            assert "method" == data.val_at(kw.keyword("method", ns="basilisp.compiler"))
+            assert 1 == data.val_at(
+                kw.keyword("expected-arity", ns="basilisp.compiler")
+            )
+            assert (0,) == data.val_at(
+                kw.keyword("actual-arities", ns="basilisp.compiler")
+            )
 
         def test_deftype_fields_and_methods(self, lcompile: CompileFn):
             Point = lcompile("""

@@ -2,11 +2,52 @@ import asyncio
 
 import pytest
 
-from basilisp.concurrent_channel import DEFAULT_PORT, Channel, alts, timeout
+from basilisp.concurrent_channel import (
+    DEFAULT_PORT,
+    Channel,
+    alts,
+    pipe,
+    pipeline,
+    timeout,
+)
 
 
 def run(coro):
     return asyncio.run(coro)
+
+
+def map_xform(function):
+    """Small Python transducer fixture, independent of Basilisp core loading."""
+
+    def xform(reducing_function):
+        def reducing(*args):
+            if not args:
+                return reducing_function()
+            if len(args) == 1:
+                return reducing_function(args[0])
+            result, value = args
+            return reducing_function(result, function(value))
+
+        return reducing
+
+    return xform
+
+
+def mapcat_xform(function):
+    def xform(reducing_function):
+        def reducing(*args):
+            if not args:
+                return reducing_function()
+            if len(args) == 1:
+                return reducing_function(args[0])
+            result, value = args
+            for emitted in function(value):
+                result = reducing_function(result, emitted)
+            return result
+
+        return reducing
+
+    return xform
 
 
 def test_rendezvous_channel_matches_put_and_take():
@@ -210,5 +251,109 @@ def test_alts_close_races_and_timers_leave_no_second_winner():
         never = Channel()
         timer = timeout(1)
         assert await alts([never, timer]) == (None, timer)
+
+    run(scenario())
+
+
+def test_pipe_forwards_values_and_has_explicit_output_ownership():
+    async def scenario():
+        source = Channel(2)
+        destination = Channel(2)
+        assert await source.put("first")
+        assert await source.put("second")
+        source.close()
+
+        task = pipe(source, destination)
+        assert [await destination.take(), await destination.take()] == [
+            "first",
+            "second",
+        ]
+        assert await task is None
+        assert destination.closed
+
+        source = Channel(1)
+        destination = Channel(1)
+        assert await source.put("owned")
+        source.close()
+        task = pipe(source, destination, close_output=False)
+        assert await destination.take() == "owned"
+        assert await task is None
+        assert not destination.closed
+
+    run(scenario())
+
+
+def test_pipeline_retains_order_supports_fanout_and_closes_after_drain():
+    async def scenario():
+        source = Channel(4)
+        destination = Channel(8)
+        for value in range(4):
+            assert await source.put(value)
+        source.close()
+
+        def deliberately_out_of_order(value):
+            import time
+
+            time.sleep((3 - value) * 0.01)
+            return (value, value + 10)
+
+        task = pipeline(4, source, destination, mapcat_xform(deliberately_out_of_order))
+        assert [await destination.take() for _ in range(8)] == [
+            0,
+            10,
+            1,
+            11,
+            2,
+            12,
+            3,
+            13,
+        ]
+        assert await task is None
+        assert destination.closed
+        assert await destination.take() is None
+
+    run(scenario())
+
+
+def test_pipeline_handler_and_closed_output_stop_admission():
+    async def scenario():
+        source = Channel(3)
+        destination = Channel(3)
+        for value in range(3):
+            assert await source.put(value)
+        source.close()
+
+        def fail_on_one(value):
+            if value == 1:
+                raise RuntimeError("bad input")
+            return value
+
+        task = pipeline(
+            2,
+            source,
+            destination,
+            map_xform(fail_on_one),
+            error_handler=lambda error, value: [f"{type(error).__name__}:{value}"],
+        )
+        assert [await destination.take() for _ in range(3)] == [0, "RuntimeError:1", 2]
+        assert await task is None
+
+        source = Channel(2)
+        destination = Channel(1)
+        assert await source.put("first")
+        assert await source.put("second")
+        destination.close()
+        task = pipeline(1, source, destination, map_xform(lambda value: value))
+        assert await task is None
+        assert await source.take() == "second"
+
+    run(scenario())
+
+
+@pytest.mark.parametrize("parallelism", [0, -1, True, 1.5])
+def test_pipeline_validates_parallelism(parallelism):
+    async def scenario():
+        with pytest.raises((TypeError, ValueError), match="positive integer"):
+            pipeline(parallelism, Channel(), Channel(), map_xform(lambda value: value))
 
     run(scenario())

@@ -36,6 +36,20 @@
   (let [timer (concurrent/timeout 1)]
     (await (concurrent/take! timer))))
 
+(defasync pipeline-roundtrip []
+  (let [source      (concurrent/chan 3)
+        destination (concurrent/chan 3)]
+    (await (concurrent/put! source 1))
+    (await (concurrent/put! source 2))
+    (await (concurrent/put! source 3))
+    (concurrent/close! source)
+    (let [runner (concurrent/pipeline! 2 source destination (map inc))]
+      (await runner)
+      [(await (concurrent/take! destination))
+       (await (concurrent/take! destination))
+       (await (concurrent/take! destination))
+       (await (concurrent/take! destination))])))
+
 (defasync alts-put-roundtrip []
   (let [first    (concurrent/chan)
         second   (concurrent/chan)
@@ -72,6 +86,7 @@
       (is (= [:second true :fallback :default]
              (asyncio/run (alts-roundtrip))))
       (is (nil? (asyncio/run (timeout-roundtrip))))
+      (is (= [2 3 4 nil] (asyncio/run (pipeline-roundtrip))))
       (is (= [:second true true] (asyncio/run (alts-put-roundtrip))))
       (finally
         (.close awaitable)))))

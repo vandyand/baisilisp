@@ -68,9 +68,10 @@ The next STM phases are intentionally ordered:
 4. **Completed locally:** ``ensure`` returns the in-transaction value and marks
    a Ref for version validation when it would otherwise be a pure commute.
 5. **Measured locally:** ``scripts/stm_contention_probe.py`` ran three forced-
-   yield rounds of eight workers performing 100 transactions each. All 2,400
-   commits completed with roughly 3.3--3.6 mean attempts and worst-case retries
-   in the tens. This shows normal retry cost but no starvation, so do not add
+   yield rounds of 16 workers performing 250 transactions each. All 12,000
+   commits completed with 1.002--1.004 mean attempts and a worst-case of two
+   attempts. Together with the deterministic conflict and Hypothesis history
+   tests, this shows normal retry cost but no starvation, so do not add
    Clojure's adaptive history queue yet. History is an optimization for snapshot
    retention, not a prerequisite for atomic multi-Ref updates.
 
@@ -111,12 +112,14 @@ When one does, expose explicit ownership-transfer helpers in a separate
 ``basilisp.contrib.anyio`` namespace rather than make an AnyIO endpoint pretend
 to be a bidirectional Basilisp ``Channel``.
 
-The next channel milestone is transducer/pipeline support, not a ``go`` macro.
-The macro is a compiler project: it must turn eligible bodies into resumable
-state machines and reject unsupported control flow deterministically. Until it
-has that proof, ``defasync`` plus ``await`` is the honest spelling. Tests for
-the pipeline milestone must cover cancellation, early close, no loss or
-duplication, backpressure, and selection fairness under randomized schedules.
+``pipe!`` and ordered ``pipeline!`` now provide the next channel milestone,
+using normal synchronous transducers without pretending to implement ``go``.
+The pipeline owns an explicit task, admits bounded work, preserves input order,
+handles fan-out, closes output explicitly, and performs cancellation-safe task
+cleanup. The
+``go`` macro remains a compiler project: it must turn eligible bodies into
+resumable state machines and reject unsupported control flow deterministically.
+Until it has that proof, ``defasync`` plus ``await`` is the honest spelling.
 
 Function Specs, Generators, And Python Models
 ----------------------------------------------
@@ -396,18 +399,21 @@ internal normalizer, not a new exception class. It consumes
 ``CompilerException.data``, ``ExceptionInfo.data``, and foreign exceptions and
 produces a persistent map containing phase, message, exception class, source
 span, form when available, and an ordered cause chain. pREPL exception events
-now use that representation while preserving their existing envelope.
+now use that representation while preserving their existing envelope. nREPL
+eval errors retain standard ``err`` and ``ex`` fields and additionally expose
+the EDN rendering under ``basilisp/diagnostic``.
 
-CLI text, nREPL response data, and human tracebacks should next render the
-same map. Transport-specific fields such as request id, stream text, and
-bencode status remain adapters outside the core diagnostic data. Transcript
-fixtures must assert the same nested compiler/runtime error reports equivalent
-phase, locations, causes, and messages across all four surfaces.
+CLI text and human tracebacks now preserve their existing traceback formatting
+and append the same readable EDN map under a ``Basilisp diagnostic:`` label.
+Transport-specific fields such as request id, stream text, and bencode status
+remain adapters outside the core diagnostic data. Fixtures now assert compiler
+and runtime diagnostic type, phase, source, and cause data across pREPL, nREPL,
+CLI, and direct human traceback rendering.
 
 The analyzer already checks known abstract members and can inspect ordinary
-Python signatures when ``:warn-on-arity-mismatch`` is active. The next step is
-to give that warning a source span and structured diagnostic data, not to
-convert every mismatch into an error. It may issue a precise diagnostic only
+Python signatures when ``:warn-on-arity-mismatch`` is active. These warnings
+now include a source span and structured diagnostic data, rather than
+converting every mismatch into an error. It may issue a precise diagnostic only
 when the base class is statically resolved and ``inspect.signature`` succeeds
 with an unambiguous positional contract. Builtins, extension methods,
 decorators without recoverable signatures, defaults, keyword-only parameters,
@@ -450,21 +456,16 @@ library.
 Execution Order
 ---------------
 
-The most appropriate next work is:
+The completed local work covers diagnostics, conservative inherited-method
+signature warnings, and the first channel pipeline milestone. The next work is:
 
-1. Unify pREPL, nREPL, CLI, and human-facing diagnostic rendering around the
-   existing structured exception data before adding cancellation or remote
-   transport features.
-2. Repeat ``scripts/stm_contention_probe.py`` at realistic production-like
+1. Repeat ``scripts/stm_contention_probe.py`` at realistic production-like
    workloads before considering history controls. The current forced-yield
    sample shows retry cost but no starvation; do not claim JVM STM internals
    without a measurable need and a separate proof.
-3. Treat channel transducers and pipelines as the next async milestone. Do not
-   add a ``go`` macro until resumable-state-machine semantics have a separate
+2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
    proof and rejection model.
-4. Add inherited Python method-signature diagnostics as a compiler project,
-   beginning with clear errors rather than speculative runtime adaptation.
-5. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
+3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 
 This sequence closes high-value semantic gaps while preserving the distinction
