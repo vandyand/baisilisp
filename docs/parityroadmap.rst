@@ -117,6 +117,13 @@ Near-term deliverable:
   reporting, custom-assertion, and fixture effects. New public compatibility
   names should arrive with a portable fixture or a documented host-specific
   reason why a shared fixture is impossible.
+* use ``scripts/library_acceptance.py`` for a source-level, multi-file library
+  proof. It executes the library-owned ``run.cljc`` test entrypoint in Clojure
+  and Basilisp, compares the final EDN summary, and rejects a stale checked-in
+  manifest. The initial ``tests/acceptance/portable_library`` fixture exercises
+  standard ``string``, ``set``, ``walk``, collection, transducer, exception,
+  and ``clojure.test`` behavior using only documented ``:clj``/``:lpy``
+  namespace substitutions.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

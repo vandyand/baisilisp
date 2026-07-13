@@ -1,0 +1,87 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "63c41fce15cce731257c94a0a1945e1ecdd45bc9331ea914cb8112821651d469"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/portable_library/catalog.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.portable-library.util",
+        "by-id",
+        "entries",
+        "id",
+        "payload"
+      ],
+      "sha256": "eb1937b91af5a3e3a857704b73aa73769c98fd8270fa4947d3193ace24b41884"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/portable_library/util.cljc",
+      "reader_features": [
+        "clj"
+      ],
+      "requires": [
+        "basilisp.set",
+        "basilisp.string",
+        "basilisp.walk",
+        "clojure.set",
+        "clojure.string",
+        "clojure.walk",
+        "entries",
+        "entry",
+        "item",
+        "key",
+        "value"
+      ],
+      "sha256": "47111271856a8e5ead6bd2ebb2624d900f71b0a069b772d5df580f784228fc14"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/portable_library/checks.cljc",
+      "reader_features": [
+        "clj"
+      ],
+      "requires": [
+        "acceptance.portable-library.catalog",
+        "basilisp.test",
+        "clojure.test",
+        "summary"
+      ],
+      "sha256": "8d0c5c2a30f60c2afff27a4d8c78cde603fcd40d04c13d5a211e59fee35e00c7"
+    }
+  ],
+  "substitutions": [
+    "clojure.set -> basilisp.set",
+    "clojure.string -> basilisp.string",
+    "clojure.test -> basilisp.test",
+    "clojure.walk -> basilisp.walk"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": null,
+  "upstream_url": null
+}

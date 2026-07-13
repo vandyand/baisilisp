@@ -468,13 +468,16 @@ operations. The differential corpus now covers portable core collection,
 sequence, transducer, metadata, hierarchy, lazy-realization, macro-expansion,
 exception-data, ``seque``, ``clojure.test`` reporting, and deterministic
 Agent/Ref behavior; ``sync`` is included as compatible transaction syntax.
+There is now also a source-level multi-file library acceptance proof with a
+checked-in portability manifest and Clojure/Basilisp test-summary comparison.
 The next work is:
 
-1. Expand the Clojure/Basilisp differential corpus with portable standard-
-   library behavior and source-level library acceptance cases. Add public
-   compatibility names only after their shared fixture passes. Continue to omit
-   Ref history controls unless a workload demonstrates starvation or
-   snapshot-retention pressure.
+1. Expand the source-level acceptance corpus from its representative portable
+   library to small upstream candidates. Keep reader conditionals limited to
+   documented standard-namespace substitutions; add public compatibility names
+   only after a shared fixture and manifest pass. Continue to omit Ref history
+   controls unless a workload demonstrates starvation or snapshot-retention
+   pressure.
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
    proof and rejection model.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a

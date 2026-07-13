@@ -725,6 +725,15 @@ requires, and blockers. A tree is classified as ``portable``,
 ``needs-lpy-port``, or ``jvm-only``; the latter two states require a reviewed
 port or explicit omission before publication.
 
+``scripts/library_acceptance.py`` turns that static evidence into an execution
+proof for a multi-file source tree. It validates the checked-in manifest, runs
+the library's ``run.cljc`` entrypoint under both Clojure and Basilisp, and
+compares the final EDN test summary while allowing test frameworks' preceding
+human-readable output. ``tests/acceptance/portable_library`` is the reference
+fixture: its ``:clj``/``:lpy`` conditionals perform only standard namespace
+substitutions, and its portable source exercises strings, sets, walking,
+collections, transducers, exception data, and ``clojure.test``.
+
 Libraries that are primarily useful abstractions but depend on Java services
 should receive a native Basilisp implementation only when their public contract
 is valuable independently of the JVM. Otherwise, document the missing runtime
