@@ -5,6 +5,7 @@
   (:require [basilisp.contrib.bencode :as bc]
             [basilisp.string :as str])
   (:import basilisp.contrib.repl_session
+           basilisp.lang.diagnostics
            basilisp.logconfig
            logging
            os
@@ -85,11 +86,14 @@
 
 (defn- handle-error [send-fn request e]
   (let [{:keys [client* ns]} request
-        data                 (ex-data e)
-        message              (or (:message data) (str e))]
-    (swap! client* assoc :*e e)
-    (send-fn request {"err" (str message)})
+        diagnostic           (basilisp.lang.diagnostics/exception-data e)
+        message              (->> (basilisp.lang.exception/format_exception
+                                  e (type e) (.-__traceback__ e) ** :disable-color true)
+                                 (str/join ""))]
+    (swap! client* assoc :*e message)
+    (send-fn request {"err" message})
     (send-fn request {"ex"     (traceback/format-exc)
+                      "basilisp/diagnostic" (pr-str diagnostic)
                       "status" ["eval-error"]
                       "ns"     ns})))
 
@@ -145,10 +149,7 @@
         (send-value request send-fn [result {:ns (str (.-namespace session))}]))
       (catch python/Exception e
         (debug :eval-exception e)
-        (let [msg (->> (basilisp.lang.exception/format_exception e (type e) (.-__traceback__ e)
-                                                                 ** :disable-color true)
-                       (str/join ""))]
-          (handle-error send-fn (assoc request :ns (str (.-namespace session))) msg)))
+        (handle-error send-fn (assoc request :ns (str (.-namespace session))) e))
       (finally
         (swap! client* assoc :eval-ns (.-namespace session))
         (send-fn request {"ns"     (str (.-namespace session))

@@ -339,11 +339,14 @@
           (let [{:keys [id err]} (client-recv! client)]
                (is (= id @id* ))
                (is (str/includes? err "ZeroDivisionError: Fraction(3, 0)")))
-          (let [{:keys [id ex status ns]} (client-recv! client)]
+          (let [{:keys [id ex status ns] :as response} (client-recv! client)
+                diagnostic                       (read-string (:basilisp/diagnostic response))]
             (is (= @id* id))
             (is (= "xyz" ns))
             (is (= ["eval-error"] status))
-            (is (str/starts-with? ex "Traceback (most recent call last):")))
+            (is (str/starts-with? ex "Traceback (most recent call last):"))
+            (is (= "ZeroDivisionError" (:type diagnostic)))
+            (is (= "builtins.ZeroDivisionError" (:class diagnostic))))
           (are [response] (= response (client-recv! client))
             {:id @id* :ns "xyz" :status ["done"]})
 
@@ -402,21 +405,24 @@
           (are [response] (= response (client-recv! client))
             {:id @id* :ns "xyz" :status ["done"]})
 
-          (client-send! client {:id (id-inc!) :op "eval" :code "(+ 3 5)" :ns "not-there"})
+          (client-send! client {:id (id-inc!) :op "eval" :code "(fn*)" :ns "not-there"})
           (let [{:keys [id err]} (client-recv! client)]
             (is (= id @id*))
-            (is (= [""
-                    "  exception: <class 'basilisp.lang.compiler.exception.CompilerException'>"
-                    "      phase: :analyzing"
-                    "    message: unable to resolve symbol '+' in this context"
-                    "       form: +"
-                    "   location: <nREPL Input>:1"]
-                   (str/split-lines err))))
-          (let [{:keys [id ex status ns]} (client-recv! client)]
+            (is (str/includes? err "CompilerException"))
+            (is (str/includes? err "Index 1 out of bounds"))
+            (is (str/includes? err "<nREPL Input>:1")))
+          (let [{:keys [id ex status ns] :as response} (client-recv! client)
+                diagnostic                       (read-string (:basilisp/diagnostic response))]
             (is (= @id* id))
             (is (= "not-there" ns))
             (is (= ["eval-error"] status))
-            (is (str/starts-with? ex "Traceback (most recent call last):")))
+            (is (str/starts-with? ex "Traceback (most recent call last):"))
+            (is (= "CompilerException" (:type diagnostic)))
+            (is (= "basilisp.lang.compiler.exception.CompilerException"
+                   (:class diagnostic)))
+            (is (= :analyzing (:phase diagnostic)))
+            (is (= "<nREPL Input>" (get-in diagnostic [:source :file])))
+            (is (= "IndexError" (get-in diagnostic [:causes 0 :type]))))
           (are [response] (= response (client-recv! client))
             {:id @id* :ns "not-there" :status ["done"]})))))
 

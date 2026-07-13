@@ -3,6 +3,7 @@
    [basilisp.contrib.prepl :as prepl]
    [basilisp.test :refer [deftest is testing]])
   (:import io
+           os
            socket
            threading))
 
@@ -11,7 +12,7 @@
     (prepl/prepl (io/StringIO "(println \"hello\")\n(+ 1 2)")
                 #(swap! events conj %))
     (is (= [{:tag :out :val "hello"}
-            {:tag :out :val "\n"}
+            {:tag :out :val os/linesep}
             {:tag :ret :val nil :ns "basilisp.user" :form "(println \"hello\")"}
             {:tag :ret :val 3 :ns "basilisp.user" :form "(+ 1 2)"}]
            (mapv #(dissoc % :ms) @events)))))
@@ -41,6 +42,18 @@
     (is (= :execution (get-in (first @events) [:val :phase])))
     (is (= "ZeroDivisionError" (get-in (first @events) [:val :type])))
     (is (= "builtins.ZeroDivisionError" (get-in (first @events) [:val :class])))))
+
+(deftest prepl-compiler-error-preserves-normalized-cause-and-source-test
+  (let [events (atom [])]
+    (prepl/prepl (io/StringIO "(fn*)") #(swap! events conj %))
+    (let [diagnostic (:val (first @events))]
+      (is (true? (:exception (first @events))))
+      (is (= "CompilerException" (:type diagnostic)))
+      ;; The pREPL envelope supplies :execution; the compiler's own phase stays
+      ;; available in structured data, matching CLI and nREPL diagnostics.
+      (is (= :analyzing (get-in diagnostic [:data :phase])))
+      (is (= "<pREPL Input>" (get-in diagnostic [:source :file])))
+      (is (= "IndexError" (get-in diagnostic [:causes 0 :type]))))))
 
 (deftest prepl-session-namespace-and-quit-test
   (let [events (atom [])]

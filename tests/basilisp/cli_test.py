@@ -273,6 +273,8 @@ class TestREPL:
             )
             in result.err
         )
+        assert "Basilisp diagnostic:" in result.err
+        assert ':type "UnexpectedEOFError"' in result.err
 
     def test_compiler_error(self, run_cli):
         result = run_cli(["repl"], input="(fn*)")
@@ -291,11 +293,18 @@ class TestREPL:
             )
             in result.err
         )
+        assert "Basilisp diagnostic:" in result.err
+        assert ':type "CompilerException"' in result.err
+        assert ":phase :analyzing" in result.err
+        assert ':file "<REPL Input>"' in result.err
 
     def test_other_exception(self, run_cli):
         result = run_cli(["repl"], input='(throw (python/Exception "CLI test"))')
         assert "basilisp.user=> basilisp.user=> " == result.out
         assert "Exception: CLI test" in result.err
+        assert "Basilisp diagnostic:" in result.err
+        assert ':type "Exception"' in result.err
+        assert ':class "builtins.Exception"' in result.err
 
     class TestPathConfig:
         @pytest.mark.parametrize(

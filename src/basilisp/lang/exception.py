@@ -5,6 +5,7 @@ from types import TracebackType
 
 import attr
 
+from basilisp.lang.diagnostics import exception_data
 from basilisp.lang.interfaces import IExceptionInfo, IPersistentMap
 from basilisp.lang.obj import lrepr
 
@@ -59,3 +60,5 @@ def print_exception(
     `basilisp.lang.reader.SyntaxError` have special handling to print useful information
     on exceptions."""
     print("".join(format_exception(e, tp, tb)), file=sys.stderr)
+    if isinstance(e, BaseException):
+        print(f"Basilisp diagnostic: {lrepr(exception_data(e))}", file=sys.stderr)

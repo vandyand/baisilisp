@@ -4,7 +4,7 @@ from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
 from basilisp.lang.compiler.exception import CompilerException, CompilerPhase
 from basilisp.lang.diagnostics import exception_data
-from basilisp.lang.exception import ExceptionInfo
+from basilisp.lang.exception import ExceptionInfo, print_exception
 
 
 def test_exception_data_keeps_operation_and_compiler_context() -> None:
@@ -51,3 +51,34 @@ def test_exception_data_uses_unsuppressed_context_and_avoids_cycles() -> None:
     assert nested.val_at(kw.keyword("type")) == "ValueError"
     cyclic = nested.val_at(kw.keyword("causes"))[0]
     assert cyclic.val_at(kw.keyword("message")) == "cyclic exception cause"
+
+
+def test_print_exception_appends_the_normalized_diagnostic(capsys) -> None:
+    error = RuntimeError("diagnostic output")
+
+    print_exception(error)
+
+    rendered = capsys.readouterr().err
+    assert "RuntimeError: diagnostic output" in rendered
+    assert "Basilisp diagnostic:" in rendered
+    assert ':type "RuntimeError"' in rendered
+    assert ':class "builtins.RuntimeError"' in rendered
+    assert ':message "diagnostic output"' in rendered
+
+
+def test_print_exception_keeps_compiler_cause_and_source_data(capsys) -> None:
+    error = CompilerException(
+        "unable to compile",
+        CompilerPhase.ANALYZING,
+        "diagnostic-test.lpy",
+    )
+    error.__cause__ = ValueError("nested cause")
+
+    print_exception(error)
+
+    rendered = capsys.readouterr().err
+    assert "Basilisp diagnostic:" in rendered
+    assert ':type "CompilerException"' in rendered
+    assert ":phase :analyzing" in rendered
+    assert ':source {:file "diagnostic-test.lpy"}' in rendered
+    assert ':type "ValueError"' in rendered
