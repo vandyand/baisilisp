@@ -1,0 +1,17 @@
+(ns tests.basilisp.test-sync-core
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest sync-runs-a-transaction-test
+  (let [value  (ref 1)
+        result (sync nil
+                 (alter value + 4)
+                 :synced)]
+    (is (= :synced result))
+    (is (= 5 @value))))
+
+(deftest sync-shares-nested-dosync-transaction-test
+  (let [value (ref 0)]
+    (sync nil
+      (alter value inc)
+      (dosync (alter value inc)))
+    (is (= 2 @value))))

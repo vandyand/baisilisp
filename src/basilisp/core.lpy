@@ -1252,6 +1252,15 @@
   [& body]
   `(run-transaction (fn [] ~@body)))
 
+(defmacro sync
+  "Evaluate ``body`` in a transaction.
+
+  ``flags`` is accepted for Clojure source compatibility and is currently
+  ignored, matching Clojure's documented behavior. New Basilisp code should
+  prefer ``dosync`` unless it is porting existing Clojure source."
+  [flags & body]
+  `(dosync ~@body))
+
 (defn alter
   "Stage the result of applying ``f`` to the transactional value of ``ref``."
   [ref f & args]

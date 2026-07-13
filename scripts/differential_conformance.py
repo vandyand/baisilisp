@@ -21,23 +21,43 @@ from basilisp.lang import reader
 from basilisp.lang.obj import lrepr
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_FIXTURE = ROOT / "tests" / "conformance" / "ref_cases.cljc"
+DEFAULT_FIXTURE_DIRECTORY = ROOT / "tests" / "conformance"
+
+
+def _fixture_paths(fixtures: list[Path] | None) -> list[Path]:
+    """Return explicitly selected fixtures or the complete conformance corpus."""
+
+    if fixtures:
+        return fixtures
+    return sorted(DEFAULT_FIXTURE_DIRECTORY.glob("*_cases.cljc"))
+
+
+def _fixture_argument(fixture: Path, command_prefix: str) -> str:
+    """Render a fixture path for a native or WSL-backed runtime command."""
+
+    resolved = fixture.resolve()
+    command = shlex.split(command_prefix)
+    if os.name == "nt" and command and command[0].lower() == "wsl":
+        drive = resolved.drive.rstrip(":").lower()
+        if drive:
+            return f"/mnt/{drive}{resolved.as_posix()[2:]}"
+    return str(resolved)
 
 
 def _default_clojure_command() -> str:
     if configured := os.environ.get("CLOJURE_COMMAND"):
         return configured
     if shutil.which("clojure"):
-        return "clojure -M -e"
+        return "clojure -M"
     if os.name == "nt" and shutil.which("wsl"):
-        return "wsl -d Ubuntu-24.04 -- clojure -M -e"
-    return "clojure -M -e"
+        return "wsl -d Ubuntu-24.04 -- clojure -M"
+    return "clojure -M"
 
 
-def _run(command_prefix: str, source: str, *, label: str) -> list[str]:
+def _run(command_prefix: str, fixture_path: str, *, label: str) -> list[str]:
     try:
         result = subprocess.run(
-            [*shlex.split(command_prefix), source],
+            [*shlex.split(command_prefix), fixture_path],
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -67,24 +87,43 @@ def main() -> int:
     parser = argparse.ArgumentParser(
         description="Compare deterministic portable fixture output from Clojure and Basilisp."
     )
-    parser.add_argument("--fixture", type=Path, default=DEFAULT_FIXTURE)
+    parser.add_argument(
+        "--fixture",
+        type=Path,
+        action="append",
+        help="Fixture to run; repeat to select multiple fixtures. Defaults to the corpus.",
+    )
     parser.add_argument("--clojure-command", default=_default_clojure_command())
-    parser.add_argument("--basilisp-command", default="uv run basilisp run -c")
+    parser.add_argument("--basilisp-command", default="uv run basilisp run")
     parser.add_argument("--show-output", action="store_true")
     args = parser.parse_args()
 
-    source = "(do\n" + args.fixture.read_text(encoding="utf-8") + "\nnil)"
-    clojure = _run(args.clojure_command, source, label="Clojure")
-    basilisp = _run(args.basilisp_command, source, label="Basilisp")
-    if clojure != basilisp:
-        print("Differential conformance mismatch", file=sys.stderr)
-        print(f"fixture: {args.fixture}", file=sys.stderr)
-        print(f"Clojure:  {clojure!r}", file=sys.stderr)
-        print(f"Basilisp: {basilisp!r}", file=sys.stderr)
-        return 1
-    if args.show_output:
-        print("\n".join(basilisp))
-    print(f"conformant fixture={args.fixture.name} cases={len(basilisp)}")
+    fixtures = _fixture_paths(args.fixture)
+    if not fixtures:
+        parser.error("no conformance fixtures found")
+
+    for fixture in fixtures:
+        # Executing the source file, rather than passing it through ``-e``,
+        # enables standard .cljc reader-conditionals in Clojure and Basilisp.
+        clojure = _run(
+            args.clojure_command,
+            _fixture_argument(fixture, args.clojure_command),
+            label="Clojure",
+        )
+        basilisp = _run(
+            args.basilisp_command,
+            _fixture_argument(fixture, args.basilisp_command),
+            label="Basilisp",
+        )
+        if clojure != basilisp:
+            print("Differential conformance mismatch", file=sys.stderr)
+            print(f"fixture: {fixture}", file=sys.stderr)
+            print(f"Clojure:  {clojure!r}", file=sys.stderr)
+            print(f"Basilisp: {basilisp!r}", file=sys.stderr)
+            return 1
+        if args.show_output:
+            print("\n".join(basilisp))
+        print(f"conformant fixture={fixture.name} cases={len(basilisp)}")
     return 0
 
 

@@ -69,7 +69,8 @@ That said, there are some fundamental differences and omissions in Basilisp that
   controls remain omitted because they expose JVM-specific retention policy
   rather than portable transactional semantics. ``io!`` is available as an
   explicit side-effect guard, and agent dispatches are deferred until a
-  successful transaction commit.
+  successful transaction commit. Clojure's ``sync`` transaction syntax is also
+  available; its flags argument is accepted and ignored as in Clojure.
 * Basilisp provides executor-backed Agents.
   ``await-agent`` is the synchronous wait operation; ``await`` remains the
   Python async special form and is intentionally not repurposed as an agent

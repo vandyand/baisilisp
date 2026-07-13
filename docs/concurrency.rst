@@ -65,6 +65,10 @@ support the usual validators, metadata, and watches. Transaction bodies must
 be side-effect free and must not return awaitables because they can run more
 than once.
 
+``sync`` is also provided for existing Clojure source. Its leading transaction
+flags argument is accepted and ignored, matching Clojure's documented current
+behavior; new Basilisp code should normally use ``dosync``.
+
 ``commute`` replays its update function against the latest committed value and
 therefore requires a retry-safe, commutative function. ``ensure`` marks a Ref
 for normal version validation when a transaction would otherwise use only

@@ -108,9 +108,14 @@ Near-term deliverable:
   matrix. Its ``--basilisp-command`` option accepts a frontend-specific command
   prefix, for example ``uv run basilisp run -c`` when measuring this checkout.
 * use ``scripts/differential_conformance.py`` for portable behavioral fixtures.
-  It evaluates the same source in Clojure and Basilisp and compares parsed EDN,
-  so map print order and other non-semantic formatting cannot hide or create a
-  compatibility difference.
+  By default it evaluates every ``tests/conformance/*_cases.cljc`` source file
+  in Clojure and Basilisp and compares parsed EDN, so map print order and other
+  non-semantic formatting cannot hide or create a compatibility difference.
+  The initial corpus covers core collection/sequence/transducer/metadata/
+  hierarchy behavior, ``clojure.test`` assertion and fixture effects, and
+  deterministic Agent/Ref transaction behavior. New public compatibility names
+  should arrive with a portable fixture or a documented host-specific reason
+  why a shared fixture is impossible.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

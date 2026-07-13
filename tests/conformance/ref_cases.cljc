@@ -26,8 +26,10 @@
 (let [value (ref 2 :validator even?)]
   (emit-case :validator (dosync (alter value + 2))))
 
-(let [value (ref 1)]
-  (emit-case :commute {:result (dosync (commute value + 2)) :value @value}))
+(let [value  (ref 1)
+      result (dosync (commute value + 2))
+      final  @value]
+  (emit-case :commute {:result result :value final}))
 
 (let [value (ref 5)]
   (emit-case :ensure (dosync (ensure value))))

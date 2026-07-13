@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 86 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-13 (593 shared Vars and 58 Basilisp
+This document classifies the 85 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-13 (594 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -26,7 +26,7 @@ The following symbols are now implemented and no longer appear as gaps:
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
 and `xml-seq`, plus `await1`, `ref`, `dosync`, `alter`, `ref-set`, `commute`,
-and `ensure`.
+`ensure`, and `sync`.
 
 ## Portable Implementation Targets
 
@@ -81,10 +81,12 @@ iterators, database cursors, or URL parse results for the Java types.
 ### Agents and software transactional memory
 
 `*agent*`, `await`, `ref-history-count`, `ref-max-history`,
-`ref-min-history`, `ref-set`, `release-pending-sends`, `seque`,
-`set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
-and `sync`. `io!` is now provided as an explicit transaction side-effect
-guard, and agent sends made during a transaction are deferred until it commits.
+`ref-min-history`, `release-pending-sends`, `seque`,
+`set-agent-send-executor!`, `set-agent-send-off-executor!`, and `shutdown-agents`.
+`sync` is now available as Clojure-compatible transaction syntax:
+its flags argument is documented as ignored by Clojure and is likewise ignored
+by Basilisp. `io!` is now provided as an explicit transaction side-effect guard,
+and agent sends made during a transaction are deferred until it commits.
 
 These names depend on Clojure's agent executor and STM retry/transaction
 semantics. Python threads, `asyncio`, and locks can support a useful native
