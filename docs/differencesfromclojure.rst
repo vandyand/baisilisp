@@ -64,13 +64,16 @@ However, ClojureScript's own `"Differences from Clojure" <https://clojurescript.
 That said, there are some fundamental differences and omissions in Basilisp that make it differ from Clojure.
 
 * Atoms work just as in Clojure.
-* ``basilisp.stm`` provides an experimental, synchronous ``Ref`` and ``dosync``
-  implementation. It is not yet part of ``basilisp.core`` and intentionally
-  provides ``commute`` and ``ensure`` only in that experimental namespace;
-  history controls remain omitted. ``io!`` is available as an explicit
-  side-effect guard, and agent dispatches are deferred until a successful
-  transaction commit.
+* ``basilisp.core`` provides synchronous ``Ref`` transactions through ``ref``,
+  ``dosync``, ``alter``, ``ref-set``, ``commute``, and ``ensure``. History
+  controls remain omitted because they expose JVM-specific retention policy
+  rather than portable transactional semantics. ``io!`` is available as an
+  explicit side-effect guard, and agent dispatches are deferred until a
+  successful transaction commit.
 * Basilisp provides executor-backed Agents.
+  ``await-agent`` is the synchronous wait operation; ``await`` remains the
+  Python async special form and is intentionally not repurposed as an agent
+  wait function.
 * All Vars are reified at runtime and users may use the :lpy:fn:`binding` macro as in Clojure.
 
   * Non-dynamic Vars are compiled into Python variables and references to those Vars are made using Python variables using :ref:`direct_linking`.
@@ -173,12 +176,12 @@ basilisp.core
 Refs and Transactions
 ---------------------
 
-``basilisp.stm`` provides an experimental optimistic transaction implementation
-with versioned refs, retrying ``dosync``, validators, and watches. It is not
-yet a complete replacement for Clojure's ``Ref`` API and is deliberately kept
-outside :lpy:ns:`basilisp.core` until its wider concurrency contract is proven.
-Transaction bodies must be synchronous and side-effect free because a conflict
-can cause them to run more than once. See :ref:`concurrency`.
+``basilisp.core`` provides optimistic ``Ref`` transactions with versioned refs,
+retrying ``dosync``, validators, watches, ``commute``, and ``ensure``. The
+portable surface is checked by shared Clojure/Basilisp fixtures. Transaction
+bodies must be synchronous and side-effect free because a conflict can cause
+them to run more than once. JVM Ref history controls remain intentionally
+omitted. See :ref:`concurrency`.
 
 .. _agents_differences:
 
@@ -186,9 +189,9 @@ Agents
 ------
 
 Basilisp provides executor-backed agents with serialized actions, error handling,
-and bounded waiting. Agent sends within an experimental ``basilisp.stm/dosync``
-transaction are deferred until the transaction successfully commits. Agents do
-not provide JVM executor controls. In particular,
+and bounded waiting. Agent sends within a ``dosync`` transaction are deferred
+until the transaction successfully commits. Agents do not provide JVM executor
+controls. In particular,
 ``set-agent-send-executor!``, ``set-agent-send-off-executor!``, and
 ``shutdown-agents`` are intentionally unavailable because Python executors have
 explicit application ownership. See :ref:`concurrency`.

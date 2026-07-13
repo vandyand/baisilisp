@@ -61,13 +61,13 @@ Python STM dependency is not sufficient unless it provides retrying,
 multi-reference atomic commit, conflict detection, side-effect restrictions,
 and a compatible licensing and maintenance posture.
 
-``basilisp.stm`` precedes ``basilisp.core/ref``. Its first implementation has
-versioned references, transaction-local read/write sets, stable lock ordering,
-validation at commit, conflict retries, and deterministic contention coverage.
-``io!`` and deferred agent sends are implemented as explicit retry-safety
-guards. Experimental ``commute`` records/replays commutative updates under
-commit locks; experimental ``ensure`` opts a Ref back into normal version
-validation; history controls remain deferred.
+The internal ``basilisp.lang.stm`` engine now backs ``basilisp.core/ref`` and
+``dosync``. It has versioned references, transaction-local read/write sets,
+stable lock ordering, validation at commit, conflict retries, and deterministic
+contention coverage. ``io!`` and deferred agent sends are explicit retry-safety
+guards. ``commute`` records/replays commutative updates under commit locks, and
+``ensure`` opts a Ref back into normal version validation; history controls
+remain deferred.
 
 Project Configuration And Builds
 --------------------------------
@@ -222,9 +222,9 @@ is a useful transaction coordinator for storage backends, but it does not
 provide optimistic snapshots over in-memory refs. Neither supplies Clojure's
 ``dosync`` semantics.
 
-The right first implementation is an internal, synchronous optimistic STM in
-``basilisp.lang.stm`` with a thin ``basilisp.stm`` public namespace. It should
-not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
+The implementation is an internal, synchronous optimistic STM in
+``basilisp.lang.stm`` with a thin ``basilisp.stm`` extension namespace and a
+verified portable surface in ``basilisp.core``.
 
 * A ``Ref`` holds an immutable value, a monotonically increasing version, a
   validator, watches, and a lock. Normal dereference reads the latest committed
@@ -246,14 +246,14 @@ not add ``ref`` to ``basilisp.core`` until its compatibility contract holds.
   effects unsafe; ``io!`` rejects a dynamically marked impure operation while a
   transaction is active. Agent sends are queued until after commit only.
 
-The current milestone includes experimental ``commute``: it records each
-operation separately, returns its in-transaction result, and replays each
-operation against the newest committed value under the commit locks. A normal
-write after commute is rejected, while a commute after a normal write remains
-a normal validated write. Experimental ``ensure`` provides optimistic
-read-protection by retaining version validation for a Ref that would otherwise
-be a pure commute; it does not recreate the JVM's long-held read locks. History
-tuning and asynchronous transactions remain excluded. The test gate includes deterministic
+The current milestone includes ``commute``: it records each operation
+separately, returns its in-transaction result, and replays each operation
+against the newest committed value under the commit locks. A normal write after
+commute is rejected, while a commute after a normal write remains a normal
+validated write. ``ensure`` provides optimistic read-protection by retaining
+version validation for a Ref that would otherwise be a pure commute; it does
+not recreate the JVM's long-held read locks. History tuning and asynchronous
+transactions remain excluded. The test gate includes deterministic
 barrier-driven conflicts, randomized operation histories checked against a
 serialized model, commute/ensure replay interleavings, validator/watch ordering
 tests, nested transaction tests, and high-contention stress coverage.

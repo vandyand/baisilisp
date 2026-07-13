@@ -58,24 +58,24 @@ initial ``go``-block use case.
 Transactions
 ------------
 
-``basilisp.stm`` provides an experimental, synchronous ``Ref`` and ``dosync``
-surface. ``dosync`` retries a transaction when an observed Ref version changes
-before commit, and commits all staged ``alter`` and ``ref-set`` writes together.
-Refs support the usual validators, metadata, and watches. Transaction bodies
-must be side-effect free and must not return awaitables because they can run
-more than once.
+``basilisp.core`` provides a synchronous ``Ref`` and ``dosync`` surface.
+``dosync`` retries a transaction when an observed Ref version changes before
+commit, and commits all staged ``alter`` and ``ref-set`` writes together. Refs
+support the usual validators, metadata, and watches. Transaction bodies must
+be side-effect free and must not return awaitables because they can run more
+than once.
 
-This is not yet a ``basilisp.core/ref`` compatibility promise. ``commute`` is
-available in the experimental namespace: it replays its update function against
-the latest committed value and therefore requires a retry-safe, commutative
-function. ``ensure`` marks a Ref for normal version validation when a transaction
-would otherwise use only commute semantics. History controls remain unimplemented.
-``io!`` is an explicit guard for known impure operations, and agent dispatches
-inside ``dosync`` are deferred until a successful commit; neither mechanism can
-detect arbitrary Python side effects in a retried transaction body.
+``commute`` replays its update function against the latest committed value and
+therefore requires a retry-safe, commutative function. ``ensure`` marks a Ref
+for normal version validation when a transaction would otherwise use only
+commute semantics. History controls remain intentionally unimplemented. ``io!``
+is an explicit guard for known impure operations, and agent dispatches inside
+``dosync`` are deferred until a successful commit; neither mechanism can detect
+arbitrary Python side effects in a retried transaction body.
 
-``dosync`` retries until it can commit. The experimental ``run-transaction``
-function accepts a positive ``:max-attempts`` option for callers that need a
-bounded retry policy. If the final attempt conflicts it raises ``ExceptionInfo``
-with ``:basilisp.stm/attempts`` and a ``:basilisp.stm/conflicts`` vector whose
-entries include each Ref identity and the observed/current version numbers.
+``dosync`` retries until it can commit. The Basilisp-specific
+``run-transaction`` function accepts a positive ``:max-attempts`` option for
+callers that need a bounded retry policy. If the final attempt conflicts it
+raises ``ExceptionInfo`` with ``:basilisp.stm/attempts`` and a
+``:basilisp.stm/conflicts`` vector whose entries include each Ref identity and
+the observed/current version numbers.

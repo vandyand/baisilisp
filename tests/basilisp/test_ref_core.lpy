@@ -1,0 +1,35 @@
+(ns tests.basilisp.test-ref-core
+  (:require
+   [basilisp.test :refer [deftest is]]))
+
+(deftest core-ref-transaction-surface-test
+  (let [first  (ref 1 :meta {:kind :primary})
+        second (ref 2 :validator even?)]
+    (is (= {:kind :primary} (meta first)))
+    (is (= :committed
+           (dosync
+            (alter first + 2)
+            (ref-set second 6)
+            :committed)))
+    (is (= 3 @first))
+    (is (= 6 @second))))
+
+(deftest core-ref-nesting-watch-commute-and-ensure-test
+  (let [value  (ref 0)
+        events (atom [])]
+    (add-watch value :record #(swap! events conj [%3 %4]))
+    (dosync
+     (alter value inc)
+     (dosync (alter value + 2)))
+    (is (= 3 @value))
+    (is (= [[0 3]] @events))
+    (is (= 5 (dosync (commute value + 2))))
+    (is (= 5 @value))
+    (is (= 5 (dosync (ensure value))))))
+
+(deftest core-ref-operations-require-a-transaction-test
+  (let [value (ref 1)]
+    (is (thrown? python/RuntimeError (alter value inc)))
+    (is (thrown? python/RuntimeError (ref-set value 2)))
+    (is (thrown? python/RuntimeError (commute value inc)))
+    (is (thrown? python/RuntimeError (ensure value)))))

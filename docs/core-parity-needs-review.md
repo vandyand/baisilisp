@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 92 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-12 (587 shared Vars and 57 Basilisp
+This document classifies the 86 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-13 (593 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -25,7 +25,8 @@ The following symbols are now implemented and no longer appear as gaps:
 `struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
-and `xml-seq`, plus `await1`.
+and `xml-seq`, plus `await1`, `ref`, `dosync`, `alter`, `ref-set`, `commute`,
+and `ensure`.
 
 ## Portable Implementation Targets
 
@@ -79,8 +80,7 @@ iterators, database cursors, or URL parse results for the Java types.
 
 ### Agents and software transactional memory
 
-`*agent*`, `alter`, `await`, `commute`, `dosync`,
-`ensure`, `ref`, `ref-history-count`, `ref-max-history`,
+`*agent*`, `await`, `ref-history-count`, `ref-max-history`,
 `ref-min-history`, `ref-set`, `release-pending-sends`, `seque`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, `shutdown-agents`,
 and `sync`. `io!` is now provided as an explicit transaction side-effect
@@ -97,9 +97,10 @@ Python async special form; `await-agent` provides that synchronous wait
 operation instead.
 `agent-errors` is now available as Clojure's deprecated one-item wrapper around
 `agent-error`.
-Experimental `basilisp.stm/commute` and `basilisp.stm/ensure` are available,
-but they are intentionally not aliases for the missing `basilisp.core` names
-until the full Ref surface is verified.
+The portable Ref operations ``ref``, ``dosync``, ``alter``, ``ref-set``,
+``commute``, and ``ensure`` are now exposed from ``basilisp.core`` after a
+shared Clojure/Basilisp conformance fixture. History controls remain omitted
+until a workload demonstrates a need for JVM-like snapshot retention.
 
 ### Version identity and unchecked arithmetic
 

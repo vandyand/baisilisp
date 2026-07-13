@@ -50,7 +50,8 @@ def _rows(
 
 
 def main() -> int:
-    signal.signal(signal.SIGPIPE, signal.SIG_DFL)
+    if hasattr(signal, "SIGPIPE"):
+        signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
     parser = argparse.ArgumentParser(
         description="Generate a clojure.core vs basilisp.core public var matrix."
@@ -69,10 +70,19 @@ def main() -> int:
             "quote it when it contains spaces"
         ),
     )
+    parser.add_argument(
+        "--clojure-command",
+        default="clojure -M -e",
+        help=(
+            "command prefix used to evaluate Clojure (default: 'clojure -M -e'); "
+            "on Windows a WSL command such as 'wsl -d Ubuntu-24.04 -- clojure -M -e' "
+            "is supported"
+        ),
+    )
     args = parser.parse_args()
 
     clojure_publics = _run_publics_command(
-        ["clojure", "-M", "-e", CLOJURE_CORE_PUBLICS]
+        [*shlex.split(args.clojure_command), CLOJURE_CORE_PUBLICS]
     )
     basilisp_publics = _run_publics_command(
         [*shlex.split(args.basilisp_command), BASILISP_CORE_PUBLICS]

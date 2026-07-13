@@ -1220,6 +1220,60 @@
   []
   (basilisp.lang.stm/io-bang))
 
+;;;;;;;;;;;;;;;
+;; Refs / STM ;;
+;;;;;;;;;;;;;;;
+
+(defn ref
+  "Create a versioned reference for use inside ``dosync``.
+
+  ``:meta`` and ``:validator`` follow the normal Basilisp reference
+  conventions. Ref history controls intentionally remain unavailable because
+  they expose JVM-specific STM retention policy rather than portable
+  transactional semantics."
+  ([value]
+   (basilisp.lang.stm/Ref value))
+  ([value & options]
+   (let [opts (apply hash-map options)]
+     (basilisp.lang.stm/Ref value
+                             ** :meta (:meta opts)
+                                :validator (:validator opts)))))
+
+(defn run-transaction
+  "Run a zero-argument transaction thunk.
+
+  This is a Basilisp extension used by ``dosync``. Portable Clojure code should
+  use ``dosync`` directly."
+  [thunk]
+  (basilisp.lang.stm/run-transaction thunk))
+
+(defmacro dosync
+  "Evaluate ``body`` atomically, retrying when a conflicting Ref commit occurs."
+  [& body]
+  `(run-transaction (fn [] ~@body)))
+
+(defn alter
+  "Stage the result of applying ``f`` to the transactional value of ``ref``."
+  [ref f & args]
+  (apply basilisp.lang.stm/alter ref f args))
+
+(defn ref-set
+  "Stage ``value`` as the transactional value of ``ref``."
+  [ref value]
+  (basilisp.lang.stm/ref-set ref value))
+
+(defn commute
+  "Stage a commutative Ref update for replay against the latest committed value.
+
+  ``f`` may run more than once and therefore must be retry-safe."
+  [ref f & args]
+  (apply basilisp.lang.stm/commute ref f args))
+
+(defn ensure
+  "Return and protect a Ref's in-transaction value until commit."
+  [ref]
+  (basilisp.lang.stm/ensure ref))
+
 (defn await-agent [& agents]
   "Wait until all agents have no queued or active actions."
   (loop [agents agents]

@@ -74,6 +74,12 @@ The next STM phases are intentionally ordered:
    tests, this shows normal retry cost but no starvation, so do not add
    Clojure's adaptive history queue yet. History is an optimization for snapshot
    retention, not a prerequisite for atomic multi-Ref updates.
+6. **Completed locally:** portable ``Ref`` operations are exposed from
+   ``basilisp.core``: ``ref``, ``dosync``, ``alter``, ``ref-set``, ``commute``,
+   and ``ensure``. The shared Clojure/Basilisp Ref fixture verifies sequential
+   transaction, nesting, watch, validator, metadata, commute, and ensure
+   behavior. ``await`` remains an async special form, with ``await-agent`` as
+   the intentional agent-wait spelling.
 
 This ordering follows the observable Clojure contract: transactions are
 atomic, consistent, isolated, and retry on conflict; ``commute`` deliberately
@@ -457,12 +463,13 @@ Execution Order
 ---------------
 
 The completed local work covers diagnostics, conservative inherited-method
-signature warnings, and the first channel pipeline milestone. The next work is:
+signature warnings, the first channel pipeline milestone, and portable Ref
+operations. The next work is:
 
-1. Repeat ``scripts/stm_contention_probe.py`` at realistic production-like
-   workloads before considering history controls. The current forced-yield
-   sample shows retry cost but no starvation; do not claim JVM STM internals
-   without a measurable need and a separate proof.
+1. Expand the Clojure/Basilisp differential fixture corpus across the remaining
+   portable ``clojure.core`` and ``clojure.test`` behavior before adding public
+   compatibility names. Continue to omit Ref history controls unless a workload
+   demonstrates starvation or snapshot-retention pressure.
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
    proof and rejection model.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
