@@ -2911,6 +2911,18 @@
      (when (not= "" line)
        (cons (.rstrip line "\r\n") (line-seq rdr))))))
 
+(defn seque
+  "Create a bounded queued sequence over ``s``.
+
+  A producer runs in the background and may realize up to ``n-or-q`` values
+  ahead of the consumer. ``n-or-q`` is either a positive buffer size or a
+  Python queue object with ``put`` and ``get`` methods. Reading ahead of the
+  producer can block; producer exceptions are logged and end the sequence."
+  ([s]
+   (basilisp.lang.runtime/seque s))
+  ([n-or-q s]
+   (basilisp.lang.runtime/seque s n-or-q)))
+
 (defn xml-seq
   "Return a depth-first sequence of XML elements rooted at ``root``."
   [root]

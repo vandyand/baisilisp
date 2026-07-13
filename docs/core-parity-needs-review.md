@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 85 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-13 (594 shared Vars and 58 Basilisp
+This document classifies the 84 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-13 (595 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -26,7 +26,7 @@ The following symbols are now implemented and no longer appear as gaps:
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
 and `xml-seq`, plus `await1`, `ref`, `dosync`, `alter`, `ref-set`, `commute`,
-`ensure`, and `sync`.
+`ensure`, `sync`, and `seque`.
 
 ## Portable Implementation Targets
 
@@ -81,7 +81,7 @@ iterators, database cursors, or URL parse results for the Java types.
 ### Agents and software transactional memory
 
 `*agent*`, `await`, `ref-history-count`, `ref-max-history`,
-`ref-min-history`, `release-pending-sends`, `seque`,
+`ref-min-history`, `release-pending-sends`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, and `shutdown-agents`.
 `sync` is now available as Clojure-compatible transaction syntax:
 its flags argument is documented as ignored by Clojure and is likewise ignored
@@ -103,6 +103,9 @@ The portable Ref operations ``ref``, ``dosync``, ``alter``, ``ref-set``,
 ``commute``, and ``ensure`` are now exposed from ``basilisp.core`` after a
 shared Clojure/Basilisp conformance fixture. History controls remain omitted
 until a workload demonstrates a need for JVM-like snapshot retention.
+``seque`` is also available with the portable queued-sequence contract: it
+accepts a positive buffer size or a queue-like object, preserves realized
+values, and ends after a producer error as Clojure's Agent-backed version does.
 
 ### Version identity and unchecked arithmetic
 

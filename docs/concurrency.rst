@@ -31,6 +31,16 @@ Basilisp intentionally does not implement global executor replacement or
 replacing or shutting down shared process-wide executors would make unrelated
 work fail unpredictably.
 
+Queued Sequences
+----------------
+
+``basilisp.core/seque`` provides Clojure-compatible queued lazy sequences
+without exposing a global Agent executor. It starts a daemon producer which may
+realize up to the configured positive buffer size ahead of consumption; callers
+may instead provide a Python queue object with ``put`` and ``get`` methods.
+Reading ahead of the producer blocks. As in Clojure, a producer exception is
+reported and terminates the queued sequence rather than becoming a value.
+
 Async Channels
 --------------
 

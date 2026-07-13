@@ -13,6 +13,7 @@ import math
 import numbers
 import pickle  # nosec B403
 import platform
+import queue
 import re
 import sys
 import threading
@@ -1336,6 +1337,51 @@ def cons(o, seq) -> ISeq:
 to_seq = lseq.to_seq
 
 to_iterator_seq = lseq.iterator_sequence
+
+
+def seque(s: Iterable[T], n_or_q: int | queue.Queue[Any] = 100) -> ISeq[T]:
+    """Return a bounded queued sequence which realizes ``s`` in the background.
+
+    The integer arity creates a bounded :class:`queue.Queue`; callers may also
+    provide a queue-like object with ``put`` and ``get`` methods. Values are
+    produced on a daemon thread, so consuming ahead of the producer blocks and
+    producer exceptions are logged and terminate the sequence, matching
+    Clojure's Agent-backed ``seque`` behavior.
+    """
+
+    if isinstance(n_or_q, bool):
+        raise TypeError("seque buffer size must be a positive integer or queue")
+    if isinstance(n_or_q, int):
+        if n_or_q < 1:
+            raise ValueError("seque buffer size must be a positive integer")
+        queued: queue.Queue[Any] = queue.Queue(maxsize=n_or_q)
+    elif callable(getattr(n_or_q, "put", None)) and callable(
+        getattr(n_or_q, "get", None)
+    ):
+        queued = n_or_q
+    else:
+        raise TypeError("seque buffer must be a positive integer or queue")
+
+    end = object()
+
+    def produce() -> None:
+        try:
+            for value in s:
+                queued.put(value)
+        except Exception as exc:
+            logger.exception("seque producer failed", exc_info=exc)
+        finally:
+            queued.put(end)
+
+    def drain() -> Iterator[T]:
+        while True:
+            value = queued.get()
+            if value is end:
+                return
+            yield cast(T, value)
+
+    threading.Thread(target=produce, name="basilisp-seque", daemon=True).start()
+    return lseq.iterator_sequence(drain())
 
 
 def is_reiterable_iterable(x: Any) -> bool:

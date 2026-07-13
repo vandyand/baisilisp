@@ -465,15 +465,16 @@ Execution Order
 The completed local work covers diagnostics, conservative inherited-method
 signature warnings, the first channel pipeline milestone, and portable Ref
 operations. The differential corpus now covers portable core collection,
-sequence, transducer, metadata, hierarchy, exception-data, ``clojure.test``,
-and deterministic Agent/Ref behavior; ``sync`` is included as compatible
-transaction syntax. The next work is:
+sequence, transducer, metadata, hierarchy, lazy-realization, macro-expansion,
+exception-data, ``seque``, ``clojure.test`` reporting, and deterministic
+Agent/Ref behavior; ``sync`` is included as compatible transaction syntax.
+The next work is:
 
-1. Expand the Clojure/Basilisp differential corpus with portable edge cases for
-   lazy realization, reader/printer data, macro expansion, exception data, and
-   ``clojure.test`` reporting. Add public compatibility names only after their
-   shared fixture passes. Continue to omit Ref history controls unless a workload
-   demonstrates starvation or snapshot-retention pressure.
+1. Expand the Clojure/Basilisp differential corpus with portable standard-
+   library behavior and source-level library acceptance cases. Add public
+   compatibility names only after their shared fixture passes. Continue to omit
+   Ref history controls unless a workload demonstrates starvation or
+   snapshot-retention pressure.
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
    proof and rejection model.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a

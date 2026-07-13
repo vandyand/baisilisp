@@ -1,0 +1,17 @@
+(ns tests.basilisp.test-seque-core
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest seque-preserves-values-and-caches-realization-test
+  (let [queued (seque 2 [1 nil 3])]
+    (is (= [1 nil 3] (into [] queued)))
+    (is (= [1 nil 3] (into [] queued)))))
+
+(deftest seque-rejects-an-invalid-buffer-size-test
+  (is (thrown? python/ValueError (seque 0 [1])))
+  (is (thrown? python/TypeError (seque true [1]))))
+
+(deftest seque-ends-after-a-producer-exception-test
+  (let [queued (seque 2 (lazy-seq
+                          (cons 1
+                                (throw (ex-info "producer failed" {:source :seque})))))]
+    (is (= [] (into [] queued)))))

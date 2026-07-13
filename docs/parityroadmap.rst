@@ -111,11 +111,12 @@ Near-term deliverable:
   By default it evaluates every ``tests/conformance/*_cases.cljc`` source file
   in Clojure and Basilisp and compares parsed EDN, so map print order and other
   non-semantic formatting cannot hide or create a compatibility difference.
-  The initial corpus covers core collection/sequence/transducer/metadata/
-  hierarchy behavior, ``clojure.test`` assertion and fixture effects, and
-  deterministic Agent/Ref transaction behavior. New public compatibility names
-  should arrive with a portable fixture or a documented host-specific reason
-  why a shared fixture is impossible.
+  The corpus covers core collection/sequence/transducer/metadata/hierarchy and
+  lazy-realization behavior, macro expansion, exception data, ``seque``,
+  deterministic Agent/Ref transactions, and ``clojure.test`` assertion,
+  reporting, custom-assertion, and fixture effects. New public compatibility
+  names should arrive with a portable fixture or a documented host-specific
+  reason why a shared fixture is impossible.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

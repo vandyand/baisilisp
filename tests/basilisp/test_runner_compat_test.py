@@ -87,7 +87,7 @@ def test_run_tests_counts_assertion_failures_errors_and_fixtures(
     assert 1 == _summary_value(summary, "error")
     assert "Testing basilisp.test-runner-compat" in out.getvalue()
     assert "FAIL in (failing-test)" in out.getvalue()
-    assert "expected: (not false)" in out.getvalue()
+    assert "expected: false" in out.getvalue()
     assert "ERROR in (error-test)" in out.getvalue()
     assert "Ran 3 tests containing 4 assertions." in out.getvalue()
     assert runner("(successful? (run-test-var #'passing-test))") is True

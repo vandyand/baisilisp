@@ -32,6 +32,7 @@
 (def ^:dynamic *load-tests* true)
 (def ^:dynamic *test-line* nil)
 (def ^:dynamic *testing-vars* [])
+(def ^:dynamic *testing-contexts* '())
 (def ^:dynamic *test-results* nil)
 (def ^:dynamic *test-output* true)
 
@@ -79,6 +80,7 @@
   [m]
   (report (merge {:test-name    *test-name*
                   :test-section *test-section*
+                  :testing-contexts *testing-contexts*
                   :line         *test-line*}
                  m)))
 
@@ -200,23 +202,21 @@
                              maybe-f))
       :else              :default)))
 
-;; clojure.test does not special case '=, but this means that its expected/actual
-;; results just show expected `expr` and `(not expr)`
 (defmethod assert-expr '=
   [msg expr]
-  `(let [actual#   ~(nth expr 2)
-         expected# ~(second expr)]
+  `(let [expected# ~(second expr)
+         actual#   ~(nth expr 2)]
      (if (= expected# actual#)
        (do-report {:type :pass
                    :message ~msg
                    :expr (quote ~expr)
-                   :actual actual#
-                   :expected expected#})
+                   :actual (list (symbol "=") expected# actual#)
+                   :expected (quote ~expr)})
        (do-report {:type :fail
                    :message ~msg
                    :expr (quote ~expr)
-                   :actual actual#
-                   :expected expected#}))))
+                   :actual (list (symbol "=") expected# actual#)
+                   :expected (quote ~expr)}))))
 
 (defmethod assert-expr 'thrown?
   [msg expr]
@@ -285,12 +285,12 @@
                    :message ~msg
                    :expr (quote ~expr)
                    :actual computed#
-                   :expected computed#})
+                   :expected (quote ~expr)})
        (do-report {:type :fail
                    :message ~msg
                    :expr (quote ~expr)
                    :actual computed#
-                   :expected (list (symbol "not") computed#)}))))
+                   :expected (quote ~expr)}))))
 
 (defmulti gen-assert
   "Legacy assertion generation extension point. New code should extend
@@ -326,7 +326,7 @@
 
   ``is`` assertions must appear inside of a :lpy:fn:`deftest` form."
   ([expr]
-   `(is ~expr (str "Test failure: " (pr-str (quote ~expr)))))
+   `(is ~expr nil))
   ([expr msg]
    (let [line-num (or (:basilisp.lang.reader/line (meta &form))
                       (:basilisp.lang.reader/line (meta (first &form))))
@@ -336,7 +336,7 @@
           ~(gen-assert expr msg line-num)
           (catch python/Exception ~exc-name
             (do-report {:type :error
-                        :message (str "Unexpected exception thrown during test run: " (python/repr ~exc-name))
+                        :message ~msg
                         :expr (quote ~expr)
                         :actual ~exc-name
                         :expected (quote ~expr)
@@ -385,7 +385,8 @@
   [msg & body]
   `(binding [*test-section* (if *test-section*
                               (str *test-section* " :: " ~msg)
-                              ~msg)]
+                              ~msg)
+             *testing-contexts* (conj *testing-contexts* ~msg)]
      ~@body))
 
 (defn testing-contexts-str
@@ -406,6 +407,7 @@
                *test-name*     ~test-name
                *testing-vars*  [~test-name]
                *test-section*  nil
+               *testing-contexts* '()
                *test-failures* (volatile! [])
                *test-passes*   (volatile! 0)]
        ~@body

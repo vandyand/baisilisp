@@ -71,6 +71,9 @@ That said, there are some fundamental differences and omissions in Basilisp that
   explicit side-effect guard, and agent dispatches are deferred until a
   successful transaction commit. Clojure's ``sync`` transaction syntax is also
   available; its flags argument is accepted and ignored as in Clojure.
+* ``seque`` is available as a bounded queued lazy sequence. It uses a
+  Python-owned daemon producer rather than Clojure's global Agent executor;
+  consumer-visible values and completion behavior are preserved.
 * Basilisp provides executor-backed Agents.
   ``await-agent`` is the synchronous wait operation; ``await`` remains the
   Python async special form and is intentionally not repurposed as an agent

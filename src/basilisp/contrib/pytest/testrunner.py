@@ -516,6 +516,8 @@ class BasilispTestItem(pytest.Item):
     def _failure_msg(self, details: lmap.PersistentMap) -> str:
         assert details.val_at(_TYPE_KW) == _FAILURE_KW
         msg: str = details.val_at(_MESSAGE_KW)
+        if msg is None:
+            msg = f"Test failure: {lrepr(details.val_at(_EXPR_KW))}"
 
         actual = details.val_at(_ACTUAL_KW)
         expected = details.val_at(_EXPECTED_KW)
