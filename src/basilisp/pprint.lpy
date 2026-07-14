@@ -894,6 +894,88 @@
             (pprint-newline :linear)
             (recur more)))))))
 
+(defn ^:private print-code-case
+  "Pretty print a ``case`` test followed by condition/result pairs."
+  [forms]
+  (if (and (next forms)
+           (next (next forms))
+           (not= 1 (count (next (next forms)))))
+    (let [[_ test & pairs] forms]
+      (pprint-logical-block :prefix "(" :suffix ")"
+        (write-out (first forms))
+        (.write *out* " ")
+        (pprint-indent :block 1)
+        (pprint-newline :linear)
+        (write-out test)
+        (print-length-loop [remaining pairs]
+          (when remaining
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (pprint-logical-block
+             (write-out (first remaining))
+             (when-let [result (next remaining)]
+               (.write *out* " ")
+               (pprint-newline :miser)
+               (write-out (first result))))
+            (when-let [more (next (next remaining))]
+              (recur more))))))
+    (print-simple-code-list forms)))
+
+(defn ^:private print-code-clauses
+  "Pretty print forms whose remaining arguments are body or clause forms."
+  [forms]
+  (pprint-logical-block :prefix "(" :suffix ")"
+    (write-out (first forms))
+    (pprint-indent :block 1)
+    (print-length-loop [remaining (next forms)]
+      (when remaining
+        (.write *out* " ")
+        (pprint-newline :linear)
+        (write-out (first remaining))
+        (when-let [more (next remaining)]
+          (recur more))))))
+
+(defn ^:private print-code-catch
+  "Pretty print a ``catch`` clause with its exception binding kept together."
+  [forms]
+  (if (and (next forms) (next (next forms)))
+    (let [[head exception binding & body] forms]
+      (pprint-logical-block :prefix "(" :suffix ")"
+        (write-out head)
+        (.write *out* " ")
+        (pprint-indent :block 1)
+        (write-out exception)
+        (.write *out* " ")
+        (write-out binding)
+        (print-length-loop [remaining body]
+          (when remaining
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (write-out (first remaining))
+            (when-let [more (next remaining)]
+              (recur more))))))
+    (print-simple-code-list forms)))
+
+(defn ^:private print-code-ns
+  "Pretty print namespace declarations and their option clauses one per line."
+  [forms]
+  (if (next forms)
+    (let [[head name & clauses] forms]
+      (pprint-logical-block :prefix "(" :suffix ")"
+        (write-out head)
+        (.write *out* " ")
+        (pprint-indent :block 1)
+        (pprint-newline :linear)
+        (write-out name)
+        (print-length-loop [remaining clauses]
+          (when remaining
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (write-out (first remaining))
+            (when-let [more (next remaining)]
+              (recur more))))))
+    (print-simple-code-list forms)))
+
 (def ^:private code-formatters
   {"defn"      print-code-defn
    "defn-"     print-code-defn
@@ -909,13 +991,23 @@
    "doseq"     print-code-let
    "dotimes"   print-code-let
    "when-first" print-code-let
-   "cond"      print-code-cond})
+   "cond"      print-code-cond
+   "case"      print-code-case
+   "try"       print-code-clauses
+   "finally"   print-code-clauses
+   "catch"     print-code-catch
+   "ns"        print-code-ns
+   "require"   print-code-clauses})
 
 (defn ^:private code-formatter
   [form]
-  (when (and (symbol? form)
-             (or (nil? (namespace form))
-                 (= "basilisp.core" (namespace form))))
+  (cond
+    (and (symbol? form)
+         (or (nil? (namespace form))
+             (= "basilisp.core" (namespace form))))
+    (get code-formatters (name form))
+
+    (keyword? form)
     (get code-formatters (name form))))
 
 (defn ^:private print-code-list

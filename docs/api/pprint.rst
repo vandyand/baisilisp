@@ -51,8 +51,9 @@ Using the builtin macros and utilities, it is possible to create a custom dispat
 
 For printing Basilisp forms as source code, use :lpy:fn:`code-dispatch` with
 :lpy:fn:`with-pprint-dispatch`. It applies code-oriented indentation to common
-definition, binding, conditional, and reader-macro forms while leaving the
-default data printer unchanged.
+definition, binding, conditional, ``case``, exception-handling, namespace,
+require, and reader-macro forms while leaving the default data printer
+unchanged.
 
 .. code-block::
 

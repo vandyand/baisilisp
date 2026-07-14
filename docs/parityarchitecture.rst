@@ -463,11 +463,10 @@ correctly influence parent fill decisions. Golden tests cover narrow and wide
 margins, nested blocks, reader macros, and default data-printing behavior.
 
 ``code-dispatch`` is a separate multimethod layered over the same writer. It
-handles generic code lists and symbols, reader macros, definition forms,
-binding forms, and ``cond``-style pairs, and falls back to ordinary list
-printing for incomplete or unrecognized forms. Future dispatch additions such
-as ``case``, ``try``/``catch``/``finally``, ``ns``, and ``require`` should use
-the same fallback and golden-test approach.
+handles generic code lists and symbols, reader macros, definition and binding
+forms, ``cond``/``case`` pairs, ``try``/``catch``/``finally`` clauses, and
+``ns``/``require`` declarations. It falls back to ordinary list printing for
+incomplete or unrecognized forms; golden tests cover the structured forms.
 
 ``cl-format`` is implemented as a source-derived portability layer rather
 than a wrapper around Python's unrelated ``format`` mini-language. It retains

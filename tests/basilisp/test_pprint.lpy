@@ -412,6 +412,51 @@
       "@value"  '(deref value)
       "#'value" '(var value))))
 
+(deftest pprint-code-dispatch-extended-forms-test
+  (testing "case forms"
+    (is (= "(case \n  command \n  :start (start-service \n           command) \n  :stop \n  (stop-service command) \n  (unknown-command \n    command))"
+           (trim-and-replace-newlines
+            (binding [pprint/*print-right-margin* 26]
+              (with-out-str
+                (pprint/with-pprint-dispatch pprint/code-dispatch
+                  (pprint/pprint
+                   '(case command
+                      :start (start-service command)
+                      :stop (stop-service command)
+                      (unknown-command command))))))))))
+
+    (is (= "(case command :start)"
+           (str/rtrim
+            (with-out-str
+              (pprint/with-pprint-dispatch pprint/code-dispatch
+                (pprint/pprint '(case command :start)))))))
+
+  (testing "try, catch, and finally clauses"
+    (is (= "(try \n  (open-resource path) \n  (catch IOError error \n    (log-error error) \n    nil) \n  (finally (close-resource \n             path)))"
+           (trim-and-replace-newlines
+            (binding [pprint/*print-right-margin* 26]
+              (with-out-str
+                (pprint/with-pprint-dispatch pprint/code-dispatch
+                  (pprint/pprint
+                   '(try
+                      (open-resource path)
+                      (catch IOError error
+                        (log-error error)
+                        nil)
+                      (finally
+                        (close-resource path)))))))))))
+
+  (testing "namespace and require clauses"
+    (is (= "(ns \n  example.service \n  (:require \n    [basilisp.string \n     :as \n     str] \n    [basilisp.set \n     :as \n     set]))"
+           (trim-and-replace-newlines
+            (binding [pprint/*print-right-margin* 22]
+              (with-out-str
+                (pprint/with-pprint-dispatch pprint/code-dispatch
+                  (pprint/pprint
+                    '(ns example.service
+                      (:require [basilisp.string :as str]
+                                [basilisp.set :as set])))))))))))
+
 (deftest pprint-print-level-test
   (are [res plen expr] (= res (trim-and-replace-newlines
                                (binding [*print-level* plen]
