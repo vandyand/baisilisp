@@ -6,8 +6,10 @@
 (ns tests.basilisp.test-pprint-cl-format
   (:require
    [basilisp.pprint :as pprint]
+   [basilisp.string :as str]
    [basilisp.test :refer [deftest is]])
-  (:import os))
+  (:import decimal
+           os))
 
 (deftest cl-format-upstream-compatibility-test
   (doseq [[format args expected]
@@ -57,3 +59,85 @@
         to-out (pprint/formatter-out "y~A")]
     (is (= "x2" (to-string nil 2)))
     (is (= "yz" (with-out-str (to-out "z"))))))
+
+(deftest cl-format-upstream-float-parameter-regressions
+  ;; Source-derived from Clojure 1.12.4's $-tests and f-tests.
+  (doseq [[format argument expected]
+          [["~3,5,14@$" 22.375 "    +00022.375"]
+           ["~3,5,14@:$" 22.375 "+    00022.375"]
+           ["~3,,14@:$" 0.375 "+        0.375"]
+           ["~1,1@$" 12.0 "+12.0"]
+           ["~1,1,8,' @:$" 12.0 "+   12.0"]
+           ["~1,1,8,' @$" 12.0 "   +12.0"]
+           ["~1,1,8,' :$" -12.0 "-   12.0"]
+           ["~2,1,6$" 0.005 "  0.01"]
+           ["~1$" -0.99 "-1.0"]
+           ["~,3F" -0.099 "-0.099"]
+           ["~,5F" 0.099 "0.09900"]
+           ["~2F" -0.0099 "-0."]
+           ["~4F" -0.0099 "-.01"]
+           ["~6F" 0.0099 "0.0099"]
+           ["~4F" -0.099 "-0.1"]
+           ["~4F" 0.099 ".099"]
+           ["~4F" -0.99 "-.99"]
+           ["~5F" -0.99 "-0.99"]
+           ["~3F" 0.99 ".99"]
+           ["~5F" 111.11111 "111.1"]
+           ["~8F" 555.55555 "555.5556"]
+           ["~8F" -555.55555 "-555.556"]
+           ["~7F" 999.999 "999.999"]
+           ["~8F" -999.999 "-999.999"]
+           ["~5,2F" 111.11111 "111.11"]
+           ["~6,6F" -0.0099 "-.009900"]
+           ["~12,10F" 1.23456789016 "1.2345678902"]
+           ["~13,10F" -1.23456789014 "-1.2345678901"]
+           ["~10,2,2,,'?E" 9.99999e99 "??????????"]]]
+    (is (= expected (pprint/cl-format nil format argument)) format)))
+
+(defn- platform-newlines [s]
+  (str/replace s "\n" os/linesep))
+
+(deftest cl-format-upstream-structural-regressions
+  ;; Source-derived from Clojure 1.12.4's conditional, iteration, and
+  ;; justification tests. These cases cover argument consumption and nesting.
+  (doseq [[format args expected]
+          [["I ~[don't ~;do ~:;did ~]have one~%" [2] "I did have one\n"]
+           ["I ~:[don't ~;do ~]have one~%" [nil] "I don't have one\n"]
+           ["We had ~D wins~@[ (out of ~D tries)~].~%" [15 nil] "We had 15 wins.\n"]
+           ["We had ~D wins~@[ (out of ~D tries)~].~%" [15 17] "We had 15 wins (out of 17 tries).\n"]
+           ["The answer is ~#[nothing~;~D~;~D out of ~D~:;something crazy~]." [] "The answer is nothing."]
+           ["The answer is ~#[nothing~;~D~;~D out of ~D~:;something crazy~]." [7 22] "The answer is 7 out of 22."]
+           ["Coordinates are~{ [~D,~D]~}~%" [[0 1 1 0 3 5 2 1]] "Coordinates are [0,1] [1,0] [3,5] [2,1]\n"]
+           ["Coordinates are~2{ [~D,~D]~}~%" [[0 1 1 0 3 5 2 1]] "Coordinates are [0,1] [1,0]\n"]
+           ["Coordinates are~:{ [~D,~D]~}~%" [[[0 1] [1 0] [3 5] [2 1]]] "Coordinates are [0,1] [1,0] [3,5] [2,1]\n"]
+           ["Coordinates are~@{ [~D,~D]~}~%" [0 1 1 0 3 5 2 1] "Coordinates are [0,1] [1,0] [3,5] [2,1]\n"]
+           ["Coordinates are~@:{ [~D,~D]~}~%" [[0 1] [1 0] [3 5] [2 1]] "Coordinates are [0,1] [1,0] [3,5] [2,1]\n"]
+           ["~{~A~^, ~}" ['(a quick brown fox)] "a, quick, brown, fox"]
+           ["~{~A~0^, ~}" ['(a quick brown fox)] "a"]
+           ["~20<foo~;bar~;baz~>" [] "foo      bar     baz"]
+           ["~20:<~A~;~A~;~A~>" ["foo" "bar" "baz"] "    foo    bar   baz"]
+           ["~20@:<~A~;~A~;~A~>" ["foo" "bar" "baz"] "   foo   bar   baz  "]
+           ["~20<~A~;~^~A~;~^~A~>" ["foo" "bar"] "foo              bar"]
+           ["~20@<~A~;~^~A~;~^~A~>" ["foo"] "foo                 "]
+           ["The quick brown ~&~A jumped over ~D lazy dogs" ['elephant 5] "The quick brown \nelephant jumped over 5 lazy dogs"]]]
+    (is (= (platform-newlines expected)
+           (apply pprint/cl-format nil format args))
+        format)))
+
+(deftest cl-format-decimal-integer-test
+  (is (= "12" (pprint/cl-format nil "~D" (decimal/Decimal "12"))))
+  (is (= "12.5" (pprint/cl-format nil "~D" (decimal/Decimal "12.5"))))
+  (is (= "12.50" (pprint/cl-format nil "~,2F" (decimal/Decimal "12.5")))))
+
+(deftest cl-format-upstream-parameter-and-reposition-regressions
+  (doseq [[format args expected]
+          [["~3,'0D" [5] "005"]
+           ["~,,' ,4:B" [0xface] "1111 1010 1100 1110"]
+           ["~D tr~:@P/~D win~:P" [7 1] "7 tries/1 win"]
+           ["~? ~D" ["<~A ~D>" ["Foo" 5] 7] "<Foo 5> 7"]
+           ["~@? ~D" ["<~A ~D>" "Foo" 5 14 7] "<Foo 5> 14"]
+           ["Done.~^  ~D warning~:P.~^  ~D error~:P." [] "Done."]
+           ["Done.~^  ~D warning~:P.~^  ~D error~:P." [1 5] "Done.  1 warning.  5 errors."]
+           ["~4@*~D ~3@*~D ~2@*~D ~1@*~D ~0@*~D" [0 1 2 3 4] "4 3 2 1 0"]
+           ["~{~2@*~S ~1@*~S ~4@*~S ~3@*~S ~S~}" [[:a :b :c :d :e]] ":c :b :e :d :e"]]]
+    (is (= expected (apply pprint/cl-format nil format args)) format)))

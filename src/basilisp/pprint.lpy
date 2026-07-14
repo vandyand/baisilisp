@@ -1377,7 +1377,10 @@ http://www.lispworks.com/documentation/HyperSpec/Body/22_c.htm
   [x]
   (cond
    (integer? x) true
-   (decimal? x) (>= (.ulp (.stripTrailingZeros (bigdec 0))) 1) ; true iff no fractional part
+   ;; Decimal is Python's host equivalent of BigDecimal. Its exact integral
+   ;; conversion is the portable test; JVM-only ``stripTrailingZeros``/``ulp``
+   ;; methods are not available here.
+   (decimal? x) (= x (.to_integral_value x))
    (float? x)   (= x (math/floor x))
    (ratio? x)   (let [^fractions/Fraction r x]
                   (= 0 (rem (numerator r) (denominator r))))
@@ -1397,7 +1400,8 @@ http://www.lispworks.com/documentation/HyperSpec/Body/22_c.htm
 (defn- base-str
   "Return val as a python/str in the given base"
   [base val]
-  (if (zero? val)
+  (let [val (if (decimal? val) (int val) val)]
+    (if (zero? val)
     "0"
     (let [xlated-val (cond
                        (float? val) (bigdec val)
@@ -1409,7 +1413,7 @@ http://www.lispworks.com/documentation/HyperSpec/Body/22_c.htm
               #(python/chr (if (< % 10)
                              (+ (python/ord "0") %)
                              (+ (python/ord "a") (- % 10))))
-              (remainders base val))))))
+              (remainders base val)))))))
 
 (def ^{:private true}
      java-base-formats {8 "%o", 10 "%d", 16 "%x"})
