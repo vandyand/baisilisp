@@ -376,6 +376,12 @@ bencode transport. The next remote phases are request identifiers,
 authentication hooks, cancellation, CLI exposure, and concurrent-connection
 stress transcripts.
 
+The nREPL adapter also serves ``macroexpand`` requests through the same
+namespace-resolution context used by evaluation. It supports one-step, full,
+recursive, and next-subform expansion without evaluating client code;
+malformed or unsupported requests return terminal protocol errors rather than
+ending the connection.
+
 The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
 the current namespace and dynamic history; ``emit`` receives only stream text.

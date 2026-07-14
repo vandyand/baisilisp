@@ -3,7 +3,9 @@
 (ns basilisp.contrib.nrepl-server
   "A port of `nbb <https://github.com/babashka/nbb>`_ 's nREPL server implementation to Basilisp."
   (:require [basilisp.contrib.bencode :as bc]
-            [basilisp.string :as str])
+            [basilisp.pprint :as pprint]
+            [basilisp.string :as str]
+            [basilisp.walk :as walk])
   (:import basilisp.contrib.repl_session
            basilisp.lang.diagnostics
            basilisp.logconfig
@@ -168,8 +170,61 @@
 (defn- handle-classpath [_request _send-fn]
   (throw (python/NotImplementedError)))
 
-(defn- handle-macroexpand [_request _send-fn]
-  (throw (python/NotImplementedError)))
+(defn- macroexpand-step
+  "Expand exactly the first expandable form in depth-first order."
+  [form]
+  (let [expanded? (atom false)]
+    (walk/prewalk (fn [v]
+                    (if @expanded?
+                      v
+                      (let [expanded (macroexpand-1 v)]
+                        (when (not= v expanded)
+                          (reset! expanded? true))
+                        expanded)))
+                  form)))
+
+(defn- expand-form
+  [form expander]
+  (case (or expander "macroexpand")
+    "macroexpand-1"   (macroexpand-1 form)
+    "macroexpand"     (macroexpand form)
+    "macroexpand-all" (walk/macroexpand-all form)
+    "macroexpand-step" (macroexpand-step form)
+    (throw (python/ValueError
+            (str "Unrecognized macroexpander: " expander)))))
+
+(defn- render-macroexpansion
+  [form print-meta?]
+  (with-out-str
+    (binding [*print-meta* (boolean print-meta?)]
+      (pprint/write form :dispatch pprint/code-dispatch))))
+
+(defn- handle-macroexpand
+  "Expand exactly one form in the requested or session namespace.
+
+  Supports CIDER's ``macroexpand``, ``macroexpand-1``, ``macroexpand-all``,
+  and ``macroexpand-step`` expanders. Invalid requests return a terminal
+  ``macroexpand-error`` response without terminating the connection."
+  [{:keys [client* code expander ns print-meta] :as request} send-fn]
+  (let [{:keys [eval-ns]} @client*]
+    (try
+      (let [expand-ns (if ns
+                        (create-ns (symbol ns))
+                        eval-ns)
+            forms     (binding [*ns* expand-ns]
+                        (vec (read-seq (io/StringIO code))))]
+        (when (not= 1 (count forms))
+          (throw (python/ValueError
+                  "Macroexpand requests must contain exactly one form")))
+        (let [expanded (binding [*ns* expand-ns]
+                         (expand-form (first forms) expander))]
+          (send-fn request {"expansion" (render-macroexpansion expanded print-meta)
+                            "ns"        (str expand-ns)
+                            "status"    ["done"]})))
+      (catch python/Exception e
+        (send-fn request {"err"    (str e)
+                          "ns"     (str (or ns eval-ns))
+                          "status" ["done" "macroexpand-error"]})))))
 
 (defn- symbol-identify
   "Return a vector of information about ``symbol-str`` as might be resolved
@@ -331,7 +386,7 @@
    :close     handle-close
    :load-file handle-load-file
    :complete  handle-complete
-   ;; :macroexpand handle-macroexpand
+   :macroexpand handle-macroexpand
    ;; :classpath handle-classpath
    })
 

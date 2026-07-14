@@ -113,7 +113,9 @@
         (client-send! client{:id 2 :op "describe"})
         (let [{:keys [ops versions status]} (client-recv! client)]
           (is (= ["done"] status))
-          (is (= {:clone {} :close {} :complete {} :describe {} :eldoc {} :eval {} :info {} :load-file {}} ops))
+          (is (= {:clone {} :close {} :complete {} :describe {} :eldoc {} :eval {} :info {} :load-file {}
+                  :macroexpand {}}
+                 ops))
           (let [{:keys [basilisp python]} versions]
             (is (contains? basilisp :version-string))
             (is (contains? python :version-string)))))))
@@ -152,6 +154,125 @@
     ;; unspecified behaviour that can lead to errors
     [:error "AttributeError(\"'PersistentList' object has no attribute 'ns'\")"] *ns* "'abc" ;; passing in a symbol
     ))
+
+(deftest nrepl-server-macroexpand
+  (with-server {}
+    (with-connect client
+      (let [id*     (atom 0)
+            next-id #(swap! id* inc)
+            request! (fn [request]
+                       (client-send! client (assoc request :id (next-id)))
+                       (client-recv! client))]
+        (is (= ["done"]
+               (:status (request! {:op "clone"}))))
+
+        (testing "supports CIDER expansion modes in the current session namespace"
+          (let [response  (request! {:op "macroexpand"
+                                     :code "(when true :ok)"
+                                     :expander "macroexpand-1"})
+                expansion (read-string (:expansion response))]
+            (is (= ["done"] (:status response)))
+            (is (= 'if (first expansion))))
+
+          (let [response  (request! {:op "macroexpand"
+                                     :code "(when true :ok)"
+                                     :expander "macroexpand"})
+                expansion (read-string (:expansion response))]
+            (is (= ["done"] (:status response)))
+            (is (= 'if (first expansion))))
+
+          (let [response  (request! {:op "macroexpand"
+                                     :code "(list (when true :one) (when false :two))"
+                                     :expander "macroexpand-all"})
+                expansion (read-string (:expansion response))]
+            (is (= ["done"] (:status response)))
+            (is (= 'list (first expansion)))
+            (is (= 'if (first (second expansion))))
+            (is (= 'if (first (nth expansion 2)))))
+
+          (let [response  (request! {:op "macroexpand"
+                                     :code "(list (when true :one) (when false :two))"
+                                     :expander "macroexpand-step"})
+                expansion (read-string (:expansion response))]
+            (is (= ["done"] (:status response)))
+            (is (= 'if (first (second expansion))))
+            (is (= 'when (first (nth expansion 2))))))
+
+        (testing "resolves macros in the explicitly requested namespace"
+          (is (starts-with? (:value (request! {:op "eval"
+                                                :code "(ns macroexpand.scoped) (defmacro scoped-step [x] `(do ~x))"}))
+                            "#'macroexpand.scoped/scoped-step"))
+          (is (= ["done"] (:status (client-recv! client))))
+          (let [response  (request! {:op "macroexpand"
+                                     :ns "macroexpand.scoped"
+                                     :code "(scoped-step :scoped)"})
+                expansion (read-string (:expansion response))]
+            (is (= "macroexpand.scoped" (:ns response)))
+            (is (= ["done"] (:status response)))
+            (is (= 'do (first expansion)))))
+
+        (testing "does not evaluate forms and keeps the connection usable after errors"
+          (let [response  (request! {:op "macroexpand"
+                                     :code "(when true (/ 1 0))"})
+                expansion (read-string (:expansion response))]
+            (is (= ["done"] (:status response)))
+            (is (= 'if (first expansion)))
+            (is (seq? (nth expansion 2))))
+
+          (let [response (request! {:op "macroexpand"
+                                    :code "(when true :one) (when false :two)"})]
+            (is (= ["done" "macroexpand-error"] (:status response)))
+            (is (str/includes? (:err response) "exactly one form")))
+          (let [response (request! {:op "macroexpand"
+                                    :code "(when true :one)"
+                                    :expander "not-a-real-expander"})]
+            (is (= ["done" "macroexpand-error"] (:status response)))
+            (is (str/includes? (:err response) "Unrecognized macroexpander")))
+          (let [response (request! {:op "macroexpand"
+                                    :ns 1
+                                    :code "(when true :one)"})]
+            (is (= ["done" "macroexpand-error"] (:status response)))
+            (is (string? (:err response))))
+          (is (= 'if
+                 (first (read-string (:expansion (request! {:op "macroexpand"
+                                                            :code "(when true :still-usable)"})))))))
+
+        (testing "a deterministic mixed-expander stress corpus preserves request identity"
+          (doseq [i (range 96)]
+            (let [expander (nth ["macroexpand-1" "macroexpand" "macroexpand-all" "macroexpand-step"]
+                                (mod (+ (* 17 i) 11) 4))
+                  nested?  (some #{expander} #{"macroexpand-all" "macroexpand-step"})
+                  response (request! {:op "macroexpand"
+                                      :code (if nested?
+                                              (str "(list (when true " i ") (when false " i "))")
+                                              (str "(when true " i ")"))
+                                      :expander expander})
+                  expansion (read-string (:expansion response))]
+              (is (= @id* (:id response)))
+              (is (= ["done"] (:status response)))
+              (if nested?
+                (do
+                  (is (= 'list (first expansion)))
+                  (is (= 'if (first (second expansion))))
+                  (is (= (if (= expander "macroexpand-all") 'if 'when)
+                         (first (nth expansion 2)))))
+                (is (= 'if (first expansion)))))))
+
+        (testing "concurrent clients retain their own request IDs and expansions"
+          (let [responses (->> (range 24)
+                               (mapv (fn [i]
+                                       (future
+                                        (with-connect concurrent-client
+                                          (client-send! concurrent-client
+                                                        {:id i
+                                                         :op "macroexpand"
+                                                         :code (str "(when true " i ")")})
+                                          (client-recv! concurrent-client)))))
+                               (mapv deref))]
+            (doseq [[i response] (map vector (range 24) responses)]
+              (is (= i (:id response)))
+              (is (= ["done"] (:status response)))
+              (is (= 'if (first (read-string (:expansion response))))))))))))
 
 (deftest nrepl-server-complete
   (testing "basic"

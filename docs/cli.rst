@@ -79,6 +79,13 @@ An nREPL server provides an interactive REPL environment for remote code executi
 
 Basilisp's CLI incorporates an nREPL server adapted from `nbb <https://github.com/babashka/nbb>`_.
 
+The server supports the editor-facing ``macroexpand`` operation. Send one form
+as ``:code`` and optionally choose ``macroexpand-1``, ``macroexpand``,
+``macroexpand-all``, or ``macroexpand-step`` with ``:expander``. Expansion uses
+the requested ``:ns`` or the connection's active namespace without evaluating
+the form. Invalid requests return a terminal ``macroexpand-error`` status and
+leave the connection usable.
+
 Start from an editor with a Clojure extension supporting Basilisp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
