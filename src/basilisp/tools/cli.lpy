@@ -96,7 +96,8 @@
                        (s/join ", " unknown-keys))]
           #?(:clj  (binding [*out* *err*] (println msg))
              :cljr (binding [*out* *err*] (println msg))
-             :cljs (binding [*print-fn* *print-err-fn*] (println msg)))))))
+             :cljs (binding [*print-fn* *print-err-fn*] (println msg))
+             :lpy  (binding [*out* *err*] (println msg)))))))
 
   (select-keys map spec-keys))
 

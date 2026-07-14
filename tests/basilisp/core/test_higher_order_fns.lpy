@@ -749,7 +749,8 @@
   (are [expected inputs] (= expected (apply merge inputs))
     {}              [{}]
     {:a 1}          [{:a 1}]
-    {:a 53 :b "hi"} [{:a 1 :b "hi"} {:a 53}]))
+    {:a 53 :b "hi"} [{:a 1 :b "hi"} {:a 53}]
+    #{1 2}          [#{1} 2]))
 
 (deftest zipmap-test
   (are [x y z] (= x (zipmap y z))

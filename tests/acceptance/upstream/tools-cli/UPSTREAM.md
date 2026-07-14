@@ -22,4 +22,13 @@ port is a line-preserving derivative with only host-boundary adaptations:
 
 The acceptance runner executes the original upstream source under Clojure and
 the Basilisp package port under Basilisp, then compares a data-only contract
-derived from upstream test cases.
+derived from upstream test cases. It also compares 256 deterministic
+pseudo-random option-token sequences covering short and long forms, inline
+arguments, repeated updates, negatable flags, unknown options, positional
+arguments, and end-of-options handling.
+
+The complete upstream `cli_test.cljc` and `cli_legacy_test.cljc` suites are
+copied as derived Basilisp tests under `tests/basilisp/`. Their only host
+adaptations are Python's assertion type, stdout/stderr binding, integer
+conversion, and wrapping two legacy top-level assertions in a test definition
+because Basilisp test counters are scoped to `deftest`.
