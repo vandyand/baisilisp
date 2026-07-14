@@ -102,14 +102,15 @@ To that end, dispatch functions wishing to print any collection may want to use 
 Dispatch functions which may need to be called on nested elements should use :lpy:fn:`write-out` to ensure that :lpy:var:`basilisp.core/*print-level*` is respected.
 Scalar values can be printed with :lpy:fn:`basilisp.core/pr` or just written directly to :lpy:var:`*out*`.
 
-.. _unimplemented_pprint_features:
+``cl-format``
+-------------
 
-Unimplemented Features
-----------------------
-
-The following features from ``clojure.pprint`` are not currently implemented:
-
-- ``cl-format``
+``cl-format`` provides Clojure's Common Lisp-compatible formatting language,
+including numeric, character, float, iteration, conditional, justification,
+logical-block, case, tabulation, and pretty-print directives. Python strings
+represent character values on the Basilisp host. The implementation preserves
+the Clojure formatter API (``cl-format``, ``formatter``, and
+``formatter-out``) while using Python streams and numeric types.
 
 .. _pprint_references:
 

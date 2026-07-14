@@ -141,7 +141,8 @@ interop. They also reduce friction when porting small Clojure libraries.
 Initial targets:
 
 * pREPL server (`#628 <https://github.com/basilisp-lang/basilisp/issues/628>`_)
-* ``pprint/code-dispatch`` (`#1266 <https://github.com/basilisp-lang/basilisp/issues/1266>`_)
+* ``pprint`` compatibility, including ``code-dispatch`` and source-derived
+  ``cl-format`` coverage (`#1266 <https://github.com/basilisp-lang/basilisp/issues/1266>`_)
 * ``core.async`` or a Python-native async alternative (`#149 <https://github.com/basilisp-lang/basilisp/issues/149>`_)
 
 Near-term deliverable:

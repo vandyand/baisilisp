@@ -1,0 +1,59 @@
+;; Derived test cases from Clojure 1.12.4's
+;; test/clojure/test_clojure/pprint/test_cl_format.clj (EPL-1.0).
+;; The cases below deliberately exercise the portable Common Lisp formatter
+;; surface, while using Python strings for character values.
+
+(ns tests.basilisp.test-pprint-cl-format
+  (:require
+   [basilisp.pprint :as pprint]
+   [basilisp.test :refer [deftest is]])
+  (:import os))
+
+(deftest cl-format-upstream-compatibility-test
+  (doseq [[format args expected]
+          [["~A" ["abc"] "abc"]
+           ["~S" [:alpha] ":alpha"]
+           ["~D" [2000000] "2000000"]
+           ["~:D" [2000000] "2,000,000"]
+           ["~2R" [8] "1000"]
+           ["~16R" [40] "28"]
+           ["~R" [203] "two hundred three"]
+           ["~:R" [203] "two hundred third"]
+           ["~@R" [429] "CDXXIX"]
+           ["~@:R" [429] "CCCCXXVIIII"]
+           ["~C" ["m"] "m"]
+           ["~@C" ["m"] "\\m"]
+           ["~@C" ["\b"] "\\backspace"]
+           ["~:C" ["\n"] "Newline"]
+           ["~$" [22.375] "22.38"]
+           ["~3,5$" [22.375] "00022.375"]
+           ["~,0F" [9.5] "10."]
+           ["~,2F" [-0.99] "-0.99"]
+           ["~10,2E" [9.99999] "   1.00E+1"]
+           ["~D item~:P" [1] "1 item"]
+           ["~D item~:P" [2] "2 items"]
+           ["~[zero~;one~:;many~]" [3] "many"]
+           ["~:[false~;true~]" [true] "true"]
+           ["~{~2R~^ ~}" [(range 4)] "0 1 10 11"]
+           ["~@{~A~}" ["a" "b"] "ab"]
+           ["~?" ["~A/~D" ["x" 2]] "x/2"]
+           ["~(~A~)" ["HeLLo"] "hello"]
+           ["~:(~A~)" ["hello world"] "Hello World"]
+           ["~<one~;two~;three~>" [] "onetwothree"]
+           ["~:<~A~:>" ["x"] "(x)"]
+           ["a~5Tz" [] "a    z"]
+           ["a~5@Tz" [] "a      z"]
+           ["~3~" [] "~~~"]
+           ["~W" [{:a [1 2]}] "{:a [1 2]}"]
+           ["~A ~:*~A" ["x"] "x x"]]]
+    (is (= expected (apply pprint/cl-format nil format args)) format)))
+
+(deftest cl-format-newline-and-stream-test
+  (is (= (str "a" os/linesep "b" os/linesep "c")
+         (pprint/cl-format nil "a~&b~%c"))))
+
+(deftest formatter-macros-test
+  (let [to-string (pprint/formatter "x~D")
+        to-out (pprint/formatter-out "y~A")]
+    (is (= "x2" (to-string nil 2)))
+    (is (= "yz" (with-out-str (to-out "z"))))))

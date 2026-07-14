@@ -97,10 +97,10 @@ advertised as compatible.
 Standard Libraries
 ------------------
 
-``basilisp.pprint`` should gain ``code-dispatch`` and ``:fill`` newlines using
-golden output fixtures covering metadata, nesting, widths, print level, and
-print length. ``cl-format`` is a separate formatting-language project and is
-not bundled into that milestone.
+``basilisp.pprint`` provides ``code-dispatch``, ``:fill`` newlines, and the
+portable ``cl-format`` surface. Formatter compatibility is protected with
+upstream-derived directive tests; Python strings stand in for JVM character
+values and Python streams replace JVM writers.
 
 ``basilisp.spec.alpha`` provides portable validation, conforming, explain-data,
 opt-in function-spec instrumentation, and bounded Hypothesis-backed checking.
@@ -469,10 +469,10 @@ printing for incomplete or unrecognized forms. Future dispatch additions such
 as ``case``, ``try``/``catch``/``finally``, ``ns``, and ``require`` should use
 the same fallback and golden-test approach.
 
-``cl-format`` remains deliberately out of scope. It is a separate, large
-format-language implementation with its own argument-consumption and locale
-semantics. A Python ``format`` wrapper would not be compatible and must live
-under a Python-native name if one is useful.
+``cl-format`` is implemented as a source-derived portability layer rather
+than a wrapper around Python's unrelated ``format`` mini-language. It retains
+Clojure's directive parsing and argument-consumption model while adapting
+writer handling, characters, and numeric plumbing to Python.
 
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

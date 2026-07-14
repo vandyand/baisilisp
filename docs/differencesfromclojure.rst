@@ -257,7 +257,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
   precision integers mean its ``*-exact`` functions do not overflow, and its
   ``round`` function does not have JVM ``long`` saturation behavior.
-* :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint`` (excluding support for ``cl-format``)
+* :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint``, including
+  ``cl-format``. Character arguments use one-character Python strings rather
+  than JVM ``Character`` instances.
 * :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
   of ``clojure.core.reducers``. It does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
