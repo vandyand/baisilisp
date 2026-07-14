@@ -494,7 +494,7 @@ Like the built-in :lpy:fn:`map`, ``pmap`` executes the provided function across 
 Various Functions
 ^^^^^^^^^^^^^^^^^
 
-- Functions used for printing: :lpy:fn:`pr`, :lpy:fn:`pr-str`, :lpy:fn:`prn`, :lpy:fn:`prn-str`, :lpy:fn:`print`, :lpy:fn:`print-str`, :lpy:fn:`println`, :lpy:fn:`println-str`, :lpy:fn:`printf`, :lpy:fn:`with-in-str`, :lpy:fn:`with-out-str`, :lpy:fn:`flush`, :lpy:fn:`newline`
+- Functions used for printing: :lpy:fn:`pr`, :lpy:fn:`pr-str`, :lpy:fn:`prn`, :lpy:fn:`prn-str`, :lpy:fn:`print`, :lpy:fn:`print-str`, :lpy:fn:`println`, :lpy:fn:`println-str`, :lpy:fn:`print-method`, :lpy:fn:`print-dup`, :lpy:fn:`printf`, :lpy:fn:`with-in-str`, :lpy:fn:`with-out-str`, :lpy:fn:`flush`, :lpy:fn:`newline`
 - Functions for throwing and introspecting exceptions: :lpy:fn:`ex-info`, :lpy:fn:`ex-cause`, :lpy:fn:`ex-data`, :lpy:fn:`ex-message`, :lpy:ns:`basilisp.stacktrace`
 - Functions for generating random data: :lpy:fn:`rand`, :lpy:fn:`rand-int`, :lpy:fn:`rand-nth`, :lpy:fn:`random-uuid`, :lpy:fn:`random-sample`, :lpy:fn:`shuffle`
 - Functions which can be used to introspect the Python type hierarchy: :lpy:fn:`class`, :lpy:fn:`cast`, :lpy:fn:`bases`, :lpy:fn:`supers`, :lpy:fn:`subclasses`

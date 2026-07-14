@@ -11,11 +11,12 @@ from functools import singledispatch
 from itertools import islice
 from pathlib import Path
 from re import Pattern
-from typing import Any, Union, cast
+from typing import Any, Callable, Union, cast
 
 from typing_extensions import TypedDict, Unpack
 
 PrintCountSetting = Union[bool, int, None]
+PrintFn = Callable[[Any], str | None]
 
 SURPASSED_PRINT_LENGTH = "..."
 SURPASSED_PRINT_LEVEL = "#"
@@ -38,6 +39,7 @@ class PrintSettings(TypedDict, total=False):
     print_meta: bool
     print_namespace_maps: bool
     print_readably: bool
+    print_fn: PrintFn | None
 
 
 def _dec_print_level(lvl: PrintCountSetting) -> PrintCountSetting:
@@ -176,7 +178,7 @@ def _lstr_lrepr(o) -> str:
 
 # pylint: disable=unused-argument
 @singledispatch
-def lrepr(  # pylint: disable=too-many-arguments
+def _lrepr(  # pylint: disable=too-many-arguments
     o: Any,
     human_readable: bool = False,
     print_dup: bool = PRINT_DUP,
@@ -185,6 +187,7 @@ def lrepr(  # pylint: disable=too-many-arguments
     print_meta: bool = PRINT_META,
     print_namespace_maps: bool = PRINT_NAMESPACE_MAPS,
     print_readably: bool = PRINT_READABLY,
+    print_fn: PrintFn | None = None,
 ) -> str:
     """Return a string representation of a Lisp object.
 
@@ -214,7 +217,46 @@ def lrepr(  # pylint: disable=too-many-arguments
     return repr(o)
 
 
-@lrepr.register(LispObject)
+def lrepr(  # pylint: disable=too-many-arguments
+    o: Any,
+    human_readable: bool = False,
+    print_dup: bool = PRINT_DUP,
+    print_length: PrintCountSetting = PRINT_LENGTH,
+    print_level: PrintCountSetting = PRINT_LEVEL,
+    print_meta: bool = PRINT_META,
+    print_namespace_maps: bool = PRINT_NAMESPACE_MAPS,
+    print_readably: bool = PRINT_READABLY,
+    print_fn: PrintFn | None = None,
+) -> str:
+    """Return a string representation of a Lisp object.
+
+    ``print_fn`` is an internal callback which may render an object before the
+    normal singledispatch renderer. Returning ``None`` delegates to that normal
+    renderer, allowing callers to customize selected values recursively while
+    retaining the existing collection and print-setting behavior.
+    """
+    if print_fn is not None:
+        rendered = print_fn(o)
+        if rendered is not None:
+            return rendered
+
+    return _lrepr(
+        o,
+        human_readable=human_readable,
+        print_dup=print_dup,
+        print_length=print_length,
+        print_level=print_level,
+        print_meta=print_meta,
+        print_namespace_maps=print_namespace_maps,
+        print_readably=print_readably,
+        print_fn=print_fn,
+    )
+
+
+lrepr.register = _lrepr.register  # type: ignore[attr-defined]
+
+
+@_lrepr.register(LispObject)
 def _lrepr_lisp_obj(  # pylint: disable=too-many-arguments
     o: Any,
     human_readable: bool = False,
@@ -224,6 +266,7 @@ def _lrepr_lisp_obj(  # pylint: disable=too-many-arguments
     print_meta: bool = PRINT_META,
     print_namespace_maps: bool = PRINT_NAMESPACE_MAPS,
     print_readably: bool = PRINT_READABLY,
+    print_fn: PrintFn | None = None,
 ) -> str:  # pragma: no cover
     return o._lrepr(
         human_readable=human_readable,
@@ -233,26 +276,27 @@ def _lrepr_lisp_obj(  # pylint: disable=too-many-arguments
         print_meta=print_meta,
         print_namespace_maps=print_namespace_maps,
         print_readably=print_readably,
+        print_fn=print_fn,
     )
 
 
-@lrepr.register(bool)
+@_lrepr.register(bool)
 def _lrepr_bool(o: bool, **_) -> str:
     return repr(o).lower()
 
 
-@lrepr.register(bytes)
+@_lrepr.register(bytes)
 def _lrepr_bytes(o: bytes, **_) -> str:
     v = repr(o)
     return f'#b "{v[2:-1]}"'
 
 
-@lrepr.register(type(None))
+@_lrepr.register(type(None))
 def _lrepr_nil(_: None, **__) -> str:
     return "nil"
 
 
-@lrepr.register(str)
+@_lrepr.register(str)
 def _lrepr_str(
     o: str, human_readable: bool = False, print_readably: bool = PRINT_READABLY, **_
 ) -> str:
@@ -264,27 +308,27 @@ def _lrepr_str(
     return f'"{escaped}"'
 
 
-@lrepr.register(list)
+@_lrepr.register(list)
 def _lrepr_py_list(o: list, **kwargs: Unpack[PrintSettings]) -> str:
     return f"#py {seq_lrepr(o, '[', ']', **kwargs)}"
 
 
-@lrepr.register(set)
+@_lrepr.register(set)
 def _lrepr_py_set(o: set, **kwargs: Unpack[PrintSettings]) -> str:
     return f"#py {seq_lrepr(o, '#{', '}', **kwargs)}"
 
 
-@lrepr.register(tuple)
+@_lrepr.register(tuple)
 def _lrepr_py_tuple(o: tuple, **kwargs: Unpack[PrintSettings]) -> str:
     return f"#py {seq_lrepr(o, '(', ')', **kwargs)}"
 
 
-@lrepr.register(complex)
+@_lrepr.register(complex)
 def _lrepr_complex(o: complex, **_) -> str:
     return repr(o).upper()
 
 
-@lrepr.register(float)
+@_lrepr.register(float)
 def _lrepr_float(o: float, human_readable: bool = False, **_) -> str:
     if math.isinf(o):
         if o > 0:
@@ -296,34 +340,34 @@ def _lrepr_float(o: float, human_readable: bool = False, **_) -> str:
     return repr(o)
 
 
-@lrepr.register(datetime.datetime)
+@_lrepr.register(datetime.datetime)
 def _lrepr_datetime(o: datetime.datetime, **_) -> str:
     return f'#inst "{o.isoformat()}"'
 
 
-@lrepr.register(Decimal)
+@_lrepr.register(Decimal)
 def _lrepr_decimal(o: Decimal, print_dup: bool = PRINT_DUP, **_) -> str:
     if print_dup:
         return f"{str(o)}M"
     return str(o)
 
 
-@lrepr.register(Fraction)
+@_lrepr.register(Fraction)
 def _lrepr_fraction(o: Fraction, **_) -> str:
     return f"{o.numerator}/{o.denominator}"
 
 
-@lrepr.register(Path)
+@_lrepr.register(Path)
 def _lrepr_path(o: Path, **_) -> str:
     return str(o)
 
 
-@lrepr.register(type(re.compile("")))
+@_lrepr.register(type(re.compile("")))
 def _lrepr_pattern(o: Pattern, **_) -> str:
     return f'#"{o.pattern}"'
 
 
-@lrepr.register(uuid.UUID)
+@_lrepr.register(uuid.UUID)
 def _lrepr_uuid(o: uuid.UUID, human_readable: bool = False, **_) -> str:
     if human_readable:
         return str(o)

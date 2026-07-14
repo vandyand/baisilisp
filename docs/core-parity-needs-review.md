@@ -26,7 +26,7 @@ The following symbols are now implemented and no longer appear as gaps:
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
 and `xml-seq`, plus `await1`, `ref`, `dosync`, `alter`, `ref-set`, `commute`,
-`ensure`, `sync`, and `seque`.
+`ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
 
 ## Portable Implementation Targets
 
@@ -57,8 +57,7 @@ compatibility promise would be false.
 `-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `StackTraceElement->vec`,
 `Throwable->map`, `accessor`, `chunk`, `chunk-append`, `chunk-buffer`,
 `chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
-`primitives-classnames`, `print-ctor`, `print-dup`, `print-method`,
-`print-simple`, `proxy-call-with-super`, `proxy-name`,
+`primitives-classnames`, `print-ctor`, `print-simple`, `proxy-call-with-super`, `proxy-name`,
 `seq-to-map-for-destructuring`, and `vector-of`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception

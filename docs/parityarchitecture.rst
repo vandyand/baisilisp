@@ -473,6 +473,12 @@ than a wrapper around Python's unrelated ``format`` mini-language. It retains
 Clojure's directive parsing and argument-consumption model while adapting
 writer handling, characters, and numeric plumbing to Python.
 
+The public print functions use the Clojure-compatible ``print-method`` and
+``print-dup`` multimethods. Custom methods receive the active writer and apply
+to nested values as well as top-level arguments, while the underlying renderer
+continues to enforce ``*print-length*``, ``*print-level*``, and metadata
+settings for ordinary collections.
+
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

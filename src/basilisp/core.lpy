@@ -4871,6 +4871,10 @@
   Defaults to ``true``\\."
   true)
 
+(def ^:private ^:dynamic *print-human-readable* false)
+
+(declare print-method print-dup write-print-object)
+
 (defn ^:inline repr
   "Return the reader representation of an object."
   [x]
@@ -4920,15 +4924,15 @@
   {:dynamic true}
   ([] nil)
   ([x]
-   (.write *out* (repr x))
+   (write-print-object *out* x false)
    nil)
   ([x & args]
-   (let [stdout    *out*
-         sep       *print-sep*
-         repr-args (interpose sep (map repr args))]
-     (.write stdout (repr x))
-     (.write stdout sep)
-     (.write stdout (apply str repr-args))
+   (let [stdout *out*
+         sep    *print-sep*]
+     (write-print-object stdout x false)
+     (doseq [arg args]
+       (.write stdout sep)
+       (write-print-object stdout arg false))
      nil)))
 
 (defn prn
@@ -4942,18 +4946,18 @@
    nil)
   ([x]
    (let [stdout *out*]
-     (.write stdout (repr x))
+     (write-print-object stdout x false)
      (.write stdout os/linesep)
      (when *flush-on-newline*
        (.flush stdout))
      nil))
   ([x & args]
-   (let [stdout    *out*
-         sep       *print-sep*
-         repr-args (interpose sep (map repr args))]
-     (.write stdout (repr x))
-     (.write stdout sep)
-     (.write stdout (apply str repr-args))
+   (let [stdout *out*
+         sep    *print-sep*]
+     (write-print-object stdout x false)
+     (doseq [arg args]
+       (.write stdout sep)
+       (write-print-object stdout arg false))
      (.write stdout os/linesep)
      (when *flush-on-newline*
        (.flush *out*))
@@ -4977,15 +4981,15 @@
   :lpy:var:`*print-sep*` (default is an ASCII space)."
   ([] (print ""))
   ([x]
-   (.write *out* (basilisp.lang.runtime/lrepr x ** :human-readable true))
+   (write-print-object *out* x true)
    nil)
   ([x & args]
-   (let [stdout    *out*
-         sep       *print-sep*
-         repr-args (interpose sep (map #(basilisp.lang.runtime/lrepr % ** :human-readable true) args))]
-     (.write stdout (basilisp.lang.runtime/lrepr x ** :human-readable true))
-     (.write stdout sep)
-     (.write stdout (apply str repr-args))
+   (let [stdout *out*
+         sep    *print-sep*]
+     (write-print-object stdout x true)
+     (doseq [arg args]
+       (.write stdout sep)
+       (write-print-object stdout arg true))
      nil)))
 
 (defn println
@@ -4998,18 +5002,18 @@
   ([] (println ""))
   ([x]
    (let [stdout *out*]
-     (.write stdout (basilisp.lang.runtime/lstr x))
+     (write-print-object stdout x true)
      (.write stdout os/linesep)
      (when *flush-on-newline*
        (.flush stdout))
      nil))
   ([x & args]
-   (let [stdout    *out*
-         sep       *print-sep*
-         repr-args (interpose sep (map basilisp.lang.runtime/lstr args))]
-     (.write stdout (basilisp.lang.runtime/lstr x))
-     (.write stdout sep)
-     (.write stdout (apply str repr-args))
+   (let [stdout *out*
+         sep    *print-sep*]
+     (write-print-object stdout x true)
+     (doseq [arg args]
+       (.write stdout sep)
+       (write-print-object stdout arg true))
      (.write stdout os/linesep)
      (when *flush-on-newline*
        (.flush stdout))
@@ -6372,6 +6376,40 @@
   See :lpy:fn:`defmulti` for more information about multimethods."
   [multifn dispatch-val & fn-tail]
   `(. ~multifn (~'add-method ~dispatch-val (fn ~@fn-tail))))
+
+(defmulti print-method
+  "Multimethod used by :lpy:fn:`pr` and :lpy:fn:`print` to write an object.
+
+  Dispatches on metadata ``:type`` when it is a keyword, otherwise on the
+  Python runtime type. Methods receive ``object`` and ``writer`` arguments."
+  (fn [x _]
+    (let [t (:type (meta x))]
+      (if (keyword? t) t (type x)))))
+
+(defmethod print-method :default
+  [x writer]
+  (.write writer (basilisp.lang.runtime/lrepr x
+                                               ** :human-readable *print-human-readable*
+                                               :print-methods true
+                                               :skip-root-custom true)))
+
+(defmulti print-dup
+  "Multimethod used instead of :lpy:fn:`print-method` while ``*print-dup*`` is true."
+  (fn [x _] (type x)))
+
+(defmethod print-dup :default
+  [x writer]
+  (.write writer (basilisp.lang.runtime/lrepr x
+                                               ** :human-readable *print-human-readable*
+                                               :print-methods true
+                                               :skip-root-custom true)))
+
+(defn ^:private write-print-object
+  [writer x human-readable?]
+  (binding [*print-human-readable* human-readable?]
+    (if *print-dup*
+      (print-dup x writer)
+      (print-method x writer))))
 
 (defn ^:inline methods
   "Return a map of dispatch values to methods for the given multimethod."

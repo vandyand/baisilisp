@@ -4,6 +4,28 @@
    [basilisp.string :as str]
    [basilisp.test :refer [deftest are is testing]]))
 
+(defrecord CustomPrint [value])
+(defrecord DefaultDupPrint [value])
+(defrecord BrokenPrint [])
+
+(defmethod print-method CustomPrint
+  [x writer]
+  (.write writer "<")
+  (.write writer (:value x))
+  (.write writer ">"))
+
+(defmethod print-method :tests.basilisp.core.test-printing-fns/wire
+  [x writer]
+  (.write writer (str "wire:" (:value x))))
+
+(defmethod print-dup CustomPrint
+  [x writer]
+  (.write writer (str "dup:" (:value x))))
+
+(defmethod print-method BrokenPrint
+  [_ _]
+  (throw (python/ValueError "unprintable")))
+
 (deftest pr-test
   (testing "is dynamic"
     (is (= '(1) (binding [pr (fn [& more] more)] (pr 1)))))
@@ -81,6 +103,60 @@
     os/linesep                    [""]
     (str ":kw" os/linesep)        [:kw]
     (str ":hi there 3" os/linesep) [:hi "there" 3]))
+
+(deftest extensible-printing-test
+  (testing "custom methods receive the active writer and apply to every public printer"
+    (let [value (->CustomPrint "value")]
+      (is (= "<value>" (pr-str value)))
+      (is (= "<value>" (print-str value)))
+      (is (= (str "<value>" os/linesep) (prn-str value)))
+      (is (= (str "<value>" os/linesep) (println-str value)))))
+
+  (testing "metadata :type dispatch takes precedence over the Python runtime type"
+    (is (= "wire:value"
+           (pr-str (with-meta (->CustomPrint "value")
+                               {:type :tests.basilisp.core.test-printing-fns/wire}))))
+    (is (= "[wire:value <other>]"
+           (pr-str [(with-meta (->CustomPrint "value")
+                               {:type :tests.basilisp.core.test-printing-fns/wire})
+                    (->CustomPrint "other")]))))
+
+  (testing "*print-dup* uses the corresponding custom print-dup method"
+    (is (= "dup:value"
+           (binding [*print-dup* true]
+             (pr-str (->CustomPrint "value")))))
+    (is (= "[dup:value]"
+           (binding [*print-dup* true]
+             (pr-str [(->CustomPrint "value")])))))
+
+  (testing "print-dup does not fall back to print-method"
+    (let [value (with-meta (->DefaultDupPrint "value")
+                           {:type :tests.basilisp.core.test-printing-fns/wire})]
+      (is (= (binding [*print-dup* true] (repr value))
+             (binding [*print-dup* true] (pr-str value))))
+      (is (= (str "[" (binding [*print-dup* true] (repr value)) "]")
+             (binding [*print-dup* true] (pr-str [value]))))))
+
+  (testing "a deterministic high-cardinality workload preserves order and separators"
+    (let [values   (map (fn [n] (->CustomPrint (str n))) (range 1024))
+          expected (str/join "|" (map (fn [n] (str "<" n ">")) (range 1024)))]
+      (is (= expected
+             (binding [*print-sep* "|"]
+               (apply pr-str values))))))
+
+  (testing "generated nested values dispatch custom printers without bypassing collection limits"
+    (let [values   (vec (map (fn [n] [(->CustomPrint (str n)) n]) (range 256)))
+          expected (str "["
+                        (str/join " " (map (fn [n] (str "[<" n "> " n "]")) (range 256)))
+                        "]")]
+      (is (= expected (pr-str values)))
+      (is (= "[[<0> 0] [<1> 1] ...]"
+             (binding [*print-length* 2]
+               (pr-str values))))))
+
+  (testing "printer exceptions propagate without corrupting subsequent output"
+    (is (thrown? python/ValueError (pr-str (->BrokenPrint))))
+    (is (= "<still-usable>" (pr-str (->CustomPrint "still-usable"))))))
 
 (defn- bio-write
   "Helper fn to write the ``strings`` to the ByteIO buffer ``bio``

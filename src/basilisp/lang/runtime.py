@@ -7,6 +7,7 @@ import functools
 import graphlib
 import importlib.metadata
 import inspect
+import io
 import itertools
 import logging
 import math
@@ -129,6 +130,8 @@ PRINT_LEVEL_VAR_NAME = "*print-level*"
 PRINT_META_VAR_NAME = "*print-meta*"
 PRINT_NAMESPACE_MAPS_VAR_NAME = "*print-namespace-maps*"
 PRINT_READABLY_VAR_NAME = "*print-readably*"
+PRINT_METHOD_VAR_NAME = "print-method"
+PRINT_DUP_METHOD_VAR_NAME = "print-dup"
 PYTHON_VERSION_VAR_NAME = "*python-version*"
 BASILISP_VERSION_VAR_NAME = "*basilisp-version*"
 
@@ -2110,16 +2113,52 @@ def _to_py_set(
     return {to_py(e, keyword_fn=keyword_fn) for e in o}
 
 
-def lrepr(o, human_readable: bool = False) -> str:
-    """Produce a string representation of an object. If human_readable is False,
-    the string representation of Lisp objects is something that can be read back
-    in by the reader as the same object."""
+def lrepr(
+    o,
+    human_readable: bool = False,
+    print_methods: bool = False,
+    skip_root_custom: bool = False,
+) -> str:
+    """Produce a string representation of an object.
+
+    ``print_methods`` is used by the public print functions to apply
+    ``print-method`` or ``print-dup`` recursively. ``skip_root_custom`` renders
+    the outer object normally while retaining that dispatch for nested values;
+    it lets the default print method avoid calling itself.
+    """
     core_ns = Namespace.get(CORE_NS_SYM)
     assert core_ns is not None
-    return lobj.lrepr(
-        o,
+    print_dup = core_ns.find(sym.symbol(PRINT_DUP_VAR_NAME)).value  # type: ignore
+    print_fn = None
+    if print_methods:
+        print_method = core_ns.find(sym.symbol(PRINT_METHOD_VAR_NAME)).value  # type: ignore
+        print_dup_method = core_ns.find(sym.symbol(PRINT_DUP_METHOD_VAR_NAME)).value  # type: ignore
+
+        def selected_method(multifn, value):
+            dispatch_value = multifn._dispatch(
+                value, None
+            )  # pylint: disable=protected-access
+            return multifn.get_method(dispatch_value), multifn.get_method(
+                multifn.default
+            )
+
+        def print_fn(value) -> str | None:
+            writer = io.StringIO()
+            if print_dup:
+                method, default = selected_method(print_dup_method, value)
+                if method is default:
+                    return None
+                print_dup_method(value, writer)
+            else:
+                method, default = selected_method(print_method, value)
+                if method is default:
+                    return None
+                print_method(value, writer)
+            return writer.getvalue()
+
+    kwargs = dict(
         human_readable=human_readable,
-        print_dup=core_ns.find(sym.symbol(PRINT_DUP_VAR_NAME)).value,  # type: ignore
+        print_dup=print_dup,
         print_length=core_ns.find(  # type: ignore
             sym.symbol(PRINT_LENGTH_VAR_NAME)
         ).value,
@@ -2131,7 +2170,11 @@ def lrepr(o, human_readable: bool = False) -> str:
         print_readably=core_ns.find(  # type: ignore
             sym.symbol(PRINT_READABLY_VAR_NAME)
         ).value,
+        print_fn=print_fn,
     )
+    if skip_root_custom:
+        return lobj._lrepr(o, **kwargs)  # pylint: disable=protected-access
+    return lobj.lrepr(o, **kwargs)
 
 
 def lstr(o) -> str:
