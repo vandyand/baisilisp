@@ -247,10 +247,20 @@
   [s]
   (.rstrip s))
 
+(defn trimr
+  "Trim trailing whitespace from ``s`` (Clojure-compatible alias for ``rtrim``)."
+  [s]
+  (rtrim s))
+
 (defn ltrim
   "Trim leading whitespace from ``s``."
   [s]
   (.lstrip s))
+
+(defn triml
+  "Trim leading whitespace from ``s`` (Clojure-compatible alias for ``ltrim``)."
+  [s]
+  (ltrim s))
 
 (defn trim-newlines
   "Trim trailing newline and return characters from ``s``."

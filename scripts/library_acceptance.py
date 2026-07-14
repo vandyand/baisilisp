@@ -177,6 +177,11 @@ def main() -> int:
     parser.add_argument("--manifest", type=Path)
     parser.add_argument("--clojure-command", default=_default_clojure_command())
     parser.add_argument("--basilisp-command", default="uv run basilisp run")
+    parser.add_argument(
+        "--write-manifest",
+        action="store_true",
+        help="replace the checked-in manifest after its generated content is reviewed",
+    )
     parser.add_argument("--show-output", action="store_true")
     parser.add_argument("--show-manifest", action="store_true")
     args = parser.parse_args()
@@ -190,7 +195,11 @@ def main() -> int:
     runner = library_root / "run.cljc"
     if not runner.is_file():
         parser.error(f"library runner does not exist: {runner}")
-    manifest = verify_manifest(library_root, manifest_path)
+    if args.write_manifest:
+        manifest = acceptance_manifest(library_root)
+        manifest_path.write_text(manifest, encoding="utf-8", newline="\n")
+    else:
+        manifest = verify_manifest(library_root, manifest_path)
     clojure = _run(args.clojure_command, runner, label="Clojure")
     basilisp = _run(args.basilisp_command, runner, label="Basilisp")
     if clojure != basilisp:

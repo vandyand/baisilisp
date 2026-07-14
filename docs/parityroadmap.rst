@@ -128,6 +128,9 @@ Near-term deliverable:
   ``tests/acceptance/upstream/cognitect-anomalies`` is the first pinned
   upstream snapshot; run it with ``--library-root`` to prove the unchanged
   source's public spec contract in both runtimes.
+  ``basilisp.tools.cli`` is the first substantial upstream port: it retains a
+  pinned ``clojure/tools.cli`` source snapshot, a minimal Python-hosted port,
+  and a shared parsing/defaults/errors/subcommand acceptance contract.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

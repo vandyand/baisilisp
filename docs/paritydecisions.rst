@@ -265,12 +265,15 @@ conditionals contain a viable ``:lpy`` path, and its tests pass with documented
 substitutions. The manifest is the proof artifact. Basilisp will not load JARs
 or resolve Maven coordinates; native ports ship as Python distributions.
 
-The first upstream screening rejected ``clojure/tools.cli`` at pinned revision
-``865e988``: its source catches JVM ``Throwable`` through a ``:clj``/``:cljs``
-reader conditional with no viable ``:lpy`` branch. Basilisp must not select a
-JVM branch or silently invent an exception mapping. It remains a
-``needs-lpy-port`` candidate until an explicit, tested host-exception policy is
-provided.
+The first upstream screening identified ``clojure/tools.cli`` at pinned
+revision ``865e988`` as needing an explicit host-exception policy: its source
+catches JVM ``Throwable`` through a ``:clj``/``:cljs`` reader conditional with
+no viable ``:lpy`` branch. The admitted ``basilisp.tools.cli`` port maps those
+recoverable parsing and validation callbacks to ``python/Exception``. It
+deliberately does not catch ``BaseException``: ``KeyboardInterrupt``,
+``SystemExit``, and other Python control signals remain observable. The port
+and this policy are exercised against a data-only contract derived from the
+upstream tests; Basilisp does not select the JVM reader branch.
 
 Detailed Resolution Boundaries
 ------------------------------

@@ -15,7 +15,7 @@ _JVM_MARKERS = {
     "java-interop": re.compile(r"\b(?:java|javax|jdk)\."),
     "clojure-java-namespace": re.compile(r"\bclojure\.java\."),
     "jvm-runtime-class": re.compile(r"\bclojure\.lang\."),
-    "aot-generation": re.compile(r"\b(?:gen-class|compile)\b"),
+    "aot-generation": re.compile(r"\(\s*(?:gen-class|compile)(?:\s|\))"),
     "jvm-classpath": re.compile(r"\b(?:add-classpath|Class/forName)\b"),
 }
 _REQUIRES = re.compile(r"\[([A-Za-z][\w.-]*)")

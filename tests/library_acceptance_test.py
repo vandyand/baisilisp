@@ -33,6 +33,17 @@ def test_upstream_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_tools_cli_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "tools-cli"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.tools.cli -> basilisp.tools.cli" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 @pytest.mark.parametrize(
     ("config", "message"),
     [

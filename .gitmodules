@@ -1,3 +1,6 @@
 [submodule "acceptance-cognitect-anomalies"]
 	path = tests/acceptance/upstream/cognitect-anomalies/upstream
 	url = https://github.com/cognitect-labs/anomalies.git
+[submodule "tests/acceptance/upstream/tools-cli/upstream"]
+	path = tests/acceptance/upstream/tools-cli/upstream
+	url = https://github.com/clojure/tools.cli.git

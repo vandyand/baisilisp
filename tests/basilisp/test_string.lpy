@@ -234,6 +234,10 @@
     ""                           ""
     "               Chris      " "Chris      "))
 
+(deftest clojure-trim-aliases-test
+  (is (= "Chris      " (str/triml "               Chris      ")))
+  (is (= "               Chris" (str/trimr "               Chris      "))))
+
 (deftest trim-test
   (are [x y] (= y (str/rtrim x))
     ""                           ""

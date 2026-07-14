@@ -1,0 +1,45 @@
+(ns tests.basilisp.tools-cli-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [basilisp.tools.cli :as cli]))
+
+(defn parse-int [value]
+  (int value))
+
+(deftest parse-opts-upstream-contract-test
+  (let [result (cli/parse-opts ["-abp80" "-v" "--no-daemon"]
+                               [["-a" "--alpha"]
+                                ["-b" "--beta"]
+                                ["-p" "--port PORT" :parse-fn parse-int]
+                                ["-v" "--verbose" :default 0 :update-fn inc]
+                                ["-d" "--[no-]daemon"]])]
+    (is (= {:alpha true :beta true :port 80 :verbose 1 :daemon false}
+           (:options result)))
+    (is (= [] (:arguments result)))
+    (is (nil? (:errors result)))))
+
+(deftest parser-and-validation-failures-are-data-test
+  (let [result (cli/parse-opts ["--port" "nope"]
+                               [["-p" "--port PORT" :parse-fn parse-int]])]
+    (is (= [] (:arguments result)))
+    (is (= 1 (count (:errors result))))
+    (is (re-find #"Error while parsing option" (first (:errors result))))))
+
+(deftest control-signals-are-not-converted-to-option-errors-test
+  (is (= :propagated
+         (try
+           (cli/parse-opts ["--stop" "now"]
+                           [[nil "--stop VALUE"
+                             :parse-fn (fn [_] (throw (python/KeyboardInterrupt)))]])
+           :not-propagated
+           (catch python/KeyboardInterrupt _ :propagated)))))
+
+(deftest summary-defaults-and-legacy-api-test
+  (is (= {:alpha true :beta 2}
+         (cli/get-default-options [["-a" "--alpha" :default true]
+                                   ["-b" "--beta" :default 2]
+                                   ["-c" "--charlie"]])))
+  (is (= "  -p, --port PORT  80  Port"
+         (cli/summarize [{:short-opt "-p" :long-opt "--port" :required "PORT"
+                          :default 80 :desc "Port"}])))
+  (is (= {:verbose false}
+         (first (cli/cli ["--no-verbose"] ["--[no-]verbose"])))))
