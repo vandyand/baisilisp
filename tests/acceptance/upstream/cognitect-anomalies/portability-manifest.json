@@ -1,0 +1,57 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "lpy",
+      "path": "adapters/clojure/spec/alpha.lpy",
+      "reader_features": [],
+      "requires": [
+        "basilisp.spec.alpha"
+      ],
+      "sha256": "5412ead296e0cf168b16a1e52fb97ba5ac6442e763eddbce0cd3f7f157d5f4ef"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "valid"
+      ],
+      "sha256": "3348fc476c937e76baaf57e28bc1fa8182f9fd02e90e142da0ffd4f1feb017be"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "upstream/src/cognitect/anomalies.cljc",
+      "reader_features": [],
+      "requires": [
+        "clojure.spec.alpha"
+      ],
+      "sha256": "4151725d525af1832cee2e1e831f1bd22b7be892f3738a36e261339d0aba8be4"
+    }
+  ],
+  "substitutions": [
+    "clojure.spec.alpha -> basilisp.spec.alpha"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "6e69216658c8097d2f34dd773634f1750cc751f9",
+  "upstream_url": "https://github.com/cognitect-labs/anomalies"
+}

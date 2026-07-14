@@ -48,6 +48,8 @@ jobs:
             tox-env: py314,py314-lint
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.version }}
@@ -106,6 +108,8 @@ jobs:
             tox-env: pypy311
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: pypy${{ matrix.version }}
@@ -165,6 +169,8 @@ jobs:
         tox-env: ['py310']
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ matrix.version }}
@@ -207,6 +213,8 @@ jobs:
      - run-pypy-tests
     steps:
       - uses: actions/checkout@v5
+        with:
+          submodules: recursive
       - uses: actions/setup-python@v6
         with:
           python-version: ${{ vars.PYTHON_VERSION }}

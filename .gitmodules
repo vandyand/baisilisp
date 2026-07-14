@@ -1,0 +1,3 @@
+[submodule "acceptance-cognitect-anomalies"]
+	path = tests/acceptance/upstream/cognitect-anomalies/upstream
+	url = https://github.com/cognitect-labs/anomalies.git

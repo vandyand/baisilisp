@@ -125,6 +125,9 @@ Near-term deliverable:
   standard ``string``, ``set``, ``walk``, collection, transducer, exception,
   and ``clojure.test`` behavior using only documented ``:clj``/``:lpy``
   namespace substitutions.
+  ``tests/acceptance/upstream/cognitect-anomalies`` is the first pinned
+  upstream snapshot; run it with ``--library-root`` to prove the unchanged
+  source's public spec contract in both runtimes.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

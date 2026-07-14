@@ -734,6 +734,13 @@ fixture: its ``:clj``/``:lpy`` conditionals perform only standard namespace
 substitutions, and its portable source exercises strings, sets, walking,
 collections, transducers, exception data, and ``clojure.test``.
 
+An upstream acceptance directory may provide ``acceptance.json`` to record the
+pinned upstream URL and revision plus the exact standard-namespace
+substitutions used by its adapters. The first admitted upstream snapshot is
+``cognitect-labs/anomalies``: its unchanged ``.cljc`` source is pinned as a Git
+submodule and its public anomaly spec is proved under Clojure and Basilisp via
+the explicit ``clojure.spec.alpha -> basilisp.spec.alpha`` substitution.
+
 Libraries that are primarily useful abstractions but depend on Java services
 should receive a native Basilisp implementation only when their public contract
 is valuable independently of the JVM. Otherwise, document the missing runtime

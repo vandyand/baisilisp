@@ -15,6 +15,7 @@ jobs:
       - uses: actions/checkout@v5
         with:
           path: basilisp
+          submodules: recursive
       - uses: actions/checkout@v5
         with:
           path: clojure-test-suite

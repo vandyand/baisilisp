@@ -10,6 +10,7 @@ JARs.
 from __future__ import annotations
 
 import argparse
+import json
 import os
 import shlex
 import shutil
@@ -25,6 +26,7 @@ from basilisp.lang.obj import lrepr
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_LIBRARY_ROOT = ROOT / "tests" / "acceptance" / "portable_library"
 DEFAULT_MANIFEST = DEFAULT_LIBRARY_ROOT / "portability-manifest.json"
+ACCEPTANCE_CONFIG_NAME = "acceptance.json"
 _SUBSTITUTIONS = (
     "clojure.set -> basilisp.set",
     "clojure.string -> basilisp.string",
@@ -89,12 +91,60 @@ def _normalize_edn(line: str) -> str:
     return lrepr(forms[0])
 
 
+def _acceptance_settings(
+    library_root: Path,
+) -> tuple[Path, tuple[str, ...], str | None, str | None]:
+    """Read optional per-library manifest settings without executing source."""
+
+    config_path = library_root / ACCEPTANCE_CONFIG_NAME
+    if not config_path.is_file():
+        return library_root, _SUBSTITUTIONS, None, None
+    try:
+        config = json.loads(config_path.read_text(encoding="utf-8"))
+    except json.JSONDecodeError as exc:
+        raise RuntimeError(f"invalid acceptance configuration: {config_path}") from exc
+    if not isinstance(config, dict):
+        raise RuntimeError(f"acceptance configuration must be an object: {config_path}")
+    source_root_setting = config.get("source_root", ".")
+    if not isinstance(source_root_setting, str):
+        raise RuntimeError(f"acceptance source_root must be a string: {config_path}")
+    resolved_library_root = library_root.resolve()
+    source_root = (resolved_library_root / source_root_setting).resolve()
+    try:
+        source_root.relative_to(resolved_library_root)
+    except ValueError as exc:
+        raise RuntimeError(
+            f"acceptance source_root must stay within the library: {config_path}"
+        ) from exc
+    if not source_root.is_dir():
+        raise RuntimeError(f"acceptance source root does not exist: {source_root}")
+    substitutions = config.get("substitutions", _SUBSTITUTIONS)
+    if not isinstance(substitutions, list) or not all(
+        isinstance(substitution, str) for substitution in substitutions
+    ):
+        raise RuntimeError(f"acceptance substitutions must be strings: {config_path}")
+    upstream_url = config.get("upstream_url")
+    upstream_revision = config.get("upstream_revision")
+    if upstream_url is not None and not isinstance(upstream_url, str):
+        raise RuntimeError(f"acceptance upstream_url must be a string: {config_path}")
+    if upstream_revision is not None and not isinstance(upstream_revision, str):
+        raise RuntimeError(
+            f"acceptance upstream_revision must be a string: {config_path}"
+        )
+    return source_root, tuple(substitutions), upstream_url, upstream_revision
+
+
 def acceptance_manifest(library_root: Path) -> str:
     """Create a stable manifest for a checked-in acceptance library."""
 
+    source_root, substitutions, upstream_url, upstream_revision = _acceptance_settings(
+        library_root
+    )
     manifest = portability.inspect_source_tree(
-        library_root,
-        substitutions=_SUBSTITUTIONS,
+        source_root,
+        upstream_url=upstream_url,
+        upstream_revision=upstream_revision,
+        substitutions=substitutions,
         test_command="uv run python scripts/library_acceptance.py",
         supported_python=_SUPPORTED_PYTHON,
     )

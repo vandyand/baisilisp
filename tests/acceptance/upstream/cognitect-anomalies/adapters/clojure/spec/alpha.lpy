@@ -1,0 +1,3 @@
+;; Basilisp acceptance adapter for cognitect.anomalies' sole dependency.
+(ns clojure.spec.alpha
+  (:require [basilisp.spec.alpha :refer :all]))

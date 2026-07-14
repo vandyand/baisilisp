@@ -20,6 +20,34 @@ def test_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_upstream_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "cognitect-anomalies"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.spec.alpha -> basilisp.spec.alpha" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
+@pytest.mark.parametrize(
+    ("config", "message"),
+    [
+        ("[]", "must be an object"),
+        ('{"source_root": ".."}', "must stay within the library"),
+        ('{"substitutions": ["valid", 1]}', "substitutions must be strings"),
+    ],
+)
+def test_acceptance_settings_reject_invalid_configuration(tmp_path, config, message):
+    (tmp_path / "acceptance.json").write_text(config, encoding="utf-8")
+
+    with pytest.raises(RuntimeError, match=message):
+        acceptance._acceptance_settings(tmp_path)
+
+
 def test_verify_manifest_rejects_missing_and_tampered_artifacts(tmp_path):
     source_root = Path(__file__).parent / "acceptance" / "portable_library"
     library_root = tmp_path / "portable_library"

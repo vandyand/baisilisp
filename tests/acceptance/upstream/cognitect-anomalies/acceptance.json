@@ -1,0 +1,7 @@
+{
+  "upstream_url": "https://github.com/cognitect-labs/anomalies",
+  "upstream_revision": "6e69216658c8097d2f34dd773634f1750cc751f9",
+  "substitutions": [
+    "clojure.spec.alpha -> basilisp.spec.alpha"
+  ]
+}
