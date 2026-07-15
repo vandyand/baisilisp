@@ -113,7 +113,7 @@
         (client-send! client{:id 2 :op "describe"})
         (let [{:keys [ops versions status]} (client-recv! client)]
           (is (= ["done"] status))
-          (is (= {:clone {} :close {} :complete {} :describe {} :eldoc {} :eval {} :info {} :load-file {}
+          (is (= {:classpath {} :clone {} :close {} :complete {} :describe {} :eldoc {} :eval {} :info {} :load-file {}
                   :macroexpand {}}
                  ops))
           (let [{:keys [basilisp python]} versions]
@@ -273,6 +273,51 @@
               (is (= i (:id response)))
               (is (= ["done"] (:status response)))
               (is (= 'if (first (read-string (:expansion response))))))))))))
+
+(deftest nrepl-server-classpath
+  (with-server {}
+    (with-connect client
+      (let [original-path (.copy sys/path)]
+        (try
+          ;; Empty and relative entries are meaningful to Python's importer;
+          ;; the nREPL response must make their active locations explicit.
+          (.insert sys/path 0 "relative import root")
+          (.insert sys/path 0 "")
+          (let [expected (mapv (fn [entry]
+                                 (str (os.path/abspath (if (str/blank? entry)
+                                                         (os/getcwd)
+                                                         entry))))
+                               sys/path)]
+            (testing "returns a complete read-only import-path snapshot"
+              (client-send! client {:id 1 :op "classpath"})
+              (let [response (client-recv! client)]
+                (is (= 1 (:id response)))
+                (is (= ["done"] (:status response)))
+                (is (= expected (:classpath response)))
+                (is (= sys/path (.-path sys)))))
+
+            (testing "a deterministic repeated-request corpus retains order and identity"
+              (doseq [i (range 96)]
+                (client-send! client {:id i :op "classpath" :path "ignored"})
+                (let [response (client-recv! client)]
+                  (is (= i (:id response)))
+                  (is (= ["done"] (:status response)))
+                  (is (= expected (:classpath response))))))
+
+            (testing "concurrent clients receive independent complete snapshots"
+              (let [responses (->> (range 24)
+                                   (mapv (fn [i]
+                                           (future
+                                            (with-connect concurrent-client
+                                              (client-send! concurrent-client {:id i :op "classpath"})
+                                              (client-recv! concurrent-client)))))
+                                   (mapv deref))]
+                (doseq [[i response] (map vector (range 24) responses)]
+                  (is (= i (:id response)))
+                  (is (= ["done"] (:status response)))
+                  (is (= expected (:classpath response)))))))
+          (finally
+            (set! (.-path sys) original-path)))))))
 
 (deftest nrepl-server-complete
   (testing "basic"

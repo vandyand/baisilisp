@@ -167,8 +167,26 @@
 (defn- handle-close [request send-fn]
   (send-fn request {"status" ["done"]}))
 
-(defn- handle-classpath [_request _send-fn]
-  (throw (python/NotImplementedError)))
+(defn- import-search-path
+  "Return the active Python import search path as concrete directory strings.
+
+  Empty and relative ``sys.path`` entries are resolved against the current
+  working directory, matching Python's import lookup behavior without changing
+  the interpreter state."
+  []
+  (mapv (fn [entry]
+          (str (os.path/abspath (if (str/blank? entry)
+                                    (os/getcwd)
+                                    entry))))
+        sys/path))
+
+(defn- handle-classpath [request send-fn]
+  "Return the active Python import search path for editor tooling.
+
+  This is the Basilisp equivalent of nREPL's JVM classpath operation. It is a
+  read-only snapshot and does not add, remove, or import any paths."
+  (send-fn request {"classpath" (import-search-path)
+                    "status"    ["done"]}))
 
 (defn- macroexpand-step
   "Expand exactly the first expandable form in depth-first order."
@@ -387,7 +405,7 @@
    :load-file handle-load-file
    :complete  handle-complete
    :macroexpand handle-macroexpand
-   ;; :classpath handle-classpath
+   :classpath handle-classpath
    })
 
 (defn- handle-request [{:keys [op] :as request} send-fn]

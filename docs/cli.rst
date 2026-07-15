@@ -86,6 +86,12 @@ the requested ``:ns`` or the connection's active namespace without evaluating
 the form. Invalid requests return a terminal ``macroexpand-error`` status and
 leave the connection usable.
 
+The ``classpath`` operation returns a read-only snapshot of the active Python
+import search path (``sys.path``), the Basilisp counterpart to a JVM
+classpath. Empty and relative entries are made concrete relative to the
+server's current working directory; the request never imports modules or
+changes the path.
+
 Start from an editor with a Clojure extension supporting Basilisp
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

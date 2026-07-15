@@ -382,6 +382,10 @@ recursive, and next-subform expansion without evaluating client code;
 malformed or unsupported requests return terminal protocol errors rather than
 ending the connection.
 
+The ``classpath`` operation reports a read-only snapshot of the Python import
+search path in place of a JVM classpath. It normalizes empty and relative
+entries without importing modules or mutating interpreter state.
+
 The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
 the current namespace and dynamic history; ``emit`` receives only stream text.
