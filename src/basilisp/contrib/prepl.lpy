@@ -101,11 +101,56 @@
   [& {:keys [valf] :or {valf pr-str}}]
   (prepl *in* (make-io-emitter *out* valf)))
 
+(defn- resolve-fn
+  [f]
+  (if (symbol? f)
+    (or (resolve f)
+        (requiring-resolve f)
+        (throw (python/ValueError (str "cannot resolve pREPL function: " f))))
+    f))
+
+(defn remote-prepl
+  "Forward forms and structured events to a remote ``io-prepl`` endpoint.
+
+  This is Basilisp's safe client-side counterpart to
+  ``clojure.core.server/remote-prepl``. ``in-reader`` is forwarded as text while
+  remote events are decoded by ``readf`` (default ``read-string``) and passed to
+  ``out-fn``. ``valf`` (also defaulting to ``read-string``) decodes ``:ret`` and
+  ``:tap`` values. Either function may be a callable or a symbol naming one.
+
+  Events are newline-delimited and limited to ``:max-event-chars`` (default
+  ``1048576``) before decoding. ``:connect-timeout`` is in seconds and applies
+  only while establishing the TCP connection. The client does not make server
+  listeners public: :lpy:fn:`server-make` remains loopback-only."
+  [host port in-reader out-fn & {:keys [valf readf max-event-chars connect-timeout]
+                                 :or {valf read-string
+                                      readf read-string
+                                      max-event-chars 1048576}}]
+  (let [valf (resolve-fn valf)
+        readf (resolve-fn readf)
+        emit (fn [encoded-event]
+               (let [event (readf encoded-event)]
+                 (when-not (map? event)
+                   (throw (python/ValueError
+                           "remote pREPL event decoder must return a map")))
+                 (out-fn (if (#{:ret :tap} (:tag event))
+                           (try
+                             (assoc event :val (valf (:val event)))
+                             (catch python/Exception e
+                               (assoc event
+                                      :val       (exception-value e :read-eval-result)
+                                      :exception true)))
+                           event))))]
+    (basilisp.contrib.prepl_server/forward-remote-prepl
+     host (int port) in-reader emit max-event-chars connect-timeout)))
+
 (defn- on-connect [handler max-input-chars]
   (let [reader    (basilisp.contrib.prepl_server/SeekableTextReader
                    (io/TextIOWrapper (.-rfile handler) ** :encoding "utf-8")
                    max-input-chars)
-        writer    (io/TextIOWrapper (.-wfile handler) ** :encoding "utf-8" :write-through true)
+        ;; ``prn`` emits ``os.linesep`` itself. Preserve it verbatim so Windows
+        ;; text translation does not turn each EDN event into two wire lines.
+        writer    (io/TextIOWrapper (.-wfile handler) ** :encoding "utf-8" :newline "" :write-through true)
         namespace (symbol (str "basilisp.prepl." (random-uuid)))]
     (try
       (prepl reader (make-io-emitter writer pr-str) :namespace namespace)

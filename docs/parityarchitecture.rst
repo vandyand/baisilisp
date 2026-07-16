@@ -371,10 +371,14 @@ Its initial event model is the Clojure pREPL contract:
 ``io-prepl`` writes one EDN map per line, using ``pr-str`` for return values.
 ``server-make`` now adds a loopback-default socket server, one isolated
 namespace per connection, newline-delimited EDN framing, bounded incremental
-input buffering, and clean shutdown. It is deliberately distinct from nREPL's
-bencode transport. The next remote phases are request identifiers,
-authentication hooks, cancellation, CLI exposure, and concurrent-connection
-stress transcripts.
+input buffering, and clean shutdown. ``remote-prepl`` is the matching client
+adapter for an ``io-prepl`` endpoint: it concurrently forwards text input,
+decodes newline-delimited EDN events, and transforms ``:ret``/``:tap`` values
+with configurable reader functions. Its bounded event framing, callback-error
+envelopes, and concurrent transcript coverage are transport safeguards, not a
+network security model. The server remains loopback-only and deliberately
+distinct from nREPL's bencode transport. Remaining remote phases are request
+identifiers, authentication hooks, cancellation, and CLI exposure.
 
 The nREPL adapter also serves ``macroexpand`` requests through the same
 namespace-resolution context used by evaluation. It supports one-step, full,
@@ -399,9 +403,11 @@ The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
 the current namespace and dynamic history; ``emit`` receives only stream text.
 ``prepl`` supplies reader/source framing and event callbacks, while ``io-prepl``
-serializes each event as one EDN value per line. A future ``remote-prepl`` still
-needs framed sockets, authentication hooks, message-size limits, and
-loopback-by-default binding.
+serializes each event as one EDN value per line. ``remote-prepl`` is a client,
+not a public listener: it uses bounded newline framing and leaves
+loopback-by-default binding in ``server-make``. Authentication, request
+identifiers, cancellation, and any non-loopback listener remain separate
+security and protocol work.
 
 This preserves the important pREPL properties: one ``:ret`` event for every
 successfully read form, any number of ordered ``:out`` and ``:err`` events,

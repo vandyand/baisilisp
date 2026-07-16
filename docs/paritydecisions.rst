@@ -195,14 +195,15 @@ its request batching, bencode response formatting, and final-result history
 semantics. Socket and EDN-line transports are therefore adapters rather than
 independent evaluators.
 
-Remote pREPL is remote code execution. A configurable non-loopback host is not
-an adequate security design. The next hardening patch should either constrain
-``server-make`` to loopback addresses or require an explicit unsafe opt-in that
-is clearly documented for use behind SSH or another authenticated tunnel.
-Do not treat a bare token on an unencrypted socket as a remote security model.
-Remote support requires message-size limits, per-request identifiers,
-cooperative cancellation, authentication, transport encryption or a documented
-tunnel boundary, and transcript/concurrency stress tests.
+Remote pREPL is remote code execution. ``server-make`` is therefore constrained
+to loopback addresses; a configurable non-loopback host is not an adequate
+security design. ``remote-prepl`` provides the complementary client transport,
+with bounded event lines and adversarial/concurrent transcripts, but it does
+not publish a listener or claim authentication. It may connect through a
+user-provided authenticated tunnel. Do not treat a bare token on an
+unencrypted socket as a remote security model. A non-loopback listener still
+requires request identifiers, cooperative cancellation, authentication, and
+transport encryption or a documented tunnel boundary.
 
 The compiler already exposes structured exception data with phase, file, form,
 and source spans. Extend that existing representation instead of inventing a

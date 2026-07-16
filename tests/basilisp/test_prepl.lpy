@@ -4,7 +4,9 @@
    [basilisp.test :refer [deftest is testing]])
   (:import io
            os
+           random
            socket
+           socketserver
            threading))
 
 (deftest prepl-return-and-output-events-test
@@ -108,6 +110,133 @@
         (.shutdown second-client socket/SHUT_WR)
         (let [event (read-string (.decode (.recv second-client 4096) "utf-8"))]
           (is (true? (:exception event)))))
+      (finally
+        (.shutdown server)
+        (.server_close server)
+        (.join thread)))))
+
+(defn- start-scripted-prepl-server
+  [payload]
+  (let [handler (python/type
+                 (name (gensym "ScriptedPReplHandler"))
+                 #py (socketserver/StreamRequestHandler)
+                 #py {"handle" #(.sendall (.-request %) (.encode payload "utf-8"))})
+        server  (socketserver/ThreadingTCPServer (python/tuple ["127.0.0.1" 0]) handler)
+        thread  (threading/Thread ** :target #(.serve_forever server) :daemon true)]
+    (set! (.-daemon-threads server) true)
+    (.start thread)
+    [server thread]))
+
+(defn- stop-scripted-prepl-server
+  [[server thread]]
+  (.shutdown server)
+  (.server_close server)
+  (.join thread))
+
+(deftest remote-prepl-round-trip-and-symbol-function-test
+  (let [server (prepl/server-make {})
+        thread (threading/Thread ** :target #(.serve_forever server) :daemon true)
+        events (atom [])
+        [host port] (.-server_address server)]
+    (.start thread)
+    (try
+      ;; Passing a string port plus symbolic callbacks covers Clojure-compatible
+      ;; configuration forms as well as the normal readable event round trip.
+      (prepl/remote-prepl host (str port)
+                          (io/StringIO "(println \"hello\")\n(+ 1 2)\n")
+                          #(swap! events conj %)
+                          :readf 'basilisp.core/read-string
+                          :valf 'basilisp.core/read-string)
+      (is (= [{:tag :out :val "hello"}
+              {:tag :out :val os/linesep}
+              {:tag :ret :val 3 :form "(+ 1 2)"}]
+             (->> @events
+                  (map #(dissoc % :ms :ns))
+                  (remove #(and (= :ret (:tag %)) (= nil (:val %))))
+                  vec)))
+      (finally
+        (.shutdown server)
+        (.server_close server)
+        (.join thread)))))
+
+(deftest remote-prepl-decodes-values-and-contains-valf-errors-test
+  (let [server (prepl/server-make {})
+        thread (threading/Thread ** :target #(.serve_forever server) :daemon true)
+        events (atom [])
+        [host port] (.-server_address server)]
+    (.start thread)
+    (try
+      (prepl/remote-prepl host port (io/StringIO "(+ 1 2)\n") #(swap! events conj %)
+                          :readf #(assoc (read-string %) :decoded true)
+                          :valf #(/ 1 0))
+      (is (= 1 (count @events)))
+      (is (= {:tag :ret :decoded true :exception true}
+             (select-keys (first @events) [:tag :decoded :exception])))
+      (is (= :read-eval-result (get-in (first @events) [:val :phase])))
+      (is (string? (get-in (first @events) [:val :type])))
+      (finally
+        (.shutdown server)
+        (.server_close server)
+        (.join thread)))))
+
+(deftest remote-prepl-rejects-adversarial-events-and-invalid-limits-test
+  (testing "malformed decoded event"
+    (let [server+thread (start-scripted-prepl-server "[1 2 3]\n")
+          [server _] server+thread
+          [host port] (.-server_address server)]
+      (try
+        (is (thrown? python/ValueError
+                     (prepl/remote-prepl host port (io/StringIO "") identity)))
+        (finally
+          (stop-scripted-prepl-server server+thread)))))
+  (testing "bounded event before decoding"
+    (let [server+thread (start-scripted-prepl-server (str (apply str (repeat 129 "x")) "\n"))
+          [server _] server+thread
+          [host port] (.-server_address server)]
+      (try
+        (is (thrown? python/ValueError
+                     (prepl/remote-prepl host port (io/StringIO "") identity
+                                         :max-event-chars 128)))
+        (finally
+          (stop-scripted-prepl-server server+thread)))))
+  (doseq [limit [0 -1 true "128"]]
+    (is (thrown? python/ValueError
+                 (prepl/remote-prepl "127.0.0.1" 1 (io/StringIO "") identity
+                                     :max-event-chars limit))))
+  (doseq [timeout [0 -1 true "1" (python/float "nan") (python/float "inf")]]
+    (is (thrown? python/ValueError
+                 (prepl/remote-prepl "127.0.0.1" 1 (io/StringIO "") identity
+                                     :connect-timeout timeout)))))
+
+(deftest remote-prepl-seeded-fuzz-and-concurrent-session-stress-test
+  (let [server (prepl/server-make {})
+        thread (threading/Thread ** :target #(.serve_forever server) :daemon true)
+        [host port] (.-server_address server)
+        rng (random/Random 0xB45115)
+        cases (vec (repeatedly 64 (fn []
+                                    [(.randint rng -1000000 1000000)
+                                     (.randint rng -1000000 1000000)])))]
+    (.start thread)
+    (try
+      (testing "seeded diverse forms cross the writer chunk boundary"
+        (let [events (atom [])
+              source (str (apply str (repeat 5000 " "))
+                          (apply str (map (fn [[a b]] (str "(+ " a " " b ")\n")) cases)))]
+          (prepl/remote-prepl host port (io/StringIO source) #(swap! events conj %))
+          (is (= (mapv #(apply + %) cases)
+                 (->> @events (filter #(= :ret (:tag %))) (mapv :val))))))
+      (testing "twenty-four simultaneous clients retain independent results"
+        (let [clients (mapv (fn [client-id]
+                              (future
+                                (let [events (atom [])
+                                      source (apply str (map #(str "(+ " client-id " " % ")\n")
+                                                             (range 12)))]
+                                  (prepl/remote-prepl host port (io/StringIO source)
+                                                      #(swap! events conj %))
+                                  (mapv :val (filter #(= :ret (:tag %)) @events)))))
+                            (range 24))]
+          (doseq [[client-id result] (map vector (range 24) (map deref clients))]
+            (is (= (mapv #(+ client-id %) (range 12)) result)))))
       (finally
         (.shutdown server)
         (.server_close server)

@@ -1,8 +1,12 @@
-"""Host-Python stream helpers for the remote pREPL server."""
+"""Host-Python stream helpers for the pREPL server and client."""
 
 from __future__ import annotations
 
 import io
+import math
+import socket
+import threading
+from collections.abc import Callable
 from typing import TextIO
 
 
@@ -78,3 +82,103 @@ class SeekableTextReader(io.TextIOBase):
                 self._eof = True
             else:
                 self._append(value)
+
+
+def forward_remote_prepl(
+    host: str,
+    port: int,
+    in_reader: TextIO,
+    on_event: Callable[[str], None],
+    max_event_chars: int = 1_048_576,
+    connect_timeout: float | None = None,
+) -> None:
+    """Forward a text stream to a pREPL socket and consume its EDN events.
+
+    The event callback is called from a dedicated reader thread with one complete
+    line (without its trailing newline).  Keeping reader and writer independent
+    prevents a pREPL whose output fills the socket buffer from deadlocking the
+    producer.  The function returns only after the input side is closed and all
+    remote events have been consumed, so callback and protocol errors propagate
+    to the caller instead of becoming orphaned daemon-thread failures.
+    """
+    if not isinstance(max_event_chars, int) or isinstance(max_event_chars, bool):
+        raise ValueError("max-event-chars must be a positive integer")
+    if max_event_chars <= 0:
+        raise ValueError("max-event-chars must be a positive integer")
+    if connect_timeout is not None and (
+        not isinstance(connect_timeout, (int, float))
+        or isinstance(connect_timeout, bool)
+        or not math.isfinite(connect_timeout)
+        or connect_timeout <= 0
+    ):
+        raise ValueError("connect-timeout must be a finite positive number when supplied")
+
+    client = socket.create_connection((host, port), timeout=connect_timeout)
+    client.settimeout(None)
+    reader = client.makefile("r", encoding="utf-8", newline="")
+    writer = client.makefile("w", encoding="utf-8", newline="")
+    reader_error: list[BaseException] = []
+
+    def close_socket() -> None:
+        try:
+            client.shutdown(socket.SHUT_RDWR)
+        except OSError:
+            pass
+
+    def consume_events() -> None:
+        try:
+            while True:
+                # A valid max-length event may have one trailing newline. Asking
+                # for two additional characters distinguishes that case from an
+                # overlong event without allocating the whole malicious line.
+                line = reader.readline(max_event_chars + 2)
+                if not line:
+                    return
+                event = line[:-1] if line.endswith("\n") else line
+                if len(event) > max_event_chars or (
+                    len(line) == max_event_chars + 2 and not line.endswith("\n")
+                ):
+                    raise ValueError(
+                        f"pREPL event exceeds the {max_event_chars}-character limit"
+                    )
+                on_event(event)
+        except BaseException as exc:  # propagate callbacks and decoder failures
+            reader_error.append(exc)
+            close_socket()
+
+    consumer = threading.Thread(
+        target=consume_events, name="basilisp.contrib.prepl/remote-prepl", daemon=True
+    )
+    consumer.start()
+    writer_error: BaseException | None = None
+    try:
+        while True:
+            chunk = in_reader.read(4096)
+            if not chunk:
+                break
+            if not isinstance(chunk, str):
+                raise TypeError("remote pREPL input reader must return text")
+            writer.write(chunk)
+            writer.flush()
+        try:
+            client.shutdown(socket.SHUT_WR)
+        except OSError:
+            if not reader_error:
+                raise
+    except BaseException as exc:
+        writer_error = exc
+        close_socket()
+    finally:
+        consumer.join()
+        try:
+            reader.close()
+        finally:
+            try:
+                writer.close()
+            finally:
+                client.close()
+
+    if reader_error:
+        raise reader_error[0]
+    if writer_error:
+        raise writer_error
