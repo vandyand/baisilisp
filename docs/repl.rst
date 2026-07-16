@@ -50,6 +50,19 @@ This namespace includes some utilities for introspecting the runtime environment
 * :lpy:fn:`print-doc` is a function which prints the docstring for any Basilisp Var or Python object
 * :lpy:fn:`source` is a macro which takes a symbol as an argument and prints the source code for a Basilisp Var
 * :lpy:fn:`print-source` is a function which prints the source for any Basilisp Var or Python object
+* :lpy:fn:`source-fn` returns source text when it is available, returning ``nil``
+  for builtins and dynamically-created Python objects which do not have source
+  to inspect
+* :lpy:fn:`apropos` searches qualified public Var names with either a string or
+  compiled Python regular expression
+* :lpy:fn:`dir-fn` returns sorted public names from a namespace and :lpy:fn:`dir`
+  prints those names
+* :lpy:fn:`find-doc` searches both qualified Var names and docstrings before
+  printing documentation for matching public Vars
+* :lpy:fn:`demunge` turns a Python-safe generated identifier back into its
+  reader-facing Basilisp spelling
+* :lpy:fn:`root-cause` and :lpy:fn:`pst` expose portable exception-chain and
+  traceback inspection helpers
 
 .. note::
 
@@ -58,10 +71,21 @@ This namespace includes some utilities for introspecting the runtime environment
 
    .. code-block::
 
-      (doc map)
-      (print-doc (var map))
-      (source filter)
-      (print-source (var filter))
+       (doc map)
+       (print-doc (var map))
+       (source filter)
+       (print-source (var filter))
+
+The inspection helpers are read-only: they search namespaces that are already
+loaded and never import a namespace merely to complete a query. ``apropos`` and
+``find-doc`` reject invalid regular expressions before emitting partial output.
+The result order of ``apropos`` and ``dir-fn`` is deterministic, which makes
+their output suitable for editor adapters and transcript tests.
+
+``basilisp.repl`` implements the portable, interactive portion of
+``clojure.repl``. JVM-specific thread interruption and stack-frame formatting
+hooks are intentionally not provided; Python's debugger and traceback objects
+remain the appropriate host interfaces for those concerns.
 
 .. lpy:currentns:: basilisp.core
 

@@ -1,0 +1,124 @@
+(ns tests.basilisp.test-repl
+  (:require [basilisp.repl :as repl]
+            [basilisp.string :as str]
+            [basilisp.test :refer [deftest is testing]])
+  (:import random
+           re))
+
+(defn repl-tranche-alpha
+  "A unique documentation needle for REPL inspection parity."
+  []
+  :alpha)
+
+(defn repl-tranche-zebra
+  "A separate public fixture for sorted namespace inspection."
+  []
+  :zebra)
+
+(defn repl-source-fixture
+  "A source-backed fixture used to verify source lookup."
+  [x]
+  (inc x))
+
+(defmacro repl-tranche-macro
+  "A macro fixture which must remain visible to doc output."
+  []
+  nil)
+
+(defn- nested-repl-error
+  []
+  (try
+    (/ 1 0)
+    (catch python/ZeroDivisionError e
+      (throw (python/ValueError "outer REPL failure") e))))
+
+(deftest demunge-and-apropos-contract-test
+  (testing "Basilisp's reader-facing identifier spelling is restored"
+    (is (= "alpha+beta?" (repl/demunge "alpha__PLUS__beta__Q__")))
+    (is (= "unchanged--UNKNOWN--token" (repl/demunge "unchanged__UNKNOWN__token"))))
+
+  (testing "apropos accepts strings and compiled patterns without importing namespaces"
+    (let [string-result   (repl/apropos "^tests\\.basilisp\\.test-repl/repl-tranche-")
+          pattern-result  (repl/apropos (re/compile "^tests\\.basilisp\\.test-repl/repl-tranche-"))
+          expected-result (sort ['tests.basilisp.test-repl/repl-tranche-alpha
+                                 'tests.basilisp.test-repl/repl-tranche-macro
+                                 'tests.basilisp.test-repl/repl-tranche-zebra])]
+      (is (= expected-result string-result))
+      (is (= string-result pattern-result))
+      (is (= string-result (vec (sort string-result))))
+      (is (= [] (repl/apropos "this-name-cannot-exist-in-the-runtime")))))
+
+  (testing "bad search inputs fail predictably before any output"
+    (is (thrown? re/error (repl/apropos "[")))
+    (is (thrown? python/TypeError (repl/apropos 7)))))
+
+(deftest dir-and-documentation-contract-test
+  (testing "dir-fn is sorted and dir prints the same public names"
+    (let [names (repl/dir-fn 'tests.basilisp.test-repl)
+          output (str/split-lines (with-out-str (repl/dir tests.basilisp.test-repl)))]
+      (is (= names (vec (sort names))))
+      (is (every? (set names) ["repl-tranche-alpha" "repl-tranche-macro" "repl-tranche-zebra"]))
+      (is (= names output))))
+
+  (testing "doc and find-doc report macros and match both names and docstrings"
+    (let [macro-doc (with-out-str (repl/doc repl-tranche-macro))
+          matching-docs (with-out-str (repl/find-doc "unique documentation needle"))]
+      (is (str/includes? macro-doc "tests.basilisp.test-repl/repl-tranche-macro"))
+      (is (str/includes? macro-doc "Macro"))
+      (is (str/includes? matching-docs "repl-tranche-alpha"))
+      (is (not (str/includes? matching-docs "repl-tranche-zebra")))))
+
+  (testing "invalid find-doc patterns do not produce partial documentation"
+    (is (thrown? re/error
+                 (with-out-str (repl/find-doc "["))))))
+
+(deftest source-and-stacktrace-contract-test
+  (testing "source lookup is safe for both source-backed and host builtin values"
+    (let [source (repl/source-fn (var repl-source-fixture))]
+      (is (str/includes? source "repl-source-fixture"))
+      (is (nil? (repl/source-fn python/len)))
+      (is (= source (with-out-str (repl/print-source (var repl-source-fixture)))))
+      (is (= "" (with-out-str (repl/print-source python/len))))))
+
+  (testing "pst follows explicit causes and supports a bounded frame count"
+    (try
+      (nested-repl-error)
+      (catch python/ValueError e
+        (is (instance? python/ZeroDivisionError (repl/root-cause e)))
+        (is (str/includes? (with-out-str (repl/pst e 1)) "ZeroDivisionError"))))))
+
+(deftest repl-inspection-seeded-fuzz-and-concurrency-stress-test
+  (let [all-results (vec (repl/apropos ".*"))
+        names       (mapv str all-results)
+        rng         (random/Random 0xC10A0E)
+        patterns    (concat ["^tests\\.basilisp\\.test-repl/repl-tranche-"
+                             "repl"
+                             "^basilisp\\.repl/"]
+                            (repeatedly 48
+                                        #(let [name (.choice rng names)
+                                               width (.randint rng 0 (count name))]
+                                           (str "^" (re/escape (subs name 0 width))))))]
+    (testing "a seeded regex corpus preserves the complete, sorted result invariant"
+      (doseq [pattern patterns]
+        (let [compiled (re/compile pattern)
+              expected (->> all-results
+                            (map str)
+                            (filter #(.search compiled %))
+                            sort
+                            (map symbol)
+                            vec)]
+          (is (= expected (vec (repl/apropos pattern))))
+          (is (= expected (vec (repl/apropos compiled)))))))
+
+    (testing "concurrent read-only inspections remain deterministic"
+      (let [baseline (vec (repl/apropos "^tests\\.basilisp\\.test-repl/"))
+            workers  (mapv (fn [_]
+                             (future
+                               (loop [iteration 0]
+                                 (if (= 12 iteration)
+                                   true
+                                   (if (= baseline (vec (repl/apropos "^tests\\.basilisp\\.test-repl/")))
+                                     (recur (inc iteration))
+                                     false)))))
+                           (range 8))]
+        (is (every? true? (map deref workers)))))))

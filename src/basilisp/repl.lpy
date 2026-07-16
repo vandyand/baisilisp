@@ -1,8 +1,11 @@
 (ns basilisp.repl
   ":ref:`repl` utilities for inspecting docstrings and source code of Basilisp and
   Python objects."
+  (:require [basilisp.stacktrace :as stacktrace])
   (:import inspect
            linecache
+           re
+           [basilisp.lang.util :as util]
            [basilisp.lang.source :as source-utils]))
 
 (defn mark-repl-result
@@ -17,6 +20,66 @@
   [e]
   (set! *e e))
 
+(defn demunge
+  "Translate a Python identifier produced for a Basilisp name back to its
+  reader-facing spelling.
+
+  This is the Python-hosted equivalent of ``clojure.repl/demunge``. Standard
+  Python identifier underscores are normalized to hyphens after known Basilisp
+  escape sequences are restored."
+  [name]
+  (util/demunge (str name)))
+
+(defn- var-name
+  [v]
+  ;; Var metadata is user-controlled and older compiled namespaces may not
+  ;; contain :ns/:name. The Var object itself is the authoritative identity.
+  (str (ns-name (.-ns v)) "/" (.-name v)))
+
+(defn- public-vars
+  []
+  (mapcat (fn [ns]
+            (vals (ns-publics ns)))
+          (all-ns)))
+
+(defn- search-pattern
+  [pattern]
+  (cond
+    (string? pattern) (re/compile pattern)
+    (instance? re/Pattern pattern) pattern
+    :else (throw (python/TypeError
+                  "Expected a string or compiled regular expression"))))
+
+(defn apropos
+  "Return sorted qualified public Var symbols whose names match ``pattern``.
+
+  ``pattern`` may be a string or a compiled Python regular expression. Search
+  occurs over the live namespace registry and never imports namespaces as a
+  side effect."
+  [pattern]
+  (let [pattern (search-pattern pattern)]
+    (->> (public-vars)
+         (map var-name)
+         (filter #(.search pattern %))
+         sort
+         (map symbol))))
+
+(defn dir-fn
+  "Return sorted public names from namespace ``ns`` without printing them."
+  [ns]
+  (->> (keys (ns-publics (the-ns ns)))
+       (map str)
+       sort))
+
+(defmacro dir
+  "Print sorted public names in namespace ``nsname``.
+
+  Like ``clojure.repl/dir``, ``nsname`` is a namespace symbol rather than an
+  evaluated expression."
+  [nsname]
+  `(doseq [v# (dir-fn '~nsname)]
+     (println v#)))
+
 (defn print-doc
   "Print the docstring from an object.
 
@@ -30,6 +93,8 @@
       (println (cond->> (name v)
                  (namespace v) (str (namespace v) "/")))
       (when var-meta
+        (when (:macro var-meta)
+          (println "Macro"))
         (when-let [arglists (:arglists var-meta)]
           (println arglists))
         (when-let [docstring (:doc var-meta)]
@@ -45,6 +110,22 @@
   [v]
   `(print-doc (resolve (quote ~v))))
 
+(defn find-doc
+  "Print documentation for public Vars whose qualified name or docstring
+  matches ``pattern``.
+
+  Invalid patterns fail before any output is emitted, and matching is read-only
+  over currently loaded namespaces."
+  [pattern]
+  (let [pattern (search-pattern pattern)]
+    (doseq [v (->> (public-vars)
+                   (filter (fn [v]
+                             (let [docstring (:doc (meta v))]
+                               (or (.search pattern (var-name v))
+                                   (and docstring (.search pattern (str docstring)))))))
+                   (sort-by var-name))]
+      (print-doc v))))
+
 (defn ^:private format-source
   [v]
   (when-let [{:keys [file line end-line]} (meta v)]
@@ -57,19 +138,31 @@
                                                :show-cause-marker false)
            (.join "")))))
 
+(defn source-fn
+  "Return source text for a Basilisp Var or inspectable Python object.
+
+  Return ``nil`` when source is unavailable, matching REPL inspection behavior
+  for builtins and dynamically-created Python objects rather than leaking a
+  host ``OSError`` or ``TypeError`` into an interactive session."
+  [o]
+  (cond
+    (var? o)
+    (format-source o)
+
+    :else
+    (try
+      (inspect/getsource o)
+      (catch python/Exception _
+        nil))))
+
 (defn print-source
   "Print the source forms for a function.
 
   If the object is a Basilisp Var, print the Lisp source code. Otherwise, print
   the Python source code as by :external:py:func:`inspect.getsource`."
   [o]
-  (cond
-    (var? o)
-    (when-let [formatted-source (format-source o)]
-      (println formatted-source))
-
-    :else
-    (println (inspect/getsource o))))
+  (when-let [source (source-fn o)]
+    (print source)))
 
 (defmacro source
   "Print the source code for an interned Var if found.
@@ -77,3 +170,22 @@
   ``v`` must be a symbol which resolves to a Var."
   [s]
   `(print-source (resolve (quote ~s))))
+
+(defn root-cause
+  "Return the deepest explicit cause of exception ``exc``."
+  [exc]
+  (stacktrace/root-cause exc))
+
+(defn pst
+  "Print the root-cause traceback for the most recent or supplied exception.
+
+  With ``n`` only that many traceback frames are printed. The implementation
+  uses Basilisp's shared traceback renderer, so compiler and reader diagnostics
+  retain their existing source-aware formatting."
+  ([]
+   (when *e
+     (pst *e)))
+  ([exc]
+   (stacktrace/print-stack-trace (root-cause exc)))
+  ([exc n]
+   (stacktrace/print-stack-trace (root-cause exc) n)))

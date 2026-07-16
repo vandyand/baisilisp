@@ -386,6 +386,15 @@ The ``classpath`` operation reports a read-only snapshot of the Python import
 search path in place of a JVM classpath. It normalizes empty and relative
 entries without importing modules or mutating interpreter state.
 
+Interactive REPL inspection now uses the same portable policy. ``basilisp.repl``
+provides deterministic ``apropos``/``dir`` discovery, documentation and source
+lookup, identifier ``demunge``, and root-cause traceback display from the live
+namespace registry. It does not claim JVM debugger, thread-stopping, or Java
+stack-frame compatibility: those behavior families are host services, not
+portable Clojure contracts. Namespace scans are read-only and source lookup is
+safe for Python builtins and dynamically-created objects that lack recoverable
+source text.
+
 The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
 the current namespace and dynamic history; ``emit`` receives only stream text.

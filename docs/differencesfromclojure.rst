@@ -119,6 +119,15 @@ REPL
 
 Basilisp's REPL experience closely matches that of Clojure's.
 
+``basilisp.repl`` provides portable counterparts to Clojure's interactive
+inspection helpers, including ``apropos``, ``dir``, ``dir-fn``, ``find-doc``,
+``doc``, ``source``, ``source-fn``, ``root-cause``, and ``pst``. Python source
+inspection can legitimately be unavailable for builtins and dynamically
+created objects; ``source-fn`` returns ``nil`` in those cases. JVM-specific
+``clojure.repl`` hooks for thread stopping, debugger break handlers, and Java
+stack-frame rendering are intentionally omitted in favor of Python's native
+debugger and traceback facilities.
+
 .. _evaluation_differences:
 
 Evaluation
