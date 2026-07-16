@@ -173,6 +173,21 @@ Libs
 
 Support for Clojure libs is `planned <https://github.com/basilisp-lang/basilisp/issues/668>`_\.
 
+.. _xml_differences:
+
+XML
+---
+
+``basilisp.xml`` supplies the portable data-oriented subset of ``clojure.xml``
+and is available from the ``clojure.xml`` import path. ``parse`` returns immutable
+``{:tag :attrs :content}`` maps, and ``emit``/``emit-element`` write that shape.
+Unlike JVM Clojure's SAX-backed parser, it intentionally supports only
+unqualified ASCII names. Namespace-qualified or non-ASCII names, DTDs, and
+entity declarations are rejected; comments and processing instructions are not
+retained. Input is text-only and bounded to 4 MiB by default (``:max-chars``).
+This avoids silently changing namespace prefixes or opening XML entity-expansion
+boundaries, but it is not a namespace-preserving or streaming XML API.
+
 .. _core_lib_differences:
 
 basilisp.core

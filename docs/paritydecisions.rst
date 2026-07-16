@@ -240,9 +240,9 @@ can make an explicit environment mutation and require a restart.
 XML And Library Portability
 ---------------------------
 
-**Decision:** do not add a thin ``clojure.xml`` alias. If XML becomes a real
-need, create a separately named Basilisp-native XML data adapter with an
-explicit namespace policy.
+**Decision:** expose a small ``basilisp.xml`` immutable-tree adapter through the
+normal ``clojure.xml`` import-path alias; do not expose a mutable ElementTree
+wrapper.
 
 ``xml.etree.ElementTree`` expands names to ``{uri}local`` and uses a global
 prefix registry during serialization. `Its namespace API
@@ -252,13 +252,22 @@ prefix choices, namespace scope, mixed content, and useful error data. ``lxml``
 would add a native dependency and still requires a representation decision; it
 does not solve that API mismatch.
 
-If implemented, ``basilisp.xml`` should use an immutable semantic tree with
-separate URI, local-name, optional preferred-prefix, attributes, namespace
-declarations, text/tail content, and child order. It may offer an explicitly
-lossy conversion to a simple map for data-oriented consumers. It must not
-promise byte-for-byte or prefix-for-prefix XML round trips. Safe parsing,
-malformed-input exception data, and streaming limits are part of the first
-contract, not later polish.
+``basilisp.xml`` now uses the portable, data-oriented subset directly:
+``{:tag keyword :attrs {keyword string} :content [string-or-element ...]}``.
+Child order and non-whitespace mixed content are retained, while whitespace-only
+text nodes are omitted as in ``clojure.xml``. Parsing rejects DTDs and entity
+declarations before ElementTree sees them, limits all text inputs to 4 MiB by
+default (configurable with ``:max-chars``), and reports malformed XML through
+the host parser exception. It accepts document strings, paths/URLs, and readable
+text streams.
+
+The adapter rejects qualified and non-ASCII names on both parse and emit rather
+than silently losing ElementTree's ``{uri}local`` normalization or fabricating
+namespace declarations. It also rejects namespace-qualified Basilisp keywords.
+Emission escapes text and attributes, sorts attributes by name, and does not
+promise byte, prefix, namespace, comment, processing-instruction, or streaming
+round trips. A future namespace-aware semantic tree must be a separate, explicit
+contract rather than a silent extension of this subset.
 
 Likewise, library portability stays source-led. A Clojure library is portable
 only when its source and transitive dependencies are portable, its reader
@@ -460,15 +469,14 @@ the caller supplies a policy, or a binary buffer adapter that documents byte
 order and mutability. Neither belongs in ``basilisp.core`` or should be named
 ``resultset-seq`` or ``uri?``.
 
-XML, if it has a consumer, is one such adapter. Make ``defusedxml`` an optional
-parser dependency for untrusted input and retain a separate immutable semantic
-tree for namespace/prefix and mixed-content fidelity. Python's XML security
-guidance identifies denial-of-service concerns and points to defusedxml for
-defensive parsing; see `the standard library XML security notes
-<https://docs.python.org/3/library/xml.html#xml-vulnerabilities>`_. A first
-implementation needs namespace-scope, malformed-input, mixed-content,
-serialization, and size-limit fixtures before it is exposed as a general XML
-library.
+XML now has a bounded immutable-tree adapter for the data-oriented subset.
+Namespace/prefix fidelity, comments, processing instructions, and streaming are
+deliberately still separate work. Python's XML security guidance identifies
+additional denial-of-service concerns and points to ``defusedxml`` for broader
+untrusted-document requirements; see `the standard library XML security notes
+<https://docs.python.org/3/library/xml.html#xml-vulnerabilities>`_. Do not widen
+the adapter's boundary without namespace, malformed-input, mixed-content,
+serialization, and size-limit fixtures.
 
 Execution Order
 ---------------

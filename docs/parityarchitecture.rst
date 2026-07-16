@@ -721,12 +721,15 @@ and Python inspection data. It must not provide Java package aliases, classpath
 changes, JDBC result-set sequences, browser/Javadoc wrappers, or Java-bean
 coercion. Those APIs expose services that Python already models differently.
 
-``clojure.xml`` is a separate adapter candidate: ``xml.etree.ElementTree`` can
-parse and emit XML, but its mutable elements, namespace representation, mixed
-content, and streaming APIs do not match Clojure's data maps. Before adding it,
-define an immutable Basilisp data representation, whitespace and namespace
-policy, malformed-input error data, and streaming boundary. Until then it is a
-documented gap rather than a misleading thin wrapper.
+``basilisp.xml`` is a deliberately small data-oriented XML adapter and is
+available through the usual ``clojure.xml`` import-path alias. It translates
+documents to immutable ``{:tag :attrs :content}`` maps, preserves mixed content,
+omits whitespace-only text nodes, and emits deterministic attribute order. Its
+first boundary is intentionally narrow: only unqualified ASCII XML names are
+accepted; namespace-qualified names, DTDs, and entity declarations are rejected;
+and input is bounded to 4 MiB by default. ElementTree cannot preserve lexical
+prefix choices, so this adapter does not promise namespace, prefix, byte, or
+streaming round trips.
 
 Library Portability
 ^^^^^^^^^^^^^^^^^^^

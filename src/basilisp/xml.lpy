@@ -1,0 +1,107 @@
+(ns basilisp.xml
+  "Safe XML reading and writing using immutable Basilisp element maps."
+  (:require [basilisp.io :as bio])
+  (:import xml.etree.ElementTree
+           xml.sax.saxutils
+           re))
+
+(def ^:private default-max-chars 4194304)
+
+(defn- text-content? [s]
+  (and s (not (.isspace s))))
+
+(defn- element-name [tag]
+  (when (or (.startswith tag "{")
+            (not (re/fullmatch #"[A-Za-z_][A-Za-z0-9._-]*" tag)))
+    (throw (python/ValueError
+            "XML namespaces and non-ASCII XML names are not supported")))
+  (keyword tag))
+
+(defn- parse-element [element]
+  (let [attrs   (into {} (map (fn [[k v]] [(element-name k) v]) (.items (.-attrib element))))
+        content (vec (concat (when (text-content? (.-text element)) [(.-text element)])
+                             (mapcat (fn [child]
+                                       (concat [(parse-element child)]
+                                               (when (text-content? (.-tail child)) [(.-tail child)])))
+                                     (.findall element "*"))))]
+    (cond-> {:tag (element-name (.-tag element))}
+      (seq attrs) (assoc :attrs attrs)
+      (seq content) (assoc :content content))))
+
+(defn- reject-unsafe-declarations [source]
+  (let [upper-source (.upper source)]
+    (when (or (not= -1 (.find upper-source "<!DOCTYPE"))
+              (not= -1 (.find upper-source "<!ENTITY")))
+      (throw (python/ValueError "XML DTD and entity declarations are not permitted")))))
+
+(defn- checked-text [text max-chars]
+  (when-not (string? text)
+    (throw (python/ValueError "XML input must be text")))
+  (when (> (count text) max-chars)
+    (throw (python/ValueError "XML input exceeds :max-chars")))
+  text)
+
+(defn- read-text [reader max-chars]
+  (checked-text (.read reader (inc max-chars)) max-chars))
+
+(defn- source-text [source max-chars]
+  (cond
+    (not (string? source)) (read-text source max-chars)
+    (.startswith (.lstrip source) "<") (checked-text source max-chars)
+    :else (with-open [reader (bio/reader source)]
+            (read-text reader max-chars))))
+
+(defn parse
+  "Parse XML into an immutable ``{:tag :attrs :content}`` tree.
+
+  A string beginning with ``<`` is XML text; other strings are paths or URLs, and
+  readable text streams are also accepted. DTD and entity declarations are rejected
+  before parsing for every input source, and input is bounded by ``:max-chars``
+  (4 MiB by default). Whitespace-only text nodes are omitted, matching
+  ``clojure.xml``'s SAX contract. Namespace-qualified and non-ASCII names are
+  rejected because ElementTree cannot retain their lexical prefix information."
+  [source & {:keys [max-chars] :or {max-chars default-max-chars}}]
+  (when-not (and (integer? max-chars) (pos? max-chars))
+    (throw (python/ValueError ":max-chars must be a positive integer")))
+  (let [source (source-text source max-chars)
+        _      (reject-unsafe-declarations source)
+        root   (xml.etree.ElementTree/fromstring source)]
+    (parse-element root)))
+
+(defn- xml-name [x]
+  (when (namespace x)
+    (throw (python/ValueError "XML namespaces are not supported")))
+  (let [name (name x)]
+    (element-name name)
+    name))
+
+(defn- escape-text [s]
+  (xml.sax.saxutils/escape (str s)))
+
+(defn- escape-attribute [s]
+  (xml.sax.saxutils/escape (str s) #py {"\"" "&quot;" "'" "&apos;"}))
+
+(defn emit-element
+  "Write one element map or text node to ``*out*`` without a declaration."
+  [element]
+  (if (string? element)
+    (print (escape-text element))
+    (let [tag     (xml-name (:tag element))
+          attrs   (:attrs element)
+          content (:content element)]
+      (print (str "<" tag))
+      (doseq [[k v] (sort-by #(xml-name (key %)) attrs)]
+        (print (str " " (xml-name k) "='" (escape-attribute v) "'")))
+      (if (seq content)
+        (do
+          (print ">")
+          (doseq [child content] (emit-element child))
+          (print (str "</" tag ">")))
+        (print "/>")))))
+
+(defn emit
+  "Write an XML declaration and one immutable element map to ``*out*``."
+  [element]
+  (println "<?xml version='1.0' encoding='UTF-8'?>")
+  (emit-element element)
+  (println))

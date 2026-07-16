@@ -1,0 +1,63 @@
+(ns tests.basilisp.test-xml
+  (:require [basilisp.test :refer [deftest is]]
+            [basilisp.xml :as xml]
+            [clojure.xml :as clj-xml])
+  (:import io
+           os
+           random
+           tempfile))
+
+(deftest parse-and-emit-tree-test
+  (let [tree (xml/parse "<root b='2' a='1'> before <child>text</child> after </root>")]
+    (is (= {:tag :root :attrs {:a "1" :b "2"}
+            :content [" before " {:tag :child :content ["text"]} " after "]}
+           tree))
+    (let [out (io/StringIO)]
+      (binding [*out* out] (xml/emit tree))
+      (is (= (str "<?xml version='1.0' encoding='UTF-8'?>" os/linesep
+                  "<root a='1' b='2'> before <child>text</child> after </root>" os/linesep)
+             (.getvalue out))))))
+
+(deftest clojure-xml-import-path-test
+  (is (= {:tag :x} (clj-xml/parse "<x/>"))))
+
+(deftest xml-rejects-unsafe-and-malformed-input-test
+  (is (thrown? python/ValueError (xml/parse "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>")))
+  (is (thrown? python/ValueError
+               (xml/parse (io/StringIO "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>"))))
+  (is (thrown? python/ValueError (xml/parse "<x xmlns='urn:example'/>")))
+  (is (thrown? python/ValueError (xml/parse "<x/>" :max-chars 1)))
+  (is (thrown? python/ValueError (xml/parse "<x/>" :max-chars 0)))
+  (is (thrown? python/ValueError (xml/parse "<x/>" :max-chars "large")))
+  (is (thrown? python/ValueError (xml/parse (io/BytesIO (.encode "<x/>" "utf-8")))))
+  (is (thrown? python/Exception (xml/parse "<x>"))))
+
+(deftest xml-stream-whitespace-and-escaping-test
+  (is (= {:tag :root :content [{:tag :child}]}
+         (xml/parse (io/StringIO "<root> \n<!-- comment -->\t<child/> </root>"))))
+  (let [[fd filename] (tempfile/mkstemp)]
+    (try
+      (with-open [f (python/open filename "w")]
+        (.write f "<from-file/>"))
+      (is (= {:tag :from-file} (xml/parse filename)))
+      (finally
+        (os/close fd)
+        (os/unlink filename))))
+  (let [out (io/StringIO)]
+    (binding [*out* out]
+      (xml/emit-element {:tag :x
+                         :attrs {:a "<&>'\""}
+                         :content ["<&>\"'"]}))
+    (is (= "<x a='&lt;&amp;&gt;&apos;&quot;'>&lt;&amp;&gt;\"'</x>"
+           (.getvalue out))))
+  (is (thrown? python/ValueError
+               (xml/emit-element {:tag :xml/qualified}))))
+
+(deftest xml-seeded-fuzz-and-concurrent-parse-test
+  (let [rng (random/Random 0x584D4C)
+        values (mapv (fn [_] (str "v" (.randint rng 0 1000000))) (range 48))
+        tasks (mapv (fn [value]
+                      (future (xml/parse (str "<x a='" value "'><y>" value "</y></x>"))))
+                    values)]
+    (doseq [[value task] (map vector values tasks)]
+      (is (= {:tag :x :attrs {:a value} :content [{:tag :y :content [value]}]} @task)))))
