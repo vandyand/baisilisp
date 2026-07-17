@@ -112,7 +112,7 @@ IMPORT_MODULE_VAR_SYM = sym.symbol(IMPORT_MODULE_VAR_NAME, ns=CORE_NS)
 NS_VAR_NS = CORE_NS
 REPL_DEFAULT_NS = "basilisp.user"
 SUPPORTED_PYTHON_VERSIONS = frozenset({(3, 10), (3, 11), (3, 12), (3, 13), (3, 14)})
-BASILISP_VERSION_STRING = importlib.metadata.version("basilisp")
+BASILISP_VERSION_STRING = importlib.metadata.version("baisilisp")
 BASILISP_VERSION = vec.vector(
     (int(s) if s.isdigit() else s) for s in BASILISP_VERSION_STRING.split(".")
 )

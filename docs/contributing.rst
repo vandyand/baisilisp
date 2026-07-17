@@ -9,7 +9,7 @@ We accept the following types of contributions:
 
 * **Bug Reports:** Submit a new issue on GitHub reporting a bug with Basilisp.
   Contributors are encouraged to first search the existing issues to see if the bug has previously been reported or is currently being addressed.
-  Bugs may sometimes be fixed in unreleased code, so be sure to look at the `CHANGELOG <https://github.com/basilisp-lang/basilisp/blob/main/CHANGELOG.md>`_ in the ``main`` branch to see if the fix has simply not yet been released.
+  Bugs may sometimes be fixed in unreleased code, so be sure to look at the `CHANGELOG <https://github.com/vandyand/baisilisp/blob/main/CHANGELOG.md>`_ in the ``main`` branch to see if the fix has simply not yet been released.
 
 * **Feature Requests:** Submit a new issue on GitHub reporting a feature request.
   Basilisp targets a reasonable degree of compatibility with Clojure, so feature requests should generally be for features from Clojure which have not yet been implemented in Basilisp.

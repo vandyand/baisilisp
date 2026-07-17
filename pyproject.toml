@@ -1,7 +1,10 @@
 [project]
-name = "basilisp"
-version = "0.5.1"
-description = "A Clojure-compatible(-ish) Lisp dialect hosted on Python 3 with seamless Python interop."
+name = "baisilisp"
+# The declared version is the next stable release. Successful main builds use
+# a CI-generated ``.devN`` version; a published GitHub release must use this
+# exact value without its leading ``v``.
+version = "0.5.2"
+description = "BaisiLisp: a compatibility-focused Basilisp fork hosted on Python 3 with seamless Python interop."
 authors = [
     { name = "Christopher Rink", email = "chris@crink.dev" },
 ]
@@ -38,11 +41,10 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/basilisp-lang/basilisp"
-Documentation = "https://docs.basilisp.org"
-Repository = "https://github.com/basilisp-lang/basilisp"
-"Bug Tracker" = "https://github.com/basilisp-lang/basilisp/issues"
-Changelog = "https://github.com/basilisp-lang/basilisp/blob/main/CHANGELOG.md"
+Homepage = "https://github.com/vandyand/baisilisp"
+Repository = "https://github.com/vandyand/baisilisp"
+"Bug Tracker" = "https://github.com/vandyand/baisilisp/issues"
+Changelog = "https://github.com/vandyand/baisilisp/blob/main/CHANGELOG.md"
 
 [dependency-groups]
 dev = [
@@ -79,6 +81,7 @@ basilisp-run = "basilisp.cli:run_script"
 basilisp_test_runner = "basilisp.contrib.pytest.testrunner"
 
 [tool.maturin]
+manifest-path = "rust/Cargo.toml"
 module-name = "basilisp._lang"
 
 [build-system]

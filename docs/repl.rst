@@ -141,7 +141,7 @@ You can install it via Pip:
 
 .. code-block:: shell
 
-   pip install basilisp[pygments]
+   pip install baisilisp[pygments]
 
 The default Pygments `style <https://pygments.org/styles/>`_ is ``emacs``, but you can select another style by setting the value of the ``BASILISP_REPL_PYGMENTS_STYLE_NAME`` environment variable in your shell.
 

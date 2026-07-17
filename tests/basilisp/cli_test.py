@@ -860,7 +860,7 @@ class TestRun:
 def test_version(run_cli):
     result = run_cli(["version"])
     assert re.compile(
-        r"^Basilisp (\d+)\.(\d+)\.(\d+((?!a|b|rc)\d+)?)(\.(dev|post)\d+)?\n$"
+        r"^BaisiLisp (\d+)\.(\d+)\.(\d+((?!a|b|rc)\d+)?)(\.(dev|post)\d+)?\n$"
     ).match(result.out)
 
 

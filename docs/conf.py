@@ -12,7 +12,7 @@ import sys
 
 # -- Project information -----------------------------------------------------
 
-project = "Basilisp"
+project = "BaisiLisp"
 copyright = "2018-2024, Chris Rink"
 author = "Chris Rink"
 
@@ -79,9 +79,9 @@ html_theme = "furo"
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-html_title = "Basilisp"
+html_title = "BaisiLisp"
 html_theme_options = {
-    "source_repository": "https://github.com/basilisp-lang/basilisp/",
+    "source_repository": "https://github.com/vandyand/baisilisp/",
     "source_branch": "main",
     "source_directory": "docs/",
 }
@@ -105,7 +105,7 @@ html_static_path = ["_static"]
 # -- Options for HTMLHelp output ---------------------------------------------
 
 # Output file base name for HTML help builder.
-htmlhelp_basename = "Basilispdoc"
+htmlhelp_basename = "BaisiLispdoc"
 
 # -- Options for LaTeX output ------------------------------------------------
 
@@ -128,7 +128,7 @@ latex_elements = {
 # (source start file, target name, title,
 #  author, documentclass [howto, manual, or own class]).
 latex_documents = [
-    (master_doc, "Basilisp.tex", "Basilisp Documentation", "Chris Rink", "manual")
+    (master_doc, "BaisiLisp.tex", "BaisiLisp Documentation", "Chris Rink", "manual")
 ]
 
 # -- Options for manual page output ------------------------------------------
@@ -145,10 +145,10 @@ man_pages = [(master_doc, "basilisp", "Basilisp Documentation", [author], 1)]
 texinfo_documents = [
     (
         master_doc,
-        "Basilisp",
-        "Basilisp Documentation",
+        "BaisiLisp",
+        "BaisiLisp Documentation",
         author,
-        "Basilisp",
+        "BaisiLisp",
         "A Clojure-like lisp written for Python",
         "Miscellaneous",
     )
@@ -204,4 +204,4 @@ def lpy_linkcode_resolve(filename, lines):
         else:
             line_anchor = f"#L{start_line}-L{end_line}"
 
-    return f"https://github.com/basilisp-lang/basilisp/blob/{_vcs_branch}/src/{pth}{line_anchor}"
+    return f"https://github.com/vandyand/baisilisp/blob/{_vcs_branch}/src/{pth}{line_anchor}"

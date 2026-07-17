@@ -8,10 +8,10 @@ Getting Started
 Installation
 ------------
 
-Basilisp is developed on `GitHub <https://github.com/chrisrink10/basilisp>`_ and hosted on `PyPI <https://pypi.python.org/pypi/basilisp>`_.
-You can fetch the latest version of Basilisp from PyPI using ``pip``::
+BaisiLisp is developed on `GitHub <https://github.com/vandyand/baisilisp>`_ and hosted on `PyPI <https://pypi.org/project/baisilisp/>`_.
+You can fetch the latest stable version of BaisiLisp from PyPI using ``pip``::
 
-    pip install basilisp
+    pip install baisilisp
 
 Basilisp supports some optional extras:
 
@@ -20,11 +20,13 @@ Basilisp supports some optional extras:
 
 .. note::
 
-   This will pull the latest version of Basilisp from PyPI, but ``pip`` also offers a variety of other ways to select specific versions of libraries.
-   Users looking to try out cutting edge versions of Basilisp may instead prefer to use ``pip``'s builtin `support for installing libraries directly from VCS <https://pip.pypa.io/en/stable/topics/vcs-support/>`_.
-   You can install Basilisp directly from the Git ``main`` ref (for example) using a command like this::
+   This will pull the latest stable version of BaisiLisp from PyPI. Development snapshots are published automatically for each successful ``main`` build and can be selected with::
 
-      pip install "basilisp @ git+https://github.com/basilisp-lang/basilisp.git@main"
+      pip install --pre --upgrade baisilisp
+
+   ``pip`` also offers a variety of other ways to select specific versions of libraries. Users looking to install directly from Git can use ``pip``'s builtin `support for installing libraries directly from VCS <https://pip.pypa.io/en/stable/topics/vcs-support/>`_::
+
+      pip install "baisilisp @ git+https://github.com/vandyand/baisilisp.git@main"
 
 .. _first_steps:
 
@@ -64,7 +66,7 @@ Getting Support
 If you're looking for support using Basilisp, you are encouraged to reach out on one of the following platforms:
 
 - `Clojurians Slack <https://clojurians.slack.com/archives/C071RFV2Z1D>`_
-- `GitHub Discusssions <https://github.com/basilisp-lang/basilisp/discussions>`_
+- `GitHub Discussions <https://github.com/vandyand/baisilisp/discussions>`_
 
 If you believe you have discovered a bug, please review the :ref:`Contributing Guidelines <contributing>` before submitting an issue.
 

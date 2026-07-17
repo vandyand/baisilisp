@@ -1,13 +1,19 @@
 name: Release to PyPI
 
 on:
+  # A stable release is deliberately explicit: publish a GitHub release for a
+  # ``vX.Y.Z`` tag whose version matches pyproject.toml.
   release:
-    types: [ published ]
-  push:
-    branches: [ main ]
+    types: [published]
+  # Development builds are published only after the repository's test workflow
+  # has succeeded for a push to main, never for a pull request or a fork.
+  workflow_run:
+    workflows: ["Run tests"]
+    types: [completed]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event.release.tag_name || github.event.workflow_run.head_sha }}
+  cancel-in-progress: ${{ github.event_name == 'workflow_run' }}
 
 # The platform specific build jobs below were adapted from maturin. An updated
 # skeleton can be generated using the following command, but will require manual
@@ -16,10 +22,59 @@ concurrency:
 #    maturin generate-ci github
 #
 jobs:
+  prepare:
+    if: >-
+      github.event_name == 'release' ||
+      (github.event.workflow_run.conclusion == 'success' &&
+       github.event.workflow_run.event == 'push' &&
+       github.event.workflow_run.head_branch == 'main' &&
+       github.event.workflow_run.head_repository.full_name == github.repository)
+    runs-on: ubuntu-latest
+    outputs:
+      source-ref: ${{ steps.release.outputs.source-ref }}
+      version: ${{ steps.release.outputs.version }}
+      is-stable: ${{ steps.release.outputs.is-stable }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.release.tag_name || github.event.workflow_run.head_sha }}
+      - id: release
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          SOURCE_SHA: ${{ github.event.workflow_run.head_sha }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          declared_version="$(python - <<'PY'
+          import tomllib
+          with open("pyproject.toml", "rb") as project:
+              print(tomllib.load(project)["project"]["version"])
+          PY
+          )"
+          if [[ "$EVENT_NAME" == "release" ]]; then
+            release_version="${RELEASE_TAG#v}"
+            if [[ "$RELEASE_TAG" != "v$release_version" || "$release_version" != "$declared_version" ]]; then
+              echo "GitHub release tag $RELEASE_TAG must equal v$declared_version" >&2
+              exit 1
+            fi
+            version="$release_version"
+            source_ref="$RELEASE_TAG"
+            stable=true
+          else
+            version="${declared_version}.dev${GITHUB_RUN_NUMBER}"
+            source_ref="$SOURCE_SHA"
+            stable=false
+          fi
+          echo "source-ref=$source_ref" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "is-stable=$stable" >> "$GITHUB_OUTPUT"
+
   ###################
   # Platform Builds #
   ###################
   linux:
+    needs: [prepare]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -38,6 +93,10 @@ jobs:
             target: ppc64le
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source-ref }}
+      - name: Set distribution version
+        run: python scripts/set_distribution_version.py "${{ needs.prepare.outputs.version }}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
@@ -62,6 +121,7 @@ jobs:
           path: dist
 
   musllinux:
+    needs: [prepare]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -76,6 +136,10 @@ jobs:
             target: armv7
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source-ref }}
+      - name: Set distribution version
+        run: python scripts/set_distribution_version.py "${{ needs.prepare.outputs.version }}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
@@ -100,6 +164,7 @@ jobs:
           path: dist
 
   windows:
+    needs: [prepare]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -115,6 +180,10 @@ jobs:
             python_arch: arm64
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source-ref }}
+      - name: Set distribution version
+        run: python scripts/set_distribution_version.py "${{ needs.prepare.outputs.version }}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.13"
@@ -142,6 +211,7 @@ jobs:
           path: dist
 
   macos:
+    needs: [prepare]
     runs-on: ${{ matrix.platform.runner }}
     strategy:
       matrix:
@@ -152,6 +222,10 @@ jobs:
             target: aarch64
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source-ref }}
+      - name: Set distribution version
+        run: python scripts/set_distribution_version.py "${{ needs.prepare.outputs.version }}"
       - uses: actions/setup-python@v6
         with:
           python-version: "3.10"
@@ -177,9 +251,14 @@ jobs:
           path: dist
 
   sdist:
+    needs: [prepare]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.prepare.outputs.source-ref }}
+      - name: Set distribution version
+        run: python scripts/set_distribution_version.py "${{ needs.prepare.outputs.version }}"
       - name: Build sdist
         uses: PyO3/maturin-action@v1
         with:
@@ -191,66 +270,41 @@ jobs:
           name: wheels-sdist
           path: dist
 
-  #############
-  # Test PyPI #
-  #############
-  sign-dists:
-    if: ${{ contains(fromJSON('[ "refs/heads/main" ]'), github.ref) }}
+  ##############################
+  # PyPI development snapshots #
+  ##############################
+  development-pypi-release:
+    if: ${{ needs.prepare.outputs.is-stable != 'true' }}
     runs-on: ubuntu-latest
     environment:
-      name: test-pypi
-    name: >-
-      Sign the Python distribution with Sigstore.
-    needs: [ linux, musllinux, windows, macos, sdist ]
+      name: pypi
+      url: https://pypi.org/project/baisilisp/
+    name: Publish development snapshot to PyPI
+    needs: [prepare, linux, musllinux, windows, macos, sdist]
     permissions:
       id-token: write
     steps:
-      - name: Download all the dists
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
-      - name: Sign the dists with Sigstore
-        uses: sigstore/gh-action-sigstore-python@v3.2.0
-        with:
-          inputs: >-
-            ./wheels-*/*.tar.gz
-            ./wheels-*/*.whl
-      - name: Print all files recursively
-        run: find .
-
-  test-pypi-release:
-    if: ${{ contains(fromJSON('[ "refs/heads/main" ]'), github.ref) }}
-    runs-on: ubuntu-latest
-    environment:
-      name: test-pypi
-      url: https://test.pypi.org/p/basilisp
-    name: Release to Test PyPI
-    needs: [ linux, musllinux, windows, macos, sdist ]
-    permissions:
-      id-token: write
-    steps:
-      - name: Download build artifact
-        uses: actions/download-artifact@v7
-      - name: Move wheels into dist directory for publishing
+      - name: Collect distributions
         run: |
           mkdir dist
-          mv wheels-*/*.whl dist/
-          find dist
+          find wheels-* -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} dist/ \;
+          find dist -type f -print
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0
-        with:
-          repository-url: https://test.pypi.org/legacy/
-          skip-existing: true
 
-  ########
-  # PyPI #
-  ########
+  ##################
+  # Stable releases #
+  ##################
   github-release:
-    if: ${{ startsWith(github.ref, 'refs/tags') }}
+    if: ${{ needs.prepare.outputs.is-stable == 'true' }}
     runs-on: ubuntu-latest
     environment:
       name: release
     name: >-
       Sign the Python distribution with Sigstore and upload them to GitHub Release
-    needs: [ linux, musllinux, windows, macos, sdist ]
+    needs: [prepare, linux, musllinux, windows, macos, sdist]
     permissions:
       contents: write
       id-token: write
@@ -268,24 +322,25 @@ jobs:
     - name: Upload artifact signatures to GitHub Release
       env:
         GITHUB_TOKEN: ${{ github.token }}
-      run: gh release upload "$GITHUB_REF_NAME" dist/** --clobber --repo "$GITHUB_REPOSITORY"
+      run: gh release upload "${{ github.event.release.tag_name }}" wheels-*/* --clobber --repo "$GITHUB_REPOSITORY"
 
   pypi-release:
-    if: ${{ startsWith(github.ref, 'refs/tags') }}
+    if: ${{ needs.prepare.outputs.is-stable == 'true' }}
     runs-on: ubuntu-latest
     environment:
-      name: release
+      name: pypi
+      url: https://pypi.org/project/baisilisp/
     name: Release to PyPI
-    needs: [ linux, musllinux, windows, macos, sdist ]
+    needs: [prepare, linux, musllinux, windows, macos, sdist]
     permissions:
       id-token: write
     steps:
-      - name: Download build artifact
+      - name: Download build artifacts
         uses: actions/download-artifact@v7
-      - name: Move wheels into dist directory for publishing
+      - name: Collect distributions
         run: |
           mkdir dist
-          mv wheels-*/*.whl dist/
-          find dist
+          find wheels-* -type f \( -name '*.whl' -o -name '*.tar.gz' \) -exec cp {} dist/ \;
+          find dist -type f -print
       - name: Publish package distributions to PyPI
         uses: pypa/gh-action-pypi-publish@v1.13.0

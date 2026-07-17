@@ -866,8 +866,8 @@ def _add_test_subcommand(parser: argparse.ArgumentParser) -> None:
 
 
 def version(_, __) -> None:
-    v = importlib.metadata.version("basilisp")
-    print(f"Basilisp {v}")
+    v = importlib.metadata.version("baisilisp")
+    print(f"BaisiLisp {v}")
 
 
 @_subcommand("version", help="print the version of Basilisp", handler=version)
