@@ -393,6 +393,16 @@ bound socket, and accepts Clojure-style EDN property entries. ``repl-read``
 cannot reproduce the JVM reader's line-start prompt sentinel, but otherwise
 provides the standard callback and quit semantics.
 
+``with-local-vars``
+~~~~~~~~~~~~~~~~~~~
+
+``basilisp.core/with-local-vars`` now provides Clojure's small local-mutation
+escape hatch without interning temporary names into user namespaces. It creates
+dynamic Var cells, installs their initial values as one thread-local binding
+frame, and always removes that frame through ``try``/``finally``. Values must be
+read and written through ``var-get`` and ``var-set``; nested scopes and
+``bound-fn``/Future propagation retain the normal dynamic-binding isolation.
+
 The nREPL adapter also serves ``macroexpand`` requests through the same
 namespace-resolution context used by evaluation. It supports one-step, full,
 recursive, and next-subform expansion without evaluating client code;

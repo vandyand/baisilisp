@@ -1,5 +1,5 @@
 (ns tests.basilisp.core.test-core-macros
-  (:import asyncio contextlib inspect os socket tempfile)
+  (:import asyncio contextlib inspect os random socket tempfile)
   (:require
    [basilisp.string :as str]
    [basilisp.test :refer [deftest is are testing]]))
@@ -682,6 +682,71 @@
          [:b :c]))
   (is (thrown? basilisp.lang.runtime/RuntimeException
                (push-thread-bindings {#'non-dynamic-var :c}))))
+
+(deftest with-local-vars-test
+  (is (= [1 3]
+         (with-local-vars [counter 1]
+           (let [before (var-get counter)]
+             (var-set counter (+ before 2))
+             [before (var-get counter)]))))
+  (is (= [5 1]
+         (with-local-vars [value 1]
+           [(with-local-vars [value 2]
+              (var-set value 5)
+              (var-get value))
+            (var-get value)])))
+  (is (= [9 1]
+         (with-local-vars [value 1]
+           (let [worker (future
+                          (var-set value 9)
+                          (var-get value))]
+             [@worker (var-get value)]))))
+  (let [events (atom [])]
+    (with-local-vars [first-value  (do (swap! events conj :first) 10)
+                      second-value (do (swap! events conj :second) 20)]
+      (is (= [:first :second] @events))
+      (is (= 30 (+ (var-get first-value) (var-get second-value))))))
+  (let [escaped (atom nil)]
+    (is (thrown? python/RuntimeError
+                 (with-local-vars [value 4]
+                   (reset! escaped value)
+                   (throw (python/RuntimeError "expected")))))
+    (is (not (thread-bound? @escaped)))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo
+                 (var-set @escaped 5))))
+  ;; An initializer runs before the dynamic frame is installed, so a failure
+  ;; there cannot leave a partially-bound local Var behind.
+  (let [escaped (atom nil)]
+    (is (thrown? python/RuntimeError
+                 (with-local-vars [value (do (reset! escaped value)
+                                             (throw (python/RuntimeError "expected")))]
+                   nil)))
+    (is (not (thread-bound? @escaped))))
+  (is (thrown? basilisp.lang.compiler/CompilerException
+               (eval '(with-local-vars (value 1) value))))
+  (is (thrown? basilisp.lang.compiler/CompilerException
+               (eval '(with-local-vars [value 1 other] value))))
+  (is (nil? (find-ns 'basilisp.local-vars))))
+
+(deftest with-local-vars-randomized-update-test
+  (let [rng (random/Random 20260717)]
+    (doseq [_ (range 24)]
+      (let [initial (.randint rng -1000 1000)]
+        (with-local-vars [value initial]
+          (loop [remaining 96
+                 expected  initial]
+            (if (zero? remaining)
+              (is (= expected (var-get value)))
+              (let [operation (.randint rng 0 2)
+                    operand  (.randint rng -1000 1000)]
+                (if (= operation 0)
+                  (do (var-set value (+ (var-get value) operand))
+                      (recur (dec remaining) (+ expected operand)))
+                  (if (= operation 1)
+                    (do (var-set value (- (var-get value) operand))
+                        (recur (dec remaining) (- expected operand)))
+                    (do (var-set value operand)
+                        (recur (dec remaining) operand))))))))))))
 
 (deftest ->-test
   (is (= :a (-> :a)))

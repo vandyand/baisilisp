@@ -1136,6 +1136,22 @@ def pop_thread_bindings() -> None:
 # Runtime Support #
 ###################
 
+
+# Local Vars are intentionally not interned in any user namespace. They exist
+# solely as dynamically-bound cells created by ``with-local-vars`` and retain a
+# stable private namespace only for ordinary Var diagnostics and metadata.
+_LOCAL_VAR_NS: Namespace | None = None
+
+
+def local_var(name: sym.Symbol) -> Var:
+    """Create an uninterned dynamic Var suitable for ``with-local-vars``."""
+    if not isinstance(name, sym.Symbol):
+        raise TypeError("local Var name must be a Basilisp Symbol")
+    global _LOCAL_VAR_NS  # pylint: disable=global-statement
+    if _LOCAL_VAR_NS is None:
+        _LOCAL_VAR_NS = Namespace(sym.symbol("basilisp.local-vars"))
+    return Var(_LOCAL_VAR_NS, name, dynamic=True)
+
 T = TypeVar("T")
 
 
