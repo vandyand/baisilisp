@@ -380,6 +380,16 @@ network security model. The server remains loopback-only and deliberately
 distinct from nREPL's bencode transport. Remaining remote phases are request
 identifiers, authentication hooks, cancellation, and CLI exposure.
 
+``basilisp.core.server`` adds Clojure-shaped ownership around that boundary:
+``start-server``, ``stop-server``, ``stop-servers``, and ``start-servers``
+manage named TCP listeners through an atomic, process-local registry. Its accept
+function receives dynamic text-stream bindings and optional configured arguments,
+so ``io-prepl`` can serve directly while ordinary text handlers remain possible.
+It defaults to loopback binding and daemon threads, rejects duplicate names
+without leaking a bound socket, and accepts Clojure-style EDN property entries.
+The JVM socket REPL callbacks remain excluded; structured pREPL is the portable
+interactive protocol.
+
 The nREPL adapter also serves ``macroexpand`` requests through the same
 namespace-resolution context used by evaluation. It supports one-step, full,
 recursive, and next-subform expansion without evaluating client code;

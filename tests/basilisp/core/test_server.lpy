@@ -1,0 +1,101 @@
+(ns tests.basilisp.core.test-server
+  (:require [basilisp.test :refer [deftest is]]
+            [basilisp.core.server :as server]
+            [basilisp.contrib.prepl :as prepl]
+            [clojure.core.server :as clj-server])
+  (:import io
+           socket))
+
+(defn- echo-accept [prefix]
+  (let [line (.readline *in*)]
+    (.write *out* (str prefix line))
+    (.flush *out*)))
+
+(defn- self-stopping-accept []
+  (.write *err* "stopping\n")
+  (.flush *err*)
+  (server/stop-server))
+
+(defn- server-port [server]
+  (nth (.-server_address server) 1))
+
+(defn- request [port text]
+  (with-open [client (socket/create_connection (python/tuple ["127.0.0.1" port]) ** :timeout 2)
+              out    (io/TextIOWrapper (.makefile client "wb") ** :encoding "utf-8" :write-through true)
+              in     (io/TextIOWrapper (.makefile client "rb") ** :encoding "utf-8")]
+    (.write out text)
+    (.flush out)
+    (.readline in)))
+
+(deftest start-stop-and-import-path-test
+  (let [name "core-server-basic"
+        s    (server/start-server {:port 0 :name name :accept echo-accept :args ["echo:"]})]
+    (try
+      (is (= "echo:hello\n" (request (server-port s) "hello\n")))
+      (is (= true (server/stop-server name)))
+      (is (nil? (server/stop-server name)))
+      (finally
+        (server/stop-server name))))
+  (let [name "core-server-alias"
+        s    (clj-server/start-server {:port 0 :name name :accept echo-accept :args ["alias:"]})]
+    (try
+      (is (= "alias:ok\n" (request (server-port s) "ok\n")))
+      (finally
+        (clj-server/stop-server name)))))
+
+(deftest server-option-and-property-validation-test
+  (is (thrown? python/ValueError
+               (server/start-server {:port -1 :name "bad-port" :accept echo-accept})))
+  (is (thrown? python/ValueError
+               (server/start-server {:port 0 :name "" :accept echo-accept})))
+  (is (thrown? python/ValueError
+               (server/start-server {:port 0 :name "bad-accept" :accept 1})))
+  (is (thrown? python/ValueError
+               (server/start-servers {"clojure.server.bad" {:port 0}}))))
+
+(deftest server-session-stop-and-bind-err-test
+  (let [name "core-server-self-stop"
+        s    (server/start-server {:port 0 :name name :accept self-stopping-accept})]
+    (try
+      (is (= "stopping\n" (request (server-port s) "wake\n")))
+      (is (nil? (server/stop-server name)))
+      (finally
+        (server/stop-server name)))))
+
+(deftest server-atomic-name-race-and-stop-all-test
+  (let [name    "core-server-race"
+        started (mapv (fn [_]
+                        (future
+                          (try
+                            (server/start-server {:port 0 :name name :accept echo-accept :args [""]})
+                            (catch python/ValueError _ nil))))
+                      (range 24))
+        winners (vec (filter identity (map deref started)))]
+    (try
+      (is (= 1 (count winners)))
+      (is (= true (server/stop-server name)))
+      (is (nil? (server/stop-server name)))
+      (finally
+        (server/stop-servers)))))
+
+(deftest server-start-servers-edn-symbol-test
+  (let [name "from-properties"]
+    (try
+      (is (nil? (server/start-servers
+                 {"clojure.server.from-properties"
+                  "{:port 0 :accept tests.basilisp.core.test-server/echo-accept :args [\"prop:\"]}"})))
+      (is (= true (server/stop-server name)))
+      (finally
+        (server/stop-server name)))))
+
+(deftest core-server-io-prepl-end-to-end-test
+  (let [name   "core-server-io-prepl"
+        s      (server/start-server {:port 0 :name name :accept server/io-prepl})
+        events (atom [])]
+    (try
+      (prepl/remote-prepl "127.0.0.1" (server-port s) (io/StringIO "(+ 20 22)\n")
+                          #(swap! events conj %))
+      (is (= :ret (:tag (first @events))))
+      (is (= 42 (:val (first @events))))
+      (finally
+        (server/stop-server name)))))

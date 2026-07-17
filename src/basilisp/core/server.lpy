@@ -1,0 +1,120 @@
+(ns basilisp.core.server
+  "Socket server lifecycle support compatible with the portable core.server subset."
+  (:require [basilisp.contrib.prepl :as prepl]
+            [basilisp.edn :as edn])
+  (:import io
+           socketserver
+           basilisp.contrib.prepl_server
+           basilisp.contrib.core_server))
+
+(def ^:dynamic *session*
+  "The current socket-server session, bound while an ``:accept`` function runs."
+  nil)
+
+(def prepl
+  "The structured pREPL evaluator from :lpy:ns:`basilisp.contrib.prepl`."
+  prepl/prepl)
+
+(def io-prepl
+  "Run an EDN pREPL over the dynamic ``*in*`` and ``*out*`` streams."
+  prepl/io-prepl)
+
+(def remote-prepl
+  "Forward a local pREPL reader and callback to a remote ``io-prepl`` endpoint."
+  prepl/remote-prepl)
+
+(defn- resolve-accept [accept]
+  (let [accept (if (symbol? accept)
+                 (or (resolve accept)
+                     (requiring-resolve accept)
+                     (throw (python/ValueError
+                             (str "cannot resolve server accept function: " accept))))
+                 accept)]
+    (when-not (python/callable accept)
+      (throw (python/ValueError "server :accept must be a callable or qualified symbol")))
+    accept))
+
+(defn- validate-options [opts]
+  (let [{:keys [address port name accept args bind-err server-daemon client-daemon]
+         :or   {address "127.0.0.1"
+                args []
+                bind-err true
+                server-daemon true
+                client-daemon true}} opts]
+    (when-not (string? address)
+      (throw (python/ValueError "server :address must be a string")))
+    (when-not (and (integer? port) (<= 0 port 65535))
+      (throw (python/ValueError "server :port must be an integer from 0 through 65535")))
+    (when-not (and (string? name) (seq name))
+      (throw (python/ValueError "server :name must be a non-empty string")))
+    {:address       address
+     :port          port
+     :name          name
+     :accept        (resolve-accept accept)
+     :args          args
+     :bind-err      (boolean bind-err)
+     :server-daemon (boolean server-daemon)
+     :client-daemon (boolean client-daemon)}))
+
+(defn- accept-client [name accept args bind-err handler]
+  (let [socket (.-request handler)]
+    (with-open [raw-reader (io/TextIOWrapper (.makefile socket "rb") ** :encoding "utf-8")
+                writer (io/TextIOWrapper (.makefile socket "wb") ** :encoding "utf-8"
+                                         :newline "" :write-through true)]
+      (let [reader (basilisp.contrib.prepl_server/SeekableTextReader raw-reader)]
+        (binding [*in*      reader
+                *out*     writer
+                *err*     (if bind-err writer *err*)
+                *session* {:name name :socket socket}]
+          (apply accept args))))))
+
+(defn start-server
+  "Start a named TCP server and return its Python server object.
+
+  ``opts`` requires ``:port``, ``:name``, and ``:accept``. ``:address`` defaults
+  to ``127.0.0.1``. The accept function runs with socket text streams bound to
+  ``*in*`` and ``*out*`` and receives ``:args`` (default ``[]``). ``:bind-err``,
+  ``:server-daemon``, and ``:client-daemon`` default to true. A duplicate name is
+  rejected atomically and never leaves its just-bound socket open."
+  [opts]
+  (let [{:keys [address port name accept args bind-err server-daemon client-daemon]}
+        (validate-options opts)
+        handler-class (python/type (str (gensym "CoreServerHandler"))
+                                   #py (socketserver/BaseRequestHandler)
+                                   #py {"handle" #(accept-client name accept args bind-err %)})
+        server-class  (python/type (str (gensym "CoreServer"))
+                                   #py (socketserver/ThreadingTCPServer)
+                                   #py {"allow_reuse_address" true "block_on_close" false})
+        server        (server-class (python/tuple [address port]) handler-class)]
+    (set! (.-daemon_threads server) client-daemon)
+    (basilisp.contrib.core_server/register-and-start name server server-daemon)))
+
+(defn stop-server
+  "Stop a named server, or the current server when called from an accept function.
+
+  Return true when a registered server was stopped, or nil when it was absent."
+  ([] (stop-server (:name *session*)))
+  ([name]
+   (when name
+     (when (basilisp.contrib.core_server/stop-server name) true))))
+
+(defn stop-servers
+  "Stop every registered server, ignoring shutdown errors. Return nil."
+  []
+  (basilisp.contrib.core_server/stop-all)
+  nil)
+
+(defn start-servers
+  "Start servers described by ``clojure.server.<name>`` entries in a property map.
+
+  Each matching value is an EDN options map. Its key suffix supplies ``:name``;
+  an explicit name in the value is ignored, matching Clojure's property form."
+  [system-props]
+  (doseq [[property value] system-props
+          :let [property (str property)]
+          :when (.startswith property "clojure.server.")]
+    (let [name (subs property (count "clojure.server."))]
+      (when-not (string? value)
+        (throw (python/ValueError "server property values must be EDN strings")))
+      (start-server (assoc (edn/read-string value) :name name))))
+  nil)

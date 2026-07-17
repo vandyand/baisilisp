@@ -56,6 +56,26 @@ class SeekableTextReader(io.TextIOBase):
         self._position += len(value)
         return value
 
+    def readline(self, size: int | None = -1) -> str:
+        """Read one bounded line while preserving the seekable input view.
+
+        ``TextIOBase``'s default implementation raises ``UnsupportedOperation``.
+        Socket-server accept functions, unlike the reader/compiler path, commonly
+        use ``readline`` directly, so it must observe the same buffer and limit.
+        """
+        remaining = None if size is None or size < 0 else size
+        chunks: list[str] = []
+        while remaining is None or remaining > 0:
+            char = self.read(1)
+            if not char:
+                break
+            chunks.append(char)
+            if char == "\n":
+                break
+            if remaining is not None:
+                remaining -= 1
+        return "".join(chunks)
+
     def _length(self) -> int:
         return len(self._buffer.getvalue())
 
