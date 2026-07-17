@@ -1,0 +1,6 @@
+(ns basilisp.data.csv
+  "Portable ``clojure.data.csv`` entry points backed by :lpy:ns:`basilisp.csv`."
+  (:require [basilisp.csv :as csv]))
+
+(def read-csv csv/read-csv)
+(def write-csv csv/write-csv)

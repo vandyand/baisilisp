@@ -741,6 +741,13 @@ and input is bounded to 4 MiB by default. ElementTree cannot preserve lexical
 prefix choices, so this adapter does not promise namespace, prefix, byte, or
 streaming round trips.
 
+``basilisp.data.csv`` exposes the small portable ``clojure.data.csv`` contract
+through the normal import-path alias. It retains lazy row reading and Clojure's
+separator, quote, quote-predicate, and explicit LF/CRLF emission options, using
+Python text streams and the standard CSV parser. Java Reader/Writer object
+compatibility and arbitrary dialect options remain host-specific rather than
+part of the advertised surface.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 

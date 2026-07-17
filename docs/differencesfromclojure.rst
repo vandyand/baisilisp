@@ -272,6 +272,9 @@ Core Libraries
 Basilisp includes ports of some of the standard libraries from Clojure which should generally match the source in functionality.
 
 * :lpy:ns:`basilisp.data` is a port of ``clojure.data``
+* :lpy:ns:`basilisp.data.csv` provides the portable ``clojure.data.csv``
+  reader/writer surface. It uses Python text streams rather than Java
+  Reader/Writer values.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``io-prepl``/``remote-prepl`` support through the ``clojure.core.server``

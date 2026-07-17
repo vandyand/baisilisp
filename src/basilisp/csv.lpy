@@ -37,6 +37,34 @@
   (let [header (mapv key-fn (first rows))]
     (map #(zipmap header %) (rest rows))))
 
+(defn- csv-character [option value]
+  (when-not (and (string? value) (= 1 (count value)))
+    (throw (python/ValueError (str option " must be a single-character string"))))
+  value)
+
+(defn- default-quote? [separator quote value]
+  (some #{separator quote "\r" "\n"} value))
+
+(defn- write-cell [writer value separator quote quote?]
+  (let [value      (str value)
+        must-quote (quote? value)]
+    (when must-quote
+      (.write writer quote))
+    (.write writer (if must-quote
+                     (.replace value quote (str quote quote))
+                     value))
+    (when must-quote
+      (.write writer quote))))
+
+(defn- write-record [writer row separator quote quote?]
+  (loop [cells (seq row)
+         first? true]
+    (when cells
+      (when-not first?
+        (.write writer separator))
+      (write-cell writer (first cells) separator quote quote?)
+      (recur (next cells) false))))
+
 (defn write-csv
   "Write a sequence of rows in CSV format to ``writer``, which should be an
   :external:py:class:`io.TextIOBase`.
@@ -46,14 +74,21 @@
    :keyword ``:separator``: the character used as the separator for a fields in a row
        default is \",\"
    :keyword ``:quote``: the quote character used on quoted fields; default is ``true``
+   :keyword ``:quote?``: predicate deciding whether a string cell is quoted;
+       defaults to quoting separators, quotes, and line breaks
    :keyword ``:newline``: the newline character to use between rows (``:lf`` or
        ``:cr+lf``)"
-  [writer data & {:keys [separator quote newline] :or {separator "," quote "\"" newline :lf}}]
-  (let [nl (cond
+  [writer data & {:keys [separator quote quote? newline]
+                  :or {separator "," quote "\"" newline :lf}}]
+  (let [separator (csv-character ":separator" separator)
+        quote     (csv-character ":quote" quote)
+        quote?    (or quote? #(default-quote? separator quote %))
+        nl        (cond
              (= newline :lf)    "\n"
              (= newline :cr+lf) "\r\n"
              :else              (throw
                                  (ex-info "newline must be one of: :lf or :cr+lf"
-                                          {:newline newline})))
-        w  (csv/writer writer ** :delimiter separator :quotechar quote :lineterminator nl)]
-    (.writerows w (map #(mapv str %) data))))
+                                          {:newline newline})))]
+    (doseq [row data]
+      (write-record writer row separator quote quote?)
+      (.write writer nl))))
