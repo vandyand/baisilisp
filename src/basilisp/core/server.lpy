@@ -1,11 +1,14 @@
 (ns basilisp.core.server
-  "Socket server lifecycle support compatible with the portable core.server subset."
-  (:require [basilisp.contrib.prepl :as prepl]
-            [basilisp.edn :as edn])
+  "Socket server lifecycle and REPL support compatible with ``clojure.core.server``."
+  (:require [basilisp.contrib.prepl]
+            [basilisp.edn :as edn]
+            [basilisp.stacktrace :as stacktrace])
   (:import io
            socketserver
            basilisp.contrib.prepl_server
-           basilisp.contrib.core_server))
+           basilisp.contrib.core_server
+           basilisp.contrib.repl_session
+           basilisp.lang.compiler))
 
 (def ^:dynamic *session*
   "The current socket-server session, bound while an ``:accept`` function runs."
@@ -13,15 +16,99 @@
 
 (def prepl
   "The structured pREPL evaluator from :lpy:ns:`basilisp.contrib.prepl`."
-  prepl/prepl)
+  basilisp.contrib.prepl/prepl)
 
 (def io-prepl
   "Run an EDN pREPL over the dynamic ``*in*`` and ``*out*`` streams."
-  prepl/io-prepl)
+  basilisp.contrib.prepl/io-prepl)
 
 (def remote-prepl
   "Forward a local pREPL reader and callback to a remote ``io-prepl`` endpoint."
-  prepl/remote-prepl)
+  basilisp.contrib.prepl/remote-prepl)
+
+(defn repl-init
+  "Initialize the conventional ``user`` REPL namespace and helper functions.
+
+  This is the portable counterpart of ``clojure.core.server/repl-init`` and is
+  also suitable as the ``:init`` hook for a custom stream REPL."
+  []
+  (basilisp.contrib.repl_session/create-session 'user)
+  (in-ns 'user)
+  (require '[basilisp.repl :refer :all])
+  nil)
+
+(defn repl-read
+  "Read one form from ``*in*`` and turn ``:repl/quit`` into ``request-exit``.
+
+  ``request-prompt`` is accepted for compatibility with Clojure's ``:read``
+  hook signature. Basilisp's portable text readers do not expose the JVM
+  line-start sentinel, so it is not returned."
+  [_request-prompt request-exit]
+  (let [form (read *in* false request-exit)]
+    (if (= :repl/quit form)
+      request-exit
+      form)))
+
+(defn- print-repl-error [out error]
+  (binding [*out* out]
+    (stacktrace/print-throwable error)
+    (.flush out)))
+
+(defn repl
+  "Run an ordinary interactive REPL over the dynamic ``*in*`` and ``*out*``.
+
+  The REPL starts in ``user``, includes :lpy:ns:`basilisp.repl` helpers, prints
+  readable results and prompts, preserves dynamic REPL history, and closes when
+  the client closes its input or evaluates ``:repl/quit``. It is suitable for
+  use as a ``start-server`` ``:accept`` function."
+  []
+  (let [input   *in*
+        output  *out*
+        errors  *err*
+        session (basilisp.contrib.repl_session/create-session 'user)
+        _       (binding [*ns* (.-namespace session)]
+                  (repl-init))
+        ctx     (basilisp.lang.compiler.CompilerContext. "<Socket REPL Input>")
+        emit    (fn [tag value]
+                  (let [stream (if (= "err" tag) errors output)]
+                    (.write stream value)
+                    (.flush stream)))]
+    (loop []
+      (.write output (str (.-namespace session) "=> "))
+      (.flush output)
+      (let [read-result (try
+                          (binding [*ns* (.-namespace session)]
+                            (read+string {:eof nil} input))
+                          (catch python/Exception error
+                            [:reader-error error]))]
+        (cond
+          (nil? read-result)
+          nil
+
+          (= :reader-error (first read-result))
+          (do
+            (print-repl-error errors (second read-result))
+            (recur))
+
+          :else
+          (let [[form _source] read-result
+                evaluation     (basilisp.contrib.repl_session/evaluate-form
+                                session form
+                                ** :context ctx :emit emit :stdin input)]
+            (cond
+              (.-quit evaluation)
+              nil
+
+              (.-error evaluation)
+              (do
+                (print-repl-error errors (.-error evaluation))
+                (recur))
+
+              :else
+              (do
+                (binding [*out* output]
+                  (prn (.-value evaluation)))
+                (recur)))))))))
 
 (defn- resolve-accept [accept]
   (let [accept (if (symbol? accept)

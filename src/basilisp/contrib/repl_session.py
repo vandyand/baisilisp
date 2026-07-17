@@ -49,6 +49,11 @@ class ReplSession:
         return cls(eval_ns)
 
 
+def create_session(namespace: sym.Symbol) -> ReplSession:
+    """Create a session from Basilisp code without exposing Python class syntax."""
+    return ReplSession.create(namespace)
+
+
 @dataclass(frozen=True)
 class Evaluation:
     """The outcome of compiling and evaluating one already-read form."""

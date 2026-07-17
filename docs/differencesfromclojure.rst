@@ -277,9 +277,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   Reader/Writer values.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
-  ``io-prepl``/``remote-prepl`` support through the ``clojure.core.server``
-  import path. Its generic listener uses Python text streams and a process-local
-  registry; JVM socket REPL hooks remain intentionally unavailable.
+  ``repl``/``io-prepl``/``remote-prepl`` support through the
+  ``clojure.core.server`` import path. Its generic listener uses Python text
+  streams and a process-local registry. ``repl-read`` retains Clojure's quit
+  behavior but cannot expose the JVM reader's line-start prompt sentinel.
 * :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
 * :lpy:ns:`basilisp.instant` provides the portable timestamp parser from
   ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`

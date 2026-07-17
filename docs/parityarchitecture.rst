@@ -385,10 +385,13 @@ identifiers, authentication hooks, cancellation, and CLI exposure.
 manage named TCP listeners through an atomic, process-local registry. Its accept
 function receives dynamic text-stream bindings and optional configured arguments,
 so ``io-prepl`` can serve directly while ordinary text handlers remain possible.
-It defaults to loopback binding and daemon threads, rejects duplicate names
-without leaking a bound socket, and accepts Clojure-style EDN property entries.
-The JVM socket REPL callbacks remain excluded; structured pREPL is the portable
-interactive protocol.
+``repl`` also supplies the prompt-oriented protocol from the conventional
+``user`` namespace, including REPL helper functions and the shared evaluator's
+history and error behavior; ``:repl/quit`` and EOF end a connection. It defaults
+to loopback binding and daemon threads, rejects duplicate names without leaking a
+bound socket, and accepts Clojure-style EDN property entries. ``repl-read``
+cannot reproduce the JVM reader's line-start prompt sentinel, but otherwise
+provides the standard callback and quit semantics.
 
 The nREPL adapter also serves ``macroexpand`` requests through the same
 namespace-resolution context used by evaluation. It supports one-step, full,

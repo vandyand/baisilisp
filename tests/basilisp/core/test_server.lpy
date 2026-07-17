@@ -2,6 +2,7 @@
   (:require [basilisp.test :refer [deftest is]]
             [basilisp.core.server :as server]
             [basilisp.contrib.prepl :as prepl]
+            [basilisp.string :as str]
             [clojure.core.server :as clj-server])
   (:import io
            socket))
@@ -26,6 +27,15 @@
     (.write out text)
     (.flush out)
     (.readline in)))
+
+(defn- repl-request [port text]
+  (with-open [client (socket/create_connection (python/tuple ["127.0.0.1" port]) ** :timeout 2)
+              out    (io/TextIOWrapper (.makefile client "wb") ** :encoding "utf-8" :write-through true)
+              in     (io/TextIOWrapper (.makefile client "rb") ** :encoding "utf-8")]
+    (.write out text)
+    (.flush out)
+    (.shutdown client socket/SHUT_WR)
+    (.read in)))
 
 (deftest start-stop-and-import-path-test
   (let [name "core-server-basic"
@@ -97,5 +107,28 @@
                           #(swap! events conj %))
       (is (= :ret (:tag (first @events))))
       (is (= 42 (:val (first @events))))
+      (finally
+        (server/stop-server name)))))
+
+(deftest core-server-repl-read-and-quit-test
+  (binding [*in* (io/StringIO "42")]
+    (is (= 42 (server/repl-read :prompt :exit))))
+  (binding [*in* (io/StringIO ":repl/quit")]
+    (is (= :exit (server/repl-read :prompt :exit)))))
+
+(deftest core-server-repl-end-to-end-test
+  (let [name "core-server-repl"
+        s    (server/start-server {:port 0 :name name :accept server/repl})]
+    (try
+      (let [response (repl-request (server-port s)
+                                   "(+ 20 22)\n(+ *1 1)\n(/ 1 0)\n(+ 6 1)\n:repl/quit\n(+ 100 1)\n")]
+        (is (str/includes? response "user=> "))
+        (is (str/includes? response "42"))
+        (is (str/includes? response "43"))
+        (is (str/includes? response "builtins.ZeroDivisionError"))
+        (is (str/includes? response "7"))
+        (is (not (str/includes? response "101"))))
+      (is (str/includes? (repl-request (server-port s) "(+ 4 5)\n:repl/quit\n")
+                         "9"))
       (finally
         (server/stop-server name)))))
