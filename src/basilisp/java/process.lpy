@@ -1,0 +1,19 @@
+(ns basilisp.java.process
+  "Portable ``clojure.java.process`` entry points backed by :lpy:ns:`basilisp.process`."
+  (:require [basilisp.process :as process]))
+
+;; Define public Vars rather than merely referring them. Qualified calls through
+;; ``clojure.java.process`` and namespace introspection must both expose the
+;; standard Clojure surface.
+(def to-file process/to-file)
+(def from-file process/from-file)
+(def start process/start)
+(def stdin process/stdin)
+(def stdout process/stdout)
+(def stderr process/stderr)
+(def exit-ref process/exit-ref)
+(def io-task process/io-task)
+(def exec process/exec)
+
+;; Basilisp extension for safely draining both Popen streams.
+(def communicate process/communicate)

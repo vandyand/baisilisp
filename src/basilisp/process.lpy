@@ -159,6 +159,16 @@
               timeout-val))
           (.wait process))))))
 
+(defn io-task
+  "Run a zero-argument I/O task in the dynamically-bound future executor.
+
+  This portable counterpart of ``clojure.java.process/io-task`` preserves the
+  caller's dynamic bindings and returns a dereferenceable Future. Basilisp owns
+  the executor lifecycle, so callers do not need to create a worker pool merely
+  to drain a subprocess stream concurrently."
+  [f]
+  (future-call f))
+
 (defn ^:private wrapped-file-context-manager
   "Wrap a potential file in a context manager for ``start``.
 

@@ -1,15 +1,19 @@
 (ns tests.basilisp.test-process
   (:import os
            pathlib
+           random
            subprocess
            sys)
   (:require
+   [clojure.java.process :as clj-process]
    [basilisp.process :as process]
    [basilisp.string :as str]
    [basilisp.test :as test :refer [deftest is are testing]]
    [basilisp.test.fixtures :as fixtures :refer [*tempdir*]]))
 
 (test/use-fixtures :each fixtures/tempdir)
+
+(def ^:dynamic *io-task-context* nil)
 
 (deftest is-file-like?-test
   (are [v] (true? (process/is-file-like? v))
@@ -69,6 +73,42 @@
 
   (is (thrown? basilisp.lang.exception/ExceptionInfo
                (process/to-file nil))))
+
+(deftest clojure-java-process-import-path-and-append-test
+  (is (every? (set (map name (keys (ns-publics 'basilisp.java.process))))
+              ["to-file" "from-file" "start" "stdin" "stdout" "stderr"
+               "exit-ref" "io-task" "exec"]))
+  (is (= (str "alias" os/linesep)
+         (clj-process/exec sys/executable "-c" "print('alias')")))
+  (let [output (pathlib/Path *tempdir* "append-output.txt")]
+    (spit output "before\n")
+    (doseq [line ["middle" "after"]]
+      (is (= 0 @(clj-process/exit-ref
+                 (clj-process/start {:out (clj-process/to-file output :append true)}
+                                    sys/executable "-c" (str "print('" line "')"))))))
+    (is (= "before\nmiddle\nafter\n" (slurp output)))))
+
+(deftest clojure-java-process-io-task-preserves-dynamic-context-test
+  (let [task (binding [*io-task-context* :captured]
+               (clj-process/io-task #(vector *io-task-context* "done")))]
+    (is (= [:captured "done"] @task))))
+
+(deftest clojure-java-process-randomized-stream-and-environment-test
+  (let [rng      (random/Random 20260717)
+        prefixes ["plain" "spaces and tabs\t" "quote-'\"-equals=" "line\nbreak"]
+        command  "import os, sys; print(os.environ['PAYLOAD']); print(os.environ['PAYLOAD'][::-1], file=sys.stderr)"]
+    (doseq [index (range 32)]
+      (let [payload        (str (nth prefixes (mod index (count prefixes)))
+                                "-" (.randint rng 0 1000000000))
+            process        (clj-process/start {:clear-env true
+                                                :env {"PAYLOAD" payload}
+                                                :encoding "utf-8"}
+                                               sys/executable "-c" command)
+            [stdout stderr] (clj-process/communicate process)]
+        ;; Python text-mode subprocess streams normalize platform newlines.
+        (is (= (str payload "\n") stdout))
+        (is (= (str (apply str (reverse payload)) "\n") stderr))
+        (is (= 0 @(clj-process/exit-ref process)))))))
 
 (deftest exit-ref-test
   (= 0 @(process/exit-ref (process/start sys/executable "-c" "import time; time.sleep(1)")))

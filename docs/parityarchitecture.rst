@@ -730,9 +730,13 @@ Existing ``basilisp.io``, ``shell``, ``process``, ``reflect``, and ``url``
 namespaces are Python-native ports where their data contract is useful. Further
 work should extend those namespaces with standard-library values such as
 ``pathlib.Path``, ``subprocess.CompletedProcess``, ``urllib.parse`` results,
-and Python inspection data. It must not provide Java package aliases, classpath
-changes, JDBC result-set sequences, browser/Javadoc wrappers, or Java-bean
-coercion. Those APIs expose services that Python already models differently.
+and Python inspection data. ``basilisp.java.process`` is the deliberately narrow
+exception to the alias rule: its Clojure 1.12 process surface maps cleanly to
+``subprocess.Popen`` and is therefore available through the automatic
+``clojure.java.process`` alias, with documented Python stream and Future values.
+Do not extend that exception to classpath changes, JDBC result-set sequences,
+browser/Javadoc wrappers, or Java-bean coercion. Those APIs expose services that
+Python already models differently.
 
 ``basilisp.xml`` is a deliberately small data-oriented XML adapter and is
 available through the usual ``clojure.xml`` import-path alias. It translates

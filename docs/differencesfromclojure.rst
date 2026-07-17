@@ -286,6 +286,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`
   values rather than Java date, calendar, or timestamp classes.
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io``
+* :lpy:ns:`basilisp.java.process` provides the ``clojure.java.process``
+  import path over Python :external:py:class:`subprocess.Popen` objects. Its
+  text-mode pipes follow Python newline normalization and ``io-task`` uses the
+  Basilisp Future executor rather than JVM daemon threads.
 * :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
   precision integers mean its ``*-exact`` functions do not overflow, and its
   ``round`` function does not have JVM ``long`` saturation behavior.
