@@ -2145,7 +2145,6 @@ def lrepr(
     core_ns = Namespace.get(CORE_NS_SYM)
     assert core_ns is not None
     print_dup = core_ns.find(sym.symbol(PRINT_DUP_VAR_NAME)).value  # type: ignore
-    print_fn = None
     if print_methods:
         print_method = core_ns.find(sym.symbol(PRINT_METHOD_VAR_NAME)).value  # type: ignore
         print_dup_method = core_ns.find(sym.symbol(PRINT_DUP_METHOD_VAR_NAME)).value  # type: ignore
@@ -2158,7 +2157,7 @@ def lrepr(
                 multifn.default
             )
 
-        def print_fn(value) -> str | None:
+        def _custom_print_fn(value) -> str | None:
             writer = io.StringIO()
             if print_dup:
                 method, default = selected_method(print_dup_method, value)
@@ -2172,22 +2171,26 @@ def lrepr(
                 print_method(value, writer)
             return writer.getvalue()
 
-    kwargs = dict(
-        human_readable=human_readable,
-        print_dup=print_dup,
-        print_length=core_ns.find(  # type: ignore
+        custom_print_fn = _custom_print_fn
+    else:
+        custom_print_fn = None
+
+    kwargs = {
+        "human_readable": human_readable,
+        "print_dup": print_dup,
+        "print_length": core_ns.find(  # type: ignore
             sym.symbol(PRINT_LENGTH_VAR_NAME)
         ).value,
-        print_level=core_ns.find(  # type: ignore
+        "print_level": core_ns.find(  # type: ignore
             sym.symbol(PRINT_LEVEL_VAR_NAME)
         ).value,
-        print_meta=core_ns.find(sym.symbol(PRINT_META_VAR_NAME)).value,  # type: ignore
-        print_namespace_maps=core_ns.find(sym.symbol(PRINT_NAMESPACE_MAPS_VAR_NAME)).value,  # type: ignore
-        print_readably=core_ns.find(  # type: ignore
+        "print_meta": core_ns.find(sym.symbol(PRINT_META_VAR_NAME)).value,  # type: ignore
+        "print_namespace_maps": core_ns.find(sym.symbol(PRINT_NAMESPACE_MAPS_VAR_NAME)).value,  # type: ignore
+        "print_readably": core_ns.find(  # type: ignore
             sym.symbol(PRINT_READABLY_VAR_NAME)
         ).value,
-        print_fn=print_fn,
-    )
+        "print_fn": custom_print_fn,
+    }
     if skip_root_custom:
         return lobj._lrepr(o, **kwargs)  # pylint: disable=protected-access
     return lobj.lrepr(o, **kwargs)

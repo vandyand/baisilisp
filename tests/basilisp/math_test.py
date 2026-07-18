@@ -95,7 +95,6 @@ def test_seeded_floating_point_differential_fuzz():
         "log": math.log,
         "log10": math.log10,
         "sqrt": math.sqrt,
-        "cbrt": math.cbrt,
         "sinh": math.sinh,
         "cosh": math.cosh,
         "tanh": math.tanh,
@@ -103,6 +102,8 @@ def test_seeded_floating_point_differential_fuzz():
         "log1p": math.log1p,
         "ulp": math.ulp,
     }
+    if hasattr(math, "cbrt"):
+        unary["cbrt"] = math.cbrt
 
     for _ in range(2_000):
         positive = rng.uniform(1e-300, 700.0)
@@ -168,7 +169,11 @@ def test_seeded_integer_and_navigation_stress():
 def test_cbrt_fallback_and_adversarial_float_cases():
     cbrt_fallback = _math_var("cbrt-fallback")
     for value in (-1e300, -27.0, -1.0, 1.0, 8.0, 1e300):
-        assert math.isclose(cbrt_fallback(value), math.cbrt(value), rel_tol=1e-14)
+        actual = cbrt_fallback(value)
+        if hasattr(math, "cbrt"):
+            assert math.isclose(actual, math.cbrt(value), rel_tol=1e-14)
+        else:
+            assert math.isclose(actual * actual * actual, value, rel_tol=1e-14)
     assert math.copysign(1.0, cbrt_fallback(-0.0)) == -1.0
     assert cbrt_fallback(math.inf) == math.inf
     assert cbrt_fallback(-math.inf) == -math.inf
