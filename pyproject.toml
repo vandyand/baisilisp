@@ -83,6 +83,7 @@ basilisp_test_runner = "basilisp.contrib.pytest.testrunner"
 [tool.maturin]
 manifest-path = "rust/Cargo.toml"
 module-name = "basilisp._lang"
+python-source = "src"
 include = [{ path = "LICENSE", format = "sdist" }]
 
 [build-system]
