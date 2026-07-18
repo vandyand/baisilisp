@@ -207,7 +207,7 @@ def map_lrepr(  # pylint: disable=too-many-locals
     return f"{ns_prefix}{start}{seq_lrepr}{end}"
 
 
-@lrepr.register(dict)
+@lrepr.register(dict)  # type: ignore[attr-defined, untyped-decorator]
 def _lrepr_py_dict(o: dict, **kwargs: Unpack[PrintSettings]) -> str:
     return f"#py {map_lrepr(o.items, '{', '}', **kwargs)}"
 
@@ -411,11 +411,15 @@ class PersistentSortedMap(PersistentMap[K, V]):
     def comparator(self):
         return self._comparator
 
-    def _sorted_items(self):
+    def _sorted_items(self) -> list[tuple[K, V]]:
         compare = _comparator_fn(self._comparator)
+
+        def compare_entries(left: tuple[K, V], right: tuple[K, V]) -> int:
+            return compare(left[0], right[0])
+
         return sorted(
             self._inner.items(),
-            key=functools.cmp_to_key(lambda left, right: compare(left[0], right[0])),
+            key=functools.cmp_to_key(compare_entries),
         )
 
     def _new(self, m: "_Map[K, V]", meta: IPersistentMap | None = None):
@@ -474,9 +478,7 @@ class PersistentSortedMap(PersistentMap[K, V]):
     def seq(self) -> ISeq[IMapEntry[K, V]] | None:
         if len(self._inner) == 0:
             return None
-        return iterator_sequence(
-            (MapEntry.of(k, v) for k, v in self._sorted_items())
-        )
+        return iterator_sequence((MapEntry.of(k, v) for k, v in self._sorted_items()))
 
     def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
         for k, v in self._sorted_items():

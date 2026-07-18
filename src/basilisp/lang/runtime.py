@@ -1152,6 +1152,7 @@ def local_var(name: sym.Symbol) -> Var:
         _LOCAL_VAR_NS = Namespace(sym.symbol("basilisp.local-vars"))
     return Var(_LOCAL_VAR_NS, name, dynamic=True)
 
+
 T = TypeVar("T")
 
 

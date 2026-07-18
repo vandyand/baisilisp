@@ -269,6 +269,7 @@ warn_unused_ignores = true
 
 [[tool.mypy.overrides]]
 module = [
+    "_pytest.*",
     "prompt_toolkit.*",
     "pygments.*",
     "pytest.*",

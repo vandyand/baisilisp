@@ -8,9 +8,10 @@ from collections.abc import Callable, Iterable, Iterator
 from functools import cache
 from pathlib import Path
 from types import GeneratorType
-from typing import cast
+from typing import Any, cast
 
 import pytest
+from _pytest.nodes import Node
 from _pytest.runner import runtestprotocol
 
 from basilisp import main as basilisp
@@ -435,25 +436,10 @@ class BasilispTestItem(pytest.Item):
         self._fixture_manager = fixture_manager
 
     @classmethod
-    def from_parent(  # pylint: disable=arguments-differ,too-many-arguments
-        cls,
-        parent: "BasilispFile",
-        name: str,
-        run_test: TestFunction,
-        namespace: runtime.Namespace,
-        filename: str,
-        fixture_manager: FixtureManager,
-    ):
+    def from_parent(cls, parent: Node, **kwargs: Any) -> "BasilispTestItem":
         """Create a new BasilispTestItem from the parent Node."""
         # https://github.com/pytest-dev/pytest/pull/6680
-        return super().from_parent(
-            parent,
-            name=name,
-            run_test=run_test,
-            namespace=namespace,
-            filename=filename,
-            fixture_manager=fixture_manager,
-        )
+        return super().from_parent(parent, **kwargs)
 
     def setup(self) -> None:
         if not self._fixture_manager.requires_wrapped_execution:

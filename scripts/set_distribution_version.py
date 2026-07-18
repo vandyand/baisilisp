@@ -47,7 +47,9 @@ def main() -> None:
         count=1,
     )
     if replacements != 1:
-        raise SystemExit("could not locate the Basilisp native package version in Cargo.lock")
+        raise SystemExit(
+            "could not locate the Basilisp native package version in Cargo.lock"
+        )
     lockfile.write_text(updated, encoding="utf-8")
 
 

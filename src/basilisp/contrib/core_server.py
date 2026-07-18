@@ -7,9 +7,12 @@ import socketserver
 import threading
 
 if not hasattr(builtins, "_basilisp_core_server_registry"):
-    builtins._basilisp_core_server_registry = (threading.RLock(), {})
+    builtins._basilisp_core_server_registry = (  # type: ignore[attr-defined]
+        threading.RLock(),
+        {},
+    )
 
-_LOCK, _SERVERS = builtins._basilisp_core_server_registry
+_LOCK, _SERVERS = builtins._basilisp_core_server_registry  # type: ignore[attr-defined]
 
 
 def register_and_start(

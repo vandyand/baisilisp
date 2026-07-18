@@ -215,7 +215,10 @@ class PersistentSortedSet(PersistentSet[T]):
         return self._comparator
 
     def _sorted_members(self):
-        return sorted(self._inner.keys(), key=functools.cmp_to_key(_comparator_fn(self._comparator)))
+        return sorted(
+            self._inner.keys(),
+            key=functools.cmp_to_key(_comparator_fn(self._comparator)),
+        )
 
     def _new(self, m: "_Map[T, T]", meta: IPersistentMap | None = None):
         return PersistentSortedSet(
@@ -271,7 +274,11 @@ def s(*members: T, meta: IPersistentMap | None = None) -> PersistentSet[T]:
 
 
 def sorted_set(
-    comparator: Callable[[T, T], int | bool], *members: T, meta: IPersistentMap | None = None
+    comparator: Callable[[T, T], int | bool],
+    *members: T,
+    meta: IPersistentMap | None = None,
 ) -> PersistentSortedSet[T]:
     """Create a persistent set whose iteration order follows ``comparator``."""
-    return PersistentSortedSet(_Map((member, member) for member in members), comparator, meta=meta)
+    return PersistentSortedSet(
+        _Map((member, member) for member in members), comparator, meta=meta
+    )

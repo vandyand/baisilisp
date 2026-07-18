@@ -56,7 +56,7 @@ class SeekableTextReader(io.TextIOBase):
         self._position += len(value)
         return value
 
-    def readline(self, size: int | None = -1) -> str:
+    def readline(self, size: int | None = -1) -> str:  # type: ignore[override]
         """Read one bounded line while preserving the seekable input view.
 
         ``TextIOBase``'s default implementation raises ``UnsupportedOperation``.
@@ -131,7 +131,9 @@ def forward_remote_prepl(
         or not math.isfinite(connect_timeout)
         or connect_timeout <= 0
     ):
-        raise ValueError("connect-timeout must be a finite positive number when supplied")
+        raise ValueError(
+            "connect-timeout must be a finite positive number when supplied"
+        )
 
     client = socket.create_connection((host, port), timeout=connect_timeout)
     client.settimeout(None)

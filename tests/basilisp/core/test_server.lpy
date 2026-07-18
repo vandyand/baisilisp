@@ -13,9 +13,9 @@
     (.flush *out*)))
 
 (defn- self-stopping-accept []
+  (server/stop-server)
   (.write *err* "stopping\n")
-  (.flush *err*)
-  (server/stop-server))
+  (.flush *err*))
 
 (defn- server-port [server]
   (nth (.-server_address server) 1))
