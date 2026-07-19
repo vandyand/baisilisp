@@ -41,8 +41,10 @@ jobs:
           - version: '3.14'
             tox-env: py314,py314-mypy,py314-lint,bandit,format
           - os: windows-latest
-            version: '3.14'
-            tox-env: py314,py314-lint
+            # immutables does not yet ship a Windows wheel compatible with
+            # CPython 3.14. Linux and macOS retain 3.14 coverage.
+            version: '3.13'
+            tox-env: py313,py313-lint
           - os: macos-latest
             version: '3.14'
             tox-env: py314,py314-lint
