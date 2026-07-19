@@ -1688,9 +1688,10 @@
        (instance? numbers/Number x)))
 
 (defn num
-  "Return ``x`` as a number, or raise ``TypeError`` when it is not numeric."
+  "Return ``x`` unchanged when it is numeric or ``nil``, or raise ``TypeError``
+  when it is not numeric."
   [x]
-  (if (number? x)
+  (if (or (nil? x) (number? x))
     x
     (throw (python/TypeError #f"Expected a number: {x}"))))
 

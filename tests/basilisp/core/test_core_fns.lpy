@@ -61,9 +61,24 @@
     (is (false? (bound? unbound)))))
 
 (deftest num-test
-  (is (= 1 (num 1)))
-  (is (= 1.5 (num 1.5)))
-  (is (thrown? python/TypeError (num "1"))))
+  (are [n] (= n (num n))
+    nil
+    1
+    -1
+    1.5
+    1/2
+    1N
+    1.0M
+    ##Inf)
+  (are [v] (thrown? python/TypeError (num v))
+    true
+    false
+    ""
+    "1"
+    []
+    {}
+    #{})
+  (is (thrown? python/TypeError (num (fn [] nil)))))
 
 (deftest unsigned-bit-shift-right-test
   (is (= 9223372036854775807 (unsigned-bit-shift-right -1 1)))
