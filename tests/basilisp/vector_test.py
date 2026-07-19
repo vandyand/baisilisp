@@ -1,3 +1,4 @@
+import abc
 import pickle
 
 import pytest
@@ -75,6 +76,21 @@ def test_vector_empty():
 
 def test_vector_bool():
     assert True is bool(vec.EMPTY)
+
+
+class AbstractSized(abc.ABC):
+    @abc.abstractmethod
+    def __len__(self): ...
+
+
+def test_vector_equality_does_not_size_nonsequential_class_objects():
+    """Classes may expose ``__len__`` even though their metaclass is not sized."""
+    assert hasattr(AbstractSized, "__len__")
+    with pytest.raises(TypeError):
+        len(AbstractSized)
+
+    assert vec.v(AbstractSized) != AbstractSized
+    assert vec.v(AbstractSized, 1) != AbstractSized
 
 
 def test_contains():

@@ -135,8 +135,6 @@ class PersistentVector(
     def __eq__(self, other):
         if self is other:
             return True
-        if hasattr(other, "__len__") and len(self) != len(other):
-            return False
         return seq_equals(self, other)
 
     def __getitem__(self, item):

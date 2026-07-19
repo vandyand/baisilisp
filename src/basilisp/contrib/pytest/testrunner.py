@@ -20,6 +20,7 @@ from basilisp.lang import map as lmap
 from basilisp.lang import runtime as runtime
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
+from basilisp.lang import volatile as volatile
 from basilisp.lang.obj import lrepr
 from basilisp.lang.util import munge
 from basilisp.util import Maybe
@@ -27,6 +28,8 @@ from basilisp.util import Maybe
 _EACH_FIXTURES_META_KW = kw.keyword("each-fixtures", "basilisp.test")
 _ONCE_FIXTURES_NUM_META_KW = kw.keyword("once-fixtures", "basilisp.test")
 _TEST_META_KW = kw.keyword("test", "basilisp.test")
+_TEST_FAILURES_KW = kw.keyword("failures")
+_TEST_PASSES_KW = kw.keyword("passes")
 
 CORE_NS = "basilisp.core"
 CORE_NS_SYM = sym.symbol(CORE_NS)
@@ -34,6 +37,8 @@ OUT_VAR_NAME = "*out*"
 OUT_VAR_SYM = sym.symbol(OUT_VAR_NAME, ns=CORE_NS)
 ERR_VAR_NAME = "*err*"
 ERR_VAR_SYM = sym.symbol(ERR_VAR_NAME, ns=CORE_NS)
+TEST_FAILURES_VAR_SYM = sym.symbol("*test-failures*", ns="basilisp.test")
+TEST_PASSES_VAR_SYM = sym.symbol("*test-passes*", ns="basilisp.test")
 
 
 def pytest_configure(config):
@@ -364,6 +369,25 @@ class BasilispFile(pytest.File):
         assert exc is not None, "Must have an exception or module"
         raise exc
 
+    @staticmethod
+    def _collection_report_bindings() -> tuple[
+        lmap.PersistentMap,
+        volatile.Volatile[vec.PersistentVector],
+        volatile.Volatile[int],
+    ]:
+        """Create a report context for assertions evaluated while a namespace loads.
+
+        Most assertions are enclosed by ``deftest`` and are invoked after collection,
+        but portable Clojure suites may also evaluate assertions at namespace load time.
+        Clojure's runner supplies report counters while loading such namespaces; bind
+        equivalent counters here so collection remains safe and failures are retained.
+        """
+        failures_var = runtime.Var.find_safe(TEST_FAILURES_VAR_SYM)
+        passes_var = runtime.Var.find_safe(TEST_PASSES_VAR_SYM)
+        failures = volatile.Volatile(vec.EMPTY)
+        passes = volatile.Volatile(0)
+        return lmap.map({failures_var: failures, passes_var: passes}), failures, passes
+
     def collect(self):
         """Collect all tests from the namespace (module) given.
 
@@ -372,7 +396,11 @@ class BasilispFile(pytest.File):
         Basilisp). BasilispFile.collect fetches those test functions and generates
         BasilispTestItems for PyTest to run the tests."""
         filename = self.path.name
-        module = self._import_module()
+        bindings, collection_failures, collection_passes = (
+            self._collection_report_bindings()
+        )
+        with runtime.bindings(bindings):
+            module = self._import_module()
         ns = module.__basilisp_namespace__
 
         # Ensure the test module was loaded because it was directly
@@ -394,6 +422,25 @@ class BasilispFile(pytest.File):
                 namespace=ns,
                 filename=filename,
                 fixture_manager=FixtureManager(each_fixtures),
+            )
+            self._items.append(item)
+            yield item
+
+        failures = collection_failures.deref()
+        if runtime.to_seq(failures):
+            result = lmap.map(
+                {
+                    _TEST_FAILURES_KW: failures,
+                    _TEST_PASSES_KW: collection_passes.deref(),
+                }
+            )
+            item = BasilispTestItem.from_parent(
+                self,
+                name="namespace-load",
+                run_test=lambda: result,
+                namespace=ns,
+                filename=filename,
+                fixture_manager=FixtureManager(()),
             )
             self._items.append(item)
             yield item

@@ -167,6 +167,48 @@ class TestTestrunner:
         )
 
 
+def test_assertions_evaluated_during_namespace_load_have_a_report_context(
+    pytester: pytest.Pytester,
+):
+    code = """
+    (ns test-collection-assertions
+      (:require [basilisp.test :refer [deftest is]]))
+
+    ;; Some portable Clojure suites contain assertions guarded by runtime feature
+    ;; checks at namespace load time, outside a deftest form.
+    (is true)
+
+    (deftest collected-test
+      (is true))
+    """
+    pytester.makefile(".lpy", test_collection_assertions=code)
+    pytester.syspathinsert()
+
+    result = pytester.runpytest()
+
+    result.assert_outcomes(passed=1)
+
+
+def test_failed_assertions_during_namespace_load_are_reported(
+    pytester: pytest.Pytester,
+):
+    code = """
+    (ns test-collection-failures
+      (:require [basilisp.test :refer [is]]))
+
+    (is false)
+    """
+    pytester.makefile(".lpy", test_collection_failures=code)
+    pytester.syspathinsert()
+
+    result = pytester.runpytest()
+
+    result.assert_outcomes(failed=1)
+    result.stdout.fnmatch_lines(
+        ["FAIL in (namespace-load) (test_collection_failures.lpy:*)"]
+    )
+
+
 def test_fixtures(pytester: pytest.Pytester):
     code = """
     (ns test-fixtures

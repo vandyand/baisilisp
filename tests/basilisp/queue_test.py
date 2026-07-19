@@ -1,3 +1,4 @@
+import abc
 import pickle
 
 import pytest
@@ -36,6 +37,21 @@ def test_queue_interface_membership(interface):
 
 def test_queue_bool():
     assert True is bool(lqueue.EMPTY)
+
+
+class AbstractSized(abc.ABC):
+    @abc.abstractmethod
+    def __len__(self): ...
+
+
+def test_queue_equality_does_not_size_nonsequential_class_objects():
+    """Classes may expose ``__len__`` even though their metaclass is not sized."""
+    assert hasattr(AbstractSized, "__len__")
+    with pytest.raises(TypeError):
+        len(AbstractSized)
+
+    assert lqueue.q(AbstractSized) != AbstractSized
+    assert lqueue.q(AbstractSized, 1) != AbstractSized
 
 
 def test_queue_cons():
