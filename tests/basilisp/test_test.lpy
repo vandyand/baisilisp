@@ -86,3 +86,8 @@
                                       (index-fixture events 3)])]
         (swap! events conj 4))
       (is (= '(1 2 3 4 3 2 1) @events)))))
+
+(deftest portable-thrown-assertion-test
+  ;; This matches clojure-test-suite's ``p/thrown?`` assertion form. ``p`` is
+  ;; deliberately not a runtime alias: ``is`` must dispatch it while expanding.
+  (is (p/thrown? (+ 1 nil))))

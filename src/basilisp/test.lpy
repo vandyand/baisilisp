@@ -195,10 +195,17 @@
     (cond
       (vector? expr)     :default
       (sequential? expr) (let [maybe-f (first expr)]
-                           (if (and (symbol? maybe-f)
-                                    (or (= 'basilisp.core/= maybe-f)
-                                        (#{'thrown-with-msg? 'thrown?} (symbol maybe-f))))
-                             (symbol (name maybe-f))
+                           (if (symbol? maybe-f)
+                             (cond
+                               (= 'basilisp.core/= maybe-f) '='
+                               (#{'thrown-with-msg? 'thrown?} (symbol maybe-f))
+                               (symbol (name maybe-f))
+                               ;; clojure-test-suite defines this portable assertion
+                               ;; method with Basilisp's pre-0.5 argument order.
+                               ;; Dispatch it to our compatible implementation instead
+                               ;; of evaluating ``p/thrown?`` as a regular function.
+                               (= 'p/thrown? maybe-f) 'portable-thrown?
+                               :else maybe-f)
                              maybe-f))
       :else              :default)))
 
@@ -276,6 +283,23 @@
                      :expr (quote ~expr)
                      :actual e#
                      :expected ~exc-type})))))
+
+(defmethod assert-expr 'portable-thrown?
+  [msg expr]
+  "Support clojure-test-suite's portable ``p/thrown?`` assertion form.
+
+  Unlike :lpy:fn:`thrown?`, this form accepts no exception class and succeeds
+  for any ordinary Python exception."
+  (let [body (rest expr)]
+    `(try
+       (let [result# (do ~@body)]
+         (do-report {:type :fail
+                     :message ~msg
+                     :expr (quote ~expr)
+                     :actual result#
+                     :expected (quote ~expr)}))
+       (catch python/Exception e#
+         e#))))
 
 (defmethod assert-expr :default
   [msg expr]

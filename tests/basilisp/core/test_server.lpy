@@ -12,10 +12,10 @@
     (.write *out* (str prefix line))
     (.flush *out*)))
 
-(defn- self-stopping-accept []
-  (server/stop-server)
+(defn- self-stopping-accept [stopped]
   (.write *err* "stopping\n")
-  (.flush *err*))
+  (.flush *err*)
+  (deliver stopped (server/stop-server)))
 
 (defn- server-port [server]
   (nth (.-server_address server) 1))
@@ -64,10 +64,12 @@
                (server/start-servers {"clojure.server.bad" {:port 0}}))))
 
 (deftest server-session-stop-and-bind-err-test
-  (let [name "core-server-self-stop"
-        s    (server/start-server {:port 0 :name name :accept self-stopping-accept})]
+  (let [name    "core-server-self-stop"
+        stopped (promise)
+        s       (server/start-server {:port 0 :name name :accept self-stopping-accept :args [stopped]})]
     (try
       (is (= "stopping\n" (request (server-port s) "wake\n")))
+      (is (= true (deref stopped 2000 false)))
       (is (nil? (server/stop-server name)))
       (finally
         (server/stop-server name)))))
