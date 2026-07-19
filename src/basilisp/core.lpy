@@ -1899,9 +1899,16 @@
 (defn bigdec
   "Coerce ``x`` to a Python :external:py:class:`decimal.Decimal`\\."
   [x]
-  (if (instance? fractions/Fraction x)
-    (operator/truediv (decimal/Decimal (.-numerator x)) (.-denominator x))
-    (decimal/Decimal x)))
+  ;; Python considers booleans integers and Decimal can represent NaN and
+  ;; infinities, while Clojure's BigDecimal coercion accepts neither.
+  (when (boolean? x)
+    (throw (python/TypeError #f"Expected a finite number: {x}")))
+  (let [result (if (instance? fractions/Fraction x)
+                 (operator/truediv (decimal/Decimal (.-numerator x)) (.-denominator x))
+                 (decimal/Decimal x))]
+    (if (.is_finite result)
+      result
+      (throw (python/TypeError #f"Expected a finite number: {x}")))))
 
 (defn ^:inline bigint
   "Coerce ``x`` to an integer.

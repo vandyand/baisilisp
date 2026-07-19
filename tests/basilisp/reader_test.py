@@ -2,9 +2,11 @@ import datetime
 import io
 import math
 import os
+import random
 import re
 import textwrap
 import uuid
+from decimal import Decimal
 from fractions import Fraction
 from pathlib import Path
 
@@ -545,6 +547,94 @@ class TestScientificNotationLiteral:
     def test_malformed_scientific_notation_literal(self, raw: str):
         with pytest.raises(reader.SyntaxError):
             read_str_first(raw)
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("1e10M", Decimal("1e10")),
+            ("1E+10M", Decimal("1E+10")),
+            ("1E-10M", Decimal("1E-10")),
+            ("-1.25e+8M", Decimal("-1.25e+8")),
+            ("+1.25e+8M", Decimal("+1.25e+8")),
+            ("0e-999M", Decimal("0e-999")),
+            (
+                "999999999999999999999999999999e+123M",
+                Decimal("999999999999999999999999999999e+123"),
+            ),
+        ],
+    )
+    def test_scientific_decimal_literal(self, raw: str, expected: Decimal):
+        assert expected == read_str_first(raw)
+
+    def test_scientific_decimal_literal_fuzz(self):
+        """Exercise exponent signs, casing, precision, and extreme scales."""
+        rng = random.Random(0xDEC1A1)
+        forms: list[str] = []
+        expected: list[Decimal] = []
+        for _ in range(400):
+            sign = rng.choice(("", "-", "+"))
+            integral = str(rng.randrange(0, 10**12))
+            fraction = "".join(
+                str(rng.randrange(10)) for _ in range(rng.randrange(0, 25))
+            )
+            significand = integral if not fraction else f"{integral}.{fraction}"
+            exponent = rng.randrange(-1000, 1001)
+            exponent_sign = "+" if exponent >= 0 and rng.choice((True, False)) else ""
+            raw = (
+                f"{sign}{significand}{rng.choice(('e', 'E'))}{exponent_sign}{exponent}M"
+            )
+            forms.append(raw)
+            expected.append(Decimal(raw[:-1]))
+
+        assert expected == list(reader.read_str("\n".join(forms)))
+
+    @pytest.mark.parametrize("raw", ["1eM", "1e+M", "1e--10M", "1e10MM", "1e10M0"])
+    def test_malformed_scientific_decimal_literal(self, raw: str):
+        with pytest.raises(reader.SyntaxError):
+            read_str_first(raw)
+
+    @pytest.mark.parametrize(
+        "raw,expected",
+        [
+            ("+42", 42),
+            ("+42N", 42),
+            ("+052", 42),
+            ("+0x2a", 42),
+            ("+2r101010", 42),
+            ("+1/2", Fraction(1, 2)),
+            ("+1.25", 1.25),
+            ("+1.25e+2", 125.0),
+            ("+2J", complex(0, 2)),
+        ],
+    )
+    def test_leading_plus_numeric_literals(self, raw: str, expected):
+        assert expected == read_str_first(raw)
+
+    @pytest.mark.parametrize("raw", ["+", "+foo", "+-1", "++1"])
+    def test_leading_plus_non_numeric_symbols(self, raw: str):
+        assert sym.symbol(raw) == read_str_first(raw)
+
+
+def test_trailing_slash_qualified_symbol():
+    expected = sym.symbol("/", ns="foo")
+    assert expected == read_str_first("foo//")
+    # Verify that repeated parsing does not consume the following token while
+    # accepting the unusual but legal trailing-slash spelling.
+    assert [expected, expected] == list(reader.read_str("foo// foo//"))
+
+    for malformed in ("foo///", "foo/bar/", "foo/bar/baz"):
+        with pytest.raises(reader.SyntaxError):
+            read_str_first(malformed)
+
+
+def test_unicode_combining_marks_in_symbols_and_keywords():
+    # U+05B7 HEBREW POINT PATAH follows the Hebrew letter ALEF. Python's
+    # ``\\w`` rejects the combining mark despite it being valid in Clojure
+    # identifiers, so test both bare and qualified reader tokens.
+    assert sym.symbol("אַ") == read_str_first("אַ")
+    assert sym.symbol("אַ", ns="foo") == read_str_first("foo/אַ")
+    assert kw.keyword("אַ") == read_str_first(":אַ")
+    assert kw.keyword("אַ", ns="foo") == read_str_first(":foo/אַ")
 
 
 class TestRatios:

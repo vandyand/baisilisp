@@ -261,7 +261,10 @@
   (are [expected input] (= expected (bigdec input))
     1M   1
     1.5M 1.5
-    1.5M 1.5M))
+    1.5M 1.5M)
+  ;; Python's Decimal accepts these, but Clojure BigDecimal coercion does not.
+  (doseq [input [true false ##NaN ##Inf ##-Inf "NaN" "Infinity" "-Infinity"]]
+    (is (thrown? python/TypeError (bigdec input)))))
 
 (deftest vary-meta-test
   (testing "with lists"

@@ -8,6 +8,7 @@ import io
 import math
 import os
 import re
+import unicodedata
 import uuid
 from collections.abc import Callable, Collection, Iterable, MutableMapping, Sequence
 from datetime import datetime
@@ -59,17 +60,17 @@ from basilisp.util import partition
 
 ns_name_chars = re.compile(r"\w|-|\+|\*|\?|/|\=|\\|!|&|%|>|<|\$|:|\.")
 alphanumeric_chars = re.compile(r"\w")
-begin_num_chars = re.compile(r"[0-9\-]")
+begin_num_chars = re.compile(r"[0-9+\-]")
 maybe_num_chars = re.compile(r"[0-9A-Za-z/.+]")
-integer_literal = re.compile(r"(-?(?:\d|[1-9]\d+))N?")
-float_literal = re.compile(r"(-?(?:\d|[1-9]\d+)(?:\.\d*)?)M?")
-complex_literal = re.compile(r"-?(\d+(?:\.\d*)?)J")
-arbitrary_base_literal = re.compile(r"-?(\d{1,2})r([0-9A-Za-z]+)")
-octal_literal = re.compile("-?0([0-7]+)N?")
+integer_literal = re.compile(r"([+-]?(?:\d|[1-9]\d+))N?")
+float_literal = re.compile(r"([+-]?(?:\d|[1-9]\d+)(?:\.\d*)?)M?")
+complex_literal = re.compile(r"[+-]?(\d+(?:\.\d*)?)J")
+arbitrary_base_literal = re.compile(r"[+-]?(\d{1,2})r([0-9A-Za-z]+)")
+octal_literal = re.compile("[+-]?0([0-7]+)N?")
 hex_chars = re.compile("[0-9A-Fa-f]")
-hex_literal = re.compile("-?0[Xx]([0-9A-Fa-f]+)N?")
-ratio_literal = re.compile(r"(-?\d+)/(\d+)")
-scientific_notation_literal = re.compile(r"-?(\d+(?:\.\d*)?)[Ee]([+\-]?\d+)")
+hex_literal = re.compile("[+-]?0[Xx]([0-9A-Fa-f]+)N?")
+ratio_literal = re.compile(r"([+-]?\d+)/(\d+)")
+scientific_notation_literal = re.compile(r"[+-]?(\d+(?:\.\d*)?)[Ee]([+\-]?\d+)(M?)")
 whitespace_chars = re.compile(r"[\s,]")
 newline_chars = re.compile("(\r\n|\r|\n)")
 fn_macro_args = re.compile("(%)(&|[0-9])?")
@@ -80,6 +81,21 @@ DataReaders = lmap.PersistentMap[sym.Symbol, DataReaderFn]
 GenSymEnvironment = MutableMapping[str, sym.Symbol]
 Resolver = Callable[[sym.Symbol], sym.Symbol]
 LispReaderFn = Callable[["ReaderContext"], LispForm]
+
+
+def _is_ns_name_char(char: str) -> bool:
+    """Return whether ``char`` may continue a symbol or keyword component.
+
+    Python's ``\\w`` accepts Unicode letters and digits but excludes combining
+    marks, which split valid Clojure identifiers such as the Yiddish ``אַ``.
+    Combining marks are valid only as continuations; callers still decide what
+    may begin a token.
+    """
+    return bool(ns_name_chars.match(char)) or (
+        len(char) == 1 and unicodedata.category(char).startswith("M")
+    )
+
+
 W = TypeVar("W", bound=LispReaderFn)
 
 READER_LINE_KW = kw.keyword("line", ns="basilisp.lang.reader")
@@ -632,7 +648,13 @@ def _read_namespaced(
         if char == "/":
             reader.next_char()
             if has_ns:
-                raise ctx.syntax_error("Found '/'; expected word character")
+                # Clojure accepts ``foo//`` as a qualified symbol whose name is
+                # ``/``. A third slash (or a slash after any other name
+                # character) remains malformed.
+                if len(name) == 0:
+                    name.append("/")
+                else:
+                    raise ctx.syntax_error("Found '/'; expected word character")
             elif len(name) == 0:
                 name.append("/")
             else:
@@ -641,7 +663,9 @@ def _read_namespaced(
                 has_ns = True
                 ns = name
                 name = []
-        elif ns_name_chars.match(char) or (name and char == "'") or char == "#":
+        elif _is_ns_name_char(char) or (name and char == "'") or char == "#":
+            if has_ns and name == ["/"]:
+                raise ctx.syntax_error("Found word character after trailing '/'")
             reader.next_char()
             name.append(char)
         elif allowed_suffix is not None and char == allowed_suffix:
@@ -872,7 +896,7 @@ def _read_num(  # noqa: C901  # pylint: disable=too-many-locals,too-many-stateme
         char = reader.peek()
         if char == "-":
             following_char = reader.next_char()
-            if not begin_num_chars.match(following_char):
+            if not following_char.isdigit() and following_char != "-":
                 reader.pushback()
                 try:
                     for _ in chars:
@@ -882,6 +906,17 @@ def _read_num(  # noqa: C901  # pylint: disable=too-many-locals,too-many-stateme
                         "Requested to pushback too many characters onto StreamReader"
                     ) from e
                 return _read_sym(ctx)
+            chars.append(char)
+            continue
+        elif char == "+" and not chars:
+            following_char = reader.next_char()
+            if not following_char.isdigit():
+                reader.pushback()
+                return _read_sym(ctx)
+            chars.append(char)
+            continue
+        elif char == "+":
+            reader.next_char()
             chars.append(char)
             continue
         elif not maybe_num_chars.match(char):
@@ -923,6 +958,11 @@ def _read_num(  # noqa: C901  # pylint: disable=too-many-locals,too-many-stateme
                 return frac.numerator
             return frac
     elif (match := scientific_notation_literal.fullmatch(s)) is not None:
+        if match.group(3) == "M":
+            try:
+                return decimal.Decimal(s[:-1])
+            except decimal.InvalidOperation:  # pragma: no cover
+                raise ctx.syntax_error(f"Invalid number format: {s}") from None
         sig = float(m) if "." in (m := match.group(1)) else int(m)
         exp = int(match.group(2))
         res = sig * (10**exp)
