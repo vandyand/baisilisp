@@ -734,6 +734,17 @@ def seq_equals(s1: Union["ISeq", ISequential], s2: Any) -> bool:
     return True
 
 
+def seq_hash(s: Iterable[Any]) -> int:
+    """Return the shared hash for finite sequential collections.
+
+    Basilisp lists, vectors, queues, and seqs compare by their ordered values,
+    so equal instances must also hash identically when used as map keys or set
+    members. Python's backing persistent collection hashes are type-specific;
+    normalize through a tuple instead.
+    """
+    return hash(tuple(s))
+
+
 T_inner = TypeVar("T_inner")
 
 
@@ -781,7 +792,7 @@ class ISeq(ILispObject, IPersistentCollection[T]):
         return seq_equals(self, other)
 
     def __hash__(self):
-        return hash(tuple(self))
+        return seq_hash(self)
 
     def __iter__(self):
         return _SeqIterator(self)

@@ -2,6 +2,7 @@ import pytest
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
+from basilisp.lang import queue as lqueue
 from basilisp.lang import runtime as runtime
 from basilisp.lang import seq as lseq
 from basilisp.lang import vector as vec
@@ -149,3 +150,27 @@ def test_seq_equals():
 
     assert lseq.sequence(vec.v(1, 2, 3)) == llist.l(1, 2, 3)
     assert False is (lseq.sequence(vec.v(1, 2, 3)) == kw.keyword("abc"))
+
+
+def test_sequential_hash_contract():
+    for size in range(64):
+        values = tuple(range(size))
+        collections = (
+            llist.l(*values),
+            vec.v(*values),
+            lqueue.q(*values),
+            lseq.sequence(values),
+        )
+
+        assert len({hash(coll) for coll in collections}) == 1
+        assert len(set(collections)) == 1
+        assert {coll: index for index, coll in enumerate(collections)} == {
+            collections[0]: len(collections) - 1
+        }
+
+    nested = (
+        llist.l(vec.v(1, 2), llist.l(3, 4)),
+        vec.v(llist.l(1, 2), vec.v(3, 4)),
+        lqueue.q(lseq.sequence((1, 2)), lqueue.q(3, 4)),
+    )
+    assert len(set(nested)) == 1

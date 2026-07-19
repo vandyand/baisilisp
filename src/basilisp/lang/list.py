@@ -4,7 +4,13 @@ from pyrsistent import PList, plist  # noqa # pylint: disable=unused-import
 from pyrsistent._plist import _EMPTY_PLIST  # pylint: disable=import-private-name
 from typing_extensions import Unpack
 
-from basilisp.lang.interfaces import IPersistentList, IPersistentMap, ISeq, IWithMeta
+from basilisp.lang.interfaces import (
+    IPersistentList,
+    IPersistentMap,
+    ISeq,
+    IWithMeta,
+    seq_hash,
+)
 from basilisp.lang.obj import PrintSettings
 from basilisp.lang.obj import seq_lrepr as _seq_lrepr
 from basilisp.lang.seq import EMPTY as _EMPTY_SEQ
@@ -33,7 +39,7 @@ class PersistentList(IPersistentList[T], ISeq[T], IWithMeta):
         return self._inner[item]
 
     def __hash__(self):
-        return hash(self._inner)
+        return seq_hash(self)
 
     def __len__(self):
         return len(self._inner)

@@ -10,6 +10,7 @@ from basilisp.lang.interfaces import (
     ISeq,
     IWithMeta,
     seq_equals,
+    seq_hash,
 )
 from basilisp.lang.obj import PrintSettings
 from basilisp.lang.obj import seq_lrepr as _seq_lrepr
@@ -41,7 +42,7 @@ class PersistentQueue(IPersistentList[T], IWithMeta, ILispObject):
         return seq_equals(self, other)
 
     def __hash__(self):
-        return hash(self._inner)
+        return seq_hash(self)
 
     def __iter__(self):
         yield from self._inner
