@@ -1,6 +1,30 @@
 (ns tests.basilisp.core.test-taps
   (:require
-   [basilisp.test :refer [deftest is]]))
+   [basilisp.test :refer [deftest is]])
+  (:import threading))
+
+(defn- force-contested-update
+  [swap-fn]
+  (let [value   (atom 0)
+        entered (threading/Event)
+        release (threading/Event)
+        worker  (future
+                  (swap-fn value
+                           (fn [old-value]
+                             (.set entered)
+                             (.wait release)
+                             (inc old-value))))]
+    (.wait entered)
+    (swap! value inc)
+    (.set release)
+    [@worker @value]))
+
+(deftest swap-retries-preserve-variadic-arguments-test
+  ;; Force the first update to lose its compare-and-set race. Both functions
+  ;; must retry with their original argument list, rather than treating it as
+  ;; a new argument to the supplied updater.
+  (is (= [2 2] (force-contested-update swap!)))
+  (is (= [[2 1] 2] (force-contested-update swap-vals!))))
 
 (deftest tap-test
   (let [tap-queue (var-get (find-var 'basilisp.core/tap-queue))

@@ -2,14 +2,15 @@
 
 from __future__ import annotations
 
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any, Mapping
 
-try:
+if sys.version_info >= (3, 11):
     import tomllib
-except ModuleNotFoundError:  # pragma: no cover - Python 3.10 only
-    import tomli as tomllib  # type: ignore[import-not-found, no-redef]
+else:  # pragma: no cover - Python 3.10 only
+    import tomli as tomllib
 
 
 _COMPILER_OPTIONS = frozenset(
