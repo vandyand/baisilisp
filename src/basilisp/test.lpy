@@ -197,7 +197,7 @@
       (sequential? expr) (let [maybe-f (first expr)]
                            (if (symbol? maybe-f)
                              (cond
-                               (= 'basilisp.core/= maybe-f) '='
+                               (= 'basilisp.core/= maybe-f) (symbol (name maybe-f))
                                (#{'thrown-with-msg? 'thrown?} (symbol maybe-f))
                                (symbol (name maybe-f))
                                ;; clojure-test-suite defines this portable assertion
