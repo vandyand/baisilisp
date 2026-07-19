@@ -259,6 +259,8 @@ def fraction(numerator: int, denominator: int) -> Fraction:
 
 def inst_from_str(inst_str: str) -> datetime.datetime:
     """Create a datetime instance from an RFC 3339 formatted date string."""
+    if len(inst_str) == 10:
+        return datetime.datetime.fromisoformat(f"{inst_str}T00:00:00+00:00")
     return datetime.datetime.fromisoformat(inst_str)
 
 

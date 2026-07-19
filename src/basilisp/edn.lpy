@@ -9,10 +9,11 @@
   method."
   (:refer-basilisp :exclude [read read-string])
   (:require [basilisp.string :as str])
-  (:import datetime math uuid))
+  (:import datetime decimal fractions math unicodedata uuid))
 
 (declare ^:private read-next
-         ^:private read-sym-or-num)
+         ^:private read-sym-or-num
+         ^:private read-next-consuming-comment)
 
 ;;;;;;;;;;;;;;;;;;;;;;;
 ;; Private Constants ;;
@@ -59,6 +60,8 @@
   "A mapping of special character names to the characters they represent."
   {"newline" "\n"
    "space"   " "
+   "backspace" "\b"
+   "formfeed"  "\f"
    "tab"     "\t"
    "return"  "\r"})
 
@@ -90,6 +93,9 @@
 (def ^:private num-chars
   #"[0-9]")
 
+(def ^:private maybe-num-chars
+  #"[0-9A-Za-z/+.\\-]")
+
 (def ^:private unicode-char
   basilisp.lang.reader/unicode-char)
 
@@ -120,10 +126,14 @@
           (.next-char reader)
           (cond
             has-ns
-            (throw
-             (ex-info "Found '/'; expected word char"
-                      {:char  c
-                       :error :unexpected-char}))
+            ;; A symbol may use '/' as its name component (for example
+            ;; ``foo//``), but no further namespace separator is valid.
+            (if (zero? (count name))
+              (recur ns (conj name "/") has-ns)
+              (throw
+               (ex-info "Found '/'; expected word char"
+                        {:char  c
+                         :error :unexpected-char})))
 
             (zero? (count name))
             (recur ns (conj name "/") has-ns)
@@ -137,10 +147,20 @@
               (recur name [] true))))
 
         (or (re-matches ns-name-chars c)
-            (and (seq name) (= c "'")))
-        (do
-          (.next-char reader)
-          (recur ns (conj name c) has-ns))
+            ;; Python's ``\\w`` excludes Unicode combining marks, while they
+            ;; are valid continuations in Clojure identifiers (for example אַ).
+            (and (= 1 (count c))
+                 (.startswith (unicodedata/category c) "M"))
+            (and (seq name) (= c "'"))
+            (= c "#"))
+        (if (and has-ns (= "/" (first name)))
+          (throw
+           (ex-info "Found name characters after the '/' symbol name"
+                    {:char  c
+                     :error :unexpected-char}))
+          (do
+            (.next-char reader)
+            (recur ns (conj name c) has-ns)))
 
         :else
         (let [ns-str   (when (seq ns) (str/join ns))
@@ -189,6 +209,11 @@
         "false" false
         (symbol name))
       (cond
+        (zero? (count name))
+        (throw
+         (ex-info "Namespaced symbols must contain a name"
+                  {:error :unexpected-char}))
+
         (str/starts-with? name ".")
         (throw
          (ex-info "Symbols starting with '.' may not have a namespace"
@@ -205,6 +230,17 @@
         :else
         (symbol ns name)))))
 
+(defn ^:private read-next-consuming-comment
+  "Read one form, skipping comments and discarded forms. Raise on EOF because a
+  reader macro requiring a following form cannot silently consume the stream."
+  [reader opts]
+  (let [opts (dissoc opts :eof)]
+    (loop [form (read-next reader opts)]
+      (cond
+        (identical? comment form) (recur (read-next reader opts))
+        (identical? eof form) (throw (ex-info "Unexpected EOF in stream" {:error :eof}))
+        :else form))))
+
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Dispatch Readers ;;
 ;;;;;;;;;;;;;;;;;;;;;;
@@ -215,12 +251,13 @@
       "_" :comment
       "{" :set
       "#" :constant
+      ":" :namespaced-map
       :tag)))
 
 (defmethod read-dispatch :comment
   [reader opts]
   (assert-starts reader "_")
-  (read-next reader opts)
+  (read-next-consuming-comment reader opts)
   comment)
 
 (defmethod read-dispatch :constant
@@ -260,20 +297,49 @@
                 coll-set)))]
     (read-coll reader opts set-if-valid "}" "set")))
 
+(defmethod read-dispatch :namespaced-map
+  [reader opts]
+  (assert-starts reader ":")
+  (let [map-ns (read-sym reader)]
+    (when (or (not (symbol? map-ns)) (namespace map-ns))
+      (throw
+       (ex-info "Namespaced map prefix must be an unqualified symbol"
+                {:error :invalid-namespaced-map})))
+    (let [m (read-next reader opts)]
+      (when-not (map? m)
+        (throw
+         (ex-info "Namespaced map prefix must be followed by a map"
+                  {:error :invalid-namespaced-map})))
+      (reduce-kv
+       (fn [result k v]
+         (let [qualified-k (if (and (keyword? k) (nil? (namespace k)))
+                             (keyword (name map-ns) (name k))
+                             k)]
+           (when (contains? result qualified-k)
+             (throw
+              (ex-info "Duplicate keys in namespaced map"
+                       {:error :duplicate-key})))
+           (assoc result qualified-k v)))
+       {}
+       m))))
+
 (defmethod read-dispatch :tag
   [reader {readers :readers read-tag-default :default :as opts}]
+  (when (re-matches whitespace-chars (.peek reader))
+    (throw
+     (ex-info "Whitespace is not allowed after '#'"
+              {:error :unexpected-char})))
   (let [tag (read-sym-or-num reader opts)]
     (when-not (symbol? tag)
       (throw
        (ex-info "Reader tag must be a symbol"
                 {:error :reader-tag-not-symbol})))
-    (if-let [tag-reader (get (if (namespace tag)
-                               readers
-                               default-edn-data-readers)
-                             tag)]
-      (tag-reader (read-next reader opts))
+    (if-let [tag-reader (or (get readers tag)
+                            (when-not (namespace tag)
+                              (get default-edn-data-readers tag)))]
+      (tag-reader (read-next-consuming-comment reader opts))
       (if read-tag-default
-        (read-tag-default tag (read-next reader opts))
+        (read-tag-default tag (read-next-consuming-comment reader opts))
         (throw
          (ex-info (str "No data reader found for tag #" tag)
                   {:error :no-data-reader-for-tag
@@ -304,44 +370,80 @@
 
 (defmethod read-sym-or-num :numeric
   [reader _]
-  (loop [chars    []
-         is-float false]
-    (let [c (.peek reader)]
-      (cond
-        (= c "-")
-        (let [following-token (.next-char reader)]
-          (if-not (re-matches begin-num-chars following-token)
-            (do
-              (.pushback reader)
-              (try
-                (doseq [_ chars]
-                  (.pushback reader))
-                (catch python/IndexError _
-                  (throw
-                   (ex-info "Requested to pushback too many characters onto StreamReader"
-                            {:error :exceeded-pushback}))))
-              (read-sym reader))
-            (recur (conj chars c) is-float)))
+  (let [c               (.peek reader)
+        is-sign?        (or (= c "-") (= c "+"))
+        following-token (when is-sign? (.next-char reader))]
+    (if (and is-sign? (not (re-matches num-chars following-token)))
+      (do
+        (.pushback reader)
+        (read-sym reader))
+      (let [num (loop [chars (if is-sign? [c] [])]
+                  (let [c (.peek reader)]
+                    (if (re-matches maybe-num-chars c)
+                      (do
+                        (.next-char reader)
+                        (recur (conj chars c)))
+                      (str/join chars))))]
+        (cond
+          (re-matches #"[+-]?(?:0|[1-9][0-9]*)N?" num)
+          (python/int (.removesuffix num "N"))
 
-        (= c ".")
-        (if is-float
+          (re-matches #"[+-]?0([0-7]+)N?" num)
+          (let [v (python/int (.removesuffix num "N") 8)]
+            v)
+
+          (re-matches #"[+-]?0[xX]([0-9A-Fa-f]+)N?" num)
+          (python/int (.removesuffix num "N") 16)
+
+          (re-matches #"[+-]?[0-9]{1,2}[rR][0-9A-Za-z]+" num)
+          (let [[_ sign base digits]
+                (re-matches #"([+-]?)([0-9]{1,2})[rR]([0-9A-Za-z]+)" num)
+                base (python/int base)]
+            (when (or (< base 2) (> base 36))
+              (throw
+               (ex-info "Invalid base for integer literal"
+                        {:error :invalid-number
+                         :value num})))
+            (try
+              (let [v (python/int digits base)]
+                (if (= "-" sign) (- v) v))
+              (catch python/ValueError _
+                (throw
+                 (ex-info "Invalid number format"
+                          {:error :invalid-number
+                           :value num})))))
+
+          (re-matches #"[+-]?[0-9]+/[0-9]+" num)
+          (let [[_ numerator denominator]
+                (re-matches #"([+-]?[0-9]+)/([0-9]+)" num)
+                numerator   (python/int numerator)
+                denominator (python/int denominator)]
+            (try
+              (let [ratio (fractions/Fraction numerator denominator)]
+                (if (= 1 (.-denominator ratio))
+                  (.-numerator ratio)
+                  ratio))
+              (catch python/ZeroDivisionError _
+                (throw
+                 (ex-info "Invalid ratio format"
+                          {:error :invalid-number
+                           :value num})))))
+
+          (re-matches #"[+-]?[0-9]+(?:\.[0-9]*)?[Ee][+-]?[0-9]+M?" num)
+          (if (= "M" (last num))
+            (decimal/Decimal (.removesuffix num "M"))
+            (python/float num))
+
+          (re-matches #"[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?M?" num)
+          (if (= "M" (last num))
+            (decimal/Decimal (.removesuffix num "M"))
+            (python/float num))
+
+          :else
           (throw
-           (ex-info "Found extra '.' in float; expected decimal portion"
-                    {:error :extra-decimal-point-in-float}))
-          (do
-            (.next-char reader)
-            (recur (conj chars c) true)))
-
-        (re-matches num-chars c)
-        (do
-          (.next-char reader)
-          (recur (conj chars c) is-float))
-
-        :else
-        (let [num (str/join chars)]
-          (if is-float
-            (python/float num)
-            (python/int num)))))))
+           (ex-info "Invalid number format"
+                    {:error :invalid-number
+                     :value num})))))))
 
 (defmethod read-sym-or-num :whitespace
   [reader opts]
@@ -368,6 +470,7 @@
         "\"" :string
         "\\" :char
         "#"  :dispatch
+        "^"  :meta
         ";"  :comment
         ""   :eof
         :sym-or-num))))
@@ -401,15 +504,19 @@
         (= c "}")
         (do
           (.next-char reader)
-          (try
-            (->> objs
-                 (remove #(or (identical? comment %)
-                              (identical? eof %)))
-                 (apply hash-map))
-            (catch python/IndexError _
+          (let [forms (vec (remove #(or (identical? comment %)
+                                        (identical? eof %))
+                                  objs))]
+            (when (odd? (count forms))
               (throw
                (ex-info "Map should contain an even number of forms"
-                        {:error :invalid-map-literal})))))
+                        {:error :invalid-map-literal})))
+            (let [m (apply hash-map forms)]
+              (when (not= (count m) (/ (count forms) 2))
+                (throw
+                 (ex-info "Duplicate keys in map"
+                          {:error :duplicate-key})))
+              m)))
 
         :else
         (recur (conj objs (read-next reader opts)))))))
@@ -417,8 +524,18 @@
 (defmethod read-next :keyword
   [reader _]
   (assert-starts reader ":")
+  (when (= ":" (.peek reader))
+    (throw
+     (ex-info "Auto-resolved keywords are not supported by EDN"
+              {:error :unexpected-char})))
   (let [[ns name] (read-namespaced reader)]
-    (when (str/includes? name ".")
+    (when (zero? (count name))
+      (throw
+       (ex-info "Keyword must contain a name"
+                {:error :unexpected-char})))
+    (when (and (nil? ns)
+               (str/includes? name ".")
+               (not (str/starts-with? name ".")))
       (throw
        (ex-info "Found '.' in keyword name"
                 {:error :unexpected-char})))
@@ -440,10 +557,26 @@
         (let [escape-char (.next-char reader)]
           (if-let [replacement (get str-escape-chars escape-char)]
             (recur (conj s replacement))
-            (throw
-             (ex-info "Invalid escape sequence in string"
-                      {:escape-sequence (str "\\" escape-char)
-                       :error           :invalid-escape-sequence}))))
+            (if (= escape-char "u")
+              (let [uc (loop [chars []]
+                         (if (= 4 (count chars))
+                           (str/join chars)
+                           (let [c (.next-char reader)]
+                             (when (= c "")
+                               (throw
+                                (ex-info "Unexpected EOF in string"
+                                         {:error :eof})))
+                             (recur (conj chars c)))))]
+                (if (re-matches #"[0-9A-Fa-f]{4}" uc)
+                  (recur (conj s (python/chr (python/int (str "0x" uc) 16))))
+                  (throw
+                   (ex-info "Invalid escape sequence in string"
+                            {:escape-sequence (str "\\u" uc)
+                             :error           :invalid-escape-sequence}))))
+              (throw
+               (ex-info "Invalid escape sequence in string"
+                        {:escape-sequence (str "\\" escape-char)
+                         :error           :invalid-escape-sequence})))))
 
         (= c "\"")
         (do
@@ -456,15 +589,18 @@
 (defmethod read-next :char
   [reader _]
   (assert-starts reader "\\")
-  (let [char-name (loop [s []]
-                    (let [c (.peek reader)]
-                      (if (or (= "" c)
-                              (re-matches whitespace-chars c)
-                              (not (re-matches alphanumeric-chars c)))
-                        (str/join s)
-                        (do
-                          (.advance reader)
-                          (recur (conj s c))))))]
+  (let [first-char (.peek reader)
+        char-name  (if (re-matches whitespace-chars first-char)
+                     (do (.next-char reader) first-char)
+                     (loop [s []]
+                       (let [c (.peek reader)]
+                         (if (or (= "" c)
+                                 (re-matches whitespace-chars c)
+                                 (not (re-matches alphanumeric-chars c)))
+                           (str/join s)
+                           (do
+                             (.advance reader)
+                             (recur (conj s c)))))))]
     (if-let [special-char (get special-chars char-name)]
       special-char
       (if-let [[_ uc] (re-matches unicode-char char-name)]
@@ -484,12 +620,41 @@
                (ex-info "Unsupported character"
                         {:char  char-name
                          :error :unsupported-char})))))
-        (if (not= 1 (count char-name))
-          (throw
-           (ex-info "Unsupported character"
-                    {:char  char-name
-                     :error :unsupported-char}))
-          char-name)))))
+        (if-let [[_ octal] (re-matches #"o([0-7]{1,3})" char-name)]
+          (let [code (python/int octal 8)]
+            (if (<= code 255)
+              (python/chr code)
+              (throw
+               (ex-info "Unsupported character"
+                        {:char  char-name
+                         :error :unsupported-char}))))
+          (if (not= 1 (count char-name))
+            (throw
+             (ex-info "Unsupported character"
+                      {:char  char-name
+                       :error :unsupported-char}))
+            char-name))))))
+
+(defmethod read-next :meta
+  [reader opts]
+  (assert-starts reader "^")
+  (let [m        (read-next-consuming-comment reader opts)
+        meta-map (cond
+                   (symbol? m)  {:tag m}
+                   (keyword? m) {m true}
+                   (map? m)     m
+                   :else
+                   (throw
+                    (ex-info "Expected symbol, keyword, or map for metadata"
+                             {:error :invalid-metadata
+                              :type  (type m)})))
+        obj      (read-next-consuming-comment reader opts)]
+    (if (instance? basilisp.lang.interfaces/IWithMeta obj)
+      (.with-meta obj meta-map)
+      (throw
+       (ex-info "Metadata can only be applied to IWithMeta objects"
+                {:error :invalid-metadata
+                 :type  (type obj)})))))
 
 (defmethod read-next :dispatch
   [reader opts]
@@ -516,8 +681,10 @@
           (recur))))))
 
 (defmethod read-next :eof
-  [_ {eof :eof}]
-  eof)
+  [_ opts]
+  (if (contains? opts :eof)
+    (:eof opts)
+    eof))
 
 (defmethod read-next :sym-or-num
   [reader opts]
@@ -525,15 +692,16 @@
 
 (defn ^:private read-edn
   [reader opts]
-  (let [raw (read-next reader opts)
-        e   (if (identical? comment raw)
-              (get opts :eof eof)
-              raw)]
-    (if (identical? e eof)
-      (throw
-       (ex-info "Unexpected EOF in stream"
-                {:error :eof}))
-      e)))
+  (loop [e (read-next reader opts)]
+    (cond
+      (identical? comment e) (recur (read-next reader opts))
+      (identical? e eof)
+      (if (contains? opts :eof)
+        (:eof opts)
+        (throw
+         (ex-info "Unexpected EOF in stream"
+                  {:error :eof})))
+      :else e)))
 
 ;;;;;;;;;;;;;
 ;; Writers ;;
@@ -682,11 +850,14 @@
   "Read the next object from the input string. If ``nil`` or the empty string,
   returns ``nil``."
   ([s]
-   (read-string s {}))
-  ([s opts]
-   (when-not (and (nil? s) (= "" s))
-     (-> (io/StringIO s)
-         (read opts)))))
+   (read-string {:eof nil} s))
+  ([opts s]
+   ;; Clojure's public EDN API takes options first. Retain Basilisp's former
+   ;; string-first two-argument form as a compatibility alias.
+   (let [[opts s] (if (map? opts) [opts s] [s opts])]
+    (when-not (nil? s)
+      (-> (io/StringIO s)
+          (read opts))))))
 
 (defn write
   "Serialize the object ``o`` as EDN to the writer object ``writer`` (which must be

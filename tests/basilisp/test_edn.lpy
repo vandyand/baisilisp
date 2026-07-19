@@ -16,10 +16,12 @@
     "\t" nil
     "\n" nil)
 
+  (are [s] (nil? (edn/read-string s))
+    "#_[]"
+    ";;comment")
   (are [s] (thrown? basilisp.lang.exception/ExceptionInfo
                     (edn/read-string s))
-    "#_[]"
-    ";;comment"))
+    "#_"))
 
 (deftest read-numeric
   (are [s v] (= v (edn/read-string s))
@@ -35,7 +37,16 @@
     "1.0"        1.0
     "-1.332"     -1.332
     "-1.0"       -1.0
-    "-0.332"     -0.332)
+    "-0.332"     -0.332
+
+    "052"       42
+    "0x2a"      42
+    "2r101010"  42
+    "16R2a"     42
+    "1e2"       100.0
+    "3.14M"     3.14M
+    "1/2"       1/2
+    "4/2"       2)
 
   (is (math/isinf (edn/read-string "##Inf")))
   (is (math/isinf (edn/read-string "##-Inf")))
@@ -45,6 +56,9 @@
                     (edn/read-string s))
     "0..11"
     "0.111.9"
+    "08"
+    "1a"
+    "1/0"
     "##pi"
     "##:NaN"))
 
@@ -82,7 +96,10 @@
 
     "ns/sym"                  'ns/sym
     "qualified.ns/sym"        'qualified.ns/sym
-    "really.qualified.ns/sym" 'really.qualified.ns/sym)
+    "really.qualified.ns/sym" 'really.qualified.ns/sym
+    "foo//"                   'foo//
+    "foo#bar"                 'foo#bar
+    "אַ"                      'אַ)
 
   (are [s] (thrown? basilisp.lang.exception/ExceptionInfo
                     (edn/read-string s))
@@ -140,9 +157,13 @@
     "\\Ω" "Ω"
 
     "\\u03A9" "Ω"
+    "\\ "     " "
+    "\\o101"  "A"
 
     "\\space"   " "
     "\\newline" "\n"
+    "\\backspace" "\b"
+    "\\formfeed" "\f"
     "\\tab"     "\t"
     "\\return"  "\r")
 
@@ -163,6 +184,7 @@
     "\"\\r\""  "\r"
     "\"\\t\""  "\t"
     "\"\\v\""  "\v"
+    "\"a\\u2192b\"" "a→b"
 
     "\"Hello,\\nmy name is\\tChris.\""     "Hello,\nmy name is\tChris."
     "\"Regular string\""                   "Regular string"
@@ -184,6 +206,14 @@
 
   (is (= ['my.ns/passthru [:a :b :c]] (edn/read-string "#my.ns/passthru [:a :b :c]"
                                                        {:default (fn [tag v] [tag v])})))
+
+  (is (= :overridden
+         (edn/read-string {:readers {'uuid (constantly :overridden)}}
+                          "#uuid \"4ba98ef0-0620-4966-af61-f0f6c2dbf230\"")))
+  (is (= :eof (edn/read-string {:eof :eof} "")))
+
+  (is (= {:foo/bar 1 :foo/baz {:buzz 2}}
+         (edn/read-string "#:foo{:bar 1 :baz {:buzz 2}}")))
 
   (are [s] (thrown? basilisp.lang.exception/ExceptionInfo
                     (edn/read-string s))
@@ -209,7 +239,8 @@
     "{:a"
     "{:a}"
     "{:a 1"
-    "{:a 1 :b}"))
+    "{:a 1 :b}"
+    "{:a 1 :a 2}"))
 
 (deftest read-list
   (are [s v] (= v (edn/read-string s))
