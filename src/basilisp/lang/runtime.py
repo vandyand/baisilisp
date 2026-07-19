@@ -1596,14 +1596,31 @@ def _contains_none(_, __) -> bool:
     return False
 
 
+def _contains_indexed(coll: Sequence, k: Any) -> bool:
+    """Return whether ``k`` is a valid non-negative index in ``coll``.
+
+    Python sequences normally interpret ``in`` as value membership.  Basilisp
+    arrays (represented by Python lists) and strings instead follow Clojure's
+    associative ``contains?`` contract: their keys are integer indexes.
+    """
+    if not isinstance(k, int) or isinstance(k, bool):
+        raise TypeError(f"contains? index must be an integer; got '{type(k)}'")
+    return 0 <= k < len(coll)
+
+
 @contains.register(str)
 def _contains_str(s: str, k: Any) -> bool:
-    if isinstance(k, int):
-        return 0 <= k < len(s)
-    elif isinstance(k, str):
-        return k in s
-    else:
-        raise TypeError(f"contains? key must be a string; got '{type(k)}'")
+    return _contains_indexed(s, k)
+
+
+@contains.register(list)
+def _contains_list(coll: list, k: Any) -> bool:
+    return _contains_indexed(coll, k)
+
+
+@contains.register(ISeq)
+def _contains_iseq(_, __) -> bool:
+    raise TypeError("contains? is not supported for sequences")
 
 
 @contains.register(IAssociative)

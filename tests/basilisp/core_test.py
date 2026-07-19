@@ -867,16 +867,36 @@ class TestAssociativeFunctions:
         assert False is core.contains__Q__(vec.v(1, 2, 3).to_transient(), 3)
         assert False is core.contains__Q__(vec.v(1, 2, 3).to_transient(), -1)
 
-        assert False is core.contains__Q__("", "a")
         assert False is core.contains__Q__("", 0)
         assert False is core.contains__Q__("", 1)
-        assert True is core.contains__Q__("a", "a")
         assert True is core.contains__Q__("a", 0)
         assert False is core.contains__Q__("a", 1)
-        assert True is core.contains__Q__("abc", "a")
         assert True is core.contains__Q__("abc", 0)
         assert True is core.contains__Q__("abc", 1)
         assert False is core.contains__Q__("abc", 4)
+
+        for size in range(32):
+            array = list(range(size))
+            for index in range(-2, size + 2):
+                assert (0 <= index < size) is core.contains__Q__(array, index)
+
+        for non_index in (None, True, False, 1.0, "0", object()):
+            with pytest.raises(TypeError):
+                core.contains__Q__([0, 1, 2], non_index)
+            with pytest.raises(TypeError):
+                core.contains__Q__("abc", non_index)
+        with pytest.raises(TypeError):
+            core.contains__Q__(llist.l(1, 2, 3), 0)
+        with pytest.raises(TypeError):
+            core.contains__Q__(llist.l(1, 2, 3), 3)
+
+        # Strings and arrays have index keys rather than value-membership keys.
+        with pytest.raises(TypeError):
+            core.contains__Q__("", "a")
+        with pytest.raises(TypeError):
+            core.contains__Q__("a", "a")
+        with pytest.raises(TypeError):
+            core.contains__Q__("abc", "a")
 
         with pytest.raises(TypeError):
             core.contains__Q__("abc", None)

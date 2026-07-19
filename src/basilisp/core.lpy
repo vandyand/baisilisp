@@ -2585,7 +2585,7 @@
 
 (defn ^:inline rseq
   "Return a sequence of the elements of ``coll`` in reverse order in constant time.
-  Only Vectors support this operation."
+  Vectors and sorted Maps support this operation."
   [coll]
   (seq (.rseq coll)))
 
@@ -3587,7 +3587,9 @@
             s  (if (< ns n)
                  (concat s (take (- n ns) pad))
                  s)]
-        (cons s (partition n step pad (drop step coll))))))))
+        (if (< ns n)
+          (cons s nil)
+          (cons s (partition n step pad (drop step coll)))))))))
 
 (defn partition-all
   "Return a lazy sequence of partitions of ``coll`` of size ``n`` at offsets of
@@ -3825,8 +3827,14 @@
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a duplicate key
   appears in a map, the rightmost map's value for that key will be taken."
   [& maps]
-  (when (some identity maps)
-    (reduce* #(conj (or %1 {}) %2) maps)))
+  (let [non-nil-maps (remove nil? maps)]
+    (when (seq non-nil-maps)
+      ;; Keep the long-standing Basilisp set-conjunction behavior, but reject
+      ;; scalar and sequential initial values instead of returning them unchanged.
+      (when-not (or (map? (first non-nil-maps))
+                    (set? (first non-nil-maps)))
+        (throw (python/TypeError #f "Expected a map; got {(type (first non-nil-maps))}")))
+      (reduce* #(conj (or %1 {}) %2) maps))))
 
 (defn merge-with
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a

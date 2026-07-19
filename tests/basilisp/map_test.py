@@ -13,6 +13,7 @@ from basilisp.lang.interfaces import (
     IPersistentCollection,
     IPersistentMap,
     IReduceKV,
+    IReversible,
     ISeqable,
     IWithMeta,
 )
@@ -211,6 +212,24 @@ def test_map_seq():
     assert {v("a", 1), v("b", 2), v("c", 3)} == set(
         lmap.map({"a": 1, "b": 2, "c": 3}).seq()
     )
+
+
+def test_sorted_map_rseq():
+    compare = lambda left, right: (left > right) - (left < right)
+    reverse_compare = lambda left, right: compare(right, left)
+
+    for size in range(32):
+        pairs = [value for key in reversed(range(size)) for value in (key, key * key)]
+        sorted_map = lmap.sorted_map(compare, *pairs)
+        reverse_sorted_map = lmap.sorted_map(reverse_compare, *pairs)
+
+        assert isinstance(sorted_map, IReversible)
+        assert list(sorted_map.rseq() or ()) == [
+            MapEntry.of(key, key * key) for key in reversed(range(size))
+        ]
+        assert list(reverse_sorted_map.rseq() or ()) == [
+            MapEntry.of(key, key * key) for key in range(size)
+        ]
 
 
 def test_map_reduce_kv():

@@ -17,6 +17,7 @@ from basilisp.lang.interfaces import (
     IPersistentMap,
     IPersistentVector,
     IReduceKV,
+    IReversible,
     ISeq,
     ITransientMap,
     IWithMeta,
@@ -393,7 +394,7 @@ def _comparator_fn(comparator: Callable[[K, K], int | bool]):
     return compare
 
 
-class PersistentSortedMap(PersistentMap[K, V]):
+class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
     """An immutable map whose observable iteration order follows a comparator."""
 
     __slots__ = ("_comparator",)
@@ -479,6 +480,13 @@ class PersistentSortedMap(PersistentMap[K, V]):
         if len(self._inner) == 0:
             return None
         return iterator_sequence((MapEntry.of(k, v) for k, v in self._sorted_items()))
+
+    def rseq(self) -> ISeq[IMapEntry[K, V]] | None:
+        if len(self._inner) == 0:
+            return None
+        return iterator_sequence(
+            (MapEntry.of(k, v) for k, v in reversed(self._sorted_items()))
+        )
 
     def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
         for k, v in self._sorted_items():

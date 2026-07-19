@@ -490,7 +490,31 @@
 
   (are [expected i step pad v] (= expected (partition i step pad v))
     '((1 2 3 4 5) (11 12 13 14 15) (21 22 23 :a :a)) 5 10 (repeat :a) (range 1 24)
-    '((1 2 3 4 5) (11 12 13 14 15) (21 22 23 24 25)) 5 10 (repeat :a) (range 1 26)))
+    '((1 2 3 4 5) (11 12 13 14 15) (21 22 23 24 25)) 5 10 (repeat :a) (range 1 26)
+    '((0 1 2) (1 2 3) (2 3 4) (3 4 :a))             3 1 [:a :b :c] (range 5)))
+
+(defn- padded-partition-model
+  [n step pad coll]
+  (loop [remaining coll
+         result    []]
+    (if-let [remaining (seq remaining)]
+      (let [part (take n remaining)]
+        (if (= n (count part))
+          (recur (drop step remaining) (conj result (vec part)))
+          (conj result (vec (concat part (take (- n (count part)) pad))))))
+      result)))
+
+(deftest padded-partition-fuzz-test
+  ;; Exhaustively vary overlapping, gapped, exact, and padded tails. The model
+  ;; deliberately terminates after the first incomplete source partition.
+  (doseq [n           (range 1 8)
+          step        (range 1 8)
+          source-size (range 0 16)
+          pad-size    (range 0 5)]
+    (let [source (vec (range source-size))
+          pad    (vec (range 100 (+ 100 pad-size)))]
+      (is (= (padded-partition-model n step pad source)
+             (mapv vec (partition n step pad source)))))))
 
 (deftest partition-all-test
   (testing "transducer"
@@ -750,7 +774,14 @@
     {}              [{}]
     {:a 1}          [{:a 1}]
     {:a 53 :b "hi"} [{:a 1 :b "hi"} {:a 53}]
-    #{1 2}          [#{1} 2]))
+    #{1 2}          [#{1} 2])
+
+  (are [x] (thrown? python/TypeError (merge x))
+    [:foo]
+    :foo
+    100
+    "str"
+    (range)))
 
 (deftest zipmap-test
   (are [x y z] (= x (zipmap y z))

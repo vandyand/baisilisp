@@ -265,7 +265,7 @@ class IReversible(Generic[T]):
     """``IReversible`` types can produce a sequences of their elements in reverse in
     constant time.
 
-    Of the builtin collections, only Vectors are ``IReversible``.
+    Of the builtin collections, Vectors and sorted Maps are ``IReversible``.
 
     .. seealso::
 
