@@ -2705,7 +2705,7 @@ def _loop_to_py_ast(ctx: GeneratorContext, node: Loop) -> GeneratedPyAST:
             loop_body_ast = list(map(statementize, body_ast.dependencies))
             loop_body_ast.append(ast.Return(value=body_ast.node))
 
-        loop_fn = (ast.AsyncFunctionDef if is_async else ast.FunctionDef)(
+        loop_fn = _fn_node(
             name=loop_fn_name,
             args=ast.arguments(
                 posonlyargs=[],
@@ -2721,6 +2721,7 @@ def _loop_to_py_ast(ctx: GeneratorContext, node: Loop) -> GeneratedPyAST:
                 _ASYNC_TRAMPOLINE_FN_NAME if is_async else _TRAMPOLINE_FN_NAME
             ],
             returns=None,
+            is_async=is_async,
         )
         loop_call = ast.Call(
             func=ast.Name(id=loop_fn_name, ctx=ast.Load()),
