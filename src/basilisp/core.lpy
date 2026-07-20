@@ -1475,7 +1475,7 @@
         div     (python/int div)]
     (when (or (< num minimum) (> num maximum) (< div minimum) (> div maximum))
       (throw (python/ArithmeticError "integer overflow")))
-    (when (zero? div)
+    (when (= 0 div)
       (throw (python/ArithmeticError "/ by zero")))
     (rem num div)))
 
