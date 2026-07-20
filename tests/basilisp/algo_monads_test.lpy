@@ -73,3 +73,11 @@
   (with-monad sequence-m
     (is (= '(([0 0]) ([0 1]) ([1 0]) ([1 1]))
            (vec (for [x (range 2) y (range 2)] (m-result [x y])))))) )
+
+(deftest with-monad-preserves-doseq-derived-for-scope
+  (let [results (atom [])]
+    (with-monad sequence-m
+      (is (do
+            (doseq [x (range 3)]
+              (swap! results conj (m-result x)))
+            (= '((0) (1) (2)) @results))))))
