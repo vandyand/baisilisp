@@ -58,3 +58,11 @@
                                       :else [r "high"]]
                             b 7] [r b])))
   (is (thrown? python/Exception (eval '(domonad maybe-m [a 1 b] a)))))
+
+(deftest with-monad-preserves-for-generated-recur-scope
+  (is (= '((0) (1) (2))
+         (vec (with-monad sequence-m
+                (for [x (range 3)] (m-result x))))))
+  (is (= '([0 0] [0 1] [1 0] [1 1])
+         (vec (with-monad sequence-m
+                (for [x (range 2) y (range 2)] (m-result [x y])))))))
