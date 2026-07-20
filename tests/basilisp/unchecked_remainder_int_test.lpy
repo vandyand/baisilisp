@@ -1,0 +1,20 @@
+(ns tests.basilisp.unchecked-remainder-int-test
+  (:import random)
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest unchecked-remainder-int-boundary-contract
+  (is (= 2 (unchecked-remainder-int 5 3)))
+  (is (= -2 (unchecked-remainder-int -5 3)))
+  (is (= 2 (unchecked-remainder-int 5 -3)))
+  (is (= -2 (unchecked-remainder-int -5 -3)))
+  (is (thrown? Exception (unchecked-remainder-int 2147483648 3)))
+  (is (thrown? Exception (unchecked-remainder-int -2147483649 3)))
+  (is (thrown? Exception (unchecked-remainder-int 1 0))))
+
+(deftest seeded-unchecked-remainder-int-fuzz
+  (let [rng (random/Random 44127)]
+    (dotimes [_ 1600]
+      (let [num (.randint rng -2147483648 2147483647)
+            div (loop [value (.randint rng -2147483648 2147483647)]
+                  (if (zero? value) (recur 1) value))]
+        (is (= (rem num div) (unchecked-remainder-int num div))))))

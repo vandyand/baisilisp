@@ -1463,6 +1463,22 @@
       (- m)
       m)))
 
+(defn unchecked-remainder-int
+  "Return the signed 32-bit integer remainder of ``num`` divided by ``div``.
+
+  Clojure rejects operands outside the signed 32-bit range and uses truncating
+  remainder semantics despite this function's ``unchecked`` name."
+  [num div]
+  (let [minimum -2147483648
+        maximum 2147483647
+        num     (python/int num)
+        div     (python/int div)]
+    (when (or (< num minimum) (> num maximum) (< div minimum) (> div maximum))
+      (throw (python/ArithmeticError "integer overflow")))
+    (when (zero? div)
+      (throw (python/ArithmeticError "/ by zero")))
+    (rem num div)))
+
 (defn ^:inline inc
   "Increment the argument by 1."
   [x]
