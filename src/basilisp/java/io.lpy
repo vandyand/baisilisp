@@ -10,6 +10,9 @@
 ;; standard-library surface.
 (def file bio/path)
 (def path bio/path)
+(def as-file bio/as-file)
+(def as-url bio/as-url)
+(def resource bio/resource)
 (def delete-file bio/delete-file)
 (def reader bio/reader)
 (def writer bio/writer)

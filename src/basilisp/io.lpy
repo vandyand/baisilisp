@@ -8,6 +8,7 @@
    os.path
    pathlib
    shutil
+   sys
    urllib.parse
    urllib.request)
   (:require [basilisp.string :as str]))
@@ -50,6 +51,45 @@
    (.joinpath (as-path parent) (as-path child)))
   ([parent child & others]
    (reduce path (path parent child) others)))
+
+(defn as-file
+  "Coerce ``f`` to a Python :external:py:class:`pathlib.Path`.
+
+  This is the portable counterpart to :lpy:fn:`clojure.java.io/as-file`."
+  [f]
+  (as-path f))
+
+(defn as-url
+  "Coerce a URL string or path-like value to a parsed URL.
+
+  Paths are resolved to absolute ``file:`` URLs. URL strings must include a scheme;
+  malformed or relative URL strings raise ``ValueError``."
+  [f]
+  (cond
+    (instance? urllib.parse/ParseResult f) f
+    (instance? python/str f)             (let [url (urllib.parse/urlparse f)]
+                                           (if (str/blank? (.-scheme url))
+                                             (throw (python/ValueError
+                                                     (str "Not a URL: " f)))
+                                             url))
+    :else                                (urllib.parse/urlparse
+                                          (.as_uri (.resolve (as-path f))))))
+
+(defn resource
+  "Return the file URL for resource ``name`` found on Python's import path.
+
+  Returns ``nil`` when no matching file resource exists. This supports ordinary
+  source-tree and installed-package resources without claiming JVM class-loader
+  behavior."
+  [name]
+  (when-not (string? name)
+    (throw (python/TypeError "resource name must be a string")))
+  (let [relative-name (.lstrip name "/")]
+    (some (fn [entry]
+            (let [candidate (pathlib/Path entry relative-name)]
+              (when (.is_file candidate)
+                (as-url candidate))))
+          sys/path)))
 
 (defn delete-file
   "Delete the file named by ``f``.

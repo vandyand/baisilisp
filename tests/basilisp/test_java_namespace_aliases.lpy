@@ -5,15 +5,25 @@
   (:require
    [clojure.java.io :as io]
    [clojure.java.shell :as shell]
-   [basilisp.test :refer [deftest is]]))
+   [basilisp.test :refer [are deftest is]]))
 
 (deftest clojure-java-io-import-path-test
   (is (= (pathlib/Path "parent" "child")
          (io/file "parent" "child")))
   (is (= (pathlib/Path "parent" "child")
          (io/path "parent" "child")))
+  (is (= (pathlib/Path "parent")
+         (io/as-file "parent")))
+  (is (= "https" (.-scheme (io/as-url "https://example.com/path"))))
+  (is (= "file" (.-scheme (io/as-url (pathlib/Path "parent")))))
+  (is (nil? (io/resource "definitely-missing-resource")))
+  (is (thrown? python/ValueError (io/as-url "relative/path")))
+  (are [name] (thrown? python/TypeError (io/resource name))
+    nil
+    1
+    :resource)
   (is (every? (set (map name (keys (ns-publics 'basilisp.java.io))))
-              ["file" "path" "delete-file" "reader" "writer" "input-stream"
+              ["file" "path" "as-file" "as-url" "resource" "delete-file" "reader" "writer" "input-stream"
                "output-stream" "copy" "make-parents" "exists?" "touch"])))
 
 (deftest clojure-java-shell-import-path-test
