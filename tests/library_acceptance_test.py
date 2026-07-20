@@ -42,6 +42,13 @@ def test_tools_cli_acceptance_manifest_is_portable_and_checked_in():
     assert manifest == verify_manifest(
         library_root, library_root / "portability-manifest.json"
     )
+    production_source = (
+        Path(__file__).parents[1] / "src" / "basilisp" / "tools" / "cli.lpy"
+    )
+    acceptance_source = library_root / "port" / "src" / "basilisp" / "tools" / "cli.cljc"
+    assert production_source.read_text(encoding="utf-8") == acceptance_source.read_text(
+        encoding="utf-8"
+    )
 
 
 def test_math_combinatorics_acceptance_manifest_is_portable_and_checked_in():

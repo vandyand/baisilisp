@@ -16,6 +16,7 @@
          [queue :as py-queue]
          random
          re
+         [basilisp.core_interop :as core-interop]
          basilisp.lang.character
          basilisp.lang.agent
          basilisp.lang.primitive_array
@@ -113,6 +114,12 @@
        :arglists '([v])}
   identity
   (fn identity [v] v))
+
+(def bean core-interop/bean)
+(def enumeration-seq core-interop/enumeration_seq)
+(def uri? core-interop/uri_qmark)
+(def StackTraceElement->vec core-interop/stack_trace_element_to_vec)
+(def Throwable->map core-interop/throwable_to_map)
 
 (def
   ^{:doc      "Return ``true`` if ``obj`` is an instance of ``class``\\."

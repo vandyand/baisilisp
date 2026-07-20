@@ -1,0 +1,28 @@
+(ns tests.basilisp.core-interop-test
+  (:import [urllib.parse :as urlparse]
+           [basilisp.lang.exception :as exc])
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest bean-enumeration-and-uri-host-contracts
+  (is (= {:a 1 :class basilisp.lang.map/PersistentMap}
+         (bean {:a 1})))
+  (is (= [1 2 3] (vec (enumeration-seq [1 2 3]))))
+  (is (uri? (urlparse/urlparse "https://example.test/path?q=1")))
+  (is (not (uri? "https://example.test/path?q=1")))
+  (is (thrown? Exception (enumeration-seq 42))))
+
+(deftest throwable-map-preserves-cause-data-and-trace-shape
+  (let [error (try
+                (throw (exc/ExceptionInfo "inner" {:detail 1}))
+                (catch python/Exception inner
+                  (try
+                    (throw (python/RuntimeError "outer"))
+                    (catch python/Exception outer outer))))
+        mapped (Throwable->map error)]
+    (is (= "inner {:detail 1}" (:cause mapped)))
+    (is (= {:detail 1} (:data mapped)))
+    (is (= 2 (count (:via mapped))))
+    (is (= "outer" (:message (first (:via mapped)))))
+    (is (= "inner {:detail 1}" (:message (second (:via mapped)))))
+    (is (vector? (:trace mapped)))
+    (is (vector? (:at (first (:via mapped)))))))

@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 84 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-13 (595 shared Vars and 58 Basilisp
+This document classifies the 60 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-20 (619 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -28,6 +28,8 @@ The following symbols are now implemented and no longer appear as gaps:
 and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
 `commute`,
 `ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
+The Python-host compatibility forms `bean`, `enumeration-seq`, `uri?`,
+`StackTraceElement->vec`, and `Throwable->map` are also implemented.
 
 ## Portable Implementation Targets
 
@@ -55,28 +57,26 @@ compatibility promise would be false.
 ### Clojure and JVM implementation internals
 
 `->ArrayChunk`, `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`,
-`-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `StackTraceElement->vec`,
-`Throwable->map`, `accessor`, `chunk`, `chunk-append`, `chunk-buffer`,
+`-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `accessor`, `chunk`, `chunk-append`, `chunk-buffer`,
 `chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
 `primitives-classnames`, `print-ctor`, `print-simple`, `proxy-call-with-super`, `proxy-name`,
-`seq-to-map-for-destructuring`, and `vector-of`.
+`seq-to-map-for-destructuring`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception
 and printing classes, proxy generation, primitive vector types, or compiler
 helpers. They are not stable portability APIs and do not have a direct Python
 counterpart.
 
-### JVM primitive arrays, Java objects, and Java streams
+### Java objects and streams
 
-`aset-boolean`, `aset-byte`, `aset-char`, `aset-double`, `aset-float`,
-`aset-int`, `aset-long`, `aset-short`, `bean`, `boolean-array`, `byte-array`,
-`char-array`, `enumeration-seq`, `resultset-seq`, `stream-into!`,
-`stream-reduce!`, `stream-seq!`, `stream-transduce!`, and `uri?`.
+`resultset-seq`, `stream-into!`, `stream-reduce!`, `stream-seq!`, and
+`stream-transduce!`.
 
-The exact APIs require Java primitive arrays, `java.beans`, `Enumeration`, JDBC
-result sets, `java.util.stream`, or `java.net.URI`. Python-native adapters may
-be worthwhile under a distinct API, but should not silently substitute lists,
-iterators, database cursors, or URL parse results for the Java types.
+The exact APIs require JDBC result sets or `java.util.stream`. Python-native
+adapters may be worthwhile under a distinct API, but should not silently
+substitute database cursors or streams for those Java types. ``bean``,
+``enumeration-seq``, and ``uri?`` now have explicit Python-host contracts for
+Python objects, iterators, and parsed URIs.
 
 ### Agents and software transactional memory
 
@@ -109,10 +109,8 @@ values, and ends after a producer error as Clojure's Agent-backed version does.
 
 ### Version identity and unchecked arithmetic
 
-`*clojure-version*`, `clojure-version`, and `unchecked-remainder-int`.
+`*clojure-version*` and `clojure-version`.
 
-Reporting a fabricated Clojure version would misstate runtime identity, and
-unchecked Java integer arithmetic has fixed-width overflow behavior that
-Python integers intentionally do not share. A future fork can define explicit
-compatibility metadata and fixed-width numeric operations, but both require a
-published policy.
+Reporting a fabricated Clojure version would misstate runtime identity. A
+future fork can define explicit compatibility metadata, but that requires a
+published versioning policy.
