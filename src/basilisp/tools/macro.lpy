@@ -1,0 +1,254 @@
+;; Macrolet, symbol-macrolet, and related tools
+;;
+;; Copyright (c) Konrad Hinsen 2011. All rights reserved. The use
+;; and distribution terms for this software are covered by the Eclipse
+;; Public License 1.0 (http://opensource.org/licenses/eclipse-1.0.php)
+;; which can be found in the file epl-v10.html at the root of this distribution.
+;; By using this software in any fashion, you are agreeing to be bound by
+;; the terms of this license. You must not remove this notice, or any other,
+;; from this software.
+
+(ns
+  ^{:author "Konrad Hinsen"
+     :doc "Local macros and symbol macros.
+
+Local macros are defined by a macrolet form. They are usable only inside its
+body. Symbol macros can be defined globally (defsymbolmacro) or locally
+(symbol-macrolet). A symbol macro defines a form that replaces a symbol during
+macro expansion. Function arguments and symbols bound in let forms are not
+subject to symbol macro expansion."}
+  basilisp.tools.macro
+  (:require [basilisp.string :as string]))
+
+;; Special forms are not macro-expanded, so local macro names cannot shadow
+;; them. Basilisp exposes the same predicate that Clojure uses for this purpose;
+;; keeping the set explicit makes the full-expansion walk deterministic.
+(def ^{:private true} special-forms
+  (into #{} (filter special-symbol?
+                    '[await catch def deftype* do finally fn* if import* . .-
+                      let* letfn* loop* quote reify* recur require* set! throw
+                      try var yield])))
+
+;; These dynamic vars implement the lexical expansion environment.
+(def ^{:dynamic true :private true} macro-fns {})
+(def ^{:dynamic true :private true} macro-symbols {})
+(def ^{:dynamic true :private true} protected-symbols #{})
+
+(defn- protected?
+  [symbol]
+  "Return true for a lexically bound or interop-reserved symbol."
+  (or (contains? protected-symbols symbol)
+      (let [s (str symbol)]
+        (or (= "." (subs s 0 1))
+            (= "." (subs s (dec (count s))))))))
+
+(defn- expand-symbol
+  "Expand a symbol macro unless the symbol is lexically protected."
+  [symbol]
+  (cond (protected? symbol)               symbol
+        (contains? macro-symbols symbol)  (get macro-symbols symbol)
+        :else (let [v (resolve symbol)
+                    m (meta v)]
+                (if (:symbol-macro m)
+                  (var-get v)
+                  symbol))))
+
+(defn- expand-1
+  "Perform a single non-recursive macro expansion of form."
+  [form]
+  (cond
+    (seq? form)
+    (let [f (first form)]
+      (cond (contains? special-forms f) form
+            (and (not (protected? f))
+                 (contains? macro-fns f)) (apply (get macro-fns f) (rest form))
+            (symbol? f) (cond
+                          (protected? f) form
+                          (class? (ns-resolve *ns* f)) form
+                          :else (let [exp (expand-symbol f)]
+                                  (if (= exp f)
+                                    (macroexpand-1 form)
+                                    (cons exp (rest form)))))
+            :else (macroexpand-1 form)))
+    (symbol? form) (expand-symbol form)
+    :else form))
+
+(defn- expand
+  "Perform repeated non-recursive macro expansion of form."
+  [form]
+  (let [exp (expand-1 form)]
+    (if (identical? exp form)
+      form
+      (recur exp))))
+
+(declare expand-all)
+
+(defn- expand-args
+  "Recursively expand the arguments of form, leaving its first n unchanged."
+  ([form] (expand-args form 1))
+  ([form n]
+   (doall (concat (take n form) (map expand-all (drop n form))))))
+
+(defn- expand-bindings
+  [bindings exprs]
+  (if (empty? bindings)
+    (list (doall (map expand-all exprs)))
+    (let [[[s b] & bindings] bindings
+          b (expand-all b)]
+      (binding [protected-symbols (conj protected-symbols s)]
+        (doall (cons [s b] (expand-bindings bindings exprs)))))))
+
+(defn- expand-with-bindings
+  "Expand let*, letfn*, and loop* while preserving their lexical bindings."
+  [form]
+  (let [f        (first form)
+        bindings (partition 2 (second form))
+        exprs    (rest (rest form))
+        expanded (expand-bindings bindings exprs)
+        bindings (vec (apply concat (butlast expanded)))
+        exprs    (last expanded)]
+    (cons f (cons bindings exprs))))
+
+(defn- expand-fn-body
+  [[args & exprs]]
+  (binding [protected-symbols (reduce conj protected-symbols
+                                     (filter #(not (= % '&)) args))]
+    (cons args (doall (map expand-all exprs)))))
+
+(defn- expand-fn
+  "Expand fn* bodies while protecting their arguments from symbol macros."
+  [form]
+  (let [[f & bodies] form
+        name         (when (symbol? (first bodies)) (first bodies))
+        bodies       (if (symbol? (first bodies)) (rest bodies) bodies)
+        bodies       (if (vector? (first bodies)) (list bodies) bodies)
+        bodies       (doall (map expand-fn-body bodies))]
+    (if (nil? name)
+      (cons f bodies)
+      (cons f (cons name bodies)))))
+
+(defn- expand-deftype
+  "Expand deftype* method bodies without changing their declarations."
+  [[symbol typename classname fields implements interfaces & methods]]
+  (assert (= implements :implements))
+  (let [expanded-methods (doall (map #(expand-args % 2) methods))]
+    (concat (list symbol typename classname fields implements interfaces)
+            expanded-methods)))
+
+(defn- expand-reify
+  "Expand reify* method bodies without changing interface declarations."
+  [[symbol interfaces & methods]]
+  (let [expanded-methods (map #(expand-args % 2) methods)]
+    (cons symbol (cons interfaces expanded-methods))))
+
+(def ^{:private true} special-form-handlers
+  {'quote identity
+   'var identity
+   'def #(expand-args % 2)
+   'new #(expand-args % 2)
+   'let* expand-with-bindings
+   'letfn* expand-with-bindings
+   'loop* expand-with-bindings
+   'fn* expand-fn
+   'deftype* expand-deftype
+   'reify* expand-reify})
+
+(defn- expand-list
+  "Recursively expand a list or cons."
+  [form]
+  (let [f (first form)]
+    (if (symbol? f)
+      (if (contains? special-forms f)
+        ((get special-form-handlers f expand-args) form)
+        (expand-args form))
+      (doall (map expand-all form)))))
+
+(defn- expand-all
+  "Expand form recursively, including local and symbol macros."
+  [form]
+  (let [exp (expand form)]
+    (cond (symbol? exp) exp
+          (seq? exp) (expand-list exp)
+          (vector? exp) (into [] (map expand-all exp))
+          (map? exp) (into {} (map expand-all (seq exp)))
+          :else exp)))
+
+(defn- check-not-qualified
+  "Verify that none of symbols are namespace-qualified."
+  [symbols]
+  (when (not-every? nil? (map namespace symbols))
+    (throw (ex-info (str "Can't macrolet qualified symbol(s): "
+                         (string/join ", " (map str (filter namespace symbols))))
+                    {})))
+  symbols)
+
+(defmacro macrolet
+  "Define local macros used while expanding exprs."
+  [fn-bindings & exprs]
+  (let [names     (check-not-qualified (map first fn-bindings))
+        name-map  (into {} (map (fn [n] [(list 'quote n) n]) names))
+        macro-map (eval `(letfn ~fn-bindings ~name-map))]
+    (binding [macro-fns (merge macro-fns macro-map)
+              macro-symbols (apply dissoc macro-symbols names)]
+      `(do ~@(doall (map expand-all exprs))))))
+
+(defmacro symbol-macrolet
+  "Define local symbol macros used while expanding exprs."
+  [symbol-bindings & exprs]
+  (let [symbol-map (into {} (map vec (partition 2 symbol-bindings)))
+        names      (check-not-qualified (keys symbol-map))]
+    (binding [macro-fns (apply dissoc macro-fns names)
+              macro-symbols (merge macro-symbols symbol-map)]
+      `(do ~@(doall (map expand-all exprs))))))
+
+(defmacro defsymbolmacro
+  "Define a global symbol macro for use inside with-symbol-macros."
+  [symbol expansion]
+  (let [meta-map (assoc (or (meta symbol) {}) :symbol-macro true)]
+    `(def ~(with-meta symbol meta-map) (quote ~expansion))))
+
+(defmacro with-symbol-macros
+  "Fully expand exprs, including global symbol macros."
+  [& exprs]
+  `(do ~@(doall (map expand-all exprs))))
+
+(defmacro deftemplate
+  "Define a macro whose parameters replace symbols in template forms."
+  [name params & forms]
+  (let [param-map       (for [p params] (list (list 'quote p) (gensym)))
+        template-params (vec (map second param-map))
+        param-map       (vec (apply concat param-map))
+        expansion       (list `list (list 'quote `symbol-macrolet) param-map
+                              (list 'quote (cons 'do forms)))]
+    `(defmacro ~name ~template-params ~expansion)))
+
+(defn mexpand-1
+  "Like macroexpand-1, but also takes symbol macros into account."
+  [form]
+  (binding [macro-fns {} macro-symbols {} protected-symbols #{}]
+    (expand-1 form)))
+
+(defn mexpand
+  "Like macroexpand, but also takes symbol macros into account."
+  [form]
+  (binding [macro-fns {} macro-symbols {} protected-symbols #{}]
+    (expand form)))
+
+(defn mexpand-all
+  "Perform a full recursive macro expansion of form."
+  [form]
+  (binding [macro-fns {} macro-symbols {} protected-symbols #{}]
+    (expand-all form)))
+
+(defn name-with-attributes
+  "Return [name macro-args], moving a docstring and attribute map onto name."
+  [name macro-args]
+  (let [[docstring macro-args] (if (string? (first macro-args))
+                                 [(first macro-args) (next macro-args)]
+                                 [nil macro-args])
+        [attr macro-args]      (if (map? (first macro-args))
+                                 [(first macro-args) (next macro-args)]
+                                 [{} macro-args])
+        attr                   (if docstring (assoc attr :doc docstring) attr)
+        attr                   (if (meta name) (conj (meta name) attr) attr)]
+    [(with-meta name attr) macro-args]))

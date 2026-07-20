@@ -1,0 +1,33 @@
+(ns tests.basilisp.tools-macro-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [basilisp.tools.macro :as macro]))
+
+(defn plus [a b] (+ a b))
+(macro/defsymbolmacro macro-test-sum (plus 2 3))
+(macro/deftemplate macro-test-pair [x y] [x y])
+
+(deftest macrolet-and-symbol-macrolet-respect-lexical-bindings
+  (is (= '(do (x x))
+         (macroexpand-1 '(macro/macrolet [(foo [form] `(~form ~form))]
+                         (foo x)))))
+  (is (= '(do (let* [foo identity] (foo 1)))
+         (macroexpand-1 '(macro/macrolet [(foo [form] `(inc ~form))]
+                         (let [foo identity] (foo 1))))))
+  (is (= '(do (let* [a foo b y x b] [a b x bar]))
+         (macroexpand-1 '(macro/symbol-macrolet [x foo z bar]
+                         (let [a x b y x b] [a b x z]))))))
+
+(deftest full-expansion-protects-fn-arguments-and-preserves-attributes
+  (is (= '(do (fn* ([x y] [x y bar]) ([x y z] [x y z])))
+         (macroexpand-1 '(macro/symbol-macrolet [x foo z bar]
+                         (fn ([x y] [x y z]) ([x y z] [x y z]))))))
+  (is (= '(let* [object (fn* ([] 3))] (object))
+         (macro/mexpand-all '(let [object (fn [] 3)] (object)))))
+  (let [[n args] (macro/name-with-attributes '^:private widget-name
+                                               '("doc" {:added "1"} [x]))]
+    (is (= {:private true :doc "doc" :added "1"} (meta n)))
+    (is (= '([x]) args))))
+
+(deftest global-symbol-macros-and-templates-evaluate-correctly
+  (is (= 6 (macro/with-symbol-macros (+ 1 macro-test-sum))))
+  (is (= [:left :right] (macro-test-pair :left :right))))

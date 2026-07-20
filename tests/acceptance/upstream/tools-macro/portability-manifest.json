@@ -1,0 +1,63 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/tools/macro.cljc",
+      "reader_features": [
+        "default",
+        "lpy"
+      ],
+      "requires": [
+        "args",
+        "attr",
+        "await",
+        "basilisp.string",
+        "bindings",
+        "clojure.string",
+        "docstring",
+        "ex",
+        "exp",
+        "f",
+        "fn-bindings",
+        "form",
+        "macro-fns",
+        "meta-map",
+        "n",
+        "name",
+        "names",
+        "nil",
+        "p",
+        "param-map",
+        "protected-symbols",
+        "s",
+        "symbol",
+        "symbol-bindings",
+        "symbol-map",
+        "symbols",
+        "v"
+      ],
+      "sha256": "dc7c28b89a250cc163a9cc7bedeb3e23e5fbf19d87a7a40c97284d91fae97e13"
+    }
+  ],
+  "substitutions": [
+    "clojure.tools.macro -> basilisp.tools.macro",
+    "clojure.string -> basilisp.string",
+    "Clojure compiler special-form introspection -> Basilisp special-symbol?"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "9cd558da812045f7621ea4063228fbb78288c6db",
+  "upstream_url": "https://github.com/clojure/tools.macro"
+}

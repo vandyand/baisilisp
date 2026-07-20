@@ -1,0 +1,10 @@
+{
+  "source_root": "port/src",
+  "upstream_url": "https://github.com/clojure/tools.macro",
+  "upstream_revision": "9cd558da812045f7621ea4063228fbb78288c6db",
+  "substitutions": [
+    "clojure.tools.macro -> basilisp.tools.macro",
+    "clojure.string -> basilisp.string",
+    "Clojure compiler special-form introspection -> Basilisp special-symbol?"
+  ]
+}
