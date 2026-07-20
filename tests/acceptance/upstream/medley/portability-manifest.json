@@ -1,0 +1,92 @@
+{
+  "classification": "jvm-only",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [
+        "java-interop",
+        "jvm-runtime-class"
+      ],
+      "classification": "jvm-only",
+      "language": "lpy",
+      "path": "medley/core.lpy",
+      "reader_features": [
+        "clj",
+        "cljr",
+        "cljs",
+        "default",
+        "lpy"
+      ],
+      "requires": [
+        "a",
+        "abs",
+        "acc",
+        "atom",
+        "c1",
+        "coll",
+        "colls",
+        "cs",
+        "deref-swap",
+        "dv",
+        "ex",
+        "f",
+        "fx",
+        "i",
+        "idx",
+        "index",
+        "input",
+        "k",
+        "keyf",
+        "keyfn",
+        "ks",
+        "kv",
+        "kx",
+        "m",
+        "n",
+        "next-part",
+        "p",
+        "part",
+        "part-n",
+        "pred",
+        "prev",
+        "prior",
+        "pv",
+        "res",
+        "result",
+        "rf",
+        "run",
+        "s",
+        "s1",
+        "seen",
+        "ss",
+        "step",
+        "up",
+        "v",
+        "value",
+        "w",
+        "x",
+        "xf",
+        "xform",
+        "xs",
+        "y"
+      ],
+      "sha256": "b7faf294196d61a0704fff57349f96637008a4d3c61bd71661555c2ca099d6c1"
+    }
+  ],
+  "substitutions": [
+    "JVM collection dispatch -> Basilisp collection protocols",
+    "JVM UUID/regex values -> Python uuid.UUID/re.Pattern"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "822981871facb27630dcba03cce2924a34989963",
+  "upstream_url": "https://github.com/weavejester/medley"
+}

@@ -301,6 +301,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``clojure.math.combinatorics`` API through the standard import path. Its
   lazy sequence, multiset, direct-count, direct-index, and partition contracts
   are covered by a shared Clojure/Basilisp acceptance fixture.
+* ``medley.core`` is available as a portable upstream-library port. Its public
+  functional collection operations use Basilisp collections and Python UUID and
+  regular-expression values instead of JVM implementation classes.
 * :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint``, including
   ``cl-format``. Character arguments use one-character Python strings rather
   than JVM ``Character`` instances.

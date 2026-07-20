@@ -20,6 +20,7 @@ _REQUIRED_SOURCES = (
     "basilisp/java/shell.lpy",
     "basilisp/math/combinatorics.lpy",
     "basilisp/spec/alpha.lpy",
+    "medley/core.lpy",
 )
 
 _VERIFY_INSTALL = """
@@ -35,11 +36,13 @@ datafy = importlib.import_module("basilisp.datafy")
 java_io = importlib.import_module("basilisp.java.io")
 java_shell = importlib.import_module("basilisp.java.shell")
 combinatorics = importlib.import_module("basilisp.math.combinatorics")
+medley = importlib.import_module("medley.core")
 spec = importlib.import_module("basilisp.spec.alpha")
 assert callable(datafy.datafy)
 assert callable(java_io.file)
 assert callable(java_shell.sh)
 assert callable(combinatorics.combinations)
+assert callable(medley.deep_merge)
 assert callable(spec.valid__Q__)
 cache_files = tuple(Path(core.__file__).parent.joinpath("__pycache__").glob("core.*.lpyc"))
 assert cache_files, core.__file__
