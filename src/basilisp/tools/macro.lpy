@@ -76,10 +76,16 @@ subject to symbol macro expansion."}
 (defn- expand
   "Perform repeated non-recursive macro expansion of form."
   [form]
-  (let [exp (expand-1 form)]
-    (if (identical? exp form)
-      form
-      (recur exp))))
+  ;; ``for`` generates nested loop*/recur state machines. Rewriting that
+  ;; generated representation outside the analyzer's recur scope is invalid;
+  ;; recurse through the source form below, but leave its expansion to the
+  ;; normal compiler pass.
+  (if (and (seq? form) (= 'for (first form)))
+    form
+    (let [exp (expand-1 form)]
+      (if (identical? exp form)
+        form
+        (recur exp)))))
 
 (declare expand-all)
 
