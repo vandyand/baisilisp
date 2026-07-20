@@ -1,0 +1,59 @@
+(ns basilisp.data.json
+  "Portable ``clojure.data.json`` compatibility on Python's JSON codec."
+  (:import [basilisp.data_json :as impl]))
+
+(def on-extra-throw impl/on_extra_throw)
+(def on-extra-throw-remaining impl/on_extra_throw_remaining)
+
+(defprotocol JSONWriter
+  (-write [object out options]
+    "Print object to an output stream as JSON."))
+
+(defn- writer-options [options]
+  (if (:default-write-fn options)
+    options
+    (assoc options :default-write-fn -write)))
+
+(defn read
+  [reader & {:as options}]
+  (impl/read reader options))
+
+(defn read-str
+  [source & {:as options}]
+  (impl/read_str source options))
+
+(defn write
+  [value writer & {:as options}]
+  (impl/write value writer (writer-options options)))
+
+(defn write-str
+  [value & {:as options}]
+  (impl/write_str value (writer-options options)))
+
+(defn pprint
+  [value & {:as options}]
+  (print (impl/write_str value (writer-options (assoc options :indent true)))))
+
+;; Deprecated 0.1.x compatibility names.
+(defn read-json
+  ([input] (read-json input true true nil))
+  ([input keywordize?] (read-json input keywordize? true nil))
+  ([input keywordize? eof-error? eof-value]
+   (let [options {:key-fn (if keywordize? keyword identity)
+                  :eof-error? eof-error?
+                  :eof-value eof-value}]
+     (if (string? input)
+       (apply read-str input (apply concat options))
+       (apply read input (apply concat options))))))
+
+(defn write-json [value writer escape-unicode?]
+  (write value writer :escape-unicode escape-unicode?))
+
+(defn json-str [value & options]
+  (apply write-str value options))
+
+(defn print-json [value & options]
+  (apply write value *out* options))
+
+(defn pprint-json [value & options]
+  (apply pprint value options))

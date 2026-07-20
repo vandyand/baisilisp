@@ -1,0 +1,99 @@
+(ns tests.basilisp.data-json-test
+  (:import decimal
+           io
+           math
+           random)
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.data.json :as json]))
+
+(deftype JSONValue [])
+
+(extend-protocol json/JSONWriter
+  JSONValue
+  (-write [_ writer _] (.write writer "\"protocol\"")))
+
+(deftest reads-persistent-json-values
+  (is (= {:name "BaisiLisp"
+          :flags [true false nil]
+          :nested {:count 3}}
+         (json/read-str "{\"name\":\"BaisiLisp\",\"flags\":[true,false,null],\"nested\":{\"count\":3}}"
+                        :key-fn keyword)))
+  (is (= 123456789012345678901234567890
+         (json/read-str "123456789012345678901234567890")))
+  (is (= 3.14159M (json/read-str "3.14159" :bigdec true)))
+  (is (thrown? EOFError (json/read-str "")))
+  (is (= :eof (json/read-str "" :eof-error? false :eof-value :eof)))
+  (is (thrown? Exception (json/read-str "NaN")))
+  (is (thrown? Exception (json/read-str "Infinity")))
+  (is (thrown? Exception (json/read-str "{\"a\":1,}"))))
+
+(deftest stream-reads-preserve-the-next-json-value
+  (let [reader (io/StringIO "{\"a\":1}{\"b\":2}")]
+    (is (= {"a" 1} (json/read reader)))
+    (is (= {"b" 2} (json/read reader)))
+    (is (= :done (json/read reader :eof-error? false :eof-value :done)))))
+
+(deftest read-callbacks-transform-and-filter-values
+  (is (= {:number 42}
+         (json/read-str "{\"number\":42,\"drop\":\"not wanted\"}"
+                        :key-fn keyword
+                        :value-fn (fn omit [key value]
+                                    (if (= :drop key) omit value)))))
+  (is (= {:number 42 :label "ok!"}
+         (json/read-str "{\"number\":42,\"label\":\"ok\"}"
+                        :key-fn keyword
+                        :value-fn (fn [key value]
+                                    (if (= :label key) (str value "!") value)))))
+  (is (= [[42] ", trailing"]
+         (json/read-str "[42], trailing"
+                        :extra-data-fn (fn [value reader] [value (.read reader)]))))
+  (is (thrown? Exception
+               (json/read-str "[42], trailing" :extra-data-fn json/on-extra-throw)))
+  (try
+    (json/read-str "[42], trailing" :extra-data-fn json/on-extra-throw-remaining)
+    (is false "expected extra data exception")
+    (catch Exception e
+      (is (= ", trailing" (:remaining (ex-data e)))))))
+
+(deftest writes-data-json-compatible-output
+  (let [encoded (json/write-str {:name "BaisiLisp" :path "a/b" :items [1 true nil]})]
+    (is (= {"name" "BaisiLisp" "path" "a/b" "items" [1 true nil]}
+           (json/read-str encoded)))
+    (is (not= -1 (.find encoded "a\\/b"))))
+  (is (= "{\"unicode\":\"∂\"}"
+         (json/write-str {"unicode" "∂"} :escape-unicode false)))
+  (is (= "{\"unicode\":\"\\u2202\"}"
+         (json/write-str {"unicode" "∂"})))
+  (is (= {"keep" 1}
+         (json/read-str
+          (json/write-str {:drop nil :keep 1}
+                          :value-fn (fn omit-nil [key value]
+                                      (if (nil? value) omit-nil value))))))
+  (is (= "{\n  \"a\": [\n    1,\n    2\n  ]\n}"
+         (json/write-str {:a [1 2]} :indent true)))
+  (is (thrown? Exception (json/write-str ##Inf)))
+  (is (thrown? Exception (json/write-str ##NaN))))
+
+(deftest writer-and-legacy-apis
+  (let [writer (io/StringIO)]
+    (json/write {:a 1} writer)
+    (is (= "{\"a\":1}" (.getvalue writer))))
+  (is (= {:a 1} (json/read-json "{\"a\":1}")))
+  (is (= "[1,2]" (json/json-str [1 2])))
+  (is (= "custom"
+         (json/write-str (python/object)
+                         :default-write-fn (fn [_ writer _] (.write writer "custom")))))
+  (is (= "\"protocol\"" (json/write-str (->JSONValue)))))
+
+(deftest seeded-fuzz-roundtrips-nested-json-domains
+  (let [rng (random/Random 99173)]
+    (dotimes [_ 500]
+      (let [number (.randint rng -1000000 1000000)
+            value {"number" number
+                   "truth" (zero? (.randint rng 0 1))
+                   "text" (str "item/" (.randint rng 0 999) " ∂")
+                   "items" (vec (repeatedly (.randint rng 0 12)
+                                             #(.randint rng -100 100)))
+                   "nested" {"double" (/ (.randint rng -10000 10000) 10.0)
+                             "none" nil}}]
+        (is (= value (json/read-str (json/write-str value))))))))

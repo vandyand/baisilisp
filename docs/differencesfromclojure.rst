@@ -269,6 +269,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.data.csv` provides the portable ``clojure.data.csv``
   reader/writer surface. It uses Python text streams rather than Java
   Reader/Writer values.
+* :lpy:ns:`basilisp.data.json` provides the ``clojure.data.json`` read/write
+  surface, including key/value transforms, extra-data hooks, and legacy names.
+  It returns Basilisp persistent maps and vectors and supports ordinary Python
+  text streams; non-seekable streams retain an internal unread suffix between
+  calls instead of requiring a JVM ``PushbackReader``.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``repl``/``io-prepl``/``remote-prepl`` support through the
