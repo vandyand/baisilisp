@@ -703,6 +703,21 @@
       (is (= 1 f))
       (is (== 1 f)))))
 
+(deftest promoting-subtraction-test
+  (is (= -7 (-' 7)))
+  (is (= 2 (-' 7 3 2)))
+  (is (= 999999999999999999999999999999999999999999999999999999999999999999999999999999
+         (-' 1000000000000000000000000000000000000000000000000000000000000000000000000000000
+             1)))
+
+  (are [v] (thrown? python/TypeError (-' 1 v))
+    true
+    false
+    nil
+    "1"
+    [])
+  (is (thrown? basilisp.lang.runtime/RuntimeException (-'))))
+
 (deftest rationalize-test
   (are [res v] (= res (rationalize v))
     0    0

@@ -1383,6 +1383,21 @@
      (recur (basilisp.lang.numbers/subtract x y) (first args) (rest args))
      (basilisp.lang.numbers/subtract x y))))
 
+(defn -'
+  "Subtract the arguments using arbitrary-precision integer arithmetic.
+
+  Basilisp integers are already arbitrary precision, so this has the same results as
+  :lpy:fn:`-` for numeric inputs. Unlike Python arithmetic, non-numbers are rejected.
+  It is provided for Clojure compatibility."
+  ([x] (basilisp.lang.numbers/subtract 0 (-require-number x)))
+  ([x y] (basilisp.lang.numbers/subtract (-require-number x) (-require-number y)))
+  ([x y & args]
+   (if (seq args)
+     (recur (basilisp.lang.numbers/subtract (-require-number x) (-require-number y))
+            (first args)
+            (rest args))
+     (basilisp.lang.numbers/subtract (-require-number x) (-require-number y)))))
+
 (defn *
   "Multiply the arguments. If no arguments given, returns 1. If one argument is given,
   return that argument."

@@ -25,7 +25,8 @@ The following symbols are now implemented and no longer appear as gaps:
 `struct-map`, `subseq`, `rsubseq`, `sorted-map`, `sorted-map-by`, `sorted?`,
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
-and `xml-seq`, plus `await1`, `ref`, `dosync`, `alter`, `ref-set`, `commute`,
+and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
+`commute`,
 `ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
 
 ## Portable Implementation Targets
@@ -39,7 +40,7 @@ deferrals.
 
 ### Clojure compiler, reader, and Java class-loader state
 
-`*'`, `+'`, `-'`, `*allow-unresolved-vars*`, `*compile-files*`,
+`*allow-unresolved-vars*`, `*compile-files*`,
 `*compile-path*`, `*file*`, `*fn-loader*`, `*math-context*`, `*read-eval*`,
 `*reader-resolver*`, `*repl*`, `*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
