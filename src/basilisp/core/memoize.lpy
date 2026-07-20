@@ -1,0 +1,83 @@
+(ns basilisp.core.memoize
+  "Portable compatibility for clojure.core.memoize."
+  (:require [clojure.core.cache :as cache])
+  (:import [basilisp.core_memoize :as impl]))
+
+;; PluggableMemoization mirrors the upstream cache-protocol wrapper so callers
+;; may use it with the ordinary clojure.core.cache operations.
+(extend impl/PluggableMemoization cache/CacheProtocol
+        {:lookup (fn lookup
+                   ([memo item] (impl/cache_lookup memo item))
+                   ([memo item not-found] (impl/cache_lookup memo item not-found)))
+         :has? (fn [memo item] (impl/cache_has memo item))
+         :hit (fn [memo item] (impl/cache_hit memo item))
+         :miss (fn [memo item result] (impl/cache_miss memo item result))
+         :evict (fn [memo item] (impl/cache_evict memo item))
+         :seed (fn [memo base] (impl/cache_seed memo base))})
+
+(def RetryingDelay impl/RetryingDelay)
+(def PluggableMemoization impl/PluggableMemoization)
+(def memoizer impl/memoizer)
+(def build-memoizer impl/build_memoizer)
+(def memo impl/memo)
+(def snapshot impl/snapshot)
+(def lazy-snapshot impl/lazy_snapshot)
+(def memoized? impl/memoized_qmark)
+(def memo-unwrap impl/memo_unwrap)
+
+(defn memo-clear!
+  ([f] (impl/memo_clear f))
+  ([f args] (impl/memo_clear f args)))
+
+(defn memo-reset! [f base] (impl/memo_reset f base))
+
+(defn memo-swap!
+  ([f base] (impl/memo_swap f base))
+  ([f swap-fn args & results]
+   (apply impl/memo_swap f swap-fn args results)))
+
+(defn fifo
+  ([f] (impl/fifo f {} 32))
+  ([f base] (impl/fifo f base 32))
+  ([f tkey threshold] (impl/fifo f {} threshold))
+  ([f base tkey threshold] (impl/fifo f base threshold)))
+
+(defn lru
+  ([f] (impl/lru f {} 32))
+  ([f base] (impl/lru f base 32))
+  ([f tkey threshold] (impl/lru f {} threshold))
+  ([f base tkey threshold] (impl/lru f base threshold)))
+
+(defn ttl
+  ([f] (impl/ttl f {} 32))
+  ([f base] (impl/ttl f base 32))
+  ([f tkey threshold] (impl/ttl f {} threshold))
+  ([f base tkey threshold] (impl/ttl f base threshold)))
+
+(defn lu
+  ([f] (impl/lu f {} 32))
+  ([f base] (impl/lu f base 32))
+  ([f tkey threshold] (impl/lu f {} threshold))
+  ([f base tkey threshold] (impl/lu f base threshold)))
+
+;; Kept for source compatibility with the deprecated construction API. The
+;; current fifo/lru/ttl/lu forms above are preferred by upstream as well.
+(defn memo-fifo
+  ([f] (impl/fifo f {} 32))
+  ([f limit] (impl/fifo f {} limit))
+  ([f limit base] (impl/fifo f base limit)))
+
+(defn memo-lru
+  ([f] (impl/lru f {} 32))
+  ([f limit] (impl/lru f {} limit))
+  ([f limit base] (impl/lru f base limit)))
+
+(defn memo-ttl
+  ([f] (impl/ttl f {} 3000))
+  ([f limit] (impl/ttl f {} limit))
+  ([f limit base] (impl/ttl f base limit)))
+
+(defn memo-lu
+  ([f] (impl/lu f {} 32))
+  ([f limit] (impl/lu f {} limit))
+  ([f limit base] (impl/lu f base limit)))

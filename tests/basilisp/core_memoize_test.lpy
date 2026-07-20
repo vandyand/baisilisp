@@ -1,0 +1,73 @@
+(ns tests.basilisp.core-memoize-test
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.core.cache :as cache]
+            [clojure.core.memoize :as memo]))
+
+(deftest memo-basic-seeds-and-manipulation-contract
+  (let [calls (atom 0)
+        original (fn [x] (swap! calls inc) (* x 2))
+        mine (memo/memo original {[5] 99})]
+    (is (memo/memoized? mine))
+    (is (= 99 (mine 5)))
+    (is (= 8 (mine 4)))
+    (is (= 8 (mine 4)))
+    (is (= 1 @calls))
+    (is (= {[5] 99 [4] 8} (memo/snapshot mine)))
+    (is (= [[5] 99] (first (memo/lazy-snapshot mine))))
+    (is (= original (memo/memo-unwrap mine)))
+    (memo/memo-clear! mine [4])
+    (is (= {[5] 99} (memo/snapshot mine)))
+    (memo/memo-swap! mine cache/miss [4] 41)
+    (is (= 41 (mine 4)))
+    (memo/memo-reset! mine {[4] 12})
+    (is (= {[4] 12} (memo/snapshot mine)))
+    (is (= 12 (mine 4)))
+    (memo/memo-clear! mine)
+    (is (= {} (memo/snapshot mine)))))
+
+(deftest memo-retries-exceptions-and-preserves-falsey-results
+  (let [calls (atom 0)
+        retrying (memo/memo (fn []
+                               (swap! calls inc)
+                               (throw (python/Exception "again"))))
+        falsey (memo/memo identity)]
+    (is (thrown? Exception (retrying)))
+    (is (thrown? Exception (retrying)))
+    (is (= 2 @calls))
+    (is (nil? (falsey nil)))
+    (is (nil? (falsey nil)))
+    (is (= false (falsey false)))
+    (is (= false (falsey false)))
+    (is (= 2 (count (memo/snapshot falsey))))))
+
+(deftest memo-policy-eviction-contracts
+  (let [fifo (memo/fifo identity :fifo/threshold 2)
+        lru (memo/lru identity :lru/threshold 2)
+        lu (memo/lu identity :lu/threshold 2)]
+    (fifo 1) (fifo 2) (fifo 3)
+    (is (= {[2] 2 [3] 3} (memo/snapshot fifo)))
+    (lru 1) (lru 2) (lru 1) (lru 3)
+    (is (= {[1] 1 [3] 3} (memo/snapshot lru)))
+    (lu 1) (lu 1) (lu 2) (lu 3)
+    (is (= {[1] 1 [3] 3} (memo/snapshot lu)))))
+
+(deftest deprecated-policy-constructors-retain-their-contract
+  (let [fifo (memo/memo-fifo identity 2)
+        lru (memo/memo-lru identity 2)
+        ttl (memo/memo-ttl identity 20)
+        lu (memo/memo-lu identity 2)]
+    (is (= 1 (fifo 1)))
+    (is (= 2 (lru 2)))
+    (is (= 3 (ttl 3)))
+    (is (= 4 (lu 4)))))
+
+(defn ^{:clojure.core.memoize/args-fn rest} ignores-first-arg
+  [a b c]
+  (+ a b c))
+
+(deftest memo-uses-argument-key-function-metadata
+  (let [mine (memo/memo #'ignores-first-arg)]
+    (is (= 13 (mine 1 2 10)))
+    (is (= 13 (mine 10 2 1)))
+    (is (= 13 (mine 10 2 10)))
+    (is (= {[2 10] 13 [2 1] 13} (memo/snapshot mine)))))
