@@ -1778,6 +1778,11 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
     char = ctx.reader.peek()
     if char == "{":
         return _read_set(ctx)
+    elif char == "^":
+        # ``#^`` is Clojure's legacy spelling for metadata. It still occurs
+        # in older ``.clj``/``.cljc`` source and has exactly the same read-time
+        # meaning as the modern ``^`` spelling.
+        return _read_meta(ctx)
     elif char == "(":
         return _read_function(ctx)
     elif char == ":":

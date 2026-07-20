@@ -436,6 +436,9 @@ Metadata
     {:has-meta true}
 
 Metadata can be applied to the following form by specifying metadata before the form as ``^meta form``.
+For compatibility with older Clojure source, Basilisp also accepts the legacy
+``#^meta form`` spelling; it has identical semantics and is retained only for
+reading existing code.
 
 The following builtin types support metadata: :ref:`symbols`, :ref:`lists`, :ref:`vectors`, :ref:`maps`, and :ref:`sets`.
 

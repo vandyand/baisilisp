@@ -11,6 +11,8 @@ from fractions import Fraction
 from pathlib import Path
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
@@ -58,6 +60,24 @@ def read_str_first(
         )
     except StopIteration:
         return None
+
+
+def semantic_metadata(form):
+    """Exclude source-position metadata when comparing reader spellings."""
+
+    return lmap.map(
+        {
+            key: value
+            for key, value in form.meta.items()
+            if key
+            not in {
+                reader.READER_LINE_KW,
+                reader.READER_COL_KW,
+                reader.READER_END_LINE_KW,
+                reader.READER_END_COL_KW,
+            }
+        }
+    )
 
 
 def test_stream_reader():
@@ -1686,6 +1706,57 @@ class TestMetadata:
         v = read_str_first(s)
         assert v == form
         self.assert_is_submap(v.meta, expected_meta)
+
+    @pytest.mark.parametrize(
+        "modern,legacy",
+        [
+            ("^:dynamic *answer*", "#^:dynamic *answer*"),
+            ("^python/str value", "#^python/str value"),
+            (
+                '^{:doc "portable" :dynamic true} [1 2]',
+                '#^{:doc "portable" :dynamic true} [1 2]',
+            ),
+            ("^[:a python/str] {:answer 42}", "#^[:a python/str] {:answer 42}"),
+        ],
+    )
+    def test_legacy_metadata_matches_modern_metadata(self, modern: str, legacy: str):
+        modern_form = read_str_first(modern)
+        legacy_form = read_str_first(legacy)
+
+        assert legacy_form == modern_form
+        assert semantic_metadata(legacy_form) == semantic_metadata(modern_form)
+
+    @given(
+        st.lists(
+            st.one_of(
+                st.sampled_from([":dynamic", ":private", "python/str"]),
+                st.builds(lambda name: f":{name}", st.sampled_from(["a", "b", "doc"])),
+            ),
+            min_size=1,
+            max_size=5,
+        ),
+        st.sampled_from(["symbol", "[1 2]", "{:a 1}", "(:a :b)", "#{:a :b}"]),
+    )
+    def test_legacy_metadata_fuzzes_equivalent_to_modern_metadata(
+        self, metadata: list[str], form: str
+    ):
+        # Metadata prefixes are intentionally composed: this exercises reader
+        # positioning and metadata merge order across arbitrary prefix counts.
+        modern = " ".join(f"^{meta}" for meta in metadata) + f" {form}"
+        legacy = " ".join(f"#^{meta}" for meta in metadata) + f" {form}"
+
+        modern_form = read_str_first(modern)
+        legacy_form = read_str_first(legacy)
+        assert legacy_form == modern_form
+        assert semantic_metadata(legacy_form) == semantic_metadata(modern_form)
+
+    @pytest.mark.parametrize(
+        "source",
+        ["#^", "#^123 value", "#^:dynamic 1", "#^#_ :discarded"],
+    )
+    def test_legacy_metadata_rejects_malformed_or_invalid_forms(self, source: str):
+        with pytest.raises((reader.SyntaxError, EOFError)):
+            read_str_first(source)
 
     @pytest.mark.parametrize(
         "s",
