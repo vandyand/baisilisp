@@ -2,7 +2,8 @@
   (:require
    [basilisp.string :as str]
    [basilisp.walk :as walk])
-  (:import fractions
+  (:import basilisp.lang.character
+           fractions
            io
            math
            os
@@ -95,7 +96,7 @@
   [& args]
   `(do
      (.write *err* (str ~@args))
-     (.write *err* \newline)))
+     (.write *err* (str \newline))))
 
 (def ^:dynamic ^:private *default-page-width* 72)
 
@@ -592,7 +593,7 @@
       (if (pos? v)
         (recur (operator/floordiv v base)
                (conj c (base-chr (mod v base))))
-        (.join "" (rseq c))))))
+        (.join "" (map str (rseq c)))))))
 
 (defn ^:private format-int
   "Format an integer value ``n`` subject to the rules of both :lpy:var:`*print-base*`
@@ -1855,7 +1856,7 @@ python/str, or one python/str longer."
        (neg? i) (apply str "1" (repeat (inc len-1) "0"))
        (= \9 (nth s i)) (recur (dec i))
        :else (apply str (subs s 0 i)
-                    (python/chr (inc (python/ord (nth s i))))
+                    (python/chr (inc (int (nth s i))))
                     (repeat (- len-1 i) "0"))))))
 
 (defn- round-str [m e d w]
@@ -1888,7 +1889,7 @@ python/str, or one python/str longer."
           (if (> len round-pos)
             (let [round-char (nth m1 round-pos)
                   result (subs m1 0 round-pos)]
-              (if (>= round-char "5")
+              (if (>= round-char \5)
                 (let [round-up-result (inc-s result)
                       expanded (> (count round-up-result) (count result))]
                   [(if expanded
@@ -2369,8 +2370,10 @@ python/str, or one python/str longer."
            out ""]
       (if-let [c (first chars)]
         (recur (next chars)
-               (not (.isalnum c))
-               (str out (if (and capitalize? (.isalpha c)) (.upper c) c)))
+               (not (.isalnum (str c)))
+               (str out (if (and capitalize? (.isalpha (str c)))
+                          (.upper (str c))
+                          c)))
         out))))
 
 (defn- capitalize-word-writer [writer]
@@ -2380,7 +2383,7 @@ python/str, or one python/str longer."
      (fn [s]
        (let [result (capitalize-string s @capitalize?)]
          (when (seq s)
-           (reset! capitalize? (not (.isalnum (last s)))))
+           (reset! capitalize? (not (.isalnum (str (last s))))))
          result)))))
 
 (defn- init-cap-writer [writer]
@@ -2393,9 +2396,9 @@ python/str, or one python/str longer."
            lower
            (loop [chars (seq lower) out ""]
              (if-let [c (first chars)]
-               (if (.isalpha c)
+               (if (.isalpha (str c))
                  (do (reset! capped? true)
-                     (str out (.upper c) (apply str (next chars))))
+                     (str out (.upper (str c)) (apply str (next chars))))
                  (recur (next chars) (str out c)))
                out))))))))
 (defn- modify-case [make-writer params navigator offsets]
@@ -2510,41 +2513,41 @@ python/str, or one python/str longer."
 
 (defdirectives
   (\A
-   [ :mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " python/str] ]
+   [ :mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " basilisp.lang.character/Character] ]
    #{ :at :colon :both} {}
    #(format-ascii print-str %1 %2 %3))
 
   (\S
-   [ :mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " python/str] ]
+   [ :mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " basilisp.lang.character/Character] ]
    #{ :at :colon :both} {}
    #(format-ascii pr-str %1 %2 %3))
 
   (\D
-   [ :mincol [0 python/int] :padchar [" " python/str] :commachar ["," python/str]
+   [ :mincol [0 python/int] :padchar [" " basilisp.lang.character/Character] :commachar ["," basilisp.lang.character/Character]
     :commainterval [ 3 python/int]]
    #{ :at :colon :both } {}
    #(format-integer 10 %1 %2 %3))
 
   (\B
-   [ :mincol [0 python/int] :padchar [" " python/str] :commachar ["," python/str]
+   [ :mincol [0 python/int] :padchar [" " basilisp.lang.character/Character] :commachar ["," basilisp.lang.character/Character]
     :commainterval [ 3 python/int]]
    #{ :at :colon :both } {}
    #(format-integer 2 %1 %2 %3))
 
   (\O
-   [ :mincol [0 python/int] :padchar [" " python/str] :commachar ["," python/str]
+   [ :mincol [0 python/int] :padchar [" " basilisp.lang.character/Character] :commachar ["," basilisp.lang.character/Character]
     :commainterval [ 3 python/int]]
    #{ :at :colon :both } {}
    #(format-integer 8 %1 %2 %3))
 
   (\X
-   [ :mincol [0 python/int] :padchar [" " python/str] :commachar ["," python/str]
+   [ :mincol [0 python/int] :padchar [" " basilisp.lang.character/Character] :commachar ["," basilisp.lang.character/Character]
     :commainterval [ 3 python/int]]
    #{ :at :colon :both } {}
    #(format-integer 16 %1 %2 %3))
 
   (\R
-   [:base [nil python/int] :mincol [0 python/int] :padchar [" " python/str] :commachar ["," python/str]
+   [:base [nil python/int] :mincol [0 python/int] :padchar [" " basilisp.lang.character/Character] :commachar ["," basilisp.lang.character/Character]
     :commainterval [ 3 python/int]]
    #{ :at :colon :both } {}
    (do
@@ -2566,7 +2569,7 @@ python/str, or one python/str longer."
        navigator)))
 
   (\C
-   [:char-format [nil python/str]]
+   [:char-format [nil basilisp.lang.character/Character]]
    #{ :at :colon :both } {}
    (cond
      (:colon params) pretty-character
@@ -2574,27 +2577,27 @@ python/str, or one python/str longer."
      :else plain-character))
 
   (\F
-   [ :w [nil python/int] :d [nil python/int] :k [0 python/int] :overflowchar [nil python/str]
-    :padchar [" " python/str] ]
+   [ :w [nil python/int] :d [nil python/int] :k [0 python/int] :overflowchar [nil basilisp.lang.character/Character]
+    :padchar [" " basilisp.lang.character/Character] ]
    #{ :at } {}
    fixed-float)
 
   (\E
    [ :w [nil python/int] :d [nil python/int] :e [nil python/int] :k [1 python/int]
-    :overflowchar [nil python/str] :padchar [" " python/str]
-    :exponentchar [nil python/str] ]
+    :overflowchar [nil basilisp.lang.character/Character] :padchar [" " basilisp.lang.character/Character]
+    :exponentchar [nil basilisp.lang.character/Character] ]
    #{ :at } {}
    exponential-float)
 
   (\G
    [ :w [nil python/int] :d [nil python/int] :e [nil python/int] :k [1 python/int]
-    :overflowchar [nil python/str] :padchar [" " python/str]
-    :exponentchar [nil python/str] ]
+    :overflowchar [nil basilisp.lang.character/Character] :padchar [" " basilisp.lang.character/Character]
+    :exponentchar [nil basilisp.lang.character/Character] ]
    #{ :at } {}
    general-float)
 
   (\$
-   [ :d [2 python/int] :n [1 python/int] :w [0 python/int] :padchar [" " python/str]]
+   [ :d [2 python/int] :n [1 python/int] :w [0 python/int] :padchar [" " basilisp.lang.character/Character]]
    #{ :at :colon :both} {}
    dollar-float)
 
@@ -2730,7 +2733,7 @@ python/str, or one python/str longer."
   (\} [] #{:colon} {} nil)
 
   (\<
-   [:mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " python/str]]
+   [:mincol [0 python/int] :colinc [1 python/int] :minpad [0 python/int] :padchar [" " basilisp.lang.character/Character]]
    #{:colon :at :both :pretty} { :right \>, :allows-separator true, :else :first }
    logical-block-or-justify)
 
@@ -2894,7 +2897,8 @@ of parameters as well."
   (let [[raw-params [rest offset]] (extract-params s offset)
         [_ [rest offset flags]] (extract-flags rest offset)
         directive (first rest)
-        def (get directive-table (.upper directive))
+        def (get directive-table
+                 (basilisp.lang.character/character (.upper (str directive))))
         params (if def (map-params def (map translate-param raw-params) flags offset))]
     (if (not directive)
       (format-error "Format python/str ended in the middle of a directive" offset))

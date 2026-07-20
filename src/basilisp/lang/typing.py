@@ -7,6 +7,7 @@ from re import Pattern
 from typing import Any, Protocol, TypeGuard, Union
 
 from basilisp.lang import keyword as kw
+from basilisp.lang.character import Character
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -31,6 +32,7 @@ LispNumber = Union[int, float, Decimal, Fraction]
 LispForm = Union[
     bool,
     bytes,
+    Character,
     complex,
     datetime,
     Decimal,
@@ -56,6 +58,7 @@ SpecialForm = Union[llist.PersistentList, ISeq]
 _READER_FORM_TYPES = (
     bool,
     bytes,
+    Character,
     complex,
     datetime,
     Decimal,

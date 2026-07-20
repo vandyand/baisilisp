@@ -99,8 +99,8 @@ Standard Libraries
 
 ``basilisp.pprint`` provides ``code-dispatch``, ``:fill`` newlines, and the
 portable ``cl-format`` surface. Formatter compatibility is protected with
-upstream-derived directive tests; Python strings stand in for JVM character
-values and Python streams replace JVM writers.
+upstream-derived directive tests; Basilisp character values and Python streams
+replace JVM character and writer objects.
 
 ``basilisp.spec.alpha`` provides portable validation, conforming, explain-data,
 opt-in function-spec instrumentation, and bounded Hypothesis-backed checking.

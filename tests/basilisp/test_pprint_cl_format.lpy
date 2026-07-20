@@ -1,7 +1,7 @@
 ;; Derived test cases from Clojure 1.12.4's
 ;; test/clojure/test_clojure/pprint/test_cl_format.clj (EPL-1.0).
 ;; The cases below deliberately exercise the portable Common Lisp formatter
-;; surface, while using Python strings for character values.
+;; surface, while using Basilisp character values for character directives.
 
 (ns tests.basilisp.test-pprint-cl-format
   (:require
@@ -23,6 +23,10 @@
            ["~:R" [203] "two hundred third"]
            ["~@R" [429] "CDXXIX"]
            ["~@:R" [429] "CCCCXXVIIII"]
+           ["~C" [\m] "m"]
+           ["~@C" [\m] "\\m"]
+           ["~@C" [\backspace] "\\backspace"]
+           ["~:C" [\newline] "Newline"]
            ["~C" ["m"] "m"]
            ["~@C" ["m"] "\\m"]
            ["~@C" ["\b"] "\\backspace"]

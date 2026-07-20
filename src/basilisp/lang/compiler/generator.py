@@ -24,6 +24,7 @@ import attr
 from typing_extensions import ParamSpec
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import character as char
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -779,6 +780,7 @@ _NS_VAR_VALUE = f"{_NS_VAR}.value"
 _NS_VAR_VALUE_SETTER_FN_NAME = _load_attr(f"{_NS_VAR}.set_value")
 _NS_VAR_NAME = _load_attr(f"{_NS_VAR_VALUE}.name")
 _NEW_DECIMAL_FN_NAME = _load_attr(f"{_UTIL_ALIAS}.decimal_from_str")
+_NEW_CHARACTER_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}.character")
 _NEW_FRACTION_FN_NAME = _load_attr(f"{_UTIL_ALIAS}.fraction")
 _NEW_INST_FN_NAME = _load_attr(f"{_UTIL_ALIAS}.inst_from_str")
 _NEW_KW_FN_NAME = _load_attr(f"{_KW_ALIAS}.keyword_from_hash")
@@ -3801,6 +3803,14 @@ def _const_meta_kwargs_ast(
 @_simple_ast_generator
 def _py_const_to_py_ast(form: bool | None, _: GeneratorContext) -> ast.Constant:
     return ast.Constant(form)
+
+
+@_const_val_to_py_ast.register(char.Character)
+@_simple_ast_generator
+def _character_to_py_ast(form: char.Character, _: GeneratorContext) -> ast.expr:
+    return ast.Call(
+        func=_NEW_CHARACTER_FN_NAME, args=[ast.Constant(form.value)], keywords=[]
+    )
 
 
 @_const_val_to_py_ast.register(float)

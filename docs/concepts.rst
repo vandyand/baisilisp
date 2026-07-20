@@ -78,8 +78,10 @@ Python's byte string type :external:py:class:`bytes` is also supported.
 
 .. note::
 
-   Basilisp does not have a first class character type since there is no equivalent in Python.
-   :ref:`reader_character_literals` can be read from source code, but will be converted into single-character strings.
+   Basilisp represents Clojure characters with a distinct immutable runtime value.
+   Characters are not strings, including one-character strings. When passing a character
+   to Python code, use ``str`` (or the value's ``.value`` attribute) to obtain its
+   one-character Python string.
 
 .. seealso::
 

@@ -85,7 +85,7 @@
          (map (fn [ch]
                 (let [replacement (get cmap ch)]
                   (if (nil? replacement)
-                    ch
+                    (str ch)
                     (str replacement))))
               s)))
 
@@ -120,7 +120,7 @@
      ""))
   ([separator coll]
    (if (seq coll)
-     (.join separator (seq (map str coll)))
+     (.join (str separator) (seq (map str coll)))
      "")))
 
 (defn reverse
@@ -137,13 +137,13 @@
    (cond
      (instance? typing/Pattern pattern)
      (if (= "" (.-pattern pattern))
-       (split s "" limit)
+       (vec (map str s))
        (vec (re/split pattern s ** :maxsplit (or (when limit (dec limit)) 0))))
 
      (string? pattern)
      (vec
       (if (= pattern "")
-        s
+        (map str s)
         (.split s pattern (or (when limit (dec limit)) -1))))
 
      :else

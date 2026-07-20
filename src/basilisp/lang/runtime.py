@@ -25,6 +25,7 @@ from typing import AbstractSet, Any, NoReturn, Optional, TypeVar, Union, cast
 import attr
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import character as char
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import obj as lobj
@@ -1167,6 +1168,11 @@ def _to_set_none(_: None) -> lset.PersistentSet:
     return lset.EMPTY
 
 
+@to_set.register(str)
+def _to_set_str(s: str) -> lset.PersistentSet:
+    return lset.set(lseq.to_seq(s))
+
+
 @to_set.register(IPersistentMap)
 def _to_set_map(m: IPersistentMap) -> lset.PersistentSet:
     if (s := m.seq()) is None:
@@ -1182,6 +1188,13 @@ def vector(v):
 @vector.register(type(None))
 def _vector_none(_: None) -> vec.PersistentVector:
     return vec.EMPTY
+
+
+@vector.register(str)
+def _vector_str(s: str) -> vec.PersistentVector:
+    if (chars := lseq.to_seq(s)) is None:
+        return vec.EMPTY
+    return vec.vector(chars)
 
 
 @vector.register(IPersistentMap)
@@ -1356,6 +1369,12 @@ def cons(o, seq) -> ISeq:
 
 
 to_seq = lseq.to_seq
+
+
+def character(value: str | char.Character) -> char.Character:
+    """Construct a Clojure character value for generated constants and interop."""
+    return char.character(value)
+
 
 to_iterator_seq = lseq.iterator_sequence
 
@@ -1569,6 +1588,16 @@ def _nth_sequence(coll: Sequence, i: int, notfound=IIndexed.NTH_SENTINEL):
         raise ex
 
 
+@nth.register(str)
+def _nth_str(coll: str, i: int, notfound=IIndexed.NTH_SENTINEL):
+    try:
+        return char.character(coll[i])
+    except IndexError as ex:
+        if notfound is not IIndexed.NTH_SENTINEL:
+            return notfound
+        raise ex
+
+
 @nth.register(IIndexed)
 def _nth_iindexed(coll: IIndexed, i: int, notfound=IIndexed.NTH_SENTINEL):
     return coll.nth(i, notfound=notfound)
@@ -1643,12 +1672,19 @@ def get(m, k, default=None):  # pylint: disable=unused-argument
 @get.register(bytes)
 @get.register(dict)
 @get.register(list)
-@get.register(str)
 @get.register(bytes)
 def _get_others(m, k, default=None):
     try:
         return m[k]
     except (KeyError, IndexError, TypeError):
+        return default
+
+
+@get.register(str)
+def _get_str(m: str, k, default=None):
+    try:
+        return char.character(m[k])
+    except (IndexError, TypeError, ValueError):
         return default
 
 
@@ -2119,6 +2155,13 @@ def to_py(
 @to_py.register(kw.Keyword)
 def _to_py_kw(o: kw.Keyword, keyword_fn: Callable[[kw.Keyword], Any] = _kw_name) -> Any:
     return keyword_fn(o)
+
+
+@to_py.register(char.Character)
+def _to_py_character(
+    o: char.Character, keyword_fn: Callable[[kw.Keyword], Any] = _kw_name
+) -> str:
+    return o.value
 
 
 @to_py.register(IPersistentList)

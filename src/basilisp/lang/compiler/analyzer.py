@@ -29,6 +29,7 @@ from typing import Any, Literal, Optional, TypeVar, Union, cast
 import attr
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import character as char
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -4202,6 +4203,7 @@ def _const_node_type(_: Any) -> ConstType:
 for tp, const_type in {
     bool: ConstType.BOOL,
     bytes: ConstType.BYTES,
+    char.Character: ConstType.CHAR,
     complex: ConstType.NUMBER,
     datetime: ConstType.INST,
     Decimal: ConstType.DECIMAL,
@@ -4232,6 +4234,7 @@ for tp, const_type in {
 
 @_analyze_form.register(bool)
 @_analyze_form.register(bytes)
+@_analyze_form.register(char.Character)
 @_analyze_form.register(complex)
 @_analyze_form.register(datetime)
 @_analyze_form.register(Decimal)
@@ -4270,6 +4273,7 @@ def _const_node(form: ReaderForm, ctx: AnalyzerContext) -> Const:
             (
                 bool,
                 bytes,
+                char.Character,
                 complex,
                 datetime,
                 Decimal,

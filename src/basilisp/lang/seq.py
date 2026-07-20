@@ -1,10 +1,11 @@
 # pylint: disable=abstract-class-instantiated,import-error,no-name-in-module
 from typing import Iterable, TypeVar
 
+from basilisp.lang.character import Character
 from basilisp._lang.seq import Cons as _Cons
 from basilisp._lang.seq import EmptySequence as _EmptySequenceNative
 from basilisp._lang.seq import LazySeq as _LazySeq
-from basilisp._lang.seq import sequence, to_seq
+from basilisp._lang.seq import sequence, to_seq as _to_seq
 from basilisp.lang.interfaces import (
     ISeq,
     ISequential,
@@ -53,6 +54,15 @@ class LazySeq(_LazySeq[T], IWithMeta, ISequential, ISeq[T]):
 def iterator_sequence(s: Iterable[T]) -> ISeq[T]:
     """Create a Sequence from any iterable `s`."""
     return sequence(s, support_single_use=True)
+
+
+def to_seq(s):
+    """Coerce values to sequences, preserving Clojure string character values."""
+    if isinstance(s, str):
+        if not s:
+            return None
+        return sequence(map(Character, s), support_single_use=True)
+    return _to_seq(s)
 
 
 __all__ = ("EMPTY", "Cons", "LazySeq", "iterator_sequence", "sequence", "to_seq")

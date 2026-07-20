@@ -107,7 +107,7 @@
     "abc" {}                    "abc"
     "abc" {\a "A_A"}          "A_Abc"
     "abc" {\a "A_A" \c "C_C"} "A_AbC_C"
-    "abc" {\a "A_A" \c "C_C" (python/ord \a) 1 nil 'junk :garbage 42.42} "A_AbC_C"
+    "abc" {\a "A_A" \c "C_C" (int \a) 1 nil 'junk :garbage 42.42} "A_AbC_C"
     "aba" {\a nil \b "B"}    "aBa")
 
   (are [v] (thrown? python/TypeError (str/escape v {\a "A"}))

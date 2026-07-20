@@ -5,6 +5,12 @@
   (:import
    csv))
 
+(defn- csv-character [option value]
+  (when-not (or (char? value)
+                (and (string? value) (= 1 (count value))))
+    (throw (python/ValueError (str option " must be a single-character string"))))
+  (str value))
+
 (defn read-csv
   "Returns a lazy sequence of vectors corresponding to the rows of a CSV file.
 
@@ -20,6 +26,8 @@
   (let [f       (if (string? input)
                   (io/StringIO input)
                   input)
+        separator (csv-character ":separator" separator)
+        quote     (csv-character ":quote" quote)
         reader  (csv/reader f ** :delimiter separator :quotechar quote)
         do-read (fn read-csv*
                   []
@@ -37,13 +45,12 @@
   (let [header (mapv key-fn (first rows))]
     (map #(zipmap header %) (rest rows))))
 
-(defn- csv-character [option value]
-  (when-not (and (string? value) (= 1 (count value)))
-    (throw (python/ValueError (str option " must be a single-character string"))))
-  value)
-
 (defn- default-quote? [separator quote value]
-  (some #{separator quote "\r" "\n"} value))
+  (some #(or (= separator (str %))
+             (= quote (str %))
+             (= "\r" (str %))
+             (= "\n" (str %)))
+        value))
 
 (defn- write-cell [writer value separator quote quote?]
   (let [value      (str value)

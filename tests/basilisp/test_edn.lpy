@@ -153,19 +153,19 @@
 
 (deftest read-character
   (are [s v] (= v (edn/read-string s))
-    "\\a" "a"
-    "\\Ω" "Ω"
+    "\\a" \a
+    "\\Ω" \Ω
 
-    "\\u03A9" "Ω"
-    "\\ "     " "
-    "\\o101"  "A"
+    "\\u03A9" \Ω
+    "\\ "     \space
+    "\\o101"  \A
 
-    "\\space"   " "
-    "\\newline" "\n"
-    "\\backspace" "\b"
-    "\\formfeed" "\f"
-    "\\tab"     "\t"
-    "\\return"  "\r")
+    "\\space"   \space
+    "\\newline" \newline
+    "\\backspace" \backspace
+    "\\formfeed" \formfeed
+    "\\tab"     \tab
+    "\\return"  \return)
 
   (are [s] (thrown? basilisp.lang.exception/ExceptionInfo
                     (edn/read-string s))
@@ -390,15 +390,15 @@
 
 (deftest write-character
   (are [v s] (= s (edn/write-string v))
-    \a "\"a\""
-    \Ω "\"Ω\""
+    \a "\\a"
+    \Ω "\\Ω"
 
-    \u03A9 "\"Ω\""
+    \u03A9 "\\Ω"
 
-    \space   "\" \""
-    \newline "\"\\n\""
-    \tab     "\"\\t\""
-    \return  "\"\\r\""))
+    \space   "\\space"
+    \newline "\\newline"
+    \tab     "\\tab"
+    \return  "\\return"))
 
 (deftest write-string
   (testing "expected outputs"

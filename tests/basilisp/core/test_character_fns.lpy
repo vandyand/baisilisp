@@ -1,0 +1,24 @@
+(ns tests.basilisp.core.test-character-fns
+  (:require
+   [basilisp.test :refer [deftest are is]]))
+
+(deftest character-type-and-conversion-test
+  (is (char? \a))
+  (is (not (string? \a)))
+  (is (not (char? "a")))
+  (is (not= \a "a"))
+  (is (= \A (char 65)))
+  (is (= \a (char \a)))
+  (is (= 97 (int \a)))
+  (is (= "a" (str \a)))
+  (is (thrown? python/ValueError (char "a"))))
+
+(deftest character-sequence-and-collection-test
+  (is (= [\a \b \Ω] (vec "abΩ")))
+  (is (= [\a \b \Ω] (into [] "abΩ")))
+  (is (= #{\a \b} (set "aba")))
+  (is (= \b (nth "ab" 1)))
+  (is (= \a (get "ab" 0)))
+  (is (= [\a \b] (vec (seq "ab"))))
+  (is (= :char (get {\a :char "a" :string} \a)))
+  (is (= :string (get {\a :char "a" :string} "a"))))

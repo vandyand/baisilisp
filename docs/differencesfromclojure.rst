@@ -97,10 +97,6 @@ Reader
   * Python natively supports Complex numbers.
     The reader will return a complex number for any integer or floating point literal suffixed with ``J``.
 
-* :ref:`Characters <reader_character_literals>`
-
-  * Python does not support character types, so characters are returned as single-character strings.
-
 * :ref:`Python data types <data_readers>`
 
   * The reader will return the native Python data type corresponding to the Clojure type in functionality if the value is prefixed with ``#py``.
@@ -192,8 +188,6 @@ boundaries, but it is not a namespace-preserving or streaming XML API.
 
 basilisp.core
 -------------
-
-- :lpy:fn:`basilisp.core/int` coerces its argument to an integer. When given a string input, Basilisp will try to interpret it as a base 10 number, whereas in Clojure, it will return its ASCII/Unicode index if it is a character (or fail if it is a string).
 
 - :lpy:fn:`basilisp.core/float` coerces its argument to a floating-point number. When given a string input, Basilisp will try to parse it as a floating-point number, whereas Clojure will raise an error if the input is a character or a string.
 
@@ -305,8 +299,7 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   functional collection operations use Basilisp collections and Python UUID and
   regular-expression values instead of JVM implementation classes.
 * :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint``, including
-  ``cl-format``. Character arguments use one-character Python strings rather
-  than JVM ``Character`` instances.
+  ``cl-format`` and Basilisp's first-class character values.
 * :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
   of ``clojure.core.reducers``. It does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``

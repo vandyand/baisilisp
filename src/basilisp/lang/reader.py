@@ -22,6 +22,7 @@ import attr
 from typing_extensions import Unpack
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import character as char
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -1527,7 +1528,7 @@ _SPECIAL_CHARS = {
 }
 
 
-def _read_character(ctx: ReaderContext) -> str:
+def _read_character(ctx: ReaderContext) -> char.Character:
     """Read a character literal from the input stream.
 
     Character literals may appear as:
@@ -1543,31 +1544,33 @@ def _read_character(ctx: ReaderContext) -> str:
 
     s: list[str] = []
     reader = ctx.reader
-    char = reader.peek()
+    next_char = reader.peek()
     is_first_char = True
     while True:
-        if char == "" or (not is_first_char and not alphanumeric_chars.match(char)):
+        if next_char == "" or (
+            not is_first_char and not alphanumeric_chars.match(next_char)
+        ):
             break
-        s.append(char)
-        char = reader.next_char()
+        s.append(next_char)
+        next_char = reader.next_char()
         is_first_char = False
 
     character = "".join(s)
     special = _SPECIAL_CHARS.get(character, None)
     if special is not None:
-        return special
+        return char.character(special)
 
     match = unicode_char.match(character)
     if match is not None:
         try:
-            return chr(int(f"0x{match.group(1)}", 16))
+            return char.character(chr(int(f"0x{match.group(1)}", 16)))
         except (ValueError, OverflowError):
             raise ctx.syntax_error(f"Unsupported character \\u{character}") from None
 
     if len(character) > 1:
         raise ctx.syntax_error(f"Unsupported character \\{character}")
 
-    return character
+    return char.character(character)
 
 
 def _read_regex(ctx: ReaderContext) -> Pattern:

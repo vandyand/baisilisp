@@ -9,7 +9,7 @@
   method."
   (:refer-basilisp :exclude [read read-string])
   (:require [basilisp.string :as str])
-  (:import datetime decimal fractions math unicodedata uuid))
+  (:import basilisp.lang.character datetime decimal fractions math unicodedata uuid))
 
 (declare ^:private read-next
          ^:private read-sym-or-num
@@ -58,12 +58,12 @@
 
 (def ^:private special-chars
   "A mapping of special character names to the characters they represent."
-  {"newline" "\n"
-   "space"   " "
-   "backspace" "\b"
-   "formfeed"  "\f"
-   "tab"     "\t"
-   "return"  "\r"})
+  {"newline" (basilisp.lang.character/character "\n")
+   "space"   (basilisp.lang.character/character " ")
+   "backspace" (basilisp.lang.character/character "\b")
+   "formfeed"  (basilisp.lang.character/character "\f")
+   "tab"     (basilisp.lang.character/character "\t")
+   "return"  (basilisp.lang.character/character "\r")})
 
 (def ^:private str-escape-chars
   "A mapping of string escape characters to the character that should be
@@ -430,12 +430,12 @@
                            :value num})))))
 
           (re-matches #"[+-]?[0-9]+(?:\.[0-9]*)?[Ee][+-]?[0-9]+M?" num)
-          (if (= "M" (last num))
+          (if (= \M (last num))
             (decimal/Decimal (.removesuffix num "M"))
             (python/float num))
 
           (re-matches #"[+-]?(?:0|[1-9][0-9]*)(?:\.[0-9]*)?M?" num)
-          (if (= "M" (last num))
+          (if (= \M (last num))
             (decimal/Decimal (.removesuffix num "M"))
             (python/float num))
 
@@ -609,7 +609,7 @@
             (as-> uc $
               (str "0x" $)
               (python/int $ 16)
-              (python/chr $))
+              (basilisp.lang.character/character (python/chr $)))
             (catch python/ValueError _
               (throw
                (ex-info "Unsupported character"
@@ -623,7 +623,7 @@
         (if-let [[_ octal] (re-matches #"o([0-7]{1,3})" char-name)]
           (let [code (python/int octal 8)]
             (if (<= code 255)
-              (python/chr code)
+              (basilisp.lang.character/character (python/chr code))
               (throw
                (ex-info "Unsupported character"
                         {:char  char-name
@@ -633,7 +633,7 @@
              (ex-info "Unsupported character"
                       {:char  char-name
                        :error :unsupported-char}))
-            char-name))))))
+            (basilisp.lang.character/character char-name)))))))
 
 (defmethod read-next :meta
   [reader opts]
@@ -801,6 +801,10 @@
       (.write writer "\"")
       (.write writer decoded)
       (.write writer "\""))
+    nil)
+  basilisp.lang.character/Character
+  (write* [this writer]
+    (.write writer (basilisp.lang.character/lrepr (.-value this)))
     nil)
   nil
   (write* [_this writer]

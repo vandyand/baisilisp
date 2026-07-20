@@ -16,6 +16,7 @@
          [queue :as py-queue]
          random
          re
+         basilisp.lang.character
          basilisp.lang.agent
          basilisp.lang.regex
          basilisp.lang.stm
@@ -1599,10 +1600,9 @@
   (instance? python/bytes x))
 
 (defn char?
-  "Return ``true`` if ``x`` is a string of length 1."
+  "Return ``true`` if ``x`` is a Clojure character."
   [x]
-  (and (instance? python/str x)
-       (= (python/len x) 1)))
+  (instance? basilisp.lang.character/Character x))
 
 (defn ^:inline class?
   "Return ``true`` if ``x`` names a type."
@@ -2014,13 +2014,13 @@
    (python/bytes x encoding errors)))
 
 (defn char
-  "Coerce ``x`` to a string of length 1.
+  "Coerce an integer or character ``x`` to a character.
 
-  Natural integers are treated as ordinals and passed to Python's :external:py:func:`chr`.
-  Strings of length 1 are returned as such. Other types will result in a ``ValueError``\\."
+  Natural integers are treated as Unicode ordinals. Other types result in a
+  ``ValueError``\\."
   [x]
   (cond
-    (instance? python/int x) (python/chr x)
+    (instance? python/int x) (basilisp.lang.runtime/character (python/chr x))
     (char? x)                x
     :else                    (throw
                               (python/ValueError
@@ -2042,11 +2042,11 @@
   (python/float x))
 
 (defn ^:inline int
-  "Coerce ``x`` to an :external:py:class:`int`\\.
-
-  If ``x`` is string, it is parsed as a base 10 number."
+  "Coerce ``x`` to an :external:py:class:`int`\\. Characters become their Unicode ordinal."
   [x]
-  (python/int x))
+  (if (char? x)
+    (python/ord (.-value x))
+    (python/int x)))
 
 (defn ^:inline long
   "Coerce ``x`` to an :external:py:class:`int`\\.

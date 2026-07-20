@@ -108,8 +108,8 @@ Scalar values can be printed with :lpy:fn:`basilisp.core/pr` or just written dir
 
 ``cl-format`` provides Clojure's Common Lisp-compatible formatting language,
 including numeric, character, float, iteration, conditional, justification,
-logical-block, case, tabulation, and pretty-print directives. Python strings
-represent character values on the Basilisp host. The implementation preserves
+logical-block, case, tabulation, and pretty-print directives. Basilisp's
+first-class character values represent Clojure characters on the Python host. The implementation preserves
 the Clojure formatter API (``cl-format``, ``formatter``, and
 ``formatter-out``) while using Python streams and numeric types.
 

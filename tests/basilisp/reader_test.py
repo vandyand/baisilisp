@@ -15,6 +15,7 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from basilisp.lang import keyword as kw
+from basilisp.lang.character import Character
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -2175,34 +2176,34 @@ def test_deref():
 
 
 def test_character_literal():
-    assert "a" == read_str_first("\\a")
-    assert "[" == read_str_first("\\[")
-    assert "," == read_str_first("\\,")
-    assert "^" == read_str_first("\\^")
-    assert " " == read_str_first("\\ ")
-    assert "Ω" == read_str_first("\\Ω")
+    assert Character("a") == read_str_first("\\a")
+    assert Character("[") == read_str_first("\\[")
+    assert Character(",") == read_str_first("\\,")
+    assert Character("^") == read_str_first("\\^")
+    assert Character(" ") == read_str_first("\\ ")
+    assert Character("Ω") == read_str_first("\\Ω")
 
-    assert "Ω" == read_str_first("\\u03A9")
+    assert Character("Ω") == read_str_first("\\u03A9")
 
-    assert " " == read_str_first("\\space")
-    assert "\n" == read_str_first("\\newline")
-    assert "\t" == read_str_first("\\tab")
-    assert "\b" == read_str_first("\\backspace")
-    assert "\f" == read_str_first("\\formfeed")
-    assert "\r" == read_str_first("\\return")
+    assert Character(" ") == read_str_first("\\space")
+    assert Character("\n") == read_str_first("\\newline")
+    assert Character("\t") == read_str_first("\\tab")
+    assert Character("\b") == read_str_first("\\backspace")
+    assert Character("\f") == read_str_first("\\formfeed")
+    assert Character("\r") == read_str_first("\\return")
 
-    assert vec.v("a") == read_str_first("[\\a]")
-    assert vec.v("]") == read_str_first("[\\]]")
-    assert vec.v("Ω") == read_str_first("[\\Ω]")
+    assert vec.v(Character("a")) == read_str_first("[\\a]")
+    assert vec.v(Character("]")) == read_str_first("[\\]]")
+    assert vec.v(Character("Ω")) == read_str_first("[\\Ω]")
 
-    assert llist.l(sym.symbol("str"), "Ω") == read_str_first("(str \\u03A9)")
+    assert llist.l(sym.symbol("str"), Character("Ω")) == read_str_first("(str \\u03A9)")
 
-    assert vec.v(" ") == read_str_first("[\\space]")
-    assert vec.v("\n") == read_str_first("[\\newline]")
-    assert vec.v("\t") == read_str_first("[\\tab]")
-    assert llist.l(sym.symbol("str"), "\b", "\f", "\r") == read_str_first(
-        "(str \\backspace \\formfeed \\return)"
-    )
+    assert vec.v(Character(" ")) == read_str_first("[\\space]")
+    assert vec.v(Character("\n")) == read_str_first("[\\newline]")
+    assert vec.v(Character("\t")) == read_str_first("[\\tab]")
+    assert llist.l(
+        sym.symbol("str"), Character("\b"), Character("\f"), Character("\r")
+    ) == read_str_first("(str \\backspace \\formfeed \\return)")
 
     with pytest.raises(reader.SyntaxError):
         read_str_first("\\u03A9zzz")

@@ -15,6 +15,9 @@ from typing import Any, Callable, Union, cast
 
 from typing_extensions import TypedDict, Unpack
 
+from basilisp.lang.character import Character
+from basilisp.lang.character import lrepr as character_lrepr
+
 PrintCountSetting = Union[bool, int, None]
 PrintFn = Callable[[Any], str | None]
 
@@ -141,6 +144,11 @@ def _lstr_exception(o: BaseException) -> str:
 @lstr.register(type(re.compile("")))
 def _lstr_pattern(o: Pattern) -> str:
     return o.pattern
+
+
+@lstr.register(Character)
+def _lstr_character(o: Character) -> str:
+    return o.value
 
 
 @lstr.register(bool)
@@ -306,6 +314,18 @@ def _lrepr_str(
         return o
     escaped = o.encode("unicode_escape").replace(b'"', rb"\"").decode("utf-8")
     return f'"{escaped}"'
+
+
+@_lrepr.register(Character)
+def _lrepr_character(
+    o: Character,
+    human_readable: bool = False,
+    print_readably: bool = PRINT_READABLY,
+    **_,
+) -> str:
+    return character_lrepr(
+        o.value, human_readable=human_readable, print_readably=print_readably
+    )
 
 
 @_lrepr.register(list)

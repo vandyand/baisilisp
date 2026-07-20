@@ -80,3 +80,10 @@
         out    (io/StringIO)]
     (data-csv/write-csv out rows)
     (is (= rows (vec (data-csv/read-csv (.getvalue out)))))))
+
+(deftest character-delimiter-options-test
+  (let [out (io/StringIO)]
+    (csv/write-csv out [["left" "right"]] :separator \; :quote \|)
+    (is (= "left;right\n" (.getvalue out)))
+    (is (= [["left" "right"]]
+           (vec (csv/read-csv (.getvalue out) :separator \; :quote \|))))))

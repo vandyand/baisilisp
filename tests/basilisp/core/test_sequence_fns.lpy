@@ -19,7 +19,6 @@
   (are [v] (seqable? v)
     nil
     ""
-    \a
     "a"
     []
     #{}
@@ -41,7 +40,8 @@
     'sym
     'ns/sym
     true
-    false))
+    false
+    \a))
 
 (deftest seq-iterable-test
   (testing "re-iterable"

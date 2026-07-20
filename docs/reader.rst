@@ -220,21 +220,20 @@ Character Literals
 ::
 
     basilisp.user=> \a
-    "a"
+    \a
     basilisp.user=> \u03A9
-    "Ω"
+    \Ω
     basilisp.user=> \newline
-    "
-    "
+    \newline
 
 For Clojure compatibility, character literals may be specified in code prefixed by a ``\`` character.
-Character literals are actually backed by Python strings, as Python does not have a true *character* type.
+They evaluate to first-class character values, distinct from one-character strings.
 
 The reader supports 6 special character literal names for common whitespace characters: ``\newline``, ``\space``, ``\tab``, ``\formfeed``, ``\backspace``, ``\return``.
 
 Unicode code points may be specified as ``\uXXXX`` where ``XXXX`` corresponds to the hex-code for unicode code point.
 
-Otherwise, characters may be specified as ``\a``, which will simply yield the character as a string.
+Otherwise, characters may be specified as ``\a``.
 
 .. _reader_boolean_values:
 
