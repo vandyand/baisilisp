@@ -1,0 +1,10 @@
+{
+  "source_root": "port/src",
+  "upstream_url": "https://github.com/clojure/math.combinatorics",
+  "upstream_revision": "4141ccab0bb1657c6c994472b081138db490114f",
+  "substitutions": [
+    "clojure.math.combinatorics -> basilisp.math.combinatorics",
+    "legacy #^ metadata -> ^ metadata",
+    "Clojure Long literals -> Python integers"
+  ]
+}

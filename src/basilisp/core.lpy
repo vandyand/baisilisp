@@ -8616,11 +8616,18 @@
   ([] [])
   ([to] to)
   ([to from]
-   (if (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+   (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+            ;; Transients do not carry a comparator, so realizing a sorted
+            ;; collection through one would silently return an unordered map
+            ;; or set. Clojure's `into` preserves the target's sorted type.
+            (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.set/PersistentSortedSet to)))
      (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
      (reduce conj to from)))
   ([to xform from]
-   (if (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+   (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+            (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.set/PersistentSortedSet to)))
      (with-meta (persistent! (transduce xform conj! (transient to) from)) (meta to))
      (transduce xform conj to from))))
 

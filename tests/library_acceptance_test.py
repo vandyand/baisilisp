@@ -44,6 +44,28 @@ def test_tools_cli_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_math_combinatorics_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "math-combinatorics"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.math.combinatorics -> basilisp.math.combinatorics" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+    production_source = (
+        Path(__file__).parents[1] / "src" / "basilisp" / "math" / "combinatorics.lpy"
+    )
+    acceptance_source = (
+        library_root / "port" / "src" / "basilisp" / "math" / "combinatorics.cljc"
+    )
+    assert production_source.read_text(encoding="utf-8") == acceptance_source.read_text(
+        encoding="utf-8"
+    )
+
+
 @pytest.mark.parametrize(
     ("config", "message"),
     [

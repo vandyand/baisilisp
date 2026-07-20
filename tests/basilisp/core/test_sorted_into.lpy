@@ -1,0 +1,19 @@
+(ns tests.basilisp.core.test-sorted-into
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest into-preserves-sorted-map-order-and-type
+  (let [m (into (sorted-map) {0 :zero -1 :negative 2 :positive})]
+    (is (sorted? m))
+    (is (= [-1 0 2] (vec (keys m))))
+    (is (= :negative (get m -1))))
+  (let [m (into (sorted-map) (map #(vector % (* % %)) [3 1 2]))]
+    (is (sorted? m))
+    (is (= [1 2 3] (vec (keys m))))))
+
+(deftest into-preserves-sorted-set-order-and-type
+  (let [s (into (sorted-set) [3 1 2 1])]
+    (is (sorted? s))
+    (is (= [1 2 3] (vec s))))
+  (let [s (into (sorted-set) (map inc) [2 0 1])]
+    (is (sorted? s))
+    (is (= [1 2 3] (vec s)))))
