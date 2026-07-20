@@ -54,6 +54,7 @@
 (def s-neg-int impl/s_neg_int)
 (def large-integer impl/large_integer)
 (def double impl/double)
+(def bytes impl/bytes)
 (def char impl/char)
 (def char-ascii impl/char_ascii)
 (def char-alphanumeric impl/char_alphanumeric)

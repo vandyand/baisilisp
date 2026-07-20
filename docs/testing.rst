@@ -63,6 +63,16 @@ For exploratory use, call ``clojure.test.check/quick-check`` directly. Its
 result includes ``:seed``, and failures include ``:fail`` and ``:shrunk`` with
 the smallest counterexample found.
 
+Specs that need an explicit generator can use the standard
+``clojure.spec.gen.alpha`` import path. Its primitive generators are
+zero-argument constructors, matching Clojure's public API.
+
+.. code-block:: clojure
+
+   (require '[clojure.spec.gen.alpha :as sgen])
+
+   (sgen/generate (sgen/vector (sgen/int) 1 4))
+
 .. _testing_repl:
 
 Running Tests at the REPL

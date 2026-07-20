@@ -1,0 +1,63 @@
+(ns tests.basilisp.spec-gen-alpha-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [basilisp.test.check.generators :as tc-gen]
+            [clojure.spec.gen.alpha :as gen]))
+
+(deftest mapped-clojure-namespace-exposes-the-standard-surface
+  (testing "the automatic clojure.* namespace mapping finds the portable facade"
+    (is (every? (fn [s] (some? (ns-resolve 'basilisp.spec.gen.alpha s)))
+                '[any any-printable bind boolean bytes cat char char-alpha
+                  char-alphanumeric char-ascii choose delay delay-impl double double*
+                  elements fmap for-all* frequency gen-for-name gen-for-pred generate
+                  hash-map int keyword keyword-ns large-integer large-integer* list map
+                  not-empty one-of quick-check ratio return sample set shuffle simple-type
+                  simple-type-printable string string-alphanumeric string-ascii such-that
+                  symbol symbol-ns tuple uuid vector vector-distinct])))
+  (testing "Clojure primitive generators are zero-argument constructors"
+    (is (tc-gen/generator? (gen/int)))
+    (is (tc-gen/generator? (gen/string)))
+    (is (tc-gen/generator? (gen/uuid)))))
+
+(deftest generated-values-preserve-constructor-and-cat-invariants
+  (let [property (gen/for-all* [(gen/vector (gen/choose -1000 1000) 2 8)]
+                               (fn [values]
+                                 (and (<= 2 (count values) 8)
+                                      (= values (vec (reverse (reverse values)))))))
+        result (gen/quick-check 600 property :seed 200177 :max-size 80)
+        vectors (gen/sample (gen/vector (gen/choose -1000 1000) 2 8) 300)]
+    (is (:pass? result))
+    (is (= 600 (:num-tests result)))
+    (is (every? #(<= 2 (count %) 8) vectors))
+    (is (= '(1 2 3 4)
+           (gen/generate (gen/cat (gen/return [1 2])
+                                  (gen/return '(3 4))) 8 101)))))
+
+(deftest lazy-and-dynamic-generators-have-standard-behavior
+  (let [calls (atom 0)
+        delayed (gen/delay (do (swap! calls inc) (gen/return :ready)))]
+    (is (= 0 @calls))
+    (is (= :ready (gen/generate delayed 12 19)))
+    (is (= :ready (gen/generate delayed 12 20)))
+    (is (= 1 @calls)))
+  (is (tc-gen/generator?
+       (gen/gen-for-name 'clojure.test.check.generators/int)))
+  (is (thrown? Exception (gen/gen-for-name 'unqualified)))
+  (is (thrown? Exception (gen/gen-for-name 'clojure.core/+))))
+
+(deftest predicate-generators-cover-common-host-and-collection-predicates
+  (testing "enumerated predicates produce only members of their set"
+    (let [choices #{:red :green :blue}
+          values (gen/sample (gen/gen-for-pred choices) 120)]
+      (is (= 120 (count values)))
+      (is (every? choices values))))
+  (testing "portable host representations satisfy their documented predicates"
+    (is (every? integer? (gen/sample (gen/gen-for-pred integer?) 120)))
+    (is (every? string? (gen/sample (gen/gen-for-pred string?) 120)))
+    (is (every? qualified-keyword?
+                (gen/sample (gen/gen-for-pred qualified-keyword?) 30)))
+    (is (every? uri? (gen/sample (gen/gen-for-pred uri?) 60)))
+    (is (every? decimal? (gen/sample (gen/gen-for-pred decimal?) 60)))
+    (is (every? inst? (gen/sample (gen/gen-for-pred inst?) 60)))
+    (is (every? bytes? (gen/sample (gen/gen-for-pred bytes?) 60))))
+  (testing "unknown predicates intentionally have no guessed generator"
+    (is (nil? (gen/gen-for-pred (constantly true))))))

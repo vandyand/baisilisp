@@ -753,6 +753,10 @@ char_alpha = one_of((_char(65, 90), _char(97, 122)))
 string = _string(char)
 string_ascii = _string(char_ascii)
 string_alphanumeric = _string(char_alphanumeric)
+# Clojure's ``bytes`` generator yields a byte array.  ``bytearray`` is the
+# corresponding mutable byte-array representation in Basilisp (and the type
+# recognized by core/bytes?).
+bytes = fmap(lambda values: bytearray(values), vector(choose(0, 255)))
 keyword = fmap(lambda value: kw.keyword(value or "x"), string_alphanumeric)
 keyword_ns = fmap(
     lambda pair: kw.keyword(pair[1] or "x", ns=pair[0] or "ns"),

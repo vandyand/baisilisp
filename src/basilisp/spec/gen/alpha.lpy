@@ -1,0 +1,178 @@
+(ns basilisp.spec.gen.alpha
+  "Portable counterpart to clojure.spec.gen.alpha.
+
+  Clojure keeps this namespace separate from spec.alpha so that using specs does
+  not eagerly load test.check.  Basilisp's test.check implementation is already
+  lightweight, but this namespace preserves the standard API and its generator
+  conventions for libraries which require clojure.spec.gen.alpha.
+  "
+  (:refer-clojure :exclude [boolean bytes cat delay double hash-map int keyword list map
+                            not-empty set shuffle string symbol uuid vector])
+  (:require [basilisp.test.check :as tc]
+            [basilisp.test.check.generators :as gen]
+            [basilisp.test.check.properties :as prop])
+  (:import datetime decimal urllib.parse))
+
+;; test.check entry points ----------------------------------------------------
+
+(def quick-check tc/quick-check)
+(def for-all* prop/for-all*)
+(def generate gen/generate)
+
+(defn delay-impl
+  "Build a generator which realizes ``gfnd`` only when it is used."
+  [gfnd]
+  (gen/Generator (fn [rnd size]
+                   (gen/call-gen @gfnd rnd size))))
+
+(defmacro delay
+  "Given a body that returns a generator, delay its construction until use."
+  [& body]
+  `(delay-impl (clojure.core/delay ~@body)))
+
+(defn gen-for-name
+  "Load the generator named by qualified symbol ``s``.
+
+  This accepts both Basilisp and automatically-mapped Clojure namespace names.
+  "
+  [s]
+  (if-not (namespace s)
+    (throw (ex-info "Generator name must be namespace-qualified" {:name s}))
+    (do
+      (require (clojure.core/symbol (namespace s)))
+      (let [v (resolve s)]
+        (if (and v (gen/generator? @v))
+          @v
+          (throw (ex-info "Named var is not a generator" {:name s})))))))
+
+;; These macros are public in Clojure (though documented as implementation
+;; details).  Since Basilisp's test.check is always present, eager forwarding is
+;; equivalent while retaining their useful expansion behavior.
+(defmacro lazy-combinator [s]
+  `(def ~s (deref (resolve '~(clojure.core/symbol "basilisp.test.check.generators"
+                                                  (name s))))))
+
+(defmacro lazy-combinators [& syms]
+  `(do ~@(map (fn [s] `(lazy-combinator ~s)) syms)))
+
+(defmacro lazy-prim [s]
+  `(def ~s (deref (resolve '~(clojure.core/symbol "basilisp.test.check.generators"
+                                                  (name s))))))
+
+(defmacro lazy-prims [& syms]
+  `(do ~@(map (fn [s] `(lazy-prim ~s)) syms)))
+
+;; Generator combinators and primitive generators ---------------------------
+
+(defn any [] gen/any)
+(defn any-printable [] gen/any-printable)
+(defn boolean [] gen/boolean)
+(defn bytes [] gen/bytes)
+(defn char [] gen/char)
+(defn char-alpha [] gen/char-alpha)
+(defn char-alphanumeric [] gen/char-alphanumeric)
+(defn char-ascii [] gen/char-ascii)
+(defn double [] gen/double)
+(def double* gen/double*)
+(def elements gen/elements)
+(def fmap gen/fmap)
+(def frequency gen/frequency)
+(def hash-map gen/hash-map)
+(defn int [] gen/int)
+(defn keyword [] gen/keyword)
+(defn keyword-ns [] gen/keyword-ns)
+(defn large-integer [] gen/large-integer)
+(def large-integer* gen/large-integer*)
+(def list gen/list)
+(def map gen/map)
+(def not-empty gen/not-empty)
+(def one-of gen/one-of)
+(defn ratio [] gen/ratio)
+(def return gen/return)
+(def sample gen/sample)
+(def set gen/set)
+(def shuffle gen/shuffle)
+(defn simple-type [] gen/simple-type)
+(defn simple-type-printable [] gen/simple-type-printable)
+(defn string [] gen/string)
+(defn string-alphanumeric [] gen/string-alphanumeric)
+(defn string-ascii [] gen/string-ascii)
+(def such-that gen/such-that)
+(defn symbol [] gen/symbol)
+(defn symbol-ns [] gen/symbol-ns)
+(def tuple gen/tuple)
+(defn uuid [] gen/uuid)
+(def vector gen/vector)
+(def vector-distinct gen/vector-distinct)
+(def bind gen/bind)
+(def choose gen/choose)
+
+(defn cat
+  "Return a generator of the concatenation of each sequential generated value."
+  [& gens]
+  (gen/fmap #(apply concat %) (apply gen/tuple gens)))
+
+(defn- qualified? [ident]
+  (some? (namespace ident)))
+
+(def ^:private gen-builtins
+  (clojure.core/delay
+   (let [simple (simple-type-printable)]
+     {any?               (one-of [(return nil) (any-printable)])
+      some?              (such-that some? (any-printable))
+      number?            (one-of [(large-integer) (double)])
+      integer?           (large-integer)
+      int?               (large-integer)
+      pos-int?           (large-integer* {:min 1})
+      neg-int?           (large-integer* {:max -1})
+      nat-int?           (large-integer* {:min 0})
+      float?             (double)
+      double?            (double)
+      boolean?           (boolean)
+      string?            (string-alphanumeric)
+      ident?             (one-of [(keyword-ns) (symbol-ns)])
+      simple-ident?      (one-of [(keyword) (symbol)])
+      qualified-ident?   (such-that qualified? (one-of [(keyword-ns) (symbol-ns)]))
+      keyword?           (keyword-ns)
+      simple-keyword?    (keyword)
+      qualified-keyword? (such-that qualified? (keyword-ns))
+      symbol?            (symbol-ns)
+      simple-symbol?     (symbol)
+      qualified-symbol?  (such-that qualified? (symbol-ns))
+      uuid?              (uuid)
+      uri?               (fmap #(urllib.parse/urlparse (str "https://" % ".example")) (uuid))
+      decimal?           (fmap #(decimal/Decimal (str %)) (double* {:infinite? false :NaN? false}))
+      ;; Construct through the host class rather than timestamps: platform
+      ;; timestamp ranges vary, whereas this is a valid Basilisp instant on
+      ;; every supported Python runtime.
+      inst?              (return (datetime/datetime 1970 1 1))
+      seqable?           (one-of [(return nil) (list simple) (vector simple)
+                                  (map simple simple) (set simple) (string-alphanumeric)])
+      indexed?           (vector simple)
+      map?               (map simple simple)
+      vector?            (vector simple)
+      list?              (list simple)
+      seq?               (list simple)
+      char?              (char)
+      set?               (set simple)
+      nil?               (return nil)
+      false?             (return false)
+      true?              (return true)
+      zero?              (return 0)
+      rational?          (one-of [(large-integer) (ratio)])
+      coll?              (one-of [(map simple simple) (list simple) (vector simple) (set simple)])
+      empty?             (elements [nil '() [] {} #{}])
+      associative?       (one-of [(map simple simple) (vector simple)])
+      sequential?        (one-of [(list simple) (vector simple)])
+      ratio?             (such-that ratio? (ratio))
+      bytes?             (bytes)})))
+
+(defn gen-for-pred
+  "Given a predicate, return its built-in generator when one exists.
+
+  A set predicate is treated as an enumeration, as in Clojure spec.
+  "
+  [pred]
+  (if (set? pred)
+    (elements pred)
+    (get @gen-builtins pred)))
