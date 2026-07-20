@@ -1,6 +1,7 @@
 import io
 
 from basilisp.data_codec_base64 import decoding_transfer, encoding_transfer
+from basilisp.lang.primitive_array import byte_array
 
 
 class PartialReader:
@@ -27,3 +28,13 @@ def test_transfers_fill_buffers_despite_partial_stream_reads():
     )
 
     assert decoded.getvalue() == source
+
+
+def test_codec_writes_raw_binary_bytes_to_a_clojure_compatible_byte_array():
+    destination = byte_array(1)
+
+    from basilisp.data_codec_base64 import decode_into
+
+    assert decode_into(b"/w==", 0, 4, destination) == 1
+    assert list(destination) == [-1]
+    assert bytes(destination) == b"\xff"

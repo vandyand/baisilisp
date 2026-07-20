@@ -193,6 +193,13 @@ basilisp.core
 
 - :lpy:fn:`basilisp.core/alter-var-root`: updates to a Var’s root via this function may not reflect in code that directly references the Var unless the Var is marked with ``^:redef`` metadata or declared as a dynamic variable. This is due to the :ref:`Direct Linking Optimization <direct_linking>` and differs with Clojure where such changes are always visible.
 
+- Primitive array constructors (``boolean-array`` through ``double-array``) use
+  mutable Python-hosted containers rather than JVM array classes. Their default
+  values, fixed-width numeric coercion, and ``aget``/``aset`` (including the
+  typed ``aset-*`` helpers) behavior are preserved. ``byte-array`` is a
+  ``bytearray`` subclass: Lisp reads return signed byte values while Python
+  binary APIs see its normal unsigned buffer.
+
 .. _refs_and_transactions_differences:
 
 Refs and Transactions

@@ -18,6 +18,7 @@
          re
          basilisp.lang.character
          basilisp.lang.agent
+         basilisp.lang.primitive_array
          basilisp.lang.regex
          basilisp.lang.stm
          basilisp.lang.typing
@@ -2264,10 +2265,72 @@
        final)
      (operator/mul #py [init-val-or-seq] size))))
 
-(defn ^:inline aclone
-  "Return a clone of the Python list."
+(defn boolean-array
+  "Create a mutable boolean array.
+
+  Its elements retain Clojure's primitive boolean contract: they are ``true`` or
+  ``false`` and assignments through :lpy:fn:`aset` are checked."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/boolean_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/boolean_array size init-val-or-seq)))
+
+(defn byte-array
+  "Create a mutable signed-byte array backed by Python's binary ``bytearray`` type.
+
+  Values read through :lpy:fn:`aget` use Clojure's ``-128`` through ``127`` range;
+  binary Python APIs see the same underlying bytes as unsigned octets."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/byte_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/byte_array size init-val-or-seq)))
+
+(defn char-array
+  "Create a mutable array of Basilisp character values."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/char_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/char_array size init-val-or-seq)))
+
+(defn short-array
+  "Create a mutable signed 16-bit integer array."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/short_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/short_array size init-val-or-seq)))
+
+(defn int-array
+  "Create a mutable signed 32-bit integer array."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/int_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/int_array size init-val-or-seq)))
+
+(defn long-array
+  "Create a mutable signed 64-bit integer array."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/long_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/long_array size init-val-or-seq)))
+
+(defn float-array
+  "Create a mutable IEEE-754 single-precision floating-point array."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/float_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/float_array size init-val-or-seq)))
+
+(defn double-array
+  "Create a mutable IEEE-754 double-precision floating-point array."
+  ([size-or-seq]
+   (basilisp.lang.primitive_array/double_array size-or-seq))
+  ([size init-val-or-seq]
+   (basilisp.lang.primitive_array/double_array size init-val-or-seq)))
+
+(defn aclone
+  "Return a clone of the array, retaining primitive-array coercion semantics."
   [array]
-  (python/list array))
+  (basilisp.lang.primitive_array/clone_array array))
 
 (defn aget
   "Return the value of the Python list at the index (or indices)."
@@ -2281,8 +2344,7 @@
 (defn aset
   "Sets the value of the Python list at the index (or indices). Returns ``val``\\."
   ([array idx val]
-   (operator/setitem array idx val)
-   val)
+   (basilisp.lang.primitive_array/aset array idx val))
   ([array idx idx2 & idxs]
    (loop [target (operator/getitem array idx)
           idx    idx2
@@ -2291,8 +2353,47 @@
      (if (seq idxs)
        (recur (operator/getitem target idx) idx2 (first idxs) (rest idxs))
        (do
-         (operator/setitem target idx idx2)
-         idx2)))))
+         (basilisp.lang.primitive_array/aset target idx idx2))))))
+
+(defn aset-boolean
+  "Set a boolean-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-byte
+  "Set a byte-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-char
+  "Set a char-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-short
+  "Set a short-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-int
+  "Set an int-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-long
+  "Set a long-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-float
+  "Set a float-array value."
+  [array idx value]
+  (aset array idx value))
+
+(defn aset-double
+  "Set a double-array value."
+  [array idx value]
+  (aset array idx value))
 
 (defn ^:inline alength
   "Return the length of the Python list."
@@ -2339,12 +2440,7 @@
   [array & stop-or-start-stop-step]
   `(aget ~array (python/slice ~@stop-or-start-stop-step)))
 
-(def int-array object-array)
-(def long-array object-array)
-(def short-array object-array)
-(def float-array object-array)
-(def double-array object-array)
-(def bool-array object-array)
+(def bool-array boolean-array)
 
 (defn ^:inline booleans
   "Dummy cast to a Python list of booleans.

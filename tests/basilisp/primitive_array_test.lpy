@@ -1,0 +1,78 @@
+(ns tests.basilisp.primitive-array-test
+  (:import random)
+  (:require [basilisp.test :refer [deftest is]]))
+
+(defn- signed [value bits]
+  (let [modulus (bit-shift-left 1 bits)
+        sign    (bit-shift-left 1 (dec bits))
+        wrapped (mod value modulus)]
+    (if (>= wrapped sign)
+      (- wrapped modulus)
+      wrapped)))
+
+(deftest primitive-array-constructors-and-defaults
+  (is (= [false false false] (vec (boolean-array 3))))
+  (is (= [0 0 0] (vec (byte-array 3))))
+  (is (= [(char 0) (char 0)] (vec (char-array 2))))
+  (is (= [0 0] (vec (short-array 2))))
+  (is (= [0 0] (vec (int-array 2))))
+  (is (= [0 0] (vec (long-array 2))))
+  (is (= [0.0 0.0] (vec (float-array 2))))
+  (is (= [0.0 0.0] (vec (double-array 2))))
+  (is (bytes? (byte-array 1)))
+  (is (= "ff8001" (.hex (python/bytes (byte-array [-1 -128 1]))))))
+
+(deftest primitive-array-fill-coercion-and-mutation
+  (is (= [true true true] (vec (boolean-array 3 true))))
+  (is (= [-1 2 0 0] (vec (byte-array 4 [-1 2]))))
+  (is (= [(char 97) (char 937)] (vec (char-array "aΩ"))))
+  (is (= [-128 127] (vec (byte-array [128 -129]))))
+  (is (= [-32768 32767] (vec (short-array [32768 -32769]))))
+  (is (= [-2147483648 2147483647]
+         (vec (int-array [2147483648 -2147483649]))))
+  (is (= [-9223372036854775808 9223372036854775807]
+         (vec (long-array [9223372036854775808 -9223372036854775809]))))
+  (is (= 16777216.0 (aget (float-array [16777217]) 0)))
+  (let [values (int-array [0])
+        copy   (aclone values)]
+    (aset values 0 -1)
+    (aset copy 0 7)
+    (is (= [-1] (vec values)))
+    (is (= [7] (vec copy))))
+  (let [values (byte-array [0])]
+    (aset values 0 -1)
+    (is (= [-1] (vec values)))
+    (is (= "ff" (.hex (python/bytes values)))))
+  (let [nested [(byte-array 1)]]
+    (aset nested 0 0 -1)
+    (is (= -1 (aget nested 0 0)))
+    (is (thrown? Exception (aset nested 0 0 255)))))
+
+(deftest primitive-arrays-reject-invalid-element-and-size-contracts
+  (is (thrown? Exception (boolean-array [0])))
+  (is (thrown? Exception (char-array ["a"])))
+  (is (thrown? Exception (byte-array ["1"])))
+  (is (thrown? Exception (int-array -1)))
+  (is (thrown? Exception (double-array [true])))
+  (is (thrown? Exception (aset (byte-array 1) 0 255)))
+  (is (thrown? Exception (aset (int-array 1) 0 2147483648)))
+  (let [values (short-array 1)]
+    (is (thrown? Exception (aset values 0 "bad")))))
+
+(deftest seeded-fixed-width-fuzzing-and-binary-roundtrips
+  (let [rng (random/Random 147209)]
+    (dotimes [_ 800]
+      (let [raw     (.randint rng (- (bit-shift-left 1 70)) (bit-shift-left 1 70))
+            bytes   (byte-array [raw])
+            shorts  (short-array [raw])
+            ints    (int-array [raw])
+            longs   (long-array [raw])
+            payload (.randbytes rng (.randint rng 0 384))
+            binary  (byte-array payload)]
+        (is (= (signed raw 8) (aget bytes 0)))
+        (is (= (signed raw 16) (aget shorts 0)))
+        (is (= (signed raw 32) (aget ints 0)))
+        (is (= (signed raw 64) (aget longs 0)))
+        (is (= payload (python/bytes binary)))
+        (aset ints 0 (signed raw 32))
+        (is (= (signed raw 32) (aget ints 0)))))))
