@@ -25,8 +25,8 @@
     (is (= [[:b 3] [:c 2] [:a 1]] (vec descending)))
     (is (= [[:b [1 :banana]] [:a [2 :apple]]]
            (vec (pm/priority-map-keyfn-by first < :a [2 :apple] :b [1 :banana]))))
-    (is (= [[:b [1 :banana]] [:a [2 :apple]] [:c [2 :carrot]]]
-           (vec keyed)))
+    (is (= {:a [2 :apple] :b [1 :banana] :c [2 :carrot]} keyed))
+    (is (= [1 2 2] (vec (map (comp first val) keyed))))
     (is (= [[:b 1] [:a 2]]
            (vec (pm/subseq (pm/priority-map :a 2 :b 1 :c 3) < 3))))
     (is (= [[:c 3] [:a 2]]
