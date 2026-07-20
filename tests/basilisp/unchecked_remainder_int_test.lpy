@@ -17,4 +17,4 @@
       (let [num (.randint rng -2147483648 2147483647)
             div (loop [value (.randint rng -2147483648 2147483647)]
                   (if (zero? value) (recur 1) value))]
-        (is (= (rem num div) (unchecked-remainder-int num div))))))
+        (is (= (rem num div) (unchecked-remainder-int num div)))))))
