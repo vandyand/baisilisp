@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shutil
 import subprocess
 import sys
@@ -15,6 +16,8 @@ from zipfile import ZipFile
 _REQUIRED_SOURCES = (
     "basilisp/core.lpy",
     "basilisp/datafy.lpy",
+    "basilisp/java/io.lpy",
+    "basilisp/java/shell.lpy",
     "basilisp/spec/alpha.lpy",
 )
 
@@ -28,12 +31,16 @@ from basilisp.main import init
 init()
 core = importlib.import_module("basilisp.core")
 datafy = importlib.import_module("basilisp.datafy")
+java_io = importlib.import_module("basilisp.java.io")
+java_shell = importlib.import_module("basilisp.java.shell")
 spec = importlib.import_module("basilisp.spec.alpha")
 assert callable(datafy.datafy)
+assert callable(java_io.file)
+assert callable(java_shell.sh)
 assert callable(spec.valid__Q__)
 cache_files = tuple(Path(core.__file__).parent.joinpath("__pycache__").glob("core.*.lpyc"))
 assert cache_files, core.__file__
-print(importlib.metadata.version("basilisp"))
+print(importlib.metadata.version("baisilisp"))
 print(core.__file__)
 print(cache_files[0])
 """
@@ -70,7 +77,7 @@ def _assert_sdist_sources(sdist: Path) -> None:
 
 def _verify_install(uv: str, artifact: Path, environment: Path, workdir: Path) -> None:
     _run([uv, "venv", str(environment), "--python", sys.executable], cwd=workdir)
-    python = environment / "bin" / "python"
+    python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     _run([uv, "pip", "install", "--python", str(python), str(artifact)], cwd=workdir)
     _run([str(python), "-c", _VERIFY_INSTALL], cwd=workdir)
 

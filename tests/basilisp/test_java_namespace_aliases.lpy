@@ -1,0 +1,22 @@
+(ns tests.basilisp.test-java-namespace-aliases
+  (:import os
+           pathlib
+           sys)
+  (:require
+   [clojure.java.io :as io]
+   [clojure.java.shell :as shell]
+   [basilisp.test :refer [deftest is]]))
+
+(deftest clojure-java-io-import-path-test
+  (is (= (pathlib/Path "parent" "child")
+         (io/file "parent" "child")))
+  (is (= (pathlib/Path "parent" "child")
+         (io/path "parent" "child")))
+  (is (every? (set (map name (keys (ns-publics 'basilisp.java.io))))
+              ["file" "path" "delete-file" "reader" "writer" "input-stream"
+               "output-stream" "copy" "make-parents" "exists?" "touch"])))
+
+(deftest clojure-java-shell-import-path-test
+  (is (= {:exit 0 :out (str "alias" os/linesep) :err ""}
+         (shell/sh sys/executable "-c" "print('alias')")))
+  (is (contains? (set (map name (keys (ns-publics 'basilisp.java.shell)))) "sh")))

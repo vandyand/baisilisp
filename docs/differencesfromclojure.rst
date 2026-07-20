@@ -285,7 +285,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.instant` provides the portable timestamp parser from
   ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`
   values rather than Java date, calendar, or timestamp classes.
-* :lpy:ns:`basilisp.io` is a port of ``clojure.java.io``
+* :lpy:ns:`basilisp.io` is a port of ``clojure.java.io`` and is available
+  through that standard import path. Its ``file`` entry point maps to the
+  Python :class:`pathlib.Path`-backed :lpy:fn:`basilisp.io/path` function.
 * :lpy:ns:`basilisp.java.process` provides the ``clojure.java.process``
   import path over Python :external:py:class:`subprocess.Popen` objects. Its
   text-mode pipes follow Python newline normalization and ``io-task`` uses the
@@ -299,7 +301,8 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
   of ``clojure.core.reducers``. It does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
-* :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell``
+* :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell`` and is
+  available through that standard import path.
 * :lpy:ns:`basilisp.spec.alpha` provides portable validation, conforming,
   sequence specs, and ``fspec``/``fdef`` descriptors. Its opt-in
   :lpy:ns:`basilisp.spec.test.alpha` instrumentation validates calls through

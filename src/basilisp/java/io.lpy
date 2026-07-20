@@ -1,0 +1,21 @@
+(ns basilisp.java.io
+  "Portable ``clojure.java.io`` entry points backed by :lpy:ns:`basilisp.io`.
+
+  The namespace exposes the part of the Clojure API that maps directly to Python
+  paths and streams. ``file`` is an alias for :lpy:fn:`basilisp.io/path`."
+  (:require [basilisp.io :as bio]))
+
+;; Define public Vars rather than merely referring them. Qualified calls through
+;; ``clojure.java.io`` and namespace introspection must both expose the portable
+;; standard-library surface.
+(def file bio/path)
+(def path bio/path)
+(def delete-file bio/delete-file)
+(def reader bio/reader)
+(def writer bio/writer)
+(def input-stream bio/input-stream)
+(def output-stream bio/output-stream)
+(def copy bio/copy)
+(def make-parents bio/make-parents)
+(def exists? bio/exists?)
+(def touch bio/touch)

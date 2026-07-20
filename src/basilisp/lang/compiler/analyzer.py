@@ -3718,7 +3718,12 @@ def __resolve_namespaced_symbol_in_ns(
     # `Namespace.import_aliases`.
     ns_sym = sym.symbol(form.ns)
     import_sym = sym.symbol(munge(form.ns))
-    if import_sym in which_ns.imports or ns_sym in which_ns.import_aliases:
+    # An explicit namespace alias is user-authored and must take precedence over
+    # a default Python import with the same spelling (for example, the idiomatic
+    # ``[clojure.java.io :as io]`` must not resolve to Python's ``io`` module).
+    if ns_sym not in which_ns.aliases and (
+        import_sym in which_ns.imports or ns_sym in which_ns.import_aliases
+    ):
         # Fetch the full namespace name for the aliased namespace/module.
         # We don't need this for actually generating the link later, but
         # we _do_ need it for fetching a reference to the module to check

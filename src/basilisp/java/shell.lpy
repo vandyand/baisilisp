@@ -1,0 +1,7 @@
+(ns basilisp.java.shell
+  "Portable ``clojure.java.shell`` entry points backed by :lpy:ns:`basilisp.shell`."
+  (:require [basilisp.shell :as shell]))
+
+;; Define a public Var so qualified calls through ``clojure.java.shell`` resolve
+;; exactly as they do in Clojure source.
+(def sh shell/sh)

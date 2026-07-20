@@ -6500,6 +6500,12 @@ class TestSymbolResolution:
                 monkeypatch.chdir(cwd)
                 os.unlink(module_file_path)
 
+    def test_namespace_alias_overrides_default_python_import(self, lcompile: CompileFn):
+        assert pathlib.Path("parent", "child") == lcompile("""
+            (require '[basilisp.io :as io])
+            (io/path "parent" "child")
+            """)
+
     def test_import_name_with_underscores_resolves_properly(
         self,
         lcompile: CompileFn,
