@@ -63,6 +63,6 @@
   (is (= '((0) (1) (2))
          (vec (with-monad sequence-m
                 (for [x (range 3)] (m-result x))))))
-  (is (= '([0 0] [0 1] [1 0] [1 1])
+  (is (= '(([0 0]) ([0 1]) ([1 0]) ([1 1]))
          (vec (with-monad sequence-m
                 (for [x (range 2) y (range 2)] (m-result [x y])))))))
