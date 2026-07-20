@@ -40,6 +40,29 @@ For asserting repeatedly against different inputs, you can use the :lpy:fn:`are`
        4  2 2
        0 -1 1)
 
+Property Tests
+--------------
+
+The portable ``clojure.test.check`` import path is also available. Use
+``for-all`` to describe generated inputs and ``defspec`` to register the
+property with the normal Basilisp/PyTest runner. A fixed ``:seed`` makes a
+failing run reproducible.
+
+.. code-block:: clojure
+
+   (ns my-project.property-test
+     (:require [clojure.test.check.generators :as gen]
+               [clojure.test.check.properties :as prop]
+               [clojure.test.check.clojure-test :refer [defspec]]))
+
+   (defspec reversing-a-vector-twice 500
+     (prop/for-all [xs (gen/vector gen/small-integer)]
+       (= xs (vec (reverse (reverse xs))))))
+
+For exploratory use, call ``clojure.test.check/quick-check`` directly. Its
+result includes ``:seed``, and failures include ``:fail`` and ``:shrunk`` with
+the smallest counterexample found.
+
 .. _testing_repl:
 
 Running Tests at the REPL

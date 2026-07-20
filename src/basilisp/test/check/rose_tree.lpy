@@ -1,0 +1,13 @@
+(ns basilisp.test.check.rose-tree
+  (:refer-clojure :exclude [filter remove seq])
+  (:import [basilisp.test.check._impl :as impl]))
+
+(def RoseTree impl/RoseTree)
+(def root impl/root)
+(def children impl/children)
+(def make-rose impl/make_rose)
+(def pure impl/rose_pure)
+(def fmap impl/rose_fmap)
+(def join impl/rose_join)
+(def bind impl/rose_bind)
+(def filter impl/rose_filter)

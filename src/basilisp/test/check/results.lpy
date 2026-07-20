@@ -1,0 +1,5 @@
+(ns basilisp.test.check.results
+  (:import [basilisp.test.check._impl :as impl]))
+
+(def pass? impl/pass_q)
+(def result-data impl/result_data)

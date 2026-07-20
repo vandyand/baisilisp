@@ -1,0 +1,26 @@
+(ns basilisp.test.check.clojure-test
+  (:require [basilisp.test :as test]
+            [basilisp.test.check :as tc]))
+
+(def ^:dynamic *default-test-count* 100)
+(def ^:dynamic *default-opts* {})
+
+(defn process-options
+  [options]
+  (cond
+    (nil? options) {:num-tests *default-test-count*}
+    (number? options) {:num-tests options}
+    (map? options) (merge {:num-tests *default-test-count*} options)
+    :else (throw (ex-info (str "Invalid defspec options: " (pr-str options))
+                          {:bad-options options}))))
+
+(defmacro defspec
+  "Define a Basilisp test backed by a test.check property."
+  ([name property]
+   `(defspec ~name nil ~property))
+  ([name options property]
+   `(test/deftest ~name
+      (let [options# (process-options ~options)
+            check# (apply tc/quick-check (:num-tests options#) ~property
+                          (apply concat (dissoc options# :num-tests)))]
+        (test/is (:pass? check#))))))

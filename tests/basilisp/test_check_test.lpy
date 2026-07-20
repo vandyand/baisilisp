@@ -1,0 +1,87 @@
+(ns tests.basilisp.test-check-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [basilisp.test.check :as tc]
+            [basilisp.test.check.clojure-test :refer [defspec]]
+            [basilisp.test.check.generators :as gen]
+            [basilisp.test.check.properties :as prop]))
+
+(defspec defspec-runs-through-basilisp-test 75
+  (prop/for-all [x (gen/choose -100 100)] (= x x)))
+
+(deftest seeded-generation-is-reproducible
+  (testing "a fixed seed gives the same generated value"
+    (is (= (gen/generate (gen/vector (gen/choose -100 100)) 40 1729)
+           (gen/generate (gen/vector (gen/choose -100 100)) 40 1729))))
+  (testing "a fixed seed gives the same quick-check outcome"
+    (let [property (prop/for-all [x (gen/choose -1000 1000)] (<= (* x x) 1000000))
+          a (tc/quick-check 300 property :seed 991)
+          b (tc/quick-check 300 property :seed 991)]
+      (is (= (dissoc a :time-elapsed-ms)
+             (dissoc b :time-elapsed-ms))))))
+
+(deftest reporter-observes-every-passing-trial-and-completion
+  (let [events (atom [])
+        result (tc/quick-check 125
+                               (prop/for-all [x (gen/choose -10 10)] (= x x))
+                               :seed 8181
+                               :reporter-fn #(swap! events conj (:type %)))]
+    (is (:pass? result))
+    (is (= 125 (count (filter #(= :trial %) @events))))
+    (is (= :complete (last @events)))))
+
+(deftest generated-values-respect-generator-invariants
+  (let [values (gen/sample (gen/vector (gen/choose -50 50) 3 9) 400)]
+    (is (= 400 (count values)))
+    (is (every? #(<= 3 (count %) 9) values))
+    (is (every? #(every? (fn [x] (<= -50 x 50)) %) values)))
+  (let [values (gen/sample (gen/vector-distinct (gen/choose 0 100)
+                                                   {:min-elements 3 :max-elements 8})
+                           250)]
+    (is (every? #(= (count %) (count (set %))) values))
+    (is (every? #(<= 3 (count %) 8) values))))
+
+(deftest properties-run-many-fuzzed-trials
+  (let [property (prop/for-all [xs (gen/vector (gen/choose -10000 10000))]
+                   (= xs (vec (reverse (reverse xs)))))
+        result (tc/quick-check 750 property :seed 456789 :max-size 60)]
+    (is (:pass? result))
+    (is (= 750 (:num-tests result)))))
+
+(deftest failing-properties-shrink-without-breaking-property-arity
+  (let [result (tc/quick-check 100
+                               (prop/for-all [x (gen/choose 0 100)] (< x 5))
+                               :seed 42)
+        original (first (:fail result))
+        smallest (first (get-in result [:shrunk :smallest]))]
+    (is (not (:pass? result)))
+    (is (<= 5 smallest))
+    (is (< smallest original))
+    (is (number? (get-in result [:shrunk :total-nodes-visited])))))
+
+(deftest dependent-and-filtered-generators
+  (let [property (prop/for-all [pair (gen/let [n (gen/choose 1 30)
+                                               xs (gen/vector (gen/choose 0 100) n)]
+                                      [n xs])]
+                   (= (first pair) (count (second pair))))]
+    (is (:pass? (tc/quick-check 400 property :seed 1234))))
+  (let [positive (gen/such-that pos? (gen/choose -100 100) {:max-tries 100})]
+    (is (every? pos? (gen/sample positive 200))))
+  (is (thrown? Exception
+               (gen/generate (gen/such-that (constantly false) (gen/return 0) 2)
+                             1 7))))
+
+(deftest generated-exceptions-are-counterexamples
+  (let [result (tc/quick-check 20
+                               (prop/for-all [x (gen/return 1)]
+                                 (/ x 0))
+                               :seed 5)]
+    (is (not (:pass? result)))
+    (is (instance? Exception
+                   (get-in result [:result-data :basilisp.test.check.properties/error])))))
+
+(deftest generator-let-composes-dependent-values
+  (let [generator (gen/let [n (gen/choose 1 30)
+                            xs (gen/vector gen/nat n)]
+                    {:n n :xs xs})]
+    (is (every? (fn [{:keys [n xs]}] (= n (count xs)))
+                (gen/sample generator 300)))))

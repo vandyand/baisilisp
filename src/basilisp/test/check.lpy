@@ -1,0 +1,4 @@
+(ns basilisp.test.check
+  (:import [basilisp.test.check._impl :as impl]))
+
+(def quick-check impl/quick_check)

@@ -1,0 +1,13 @@
+(ns basilisp.test.check.properties
+  (:require [basilisp.test.check.generators :as gen])
+  (:import [basilisp.test.check._impl :as impl]))
+
+(def ErrorResult impl/ErrorResult)
+(def for-all* impl/for_all_star)
+
+(defmacro for-all
+  [bindings & body]
+  (assert (vector? bindings) "for-all requires a binding vector")
+  (assert (even? (count bindings)) "for-all requires an even number of bindings")
+  `(for-all* [~@(take-nth 2 (rest bindings))]
+             (fn [~@(take-nth 2 bindings)] ~@body)))

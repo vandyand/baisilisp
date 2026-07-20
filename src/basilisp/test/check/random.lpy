@@ -1,0 +1,11 @@
+(ns basilisp.test.check.random
+  (:import [basilisp.test.check._impl :as impl]))
+
+(def IRandom impl/RNG)
+(def JavaUtilSplittableRandom impl/RNG)
+(def make-random impl/make_random)
+(def make-java-util-splittable-random impl/make_random)
+(def rand-long impl/rand_long)
+(def rand-double impl/rand_double)
+(def split impl/split)
+(def split-n impl/split_n)

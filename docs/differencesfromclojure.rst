@@ -314,6 +314,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``
+* :lpy:ns:`basilisp.test.check` supplies the portable ``clojure.test.check``
+  property-testing boundary: deterministic seeded generation, composable
+  generators, shrinking, ``for-all``, ``quick-check``, and ``defspec``. Its
+  random implementation is Python-hosted, so a seed is reproducible within
+  Basilisp but does not promise Java ``SplittableRandom`` byte-for-byte output.
 * :lpy:ns:`basilisp.test.tap` is a port of ``clojure.test.tap`` for REPL test
   runners. ``clojure.test.junit`` remains JVM-specific and is not provided.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``
