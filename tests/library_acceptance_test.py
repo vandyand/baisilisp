@@ -70,9 +70,7 @@ def test_medley_acceptance_manifest_is_portable_and_checked_in():
     library_root = Path(__file__).parent / "acceptance" / "upstream" / "medley"
     manifest = acceptance_manifest(library_root)
 
-    # The manifest records the original JVM dispatch branches; the reviewed
-    # Basilisp port is exercised separately by the shared runtime fixture.
-    assert '"classification": "jvm-only"' in manifest
+    assert '"classification": "portable"' in manifest
     assert "JVM collection dispatch -> Basilisp collection protocols" in manifest
     assert manifest == verify_manifest(
         library_root, library_root / "portability-manifest.json"

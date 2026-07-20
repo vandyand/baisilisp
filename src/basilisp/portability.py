@@ -84,7 +84,13 @@ def inspect_source_file(path: Path, root: Path | None = None) -> SourceFile:
     """Classify one ``.clj``, ``.cljc``, or ``.lpy`` source file."""
     text = path.read_text(encoding="utf-8")
     blockers = tuple(
-        name for name, marker in _JVM_MARKERS.items() if marker.search(text)
+        name
+        for name, marker in _JVM_MARKERS.items()
+        if any(
+            _is_code_position(text, match.start())
+            and _is_lpy_visible(text, match.start())
+            for match in marker.finditer(text)
+        )
     )
     if blockers:
         classification = "jvm-only"
@@ -118,6 +124,80 @@ def _reader_features(text: str) -> set[str]:
     for opening in _reader_conditional_openings(text):
         features.update(_conditional_features(text, opening))
     return features
+
+
+def _reader_conditional_branches(
+    text: str, opening: int
+) -> tuple[tuple[str, int, int], ...]:
+    """Return feature/value spans for one well-formed reader conditional."""
+
+    branches: list[tuple[str, int, int]] = []
+    index = opening + 1
+    while index < len(text):
+        index = _skip_ignored(text, index)
+        if index >= len(text) or text[index] == ")":
+            return tuple(branches)
+        if text[index] != ":":
+            return tuple(branches)
+        end = index + 1
+        while end < len(text) and (text[end].isalnum() or text[end] in "_+-./"):
+            end += 1
+        feature = text[index + 1 : end]
+        value_start = _skip_ignored(text, end)
+        value_end = _skip_form(text, value_start)
+        if not feature or value_start == value_end:
+            return tuple(branches)
+        branches.append((feature, value_start, value_end))
+        index = value_end
+    return tuple(branches)
+
+
+def _is_lpy_visible(text: str, position: int) -> bool:
+    """Return whether a source position is selected by Basilisp reader features.
+
+    JVM tokens in a non-selected ``:clj``/``:default`` branch are evidence of a
+    deliberate portability adapter, not an active runtime blocker. An
+    unguarded token—or one in the selected ``:lpy`` branch—remains a blocker.
+    The lexical implementation deliberately tolerates malformed forms by
+    treating their contents as visible and therefore conservative.
+    """
+
+    for opening in _reader_conditional_openings(text):
+        branches = _reader_conditional_branches(text, opening)
+        if not branches:
+            continue
+        closing = _skip_form(text, opening)
+        if not opening < position < closing:
+            continue
+        selected = (
+            "lpy" if any(feature == "lpy" for feature, _, _ in branches) else "default"
+        )
+        for feature, start, end in branches:
+            if start <= position < end:
+                if feature != selected:
+                    return False
+                break
+    return True
+
+
+def _is_code_position(text: str, position: int) -> bool:
+    """Return whether ``position`` is outside a comment or string literal."""
+
+    index = 0
+    while index < position:
+        if text[index] == ";":
+            end = text.find("\n", index)
+            if end == -1 or position < end:
+                return False
+            index = end + 1
+        elif text[index] == '"':
+            end = _skip_string(text, index)
+            if position <= end:
+                return False
+            index = end + 1
+        else:
+            index += 1
+    return True
 
 
 def _reader_conditional_openings(text: str) -> Iterable[int]:

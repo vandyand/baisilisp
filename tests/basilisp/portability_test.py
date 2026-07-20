@@ -49,6 +49,35 @@ def test_portability_manifest_keeps_pure_lpy_source_portable(tmp_path):
     assert "portable" == manifest.sources[0].classification
 
 
+def test_portability_ignores_jvm_markers_in_non_selected_lpy_adapters(tmp_path):
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "adapter.lpy").write_text(
+        "#?(:clj (instance? clojure.lang.IPersistentVector value)\n"
+        "   :lpy (vector? value)\n"
+        "   :default (java.lang.String/valueOf value))\n"
+        "#?(:lpy (identity value) :default (java.time.Instant/now))\n"
+    )
+
+    manifest = portability.inspect_source_tree(source)
+
+    assert "portable" == manifest.classification
+    assert () == manifest.sources[0].blockers
+
+
+def test_portability_keeps_jvm_marker_in_selected_lpy_branch_blocked(tmp_path):
+    source = tmp_path / "src"
+    source.mkdir()
+    (source / "unsafe.lpy").write_text(
+        "#?(:lpy (java.time.Instant/now) :clj :ignored)\n"
+    )
+
+    manifest = portability.inspect_source_tree(source)
+
+    assert "jvm-only" == manifest.classification
+    assert ("java-interop",) == manifest.sources[0].blockers
+
+
 def test_reader_feature_scan_ignores_comments_and_strings_and_finds_nested_forms(
     tmp_path,
 ):
@@ -89,3 +118,15 @@ def test_reader_feature_scan_handles_randomized_conditional_layouts(tmp_path, fe
     manifest = portability.inspect_source_tree(root)
 
     assert tuple(sorted(features)) == manifest.sources[0].reader_features
+
+
+@settings(max_examples=30, suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(feature=st.sampled_from(["clj", "cljs", "default"]))
+def test_portability_hides_jvm_markers_from_random_non_lpy_branch(tmp_path, feature):
+    root = tmp_path / feature
+    root.mkdir()
+    (root / "adapter.lpy").write_text(
+        f"#?(:{feature} (java.time.Instant/now) :lpy :safe)\n"
+    )
+
+    assert "portable" == portability.inspect_source_tree(root).classification

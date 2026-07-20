@@ -1,15 +1,12 @@
 {
-  "classification": "jvm-only",
+  "classification": "portable",
   "known_deviations": [],
   "schema_version": 1,
   "source_root": ".",
   "sources": [
     {
-      "blockers": [
-        "java-interop",
-        "jvm-runtime-class"
-      ],
-      "classification": "jvm-only",
+      "blockers": [],
+      "classification": "portable",
       "language": "lpy",
       "path": "medley/core.lpy",
       "reader_features": [
