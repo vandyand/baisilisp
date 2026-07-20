@@ -1,0 +1,25 @@
+(ns basilisp.data.codec.base64
+  "Portable clojure.data.codec.base64 API."
+  (:import [basilisp.data_codec_base64 :as impl]))
+
+(def enc-length impl/enc_length)
+(def dec-length impl/dec_length)
+(def pad-length impl/pad_length)
+(def encode! impl/encode_into)
+(def decode! impl/decode_into)
+
+(defn encode
+  ([input] (impl/encode input))
+  ([input offset length] (impl/encode input offset length)))
+
+(defn decode
+  ([input] (impl/decode input))
+  ([input offset length] (impl/decode input offset length)))
+
+(defn encoding-transfer
+  [input-stream output-stream & {:as options}]
+  (impl/encoding_transfer input-stream output-stream options))
+
+(defn decoding-transfer
+  [input-stream output-stream & {:as options}]
+  (impl/decoding_transfer input-stream output-stream options))

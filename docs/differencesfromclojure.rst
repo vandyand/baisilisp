@@ -274,6 +274,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   It returns Basilisp persistent maps and vectors and supports ordinary Python
   text streams; non-seekable streams retain an internal unread suffix between
   calls instead of requiring a JVM ``PushbackReader``.
+* :lpy:ns:`basilisp.data.codec.base64` provides the portable
+  ``clojure.data.codec.base64`` byte-array API. It accepts Python bytes-like
+  values and binary streams in place of JVM byte arrays and streams.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``repl``/``io-prepl``/``remote-prepl`` support through the

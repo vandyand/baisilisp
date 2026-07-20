@@ -1,0 +1,76 @@
+(ns tests.basilisp.data-codec-base64-test
+  (:import io
+           random)
+  (:require [basilisp.test :refer [are deftest is]]
+            [clojure.data.codec.base64 :as base64]))
+
+(deftest known-vectors-and-lengths
+  (is (= 0 (base64/enc-length 0)))
+  (is (= 4 (base64/enc-length 1)))
+  (is (= 4 (base64/enc-length 3)))
+  (is (= 8 (base64/enc-length 4)))
+  (is (= 0 (base64/dec-length 0 0)))
+  (is (= 1 (base64/dec-length 4 2)))
+  (is (= 2 (base64/dec-length 4 1)))
+  (is (= 3 (base64/dec-length 4 0)))
+  (are [plain encoded] (= encoded (base64/encode plain))
+    #b ""      #b ""
+    #b "f"     #b "Zg=="
+    #b "fo"    #b "Zm8="
+    #b "foo"   #b "Zm9v"
+    #b "foob"  #b "Zm9vYg=="
+    #b "fooba" #b "Zm9vYmE="
+    #b "foobar" #b "Zm9vYmFy")
+  (are [encoded plain] (= plain (base64/decode encoded))
+    #b "" #b ""
+    #b "Zg==" #b "f"
+    #b "Zm8=" #b "fo"
+    #b "Zm9v" #b "foo")
+  (is (= 2 (base64/pad-length #b "Zg==" 0 4)))
+  (is (= 1 (base64/pad-length #b "Zm8=" 0 4))))
+
+(deftest offsets-and-mutable-destinations
+  (let [input #b "xxfoobaryy"
+        encoded (base64/encode input 2 6)
+        enc-dest (python/bytearray (base64/enc-length 6))
+        dec-dest (python/bytearray 6)]
+    (is (= #b "Zm9vYmFy" encoded))
+    (is (= 8 (base64/encode! input 2 6 enc-dest)))
+    (is (= encoded (python/bytes enc-dest)))
+    (is (= 6 (base64/decode! enc-dest 0 8 dec-dest)))
+    (is (= #b "foobar" (python/bytes dec-dest)))))
+
+(deftest transfer-supports-custom-buffer-sizes
+  (let [plain #b "A compact stream that crosses several transfer buffers."
+        encoded-out (io/BytesIO)
+        decoded-out (io/BytesIO)]
+    (base64/encoding-transfer (io/BytesIO plain) encoded-out :buffer-size 3)
+    (base64/decoding-transfer (io/BytesIO (.getvalue encoded-out)) decoded-out :buffer-size 4)
+    (is (= plain (.getvalue decoded-out)))))
+
+(deftest malformed-input-and-buffer-contracts
+  (is (thrown? Exception (base64/decode #b "abc")))
+  (is (thrown? Exception (base64/decode #b "!!!!")))
+  (is (thrown? Exception (base64/decode #b "Zg=a")))
+  (is (thrown? Exception (base64/encode #b "abc" -1 1)))
+  (is (thrown? Exception (base64/decode #b "Zm9v" 1 4)))
+  (is (thrown? Exception (base64/encode! #b "abc" 0 3 (python/bytearray 3))))
+  (is (thrown? Exception
+               (base64/encoding-transfer (io/BytesIO #b "abc") (io/BytesIO) :buffer-size 2)))
+  (is (thrown? Exception
+               (base64/decoding-transfer (io/BytesIO #b "YWJj") (io/BytesIO) :buffer-size 3))))
+
+(deftest seeded-roundtrip-fuzzes-offsets-and-in-place-codec
+  (let [rng (random/Random 77331)]
+    (dotimes [_ 600]
+      (let [size (.randint rng 0 512)
+            prefix (.randbytes rng (.randint rng 0 12))
+            payload (.randbytes rng size)
+            suffix (.randbytes rng (.randint rng 0 12))
+            source (.join #b "" [prefix payload suffix])
+            offset (count prefix)
+            encoded (base64/encode source offset size)
+            out (python/bytearray size)]
+        (is (= payload (base64/decode encoded)))
+        (is (= size (base64/decode! encoded 0 (count encoded) out)))
+        (is (= payload (python/bytes out)))))))
