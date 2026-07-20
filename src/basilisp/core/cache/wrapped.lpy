@@ -1,0 +1,52 @@
+(ns basilisp.core.cache.wrapped
+  "Atom-backed convenience API for basilisp.core.cache."
+  (:require [basilisp.core.cache :as c])
+  (:import [basilisp.core_cache :as impl]))
+
+(defn lookup
+  ([cache-atom e] (impl/cache_lookup @cache-atom e))
+  ([cache-atom e not-found] (impl/cache_lookup @cache-atom e not-found)))
+
+(defn lookup-or-miss
+  ([cache-atom e value-fn]
+   (impl/wrapped_lookup_or_miss cache-atom e (fn [f item] (f item)) value-fn))
+  ([cache-atom e wrap-fn value-fn]
+   (impl/wrapped_lookup_or_miss cache-atom e wrap-fn value-fn)))
+
+(defn has? [cache-atom e] (impl/cache_has @cache-atom e))
+(defn size [cache-atom] (count @cache-atom))
+(defn hit [cache-atom e] (swap! cache-atom impl/cache_hit e))
+(defn miss [cache-atom e ret] (swap! cache-atom impl/cache_miss e ret))
+(defn evict [cache-atom e] (swap! cache-atom impl/cache_evict e))
+(defn seed [cache-atom base] (swap! cache-atom impl/cache_seed base))
+
+(def ^:private default-wrapper-fn (fn [f item] (f item)))
+
+(defn through
+  ([cache-atom item] (through default-wrapper-fn identity cache-atom item))
+  ([value-fn cache-atom item] (through default-wrapper-fn value-fn cache-atom item))
+  ([wrap-fn value-fn cache-atom item]
+   (impl/wrapped_through cache-atom item wrap-fn value-fn)))
+
+(defn through-cache
+  ([cache-atom item] (through-cache cache-atom item default-wrapper-fn identity))
+  ([cache-atom item value-fn] (through-cache cache-atom item default-wrapper-fn value-fn))
+  ([cache-atom item wrap-fn value-fn]
+   (impl/wrapped_through cache-atom item wrap-fn value-fn)))
+
+(defn basic-cache-factory [base] (atom (c/basic-cache-factory base)))
+(defn fifo-cache-factory [base & {:keys [threshold] :or {threshold 32}}]
+  (atom (c/fifo-cache-factory base :threshold threshold)))
+(defn lru-cache-factory [base & {:keys [threshold] :or {threshold 32}}]
+  (atom (c/lru-cache-factory base :threshold threshold)))
+(defn ttl-cache-factory [base & {:keys [ttl] :or {ttl 2000}}]
+  (atom (c/ttl-cache-factory base :ttl ttl)))
+(defn lu-cache-factory [base & {:keys [threshold] :or {threshold 32}}]
+  (atom (c/lu-cache-factory base :threshold threshold)))
+(defn lirs-cache-factory
+  [base & {:keys [s-history-limit q-history-limit]
+           :or {s-history-limit 32 q-history-limit 32}}]
+  (atom (c/lirs-cache-factory base
+                              :s-history-limit s-history-limit
+                              :q-history-limit q-history-limit)))
+(defn soft-cache-factory [base] (atom (c/soft-cache-factory base)))

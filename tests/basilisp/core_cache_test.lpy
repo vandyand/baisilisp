@@ -1,0 +1,53 @@
+(ns tests.basilisp.core-cache-test
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.core.cache :as cache]
+            [clojure.core.cache.wrapped :as wrapped]))
+
+(deftest caches-are-persistent-maps-with-basic-through-contract
+  (let [original (cache/basic-cache-factory {:a 1})
+        changed (assoc original :b 2)]
+    (is (= {:a 1} original))
+    (is (= {:a 1 :b 2} changed))
+    (is (= 1 (cache/lookup changed :a)))
+    (is (= :missing (cache/lookup changed :missing :missing)))
+    (is (cache/has? changed :b))
+    (is (= {:cache :test} (meta (with-meta changed {:cache :test}))))
+    (is (= {:a 1 :b 2} (with-meta changed {:cache :test})))
+    (is (= {:a 1 :b 2 :c 3}
+           (cache/through (fn [key] (if (= key :c) 3 0)) changed :c)))))
+
+(deftest fifo-lru-and-least-used-eviction-contracts
+  (let [fifo (-> (cache/fifo-cache-factory {} :threshold 2)
+                 (cache/miss :a 1)
+                 (cache/miss :b 2)
+                 (cache/miss :c 3))
+        lru  (-> (cache/lru-cache-factory {} :threshold 2)
+                 (cache/miss :a 1)
+                 (cache/miss :b 2)
+                 (cache/hit :a)
+                 (cache/miss :c 3))
+        lu   (-> (cache/lu-cache-factory {} :threshold 2)
+                 (cache/miss :a 1)
+                 (cache/miss :b 2)
+                 (cache/hit :a)
+                 (cache/miss :c 3))]
+    (is (= {:b 2 :c 3} fifo))
+    (is (= {:a 1 :c 3} lru))
+    (is (= {:a 1 :c 3} lu))
+    (is (= {:a 1} (cache/evict lru :c)))))
+
+(deftest lirs-and-wrapped-cache-contracts
+  (let [lirs (-> (cache/lirs-cache-factory {} :s-history-limit 2 :q-history-limit 2)
+                 (cache/miss :a 1)
+                 (cache/miss :b 2)
+                 (cache/miss :c 3))
+        wrapped-cache (wrapped/lru-cache-factory {} :threshold 2)]
+    (is (= 3 (cache/lookup lirs :c)))
+    (is (= 1 (wrapped/lookup-or-miss wrapped-cache :a (fn [_] 1))))
+    (is (= 1 (wrapped/lookup-or-miss wrapped-cache :a (fn [_] 99))))
+    (is (= 1 (wrapped/size wrapped-cache)))
+    (is (= {:a 1 :b 2}
+           (wrapped/miss wrapped-cache :b 2)))))
+
+(deftest soft-cache-is-explicitly-unavailable
+  (is (thrown? Exception (cache/soft-cache-factory {}))))

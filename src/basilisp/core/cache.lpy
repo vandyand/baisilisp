@@ -1,0 +1,81 @@
+(ns basilisp.core.cache
+  "Portable compatibility for the persistent policies in clojure.core.cache.
+
+  ``soft-cache-factory`` raises because Clojure's SoftCache depends on JVM
+  SoftReference behavior, which Python does not provide."
+  (:import [basilisp.core_cache :as impl]))
+
+(defprotocol CacheProtocol
+  (lookup [cache e] [cache e not-found])
+  (has? [cache e])
+  (hit [cache e])
+  (miss [cache e ret])
+  (evict [cache e])
+  (seed [cache base]))
+
+(defn ^:private cache-lookup
+  ([cache e] (impl/cache_lookup cache e))
+  ([cache e not-found] (impl/cache_lookup cache e not-found)))
+(defn ^:private cache-has [cache e] (impl/cache_has cache e))
+(defn ^:private cache-hit [cache e] (impl/cache_hit cache e))
+(defn ^:private cache-miss [cache e ret] (impl/cache_miss cache e ret))
+(defn ^:private cache-evict [cache e] (impl/cache_evict cache e))
+(defn ^:private cache-seed [cache base] (impl/cache_seed cache base))
+
+;; Protocol dispatch registration is exact for Python classes, so register the
+;; concrete public cache types as well as their common implementation base.
+(doseq [cache-type [impl/PersistentCache impl/BasicCache impl/FnCache
+                    impl/FIFOCache impl/LRUCache impl/TTLCacheQ impl/LUCache
+                    impl/LIRSCache]]
+  (extend cache-type CacheProtocol
+          {:lookup cache-lookup :has? cache-has :hit cache-hit
+           :miss cache-miss :evict cache-evict :seed cache-seed}))
+
+(def BasicCache impl/BasicCache)
+(def FnCache impl/FnCache)
+(def FIFOCache impl/FIFOCache)
+(def LRUCache impl/LRUCache)
+(def TTLCacheQ impl/TTLCacheQ)
+(def LUCache impl/LUCache)
+(def LIRSCache impl/LIRSCache)
+
+(def basic-cache-factory impl/basic_cache_factory)
+
+(defn fifo-cache-factory
+  [base & {:keys [threshold] :or {threshold 32}}]
+  (impl/fifo_cache_factory base threshold))
+
+(defn lru-cache-factory
+  [base & {:keys [threshold] :or {threshold 32}}]
+  (impl/lru_cache_factory base threshold))
+
+(defn ttl-cache-factory
+  [base & {:keys [ttl] :or {ttl 2000}}]
+  (impl/ttl_cache_factory base ttl))
+
+(defn lu-cache-factory
+  [base & {:keys [threshold] :or {threshold 32}}]
+  (impl/lu_cache_factory base threshold))
+
+(defn lirs-cache-factory
+  [base & {:keys [s-history-limit q-history-limit]
+           :or {s-history-limit 32 q-history-limit 32}}]
+  (impl/lirs_cache_factory base s-history-limit q-history-limit))
+
+(def soft-cache-factory impl/soft_cache_factory)
+
+(def ^:private default-wrapper-fn (fn [f item] (f item)))
+
+(defn through
+  ([cache item] (through default-wrapper-fn identity cache item))
+  ([value-fn cache item] (through default-wrapper-fn value-fn cache item))
+  ([wrap-fn value-fn cache item]
+   (if (has? cache item)
+     (hit cache item)
+     (miss cache item (wrap-fn value-fn item)))))
+
+(defn through-cache
+  ([cache item] (through-cache cache item default-wrapper-fn identity))
+  ([cache item value-fn] (through-cache cache item default-wrapper-fn value-fn))
+  ([cache item wrap-fn value-fn]
+   (through wrap-fn value-fn cache item)))
