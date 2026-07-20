@@ -59,6 +59,16 @@
   [f]
   (as-path f))
 
+(defn as-relative-path
+  "Coerce ``f`` to a relative Python :external:py:class:`pathlib.Path`.
+
+  Absolute paths are rejected, matching :lpy:fn:`clojure.java.io/as-relative-path`."
+  [f]
+  (let [p (as-path f)]
+    (when (.is_absolute p)
+      (throw (python/ValueError (str p " is not a relative path"))))
+    p))
+
 (defn as-url
   "Coerce a URL string or path-like value to a parsed URL.
 

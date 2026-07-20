@@ -287,9 +287,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   values rather than Java date, calendar, or timestamp classes.
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io`` and is available
   through that standard import path. Its ``file`` and ``as-file`` entry points
-  map to Python :class:`pathlib.Path` values, ``as-url`` returns a parsed URL,
-  and ``resource`` searches Python's import path for file resources rather
-  than using a JVM class loader.
+  map to Python :class:`pathlib.Path` values, ``as-relative-path`` rejects
+  absolute paths, ``as-url`` returns a parsed URL, and ``resource`` searches
+  Python's import path for file resources rather than using a JVM class loader.
 * :lpy:ns:`basilisp.java.process` provides the ``clojure.java.process``
   import path over Python :external:py:class:`subprocess.Popen` objects. Its
   text-mode pipes follow Python newline normalization and ``io-task`` uses the

@@ -32,7 +32,9 @@ def _io_fn(name):
     )
 )
 def test_clojure_java_io_file_matches_pathlib_for_generated_path_segments(parts):
-    assert pathlib.Path(*parts) == _io_fn("file")(*parts)
+    path = pathlib.Path(*parts)
+    assert path == _io_fn("file")(*parts)
+    assert path == _io_fn("as-relative-path")(path)
 
 
 @given(

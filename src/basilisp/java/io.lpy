@@ -11,6 +11,7 @@
 (def file bio/path)
 (def path bio/path)
 (def as-file bio/as-file)
+(def as-relative-path bio/as-relative-path)
 (def as-url bio/as-url)
 (def resource bio/resource)
 (def delete-file bio/delete-file)

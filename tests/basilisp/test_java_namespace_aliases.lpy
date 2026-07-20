@@ -14,16 +14,20 @@
          (io/path "parent" "child")))
   (is (= (pathlib/Path "parent")
          (io/as-file "parent")))
+  (is (= (pathlib/Path "parent" "child")
+         (io/as-relative-path "parent/child")))
   (is (= "https" (.-scheme (io/as-url "https://example.com/path"))))
   (is (= "file" (.-scheme (io/as-url (pathlib/Path "parent")))))
   (is (nil? (io/resource "definitely-missing-resource")))
   (is (thrown? python/ValueError (io/as-url "relative/path")))
+  (is (thrown? python/ValueError
+               (io/as-relative-path (.resolve (pathlib/Path "absolute")))))
   (are [name] (thrown? python/TypeError (io/resource name))
     nil
     1
     :resource)
   (is (every? (set (map name (keys (ns-publics 'basilisp.java.io))))
-              ["file" "path" "as-file" "as-url" "resource" "delete-file" "reader" "writer" "input-stream"
+              ["file" "path" "as-file" "as-relative-path" "as-url" "resource" "delete-file" "reader" "writer" "input-stream"
                "output-stream" "copy" "make-parents" "exists?" "touch"])))
 
 (deftest clojure-java-shell-import-path-test
