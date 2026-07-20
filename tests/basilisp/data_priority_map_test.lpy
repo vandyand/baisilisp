@@ -1,0 +1,59 @@
+(ns tests.basilisp.data-priority-map-test
+  (:import random)
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.data.priority-map :as pm]))
+
+(deftest priority-map-map-and-queue-contract
+  (let [base (pm/priority-map :a 2 :b 1 :c 3)
+        changed (assoc base :a 0)
+        removed (dissoc changed :a)]
+    (is (= 3 (count base)))
+    (is (= 2 (:a base)))
+    (is (= [[:b 1] [:a 2] [:c 3]] (vec base)))
+    (is (= [:b 1] (peek base)))
+    (is (= [[:a 2] [:c 3]] (vec (pop base))))
+    (is (= [[:c 3] [:a 2] [:b 1]] (vec (rseq base))))
+    (is (= [[:a 0] [:b 1] [:c 3]] (vec changed)))
+    (is (= [[:b 1] [:c 3]] (vec removed)))
+    (is (= {:a 2 :b 1 :c 3} base))
+    (is (= base (with-meta base {:origin :test})))
+    (is (= {:origin :test} (meta (with-meta base {:origin :test}))))))
+
+(deftest comparators-key-functions-and-priority-bounds
+  (let [descending (pm/priority-map-by > :a 1 :b 3 :c 2)
+        keyed      (pm/priority-map-keyfn first :a [2 :apple] :b [1 :banana] :c [2 :carrot])]
+    (is (= [[:b 3] [:c 2] [:a 1]] (vec descending)))
+    (is (= [[:b [1 :banana]] [:a [2 :apple]]]
+           (vec (pm/priority-map-keyfn-by first < :a [2 :apple] :b [1 :banana]))))
+    (is (= [[:b [1 :banana]] [:a [2 :apple]] [:c [2 :carrot]]]
+           (vec keyed)))
+    (is (= [[:b 1] [:a 2]]
+           (vec (pm/subseq (pm/priority-map :a 2 :b 1 :c 3) < 3))))
+    (is (= [[:c 3] [:a 2]]
+           (vec (pm/rsubseq (pm/priority-map :a 2 :b 1 :c 3) >= 2))))
+    (is (= [[:a 2]]
+           (vec (pm/subseq (pm/priority-map :a 2 :b 1 :c 3) >= 2 < 3))))
+    (is (= {1 #{:b} 2 #{:a :c}}
+           (pm/priority->set-of-items (pm/priority-map :a 2 :b 1 :c 2))))))
+
+(deftest priority-map-rejects-invalid-construction-and-empty-pop
+  (is (thrown? Exception (pm/priority-map :a 1 :b)))
+  (is (thrown? Exception (pop (pm/priority-map)))))
+
+(deftest seeded-priority-queue-model-fuzz
+  (let [rng (random/Random 95421)]
+    (loop [step 0 model {} queue (pm/priority-map)]
+      (if (= step 700)
+        (is (= model queue))
+        (let [item (keyword (str "k" (.randint rng 0 80)))]
+          (if (< (.random rng) 0.67)
+            (let [priority (.randint rng -20 20)
+                  next-model (assoc model item priority)
+                  next-queue (assoc queue item priority)]
+              (is (= next-model next-queue))
+              (when (seq next-model)
+                (let [[expected-item expected-priority]
+                      (first (sort-by val next-model))]
+                  (is (= expected-priority (second (peek next-queue))))))
+              (recur (inc step) next-model next-queue))
+            (recur (inc step) (dissoc model item) (dissoc queue item))))))))

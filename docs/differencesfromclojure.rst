@@ -284,6 +284,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.data.codec.base64` provides the portable
   ``clojure.data.codec.base64`` byte-array API. It accepts Python bytes-like
   values and binary streams in place of JVM byte arrays and streams.
+* :lpy:ns:`basilisp.data.priority-map` provides the persistent
+  ``clojure.data.priority-map`` map/priority-queue contract. Its implementation
+  orders entries on demand rather than exposing a JVM sorted-map representation.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``repl``/``io-prepl``/``remote-prepl`` support through the

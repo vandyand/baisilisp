@@ -1,0 +1,21 @@
+(ns basilisp.data.priority-map
+  "Portable clojure.data.priority-map compatibility."
+  (:import [basilisp.lang.priority_map :as impl]))
+
+(def priority-map impl/priority_map)
+(def priority-map-by impl/priority_map_by)
+(def priority-map-keyfn impl/priority_map_keyfn)
+(def priority-map-keyfn-by impl/priority_map_keyfn_by)
+(def priority->set-of-items impl/priority_to_set_of_items)
+
+(defn subseq
+  ([priority-map test key]
+   (impl/subseq priority-map test key))
+  ([priority-map start-test start-key end-test end-key]
+   (impl/subseq priority-map start-test start-key end-test end-key)))
+
+(defn rsubseq
+  ([priority-map test key]
+   (impl/rsubseq priority-map test key))
+  ([priority-map start-test start-key end-test end-key]
+   (impl/rsubseq priority-map start-test start-key end-test end-key)))
