@@ -2327,6 +2327,15 @@
   ([size init-val-or-seq]
    (basilisp.lang.primitive_array/double_array size init-val-or-seq)))
 
+(defn vector-of
+  "Create a persistent vector with values coerced to primitive ``type``.
+
+  Basilisp preserves the Clojure type keywords and checked coercion contract while
+  using its ordinary persistent vector representation rather than JVM specialized
+  vector classes."
+  [type & values]
+  (vec (basilisp.lang.primitive_array/vector_of type values)))
+
 (defn aclone
   "Return a clone of the array, retaining primitive-array coercion semantics."
   [array]

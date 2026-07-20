@@ -302,3 +302,25 @@ def aset(array: Any, index: int, value: Any) -> Any:
         return array.assign(index, value)
     array[index] = value
     return value
+
+
+def vector_of(type_: Any, values: Iterable[Any]) -> list[Any]:
+    """Coerce values using Clojure ``vector-of``'s checked primitive semantics."""
+    name = getattr(type_, "name", str(type_).lstrip(":"))
+    constructors = {
+        "boolean": BooleanArray,
+        "byte": ByteArray,
+        "char": CharArray,
+        "short": ShortArray,
+        "int": IntArray,
+        "long": LongArray,
+        "float": FloatArray,
+        "double": DoubleArray,
+    }
+    try:
+        array_type = constructors[name]
+    except KeyError as exc:
+        raise ValueError(f"Unrecognized vector-of type: {type_!r}") from exc
+    if array_type is ByteArray:
+        return [_signed(array_type._assignment(value), 8) for value in values]
+    return [array_type._assignment(value) for value in values]

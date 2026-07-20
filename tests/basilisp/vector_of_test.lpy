@@ -1,0 +1,20 @@
+(ns tests.basilisp.vector-of-test
+  (:require [basilisp.test :refer [deftest is]]))
+
+(deftest vector-of-coerces-supported-primitive-types
+  (is (= [true false] (vector-of :boolean true false)))
+  (is (= [-128] (vector-of :byte -128)))
+  (is (= [(char 937)] (vector-of :char (char 937))))
+  (is (= [-32768] (vector-of :short -32768)))
+  (is (= [1 -2147483648] (vector-of :int 1.9 -2147483648)))
+  (is (= [1] (vector-of :long 1.9)))
+  (is (= [16777216.0] (vector-of :float 16777217)))
+  (is (= [1.0] (vector-of :double 1))))
+
+(deftest vector-of-rejects-unrecognized-and-out-of-range-values
+  (is (thrown? Exception (vector-of :object 1)))
+  (is (thrown? Exception (vector-of :byte 128)))
+  (is (thrown? Exception (vector-of :short 32768)))
+  (is (thrown? Exception (vector-of :int 2147483648)))
+  (is (thrown? Exception (vector-of :boolean 1)))
+  (is (thrown? Exception (vector-of :char "a"))))
