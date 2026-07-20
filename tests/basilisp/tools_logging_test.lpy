@@ -1,0 +1,91 @@
+(ns tests.basilisp.tools-logging-test
+  (:import io
+           logging)
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.tools.logging :as log]
+            [clojure.tools.logging.readable :as readable]))
+
+(defmacro with-capture
+  [[logger stream] logger-name level & body]
+  `(let [~logger (logging/getLogger ~logger-name)
+         ~stream (io/StringIO)
+         handler# (logging/StreamHandler ~stream)
+         old-level# (.-level ~logger)]
+     (.setFormatter handler# (logging/Formatter "%(levelname)s:%(message)s"))
+     (.addHandler ~logger handler#)
+     (.setLevel ~logger ~level)
+     (try
+       ~@body
+       (finally
+         (.removeHandler ~logger handler#)
+         (.setLevel ~logger old-level#)))))
+
+(deftest disabled-levels-do-not-realize-messages
+  (with-capture [logger stream] "tests.logging.lazy" logging/ERROR
+    (let [calls (atom 0)]
+      (log/log "tests.logging.lazy" :info nil (swap! calls inc))
+      (is (= 0 @calls))
+      (log/log "tests.logging.lazy" :error nil (swap! calls inc))
+      (is (= 1 @calls))
+      (is (= "ERROR:1\n" (.getvalue stream))))))
+
+(deftest level-macros-and-formatting-map-to-python-logging
+  (with-capture [logger stream] "tests.logging.levels" 5
+    (log/log "tests.logging.levels" :trace nil "trace")
+    (log/log "tests.logging.levels" :debug nil "debug")
+    (log/log "tests.logging.levels" :info nil "info")
+    (log/log "tests.logging.levels" :warn nil "warn")
+    (log/log "tests.logging.levels" :error nil "error")
+    (log/log "tests.logging.levels" :fatal nil "fatal")
+    (is (= ["TRACE:trace" "DEBUG:debug" "INFO:info" "WARNING:warn"
+            "ERROR:error" "CRITICAL:fatal"]
+           (vec (remove empty? (.splitlines (.getvalue stream)))))))
+  (with-capture [logger stream] "tests.logging.format" logging/INFO
+    (log/log "tests.logging.format" :info nil (format "count=%s" 42))
+    (is (= "INFO:count=42\n" (.getvalue stream)))))
+
+(deftest exceptions-readable-output-and-spies
+  (with-capture [logger stream] (str *ns*) logging/DEBUG
+    (let [exception (ex-info "broken" {:kind :test})]
+      (log/log (str *ns*) :error exception "failed"))
+    (log/info "native")
+    (readable/logp :info {:value "quoted"})
+    (readable/logf :info "readable=%s" {:value "quoted"})
+    (is (= 3 (log/spy :debug (+ 1 2))))
+    (is (= 8 (log/spyf :debug "value=%s" (* 2 4))))
+    (let [output (.getvalue stream)]
+      (is (.startswith output "ERROR:failed\n"))
+      (is (not= -1 (.find output "INFO:native")))
+      (is (not= -1 (.find output "INFO:{:value \"quoted\"}")))
+      (is (not= -1 (.find output "INFO:readable={:value \"quoted\"}")))
+      (is (not= -1 (.find output "(+ 1 2) => 3")))
+      (is (not= -1 (.find output "value=8"))))))
+
+(deftest log-stream-and-with-logs-flush-safely
+  (with-capture [logger stream] "tests.logging.stream" logging/INFO
+    (let [writer (log/log-stream :info "tests.logging.stream")]
+      (.write writer "partial")
+      (.flush writer)
+      (log/with-logs ["tests.logging.stream" :info :error]
+        (println "out")
+        (.write *err* "bad\n"))
+      (is (= ["INFO:partial" "INFO:out" "ERROR:bad"]
+             (vec (remove empty? (.splitlines (.getvalue stream)))))))))
+
+(deftest enabled-and-invalid-level-contracts
+  (with-capture [logger stream] "tests.logging.contract" logging/WARNING
+    (is (not (log/enabled? :debug "tests.logging.contract")))
+    (is (log/enabled? :warn "tests.logging.contract"))
+    (is (thrown? Exception
+                 (log/log "tests.logging.contract" :not-a-level nil "nope")))))
+
+(deftest stress-mixed-level-emission-remains-lossless
+  (with-capture [logger stream] "tests.logging.stress" 5
+    (doseq [[index level] (map-indexed vector
+                                       (take 400 (cycle [:trace :debug :info :warn :error :fatal])))]
+      (log/log "tests.logging.stress" level nil (str "case-" index)))
+    (let [lines (vec (remove empty? (.splitlines (.getvalue stream))))]
+      (is (= 400 (count lines)))
+      (is (= "TRACE:case-0" (first lines)))
+      (is (= "WARNING:case-399" (last lines)))
+      (is (every? #(not= -1 (.find % "case-")) lines)))))

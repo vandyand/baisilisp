@@ -1,0 +1,16 @@
+(ns basilisp.tools.logging.impl
+  "Python logging implementation used by basilisp.tools.logging."
+  (:import [basilisp.tools_logging :as backend]))
+
+(defn get-logger [_factory logger-ns]
+  (backend/get_logger logger-ns))
+
+(defn enabled?
+  [logger level]
+  (.isEnabledFor logger (backend/level_number level)))
+
+(defn write!
+  [logger level throwable message]
+  (backend/write logger level throwable message))
+
+(defn find-factory [] nil)

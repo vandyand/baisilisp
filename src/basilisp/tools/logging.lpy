@@ -1,0 +1,99 @@
+(ns basilisp.tools.logging
+  "Portable clojure.tools.logging API backed by Python's logging module."
+  (:require [basilisp.tools.logging.impl :as impl])
+  (:import [basilisp.tools_logging :as backend]))
+
+(def ^:dynamic *logger-factory* nil)
+
+(defn- current-ns-form []
+  (list 'quote (ns-name *ns*)))
+
+(defn log*
+  "Write an already-realized message to a logger."
+  [logger level throwable message]
+  (impl/write! logger level throwable message)
+  nil)
+
+(defmacro log
+  "Evaluate and log a message only when its level is enabled."
+  ([level message]
+   `(log ~level nil ~message))
+  ([level throwable message]
+   `(log ~(current-ns-form) ~level ~throwable ~message))
+  ([logger-ns level throwable message]
+   `(let [logger# (impl/get-logger *logger-factory* ~logger-ns)]
+      (when (impl/enabled? logger# ~level)
+        (log* logger# ~level ~throwable ~message))))
+  ([logger-factory logger-ns level throwable message]
+   `(let [logger# (impl/get-logger ~logger-factory ~logger-ns)]
+      (when (impl/enabled? logger# ~level)
+        (log* logger# ~level ~throwable ~message)))))
+
+(defmacro enabled?
+  ([level] `(enabled? ~level ~(current-ns-form)))
+  ([level logger-ns]
+   `(impl/enabled? (impl/get-logger *logger-factory* ~logger-ns) ~level)))
+
+(defmacro logp
+  [level x & more]
+  `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
+     (when (impl/enabled? logger# ~level)
+       (let [x# ~x]
+         (if (python/isinstance x# python/BaseException)
+           (log* logger# ~level x# (print-str ~@more))
+           (log* logger# ~level nil (print-str x# ~@more)))))))
+
+(defmacro logf
+  [level x & more]
+  `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
+     (when (impl/enabled? logger# ~level)
+       (let [x# ~x]
+         (if (python/isinstance x# python/BaseException)
+           (log* logger# ~level x# (format ~@more))
+           (log* logger# ~level nil (format x# ~@more)))))))
+
+(defmacro spy
+  ([expr] `(spy :debug ~expr))
+  ([level expr]
+   `(let [value# ~expr]
+      (log ~level (str (pr-str '~expr) " => " (pr-str value#)))
+      value#)))
+
+(defmacro spyf
+  ([fmt expr] `(spyf :debug ~fmt ~expr))
+  ([level fmt expr]
+   `(let [value# ~expr]
+      (log ~level (format ~fmt value#))
+      value#)))
+
+(defn log-stream [level logger-ns]
+  (backend/log_stream level logger-ns))
+
+(defn log-capture!
+  ([logger-ns] (log-capture! logger-ns :info :error))
+  ([logger-ns out-level err-level] (backend/capture logger-ns out-level err-level)))
+
+(defn log-uncapture! []
+  (backend/uncapture))
+
+(defmacro with-logs
+  [arg & body]
+  (let [[logger-ns out-level err-level] (if (vector? arg)
+                                          arg
+                                          [arg :info :error])]
+    `(binding [*out* (log-stream ~out-level ~logger-ns)
+               *err* (log-stream ~err-level ~logger-ns)]
+       ~@body)))
+
+(defmacro trace [& args] `(logp :trace ~@args))
+(defmacro debug [& args] `(logp :debug ~@args))
+(defmacro info [& args] `(logp :info ~@args))
+(defmacro warn [& args] `(logp :warn ~@args))
+(defmacro error [& args] `(logp :error ~@args))
+(defmacro fatal [& args] `(logp :fatal ~@args))
+(defmacro tracef [& args] `(logf :trace ~@args))
+(defmacro debugf [& args] `(logf :debug ~@args))
+(defmacro infof [& args] `(logf :info ~@args))
+(defmacro warnf [& args] `(logf :warn ~@args))
+(defmacro errorf [& args] `(logf :error ~@args))
+(defmacro fatalf [& args] `(logf :fatal ~@args))

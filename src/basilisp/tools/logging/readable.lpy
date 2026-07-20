@@ -1,0 +1,31 @@
+(ns basilisp.tools.logging.readable
+  "Readable-value variants of basilisp.tools.logging macros."
+  (:require [basilisp.tools.logging :as log]
+            [basilisp.tools.logging.impl :as impl]))
+
+(defmacro logp
+  [level x & more]
+  `(let [logger# (impl/get-logger log/*logger-factory* '~(ns-name *ns*))]
+     (when (impl/enabled? logger# ~level)
+       (let [x# ~x]
+         (if (python/isinstance x# python/BaseException)
+           (log/log* logger# ~level x# (print-str ~@(map (fn [arg] `(pr-str ~arg)) more)) )
+           (log/log* logger# ~level nil
+                     (print-str (pr-str x#) ~@(map (fn [arg] `(pr-str ~arg)) more))))))))
+
+(defmacro logf
+  [level fmt & args]
+  `(log/logf ~level ~fmt ~@(map (fn [arg] `(pr-str ~arg)) args)))
+
+(defmacro trace [& args] `(logp :trace ~@args))
+(defmacro debug [& args] `(logp :debug ~@args))
+(defmacro info [& args] `(logp :info ~@args))
+(defmacro warn [& args] `(logp :warn ~@args))
+(defmacro error [& args] `(logp :error ~@args))
+(defmacro fatal [& args] `(logp :fatal ~@args))
+(defmacro tracef [& args] `(logf :trace ~@args))
+(defmacro debugf [& args] `(logf :debug ~@args))
+(defmacro infof [& args] `(logf :info ~@args))
+(defmacro warnf [& args] `(logf :warn ~@args))
+(defmacro errorf [& args] `(logf :error ~@args))
+(defmacro fatalf [& args] `(logf :fatal ~@args))
