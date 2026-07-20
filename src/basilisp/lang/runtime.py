@@ -105,6 +105,7 @@ class ProtocolDispatch:
 # Public constants
 CORE_NS = "basilisp.core"
 CORE_NS_SYM = sym.symbol(CORE_NS)
+CLOJURE_CORE_NS = "clojure.core"
 NS_VAR_NAME = "*ns*"
 NS_VAR_SYM = sym.symbol(NS_VAR_NAME, ns=CORE_NS)
 IMPORT_MODULE_VAR_NAME = "*import-module*"
@@ -2587,6 +2588,12 @@ def resolve_alias(s: sym.Symbol, ns: Namespace | None = None) -> sym.Symbol:
         aliased_ns = ns.get_alias(sym.symbol(s.ns))
         if aliased_ns is not None:
             return sym.symbol(s.name, aliased_ns.name)
+        if s.ns == CLOJURE_CORE_NS:
+            # ``basilisp.core`` is automatically referred by every normal
+            # Basilisp namespace, just as ``clojure.core`` is in Clojure.
+            # Make its Clojure-qualified spelling available without requiring
+            # callers to add a redundant explicit require.
+            return sym.symbol(s.name, CORE_NS)
         else:
             return s
     else:

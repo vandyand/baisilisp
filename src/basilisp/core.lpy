@@ -1339,6 +1339,13 @@
 ;; Arithmetic Functions ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+(defn- -require-number
+  [x]
+  (if (and (not (instance? python/bool x))
+           (instance? numbers/Number x))
+    x
+    (throw (python/TypeError #f"Expected a number: {x}"))))
+
 (defn +
   "Sum the arguments together. If no arguments given, returns 0. If one argument is
   given, return that argument."
@@ -1349,6 +1356,22 @@
    (if (seq args)
      (recur (basilisp.lang.numbers/add x y) (first args) (rest args))
      (basilisp.lang.numbers/add x y))))
+
+(defn +'
+  "Add the arguments using arbitrary-precision integer arithmetic.
+
+  Basilisp integers are already arbitrary precision, so this has the same results as
+  :lpy:fn:`+` for numeric inputs. Unlike Python arithmetic, non-numbers are rejected.
+  It is provided for Clojure compatibility."
+  ([] 0)
+  ([x] (-require-number x))
+  ([x y] (basilisp.lang.numbers/add (-require-number x) (-require-number y)))
+  ([x y & args]
+   (if (seq args)
+     (recur (basilisp.lang.numbers/add (-require-number x) (-require-number y))
+            (first args)
+            (rest args))
+     (basilisp.lang.numbers/add (-require-number x) (-require-number y)))))
 
 (defn -
   "Subtract the arguments. If one argument given, returns the negation of that
@@ -1370,6 +1393,22 @@
    (if (seq args)
      (recur (basilisp.lang.numbers/multiply x y) (first args) (rest args))
      (basilisp.lang.numbers/multiply x y))))
+
+(defn *'
+  "Multiply the arguments using arbitrary-precision integer arithmetic.
+
+  Basilisp integers are already arbitrary precision, so this has the same results as
+  :lpy:fn:`*` for numeric inputs. Unlike Python arithmetic, non-numbers are rejected.
+  It is provided for Clojure compatibility."
+  ([] 1)
+  ([x] (-require-number x))
+  ([x y] (basilisp.lang.numbers/multiply (-require-number x) (-require-number y)))
+  ([x y & args]
+   (if (seq args)
+     (recur (basilisp.lang.numbers/multiply (-require-number x) (-require-number y))
+            (first args)
+            (rest args))
+     (basilisp.lang.numbers/multiply (-require-number x) (-require-number y)))))
 
 (defn /
   "Divide the arguments. If only one argument is given, returns the inverse of the argument."

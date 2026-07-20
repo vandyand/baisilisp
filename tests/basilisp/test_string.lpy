@@ -101,6 +101,21 @@
   (are [s sub] (str/includes? s sub)
     "Chris" "hri"))
 
+(deftest escape-test
+  (are [s cmap escaped] (= escaped (str/escape s cmap))
+    ""    {}                    ""
+    "abc" {}                    "abc"
+    "abc" {\a "A_A"}          "A_Abc"
+    "abc" {\a "A_A" \c "C_C"} "A_AbC_C"
+    "abc" {\a "A_A" \c "C_C" (python/ord \a) 1 nil 'junk :garbage 42.42} "A_AbC_C"
+    "aba" {\a nil \b "B"}    "aBa")
+
+  (are [v] (thrown? python/TypeError (str/escape v {\a "A"}))
+    nil
+    1
+    'a
+    :a))
+
 (deftest index-of-test
   (testing "from the beginning"
     (are [s sub i] (= i (str/index-of s sub))

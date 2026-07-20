@@ -599,7 +599,14 @@
     '(1 1 1 1 1 1) 6)
 
   (is (= '(1 1 1) (repeat 3 1)))
-  (is (= '(1 1 1) (repeat 3.14 1))))
+  (is (= '(1 1 1) (repeat 3.14 1)))
+
+  (testing "invalid counts retain Python integer-coercion errors"
+    (are [n] (thrown? python/ValueError (repeat n :a))
+      "a")
+    (are [n] (thrown? python/TypeError (repeat n :a))
+      nil
+      :a)))
 
 (deftest repeatedly-test
   (is (= '(:yes :yes :yes) (take 3 (repeatedly (fn [] :yes)))))

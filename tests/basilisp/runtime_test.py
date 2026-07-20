@@ -789,3 +789,9 @@ class TestResolveAlias:
             ) == runtime.resolve_alias(
                 sym.symbol("non-existent-alias-var", ns="wee.woo"), ns=ns
             )
+
+            assert sym.symbol(
+                "associative?", ns=runtime.CORE_NS
+            ) == runtime.resolve_alias(
+                sym.symbol("associative?", ns="clojure.core"), ns=ns
+            )

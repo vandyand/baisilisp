@@ -57,6 +57,10 @@
   (is (= #'basilisp.core/apply (ns-resolve *ns* 'apply)))
   (is (nil? (ns-resolve *ns* 'xyz)))
 
+  (is (= #'basilisp.core/assoc (resolve 'clojure.core/assoc)))
+  (is (= #'basilisp.core/assoc (ns-resolve *ns* 'clojure.core/assoc)))
+  (is (= 3 (clojure.core/+ 1 2)))
+
   (is (= #'basilisp.set/union (ns-resolve *ns* 'basilisp.set/union)))
   (is (= #'basilisp.set/union (ns-resolve *ns* 'set/union)))
   (is (nil? (ns-resolve *ns* 'basilisp.set/xyz)))

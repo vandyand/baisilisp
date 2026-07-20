@@ -73,6 +73,22 @@
   [s substr]
   (operator/contains s substr))
 
+(defn escape
+  "Return ``s`` with each character replaced according to ``cmap``.
+
+  A character with no mapping, or a mapping to ``nil``, is retained. Mapped values are
+  converted with :lpy:fn:`str`, matching :lpy:fn:`clojure.string/escape`."
+  [s cmap]
+  (when-not (string? s)
+    (throw (python/TypeError "escape expects a string")))
+  (.join ""
+         (map (fn [ch]
+                (let [replacement (get cmap ch)]
+                  (if (nil? replacement)
+                    ch
+                    (str replacement))))
+              s)))
+
 (defn index-of
   "Return the first index of value in ``s``, optionally starting from ``from-index``.
   Returns ``nil`` if value is not found in ``s``."

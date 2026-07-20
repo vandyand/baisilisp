@@ -3780,6 +3780,25 @@ def __resolve_namespaced_symbol_in_ns(
             is_allow_var_indirection=_is_allow_var_indirection(form),
             env=ctx.get_node_env(pos=ctx.syntax_position),
         )
+    elif ns_sym.name == runtime.CLOJURE_CORE_NS:
+        core_ns = runtime.Namespace.get(runtime.CORE_NS_SYM)
+        assert core_ns is not None, "Basilisp core namespace must be loaded"
+        v = Var.find_in_ns(core_ns, sym.symbol(form.name))
+        if v is None:
+            raise ctx.AnalyzerException(
+                f"unable to resolve symbol '{form}' in this context", form=form
+            )
+        elif v.meta is not None and v.meta.val_at(SYM_PRIVATE_META_KEY, False):
+            raise ctx.AnalyzerException(
+                f"cannot resolve private Var {form.name} from namespace {form.ns}",
+                form=form,
+            )
+        return VarRef(
+            form=form,
+            var=v,
+            is_allow_var_indirection=_is_allow_var_indirection(form),
+            env=ctx.get_node_env(pos=ctx.syntax_position),
+        )
 
     return None
 
