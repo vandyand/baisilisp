@@ -1,0 +1,25 @@
+(ns tests.basilisp.algo-monads-test
+  (:require [basilisp.test :refer [deftest is]]
+            [basilisp.algo.monads :refer [domonad with-monad m-lift m-seq m-plus
+                                          maybe-m sequence-m set-m state-m writer-m write
+                                          reader-m ask asks local cont-m run-cont call-cc
+                                          fetch-state set-state maybe-t sequence-t]]))
+
+(deftest common-monads
+  (is (= 7 (domonad maybe-m [a 3 b 4] (+ a b))))
+  (is (nil? (domonad maybe-m [a 3 :when false] a)))
+  (is (= [0 1 1 2] (vec (domonad sequence-m [a (range 2) b (range 2)] (+ a b)))))
+  (is (= #{2 3} (domonad set-m [a #{1 2} b #{1}] (+ a b))))
+  (is (= [3 [:a :b]] (domonad (writer-m []) [_ (write :a) x (m-result 3) _ (write :b)] x))))
+
+(deftest state-reader-continuation-and-transformers
+  (is (= [5 4] ((domonad state-m [s (fetch-state)] (inc s)) 4)))
+  (is (= [4 9] ((domonad state-m [_ (set-state 9)] 4) 2)))
+  (is (= 6 ((domonad reader-m [x (asks :x)] (* x 2)) {:x 3})))
+  (is (= 110 ((domonad reader-m [a (ask) b (local inc (ask))] (* a b)) 10)))
+  (is (= 5 (run-cont (domonad cont-m [x (m-result 2) y (m-result 3)] (+ x y)))))
+  (is (= 7 (run-cont (call-cc (fn [exit] (exit 7))))))
+  (is (= '(nil 2 nil 4)
+         (with-monad (maybe-t sequence-m) ((m-lift 1 inc) [nil 1 nil 3]))))
+  (is (= '(1)
+         (with-monad (sequence-t maybe-m) (m-plus (m-result 1) (m-result 2))))))
