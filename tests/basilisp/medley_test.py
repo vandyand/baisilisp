@@ -63,3 +63,8 @@ def test_nth_edits_and_index_of_match_python_oracles(values, item, data):
     assert (values.index(item) if item in values else None) == _medley_fn("index-of")(
         values, item
     )
+
+
+@given(st.one_of(st.none(), st.booleans(), st.integers(), st.text()))
+def test_boolean_predicate_matches_python_bool_type(value):
+    assert isinstance(value, bool) is _medley_fn("boolean?")(value)

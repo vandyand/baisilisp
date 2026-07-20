@@ -204,7 +204,7 @@
   "Returns true if x is a boolean."
   [x]
   #?(:cljs    (or (true? x) (false? x))
-     :lpy     (or (true? x) (false? x))
+     :lpy     (basilisp.core/boolean? x)
      :default (instance? Boolean x)))
 
 (defn least
