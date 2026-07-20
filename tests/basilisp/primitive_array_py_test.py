@@ -23,6 +23,7 @@ from basilisp.lang.primitive_array import (
     int_array,
     long_array,
     short_array,
+    vector_of,
 )
 
 
@@ -125,3 +126,13 @@ def test_primitive_arrays_reject_cross_type_mutation_and_scalar_sequence_confusi
         byte_array(1).assign(0, 128)
     with pytest.raises(OverflowError):
         int_array(1).assign(0, 1 << 31)
+
+
+@given(
+    st.lists(st.integers(min_value=-(1 << 31), max_value=(1 << 31) - 1), max_size=128)
+)
+def test_vector_of_int_preserves_checked_primitive_values_under_fuzz(values):
+    assert vector_of(":int", values) == values
+
+    with pytest.raises(OverflowError):
+        vector_of(":int", [1 << 31])
