@@ -5,6 +5,8 @@
                                           reader-m ask asks local cont-m run-cont call-cc
                                           fetch-state set-state maybe-t sequence-t]]))
 
+(import* random)
+
 (deftest common-monads
   (is (= 7 (domonad maybe-m [a 3 b 4] (+ a b))))
   (is (nil? (domonad maybe-m [a 3 :when false] a)))
@@ -23,3 +25,36 @@
          (with-monad (maybe-t sequence-m) ((m-lift 1 inc) [nil 1 nil 3]))))
   (is (= '(1)
          (with-monad (sequence-t maybe-m) (m-plus (m-result 1) (m-result 2))))))
+
+(deftest seeded-monad-law-and-comprehension-fuzz
+  (let [rng (random/Random 0xA160)
+        f (fn [x] (if (zero? (mod x 7)) nil (+ x 3)))
+        g (fn [x] (if (zero? (mod x 5)) nil (* x 2)))]
+    (dotimes [_ 400]
+      (let [x (.randint rng -100 100)
+            xs (vec (repeatedly (.randint rng 0 9) #(.randint rng -4 4)))]
+        ;; Identity, associativity, and failure propagation for maybe-m.
+        (is (= (f x) ((:m-bind maybe-m) ((:m-result maybe-m) x) f)))
+        (is (= ((:m-bind maybe-m) ((:m-bind maybe-m) x f) g)
+               ((:m-bind maybe-m) x (fn [v] ((:m-bind maybe-m) (f v) g)))))
+        (is (= (if (or (empty? xs) (some nil? xs)) nil (reduce + 0 xs))
+               (domonad maybe-m [a (first xs) :when (not (nil? a))]
+                 (if (empty? (rest xs)) a (reduce + a (rest xs))))))
+        ;; sequence-m must retain every generated branch in left-to-right order.
+        (is (= (map #(+ x %) xs)
+               ((:m-bind sequence-m) ((:m-result sequence-m) x)
+                #(map (fn [y] (+ % y)) xs))))
+        (is (= (vec (for [a xs b xs :when (even? (+ a b))] [a b]))
+               (vec (domonad sequence-m [a xs b xs :when (even? (+ a b))] [a b]))))))))
+
+(deftest adversarial-comprehension-branches
+  (is (= [5 6]
+         (domonad maybe-m [a 5 :let [b 6] :if (= a 5)
+                            :then [c b] :else [c nil]] [a c])))
+  (is (nil? (domonad maybe-m [a 5 :if false :then [b 6] :else [b nil]] [a b])))
+  (is (= ["middle" 7]
+         (domonad maybe-m [a 5 :cond [(< a 1) [r "low"]
+                                      (< a 6) [r "middle"]
+                                      :else [r "high"]]
+                            b 7] [r b])))
+  (is (thrown? python/Exception (eval '(domonad maybe-m [a 1 b] a)))))
