@@ -801,6 +801,7 @@ _ATTR_FROZEN_DECORATOR_NAME = _load_attr(f"{_ATTR_ALIAS}.frozen")
 _ATTRIB_FIELD_FN_NAME = _load_attr(f"{_ATTR_ALIAS}.field")
 _BASILISP_LOAD_CONSTANT_NAME = _load_attr(f"{_RUNTIME_ALIAS}._load_constant")
 _COERCE_SEQ_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}.to_seq")
+_INTEROP_ARG_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._interop_arg")
 _UNWRAP_REST_ARGS_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._unwrap_rest_args")
 _BASILISP_FN_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._basilisp_fn")
 _FN_WITH_ATTRS_FN_NAME = _load_attr(f"{_RUNTIME_ALIAS}._with_attrs")
@@ -3455,6 +3456,18 @@ def _interop_call_to_py_ast(
     target_ast = gen_py_ast(ctx, node.target)
     args_deps, args_nodes = _collection_ast(ctx, node.args)
     kwargs_deps, kwargs_nodes = _kwargs_ast(ctx, node.kwargs)
+
+    args_nodes = map(
+        lambda arg: ast.Call(func=_INTEROP_ARG_FN_NAME, args=[arg], keywords=[]),
+        args_nodes,
+    )
+    kwargs_nodes = map(
+        lambda arg: ast.keyword(
+            arg=arg.arg,
+            value=ast.Call(func=_INTEROP_ARG_FN_NAME, args=[arg.value], keywords=[]),
+        ),
+        kwargs_nodes,
+    )
 
     return GeneratedPyAST(
         node=ast.Call(

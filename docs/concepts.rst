@@ -109,9 +109,11 @@ characters.
 
    Basilisp represents Clojure characters with a distinct immutable runtime value.
    Characters are not strings, including one-character strings. When passing a character
-   to Python code, use ``str`` (or the value's ``.value`` attribute) to obtain its
-   one-code-unit Python string. An unpaired surrogate is rendered as ``\uXXXX``
-   when printed readably so ordinary UTF-8 text streams remain safe.
+   as a direct argument to a Python method, Basilisp supplies its one-code-unit Python
+   string automatically. Use ``str`` (or the value's ``.value`` attribute) for a
+   Python function, constructor, or nested value that needs a host string. An unpaired
+   surrogate is rendered as ``\uXXXX`` when printed readably so ordinary UTF-8 text
+   streams remain safe.
 
 .. seealso::
 

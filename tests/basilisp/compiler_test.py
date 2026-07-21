@@ -3746,6 +3746,28 @@ class TestPythonInterop:
         assert "example" == lcompile('(. "www.example.com" (strip "cmowz."))')
         assert "example" == lcompile('(. "www.example.com" strip "cmowz.")')
 
+    def test_interop_coerces_character_method_arguments(self, lcompile: CompileFn):
+        # StringIO rejects Character instances without the compiler's host-method
+        # coercion. A generic Python call must still see the distinct Character
+        # value; otherwise core predicates such as string? become incorrect.
+        assert "x" == lcompile("""
+        (import* io)
+        (let* [writer (io/StringIO)]
+          (.write writer (first "x"))
+          (.getvalue writer))
+        """)
+        assert False is lcompile("(python/isinstance \\x python/str)")
+        assert False is lcompile("(string? \\x)")
+
+        # A Clojure character is one UTF-16 unit, including unpaired surrogates.
+        # StringIO can retain that unit even though it is not a Unicode scalar.
+        assert "\ud83d" == lcompile("""
+        (import* io)
+        (let* [writer (io/StringIO)]
+          (.write writer \\uD83D)
+          (.getvalue writer))
+        """)
+
     @pytest.mark.parametrize(
         "code,v",
         [

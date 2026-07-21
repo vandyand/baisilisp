@@ -2187,6 +2187,23 @@ def _to_py_character(
     return o.value
 
 
+def _interop_arg(o: Any) -> Any:
+    """Coerce one direct argument crossing into a Python callable.
+
+    A Clojure character is deliberately distinct from a one-character Python
+    string while it is evaluated as a Basilisp value. Python methods such as
+    ``io.StringIO.write`` require an actual :class:`str`, however, so compiler-
+    generated Python method interop unwraps direct character arguments here.
+
+    This is intentionally shallow. Collection conversion remains opt-in via
+    :func:`to_py`; otherwise a Python API receiving a Basilisp collection keeps
+    the collection and its Clojure values intact.
+    """
+    if isinstance(o, char.Character):
+        return o.value
+    return o
+
+
 @to_py.register(IPersistentList)
 @to_py.register(ISeq)
 @to_py.register(IPersistentVector)

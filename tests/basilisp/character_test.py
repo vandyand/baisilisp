@@ -1,3 +1,5 @@
+import io
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -74,8 +76,25 @@ def test_string_sequence_fuzz_produces_distinct_utf16_characters(value):
     assert runtime.get(text, -1, "missing") == "missing"
 
 
+@given(st.text())
+def test_interop_argument_fuzz_preserves_each_utf16_code_unit(value):
+    """Python text sinks receive native strings without changing Lisp strings.
+
+    Astral scalar values become two Character values at the Basilisp boundary,
+    so compare encoded UTF-16 units rather than Python's scalar-value strings.
+    """
+    writer = io.StringIO()
+    for value_unit in runtime.to_seq(value) or ():
+        writer.write(runtime._interop_arg(value_unit))
+
+    assert writer.getvalue().encode("utf-16-le", "surrogatepass") == value.encode(
+        "utf-16-le", "surrogatepass"
+    )
+
+
 def test_character_is_distinct_and_safe_in_collections_and_python_interop():
     char_a = character.Character("a")
+    characters = vec.v(char_a)
 
     assert char_a != "a"
     assert hash(char_a) == ord("a")
@@ -83,6 +102,10 @@ def test_character_is_distinct_and_safe_in_collections_and_python_interop():
     assert len(lset.s(char_a, "a")) == 2
     assert runtime.to_set("aa") == lset.s(char_a)
     assert runtime.to_py(char_a) == "a"
+    assert runtime._interop_arg(char_a) == "a"
+    # Interop call conversion is intentionally shallow; callers can opt into
+    # recursive conversion with to_py when passing a Lisp collection to Python.
+    assert runtime._interop_arg(characters) is characters
     assert runtime.compare(character.Character("a"), character.Character("b")) < 0
 
 
