@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import functools
 import io
+import datetime as _datetime
+import math
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -39,6 +41,10 @@ _CALL_KEYWORD_ARGS = kw.keyword("keyword-args", ns="basilisp.spec.test.alpha")
 _CHECK_PASS = kw.keyword("pass?", ns="basilisp.spec.test.alpha")
 _CHECK_FAILURE = kw.keyword("failure", ns="basilisp.spec.test.alpha")
 _CHECK_NUM_TESTS = kw.keyword("num-tests", ns="basilisp.spec.test.alpha")
+_ASSERTION_FAILED = kw.keyword("assertion-failed", ns="basilisp.spec.alpha")
+_FAILURE = kw.keyword("failure", ns="basilisp.spec.alpha")
+_CHECK_ASSERTS = False
+_ASSERT_LOCK = threading.RLock()
 
 
 class _Spec:
@@ -266,6 +272,115 @@ def every(
 def every_kv(key_spec: Any, value_spec: Any) -> _MapOf:
     """Portable ``s/every-kv`` alias for a map-of descriptor."""
     return map_of(key_spec, value_spec)
+
+
+def int_in_range_q(start: int, end: int, value: Any) -> bool:
+    return type(value) is int and start <= value < end
+
+
+def int_in(start: int, end: int) -> _WithGen:
+    """Return a spec for integers in the half-open range ``[start, end)``."""
+    if (
+        isinstance(start, bool)
+        or isinstance(end, bool)
+        or not all(isinstance(value, int) for value in (start, end))
+    ):
+        raise TypeError("int-in bounds must be integers")
+    if start >= end:
+        raise ValueError("int-in start must be less than end")
+    predicate = _PredicateSpec(lambda value: int_in_range_q(start, end, value))
+    return _WithGen(
+        predicate,
+        lambda: _test_check_impl().large_integer_star({"min": start, "max": end - 1}),
+    )
+
+
+def double_in(
+    *,
+    infinite: bool = True,
+    nan: bool = True,
+    min_value: float | None = None,
+    max_value: float | None = None,
+) -> _WithGen:
+    """Return a floating-point spec with Clojure ``double-in``-style bounds."""
+    if min_value is not None and max_value is not None and min_value > max_value:
+        raise ValueError("double-in minimum must not exceed maximum")
+
+    def valid_double(value: Any) -> bool:
+        if type(value) is not float:
+            return False
+        if not infinite and math.isinf(value):
+            return False
+        if not nan and math.isnan(value):
+            return False
+        return (min_value is None or value >= min_value) and (
+            max_value is None or value <= max_value
+        )
+
+    options: dict[str, Any] = {"infinite?": infinite, "NaN?": nan}
+    if min_value is not None:
+        options["min"] = min_value
+    if max_value is not None:
+        options["max"] = max_value
+    return _WithGen(
+        _PredicateSpec(valid_double), lambda: _test_check_impl().double_star(options)
+    )
+
+
+def _instant_millis(value: _datetime.datetime) -> int:
+    epoch = _datetime.datetime(1970, 1, 1, tzinfo=value.tzinfo)
+    return int((value - epoch).total_seconds() * 1000)
+
+
+def inst_in_range_q(
+    start: _datetime.datetime, end: _datetime.datetime, value: Any
+) -> bool:
+    return isinstance(value, _datetime.datetime) and start <= value < end
+
+
+def inst_in(start: _datetime.datetime, end: _datetime.datetime) -> _WithGen:
+    """Return an instant spec for the half-open range ``[start, end)``."""
+    if not isinstance(start, _datetime.datetime) or not isinstance(
+        end, _datetime.datetime
+    ):
+        raise TypeError("inst-in bounds must be datetime values")
+    if start >= end:
+        raise ValueError("inst-in start must be less than end")
+    lower, upper = _instant_millis(start), _instant_millis(end) - 1
+    epoch = _datetime.datetime(1970, 1, 1, tzinfo=start.tzinfo)
+    predicate = _PredicateSpec(lambda value: inst_in_range_q(start, end, value))
+    return _WithGen(
+        predicate,
+        lambda: _test_check_impl().fmap(
+            lambda millis: epoch + _datetime.timedelta(milliseconds=millis),
+            _test_check_impl().large_integer_star({"min": lower, "max": upper}),
+        ),
+    )
+
+
+def check_asserts_q() -> bool:
+    with _ASSERT_LOCK:
+        return _CHECK_ASSERTS
+
+
+def check_asserts(enabled: Any) -> bool:
+    """Enable or disable runtime ``s/assert`` validation and return its state."""
+    global _CHECK_ASSERTS
+    with _ASSERT_LOCK:
+        _CHECK_ASSERTS = bool(enabled)
+        return _CHECK_ASSERTS
+
+
+def assert_(spec_: Any, value: Any) -> Any:
+    """Validate and return ``value`` when runtime spec assertions are enabled."""
+    if not check_asserts_q() or valid(spec_, value):
+        return value
+    data = explain_data(spec_, value)
+    assert data is not None
+    failure_data = data.assoc(_FAILURE, _ASSERTION_FAILED)
+    raise ExceptionInfo(
+        f"Spec assertion failed\n{explain_str(spec_, value)}", failure_data
+    )
 
 
 def fdef(

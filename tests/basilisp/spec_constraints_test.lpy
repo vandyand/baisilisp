@@ -1,0 +1,64 @@
+(ns tests.basilisp.spec-constraints-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as sgen]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop])
+  (:import datetime math))
+
+(deftest int-in-is-half-open-and-seeded-generation-never-escapes
+  (let [spec (s/int-in -2000 2000)
+        generator (s/gen spec)
+        property (prop/for-all [seed (gen/choose 0 1000000000)]
+                   (let [value (sgen/generate generator 30 seed)]
+                     (and (s/valid? spec value)
+                          (<= -2000 value)
+                          (< value 2000))))
+        result (tc/quick-check 800 property :seed 20260721 :max-size 100)]
+    (is (:pass? result))
+    (is (= 800 (:num-tests result)))
+    (is (not (s/valid? spec -2001)))
+    (is (not (s/valid? spec 2000)))
+    (is (not (s/valid? spec true)))
+    (is (thrown? Exception (s/int-in 2 2)))
+    (is (thrown? Exception (s/int-in 3 2)))))
+
+(deftest double-in-respects-finiteness-nan-and-inclusive-bounds
+  (let [spec (s/double-in :infinite? false :NaN? false :min -12.5 :max 8.25)
+        values (map #(sgen/generate (s/gen spec) 20 %) (range 400))]
+    (is (every? #(s/valid? spec %) values))
+    (is (every? #(<= -12.5 % 8.25) values))
+    (is (not (s/valid? spec math/inf)))
+    (is (not (s/valid? spec (- math/inf))))
+    (is (not (s/valid? spec math/nan)))
+    (is (s/valid? spec -12.5))
+    (is (s/valid? spec 8.25))
+    (is (thrown? Exception (s/double-in :min 2.0 :max 1.0)))))
+
+(deftest inst-in-generates-datetimes-inside-the-requested-interval
+  (let [start (datetime/datetime 2020 1 1)
+        end (datetime/datetime 2020 2 1)
+        spec (s/inst-in start end)
+        values (map #(sgen/generate (s/gen spec) 30 %) (range 250))]
+    (is (every? #(s/inst-in-range? start end %) values))
+    (is (s/valid? spec start))
+    (is (not (s/valid? spec end)))
+    (is (thrown? Exception (s/inst-in end start)))))
+
+(deftest runtime-spec-asserts-are-toggleable-and-evaluate-values-once
+  (s/check-asserts false)
+  (try
+    (testing "disabled assertions return values without validating"
+      (is (= "not-an-int" (s/assert int? "not-an-int")))
+      (is (not (s/check-asserts?))))
+    (testing "enabled assertions preserve a valid value and evaluate it once"
+      (s/check-asserts true)
+      (let [calls (atom 0)]
+        (is (= 9 (s/assert int? (do (swap! calls inc) 9))))
+        (is (= 1 @calls)))
+      (is (thrown? basilisp.lang.exception/ExceptionInfo
+                   (s/assert int? "not-an-int"))))
+    (finally
+      (s/check-asserts false)))
+  (is (not (s/check-asserts?))))
