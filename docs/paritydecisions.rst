@@ -72,13 +72,15 @@ The next STM phases are intentionally ordered:
    commits completed with 1.002--1.004 mean attempts and a worst-case of two
    attempts. Together with the deterministic conflict and Hypothesis history
    tests, this shows normal retry cost but no starvation, so do not add
-   Clojure's adaptive history queue yet. History is an optimization for snapshot
+   Clojure's adaptive history queue. History is an optimization for snapshot
    retention, not a prerequisite for atomic multi-Ref updates.
 6. **Completed locally:** portable ``Ref`` operations are exposed from
    ``basilisp.core``: ``ref``, ``dosync``, ``alter``, ``ref-set``, ``commute``,
-   and ``ensure``. The shared Clojure/Basilisp Ref fixture verifies sequential
-   transaction, nesting, watch, validator, metadata, commute, and ensure
-   behavior. Unqualified ``await`` remains an async special form, while the
+   and ``ensure``. ``ref-history-count``, ``ref-min-history``, and
+   ``ref-max-history`` retain the public committed-history controls; the shared
+   Clojure/Basilisp Ref fixture verifies sequential transaction, nesting,
+   watch, validator, metadata, commute, ensure, and history behavior.
+   Unqualified ``await`` remains an async special form, while the
    qualified ``clojure.core/await`` spelling provides Clojure's agent wait
    contract alongside ``await-agent``.
 
@@ -318,13 +320,14 @@ deferred after-commit actions. A storage adapter may register an after-commit
 action or participate in a separately documented two-phase commit; it may not
 silently make a ``dosync`` durable or distributed.
 
-Ref history should remain absent until a workload demonstrates starvation or
-unacceptable retry behavior. The decision input is a repeatable workload with
-contention shape, completion distribution, retry percentiles, and a serialized
-reference-model check. If history is then needed, add bounded per-Ref committed
-versions solely to retain a read snapshot; do not expose JVM-specific tuning
-knobs by name. Bounded ``max-attempts`` and structured conflict information are
-the application-level escape hatch. No backoff policy should be introduced by
+Ref history controls now retain the configured minimum committed values and
+preserve earlier retained entries when a setting is lowered, matching their
+observable Clojure contract. Basilisp transactions keep their own read values,
+so they do not need Clojure's adaptive history queue for snapshots. Any future
+queue must be justified by a repeatable workload with contention shape,
+completion distribution, retry percentiles, and a serialized reference-model
+check. Bounded ``max-attempts`` and structured conflict information remain the
+application-level escape hatch. No backoff policy should be introduced by
 default because it changes both scheduling and observable retry behavior.
 
 Async Pipelines And ``go``
@@ -495,9 +498,9 @@ The next work is:
 1. Expand the source-level acceptance corpus from its representative portable
    library to small upstream candidates. Keep reader conditionals limited to
    documented standard-namespace substitutions; add public compatibility names
-   only after a shared fixture and manifest pass. Continue to omit Ref history
-   controls unless a workload demonstrates starvation or snapshot-retention
-   pressure.
+   only after a shared fixture and manifest pass. Preserve the tested Ref
+   history-control contract; add an adaptive snapshot queue only if a workload
+   demonstrates starvation or snapshot-retention pressure.
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
    proof and rejection model.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a

@@ -66,8 +66,9 @@ The internal ``basilisp.lang.stm`` engine now backs ``basilisp.core/ref`` and
 stable lock ordering, validation at commit, conflict retries, and deterministic
 contention coverage. ``io!`` and deferred agent sends are explicit retry-safety
 guards. ``commute`` records/replays commutative updates under commit locks, and
-``ensure`` opts a Ref back into normal version validation; history controls
-remain deferred.
+``ensure`` opts a Ref back into normal version validation. Ref history controls
+retain a configured minimum of committed values and expose Clojure-shaped
+minimum, maximum, and count operations without adding a JVM snapshot queue.
 
 Project Configuration And Builds
 --------------------------------

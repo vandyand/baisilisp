@@ -1326,9 +1326,8 @@
   "Create a versioned reference for use inside ``dosync``.
 
   ``:meta`` and ``:validator`` follow the normal Basilisp reference
-  conventions. Ref history controls intentionally remain unavailable because
-  they expose JVM-specific STM retention policy rather than portable
-  transactional semantics."
+  conventions. Use ``ref-min-history`` and ``ref-max-history`` to configure
+  retained committed-value history."
   ([value]
    (basilisp.lang.stm/Ref value))
   ([value & options]
@@ -1380,6 +1379,33 @@
   "Return and protect a Ref's in-transaction value until commit."
   [ref]
   (basilisp.lang.stm/ensure ref))
+
+(defn ref-history-count
+  "Return the number of committed values currently retained by ``ref``.
+
+  The count excludes the current value, matching Clojure's Ref history API."
+  [ref]
+  (basilisp.lang.stm/ref-history-count ref))
+
+(defn ref-min-history
+  "Get or set the minimum number of committed values retained by ``ref``.
+
+  The two-argument form returns ``ref``. Changing the control does not discard
+  values already retained under a previous setting."
+  ([ref]
+   (basilisp.lang.stm/ref-min-history ref))
+  ([ref n]
+   (basilisp.lang.stm/ref-min-history ref n)))
+
+(defn ref-max-history
+  "Get or set the maximum-history control for ``ref``.
+
+  The two-argument form returns ``ref``. As in Clojure, a configured minimum
+  history takes precedence over a smaller maximum."
+  ([ref]
+   (basilisp.lang.stm/ref-max-history ref))
+  ([ref n]
+   (basilisp.lang.stm/ref-max-history ref n)))
 
 (defn await-agent [& agents]
   "Wait until all agents have no queued or active actions."

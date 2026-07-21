@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 48 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (631 shared Vars and 59 Basilisp
+This document classifies the 45 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (634 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -26,8 +26,8 @@ The following symbols are now implemented and no longer appear as gaps:
 `sorted-set`, `sorted-set-by`, `restart-agent`, `send`, `send-off`, `send-via`,
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
 and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
-`commute`,
-`ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
+`commute`, `ensure`, `ref-history-count`, `ref-min-history`, `ref-max-history`,
+`sync`, `seque`, `print-method`, and `print-dup`.
 ``*math-context*`` and ``with-precision`` now provide Clojure-compatible
 dynamic decimal context behavior: nil selects unlimited exact BigDecimal
 arithmetic, while finite contexts restore after nested bindings and default to
@@ -104,8 +104,6 @@ substitute database cursors or streams for those Java types. ``bean``,
 Python objects, iterators, and parsed URIs.
 
 ### Agents and software transactional memory
-
-`ref-history-count`, `ref-max-history`, and `ref-min-history`.
 `sync` is now available as Clojure-compatible transaction syntax:
 its flags argument is documented as ignored by Clojure and is likewise ignored
 by Basilisp. `io!` is now provided as an explicit transaction side-effect guard,
@@ -118,13 +116,17 @@ wrapping the existing atom abstraction. Basilisp now provides executor-backed
 `agent`, `send`, `send-off`, `send-via`, error handling, bounded `await-for`,
 and Clojure-compatible `await1`. The public executor lifecycle operations and
 qualified ``await`` are now available; the dynamic ``*agent*`` action binding
-is now also available. JVM Ref history controls remain omitted.
+is now also available. Ref history controls retain their Clojure-shaped public
+configuration and the requested minimum committed values. Basilisp does not
+need JVM-style snapshot queues for transaction correctness because each
+optimistic transaction retains its own read value.
 `agent-errors` is now available as Clojure's deprecated one-item wrapper around
 `agent-error`.
 The portable Ref operations ``ref``, ``dosync``, ``alter``, ``ref-set``,
 ``commute``, and ``ensure`` are now exposed from ``basilisp.core`` after a
-shared Clojure/Basilisp conformance fixture. History controls remain omitted
-until a workload demonstrates a need for JVM-like snapshot retention.
+shared Clojure/Basilisp conformance fixture. ``ref-history-count``,
+``ref-min-history``, and ``ref-max-history`` are also available; retained
+minimum history is synchronized with successful commits.
 ``seque`` is also available with the portable queued-sequence contract: it
 accepts a positive buffer size or a queue-like object, preserves realized
 values, and ends after a producer error as Clojure's Agent-backed version does.

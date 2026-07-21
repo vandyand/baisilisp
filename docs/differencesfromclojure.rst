@@ -76,9 +76,9 @@ That said, there are some fundamental differences and omissions in Basilisp that
 * Atoms work just as in Clojure.
 * ``basilisp.core`` provides synchronous ``Ref`` transactions through ``ref``,
   ``dosync``, ``alter``, ``ref-set``, ``commute``, and ``ensure``. History
-  controls remain omitted because they expose JVM-specific retention policy
-  rather than portable transactional semantics. ``io!`` is available as an
-  explicit side-effect guard, and agent dispatches are deferred until a
+  controls (``ref-history-count``, ``ref-min-history``, and
+  ``ref-max-history``) retain the configured minimum committed values. ``io!``
+  is available as an explicit side-effect guard, and agent dispatches are deferred until a
   successful transaction commit. Clojure's ``sync`` transaction syntax is also
   available; its flags argument is accepted and ignored as in Clojure.
 * ``seque`` is available as a bounded queued lazy sequence. It uses a
@@ -216,8 +216,9 @@ Refs and Transactions
 retrying ``dosync``, validators, watches, ``commute``, and ``ensure``. The
 portable surface is checked by shared Clojure/Basilisp fixtures. Transaction
 bodies must be synchronous and side-effect free because a conflict can cause
-them to run more than once. JVM Ref history controls remain intentionally
-omitted. See :ref:`concurrency`.
+them to run more than once. ``ref-history-count``, ``ref-min-history``, and
+``ref-max-history`` retain and report committed-history controls; Basilisp does
+not use the JVM's adaptive snapshot queue. See :ref:`concurrency`.
 
 .. _agents_differences:
 

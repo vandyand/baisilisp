@@ -3,6 +3,8 @@ import threading
 import time
 
 import pytest
+from hypothesis import given, settings
+from hypothesis import strategies as st
 
 import basilisp.lang.interfaces
 from basilisp.lang import stm
@@ -27,6 +29,145 @@ def test_ref_implements_reference_interfaces_and_commits_multiple_writes():
     assert "committed" == stm.run_transaction(body)
     assert 3 == first.deref()
     assert 6 == second.deref()
+
+
+def test_ref_history_controls_retain_minimum_committed_values():
+    ref = stm.Ref(0)
+
+    assert 0 == stm.ref_history_count(ref)
+    assert 0 == stm.ref_min_history(ref)
+    assert 10 == stm.ref_max_history(ref)
+    assert ref is stm.ref_min_history(ref, 3)
+    assert ref is stm.ref_max_history(ref, 5)
+
+    for value in range(1, 7):
+        assert value == stm.run_transaction(lambda value=value: stm.ref_set(ref, value))
+        assert min(value, 3) == stm.ref_history_count(ref)
+
+    assert 6 == ref.deref()
+    assert 3 == stm.ref_min_history(ref)
+    assert 5 == stm.ref_max_history(ref)
+
+
+def test_ref_history_controls_preserve_existing_entries_when_lowered():
+    ref = stm.Ref(0)
+    stm.ref_min_history(ref, 3)
+    for value in range(1, 5):
+        stm.run_transaction(lambda value=value: stm.ref_set(ref, value))
+    assert 3 == stm.ref_history_count(ref)
+
+    stm.ref_min_history(ref, 0)
+    stm.ref_max_history(ref, 1)
+    stm.run_transaction(lambda: stm.ref_set(ref, 5))
+
+    # Clojure does not eagerly throw away entries accumulated under a previous
+    # minimum, even if the later maximum is smaller.
+    assert 3 == stm.ref_history_count(ref)
+    assert 0 == stm.ref_min_history(ref)
+    assert 1 == stm.ref_max_history(ref)
+
+
+def test_ref_history_only_records_successful_commits():
+    ref = stm.Ref(0, validator=lambda value: value % 2 == 0)
+    stm.ref_min_history(ref, 3)
+
+    with pytest.raises(ExceptionInfo, match="Invalid reference state"):
+        stm.run_transaction(lambda: stm.ref_set(ref, 1))
+    assert 0 == stm.ref_history_count(ref)
+
+    for value in (2, 4, 6, 8):
+        stm.run_transaction(lambda value=value: stm.ref_set(ref, value))
+    assert 3 == stm.ref_history_count(ref)
+
+
+@pytest.mark.parametrize("value", [None, True, "1"])
+def test_ref_history_controls_reject_non_numeric_values(value):
+    ref = stm.Ref(0)
+    with pytest.raises(TypeError, match="history must be numeric"):
+        stm.ref_min_history(ref, value)  # type: ignore[arg-type]
+    with pytest.raises(TypeError, match="history must be numeric"):
+        stm.ref_max_history(ref, value)  # type: ignore[arg-type]
+
+
+def test_ref_history_controls_coerce_numeric_values_as_clojure_ints():
+    ref = stm.Ref(0)
+    stm.ref_min_history(ref, 1.9)
+    stm.ref_max_history(ref, -1.9)
+    assert 1 == stm.ref_min_history(ref)
+    assert -1 == stm.ref_max_history(ref)
+
+    for value in (2**31, -(2**31) - 1):
+        with pytest.raises(OverflowError, match="integer overflow"):
+            stm.ref_min_history(ref, value)
+
+
+def test_ref_history_operations_require_refs():
+    for operation in (
+        lambda: stm.ref_history_count(object()),
+        lambda: stm.ref_min_history(object()),
+        lambda: stm.ref_max_history(object()),
+    ):
+        with pytest.raises(TypeError, match="require a Ref"):
+            operation()
+
+
+@settings(deadline=None)
+@given(
+    st.lists(
+        st.one_of(
+            st.tuples(st.just("min"), st.integers(min_value=-8, max_value=24)),
+            st.tuples(st.just("max"), st.integers(min_value=-8, max_value=24)),
+            st.tuples(st.just("write"), st.integers()),
+        ),
+        min_size=1,
+        max_size=128,
+    )
+)
+def test_ref_history_controls_fuzz_against_a_retention_model(operations):
+    ref = stm.Ref(0)
+    model_min = 0
+    model_max = 10
+    model_count = 0
+
+    for operation, value in operations:
+        if operation == "min":
+            assert ref is stm.ref_min_history(ref, value)
+            model_min = value
+        elif operation == "max":
+            assert ref is stm.ref_max_history(ref, value)
+            model_max = value
+        else:
+            assert value == stm.run_transaction(
+                lambda value=value: stm.ref_set(ref, value)
+            )
+            if model_count < max(0, model_min):
+                model_count += 1
+
+        assert model_min == stm.ref_min_history(ref)
+        assert model_max == stm.ref_max_history(ref)
+        assert model_count == stm.ref_history_count(ref)
+
+
+def test_ref_history_retention_stays_consistent_under_concurrent_commits():
+    ref = stm.Ref(0)
+    stm.ref_min_history(ref, 64)
+    workers = 8
+    updates_per_worker = 40
+
+    def update() -> None:
+        stm.run_transaction(lambda: stm.commute(ref, lambda value: value + 1))
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = [
+            executor.submit(lambda: [update() for _ in range(updates_per_worker)])
+            for _ in range(workers)
+        ]
+        for future in futures:
+            future.result(timeout=10)
+
+    assert workers * updates_per_worker == ref.deref()
+    assert workers * updates_per_worker == ref.version
+    assert 64 == stm.ref_history_count(ref)
 
 
 def test_nested_transaction_joins_outer_transaction_and_watches_run_after_commit():

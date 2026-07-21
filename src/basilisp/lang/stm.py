@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import contextvars
 import inspect
+import numbers
+from collections import deque
 from contextlib import ExitStack
 from typing import Any, Callable, Generic, TypeVar
 
@@ -23,12 +25,36 @@ _CONFLICTS = kw.keyword("conflicts", ns="basilisp.stm")
 _REF_ID = kw.keyword("ref-id", ns="basilisp.stm")
 _READ_VERSION = kw.keyword("read-version", ns="basilisp.stm")
 _CURRENT_VERSION = kw.keyword("current-version", ns="basilisp.stm")
+_NO_HISTORY_VALUE = object()
+
+
+def _history_limit(value: Any, kind: str) -> int:
+    """Coerce a Clojure numeric history control to a signed 32-bit integer."""
+    if isinstance(value, bool) or not isinstance(value, numbers.Number):
+        raise TypeError(f"Ref {kind} history must be numeric")
+    try:
+        limit = int(value)
+    except (OverflowError, ValueError) as exc:
+        raise ValueError(f"Ref {kind} history must be a finite integer") from exc
+    if not -(2**31) <= limit < 2**31:
+        raise OverflowError(f"Ref {kind} history integer overflow")
+    return limit
 
 
 class Ref(RefBase[T], Generic[T]):
     """A versioned reference whose updates are committed by ``run_transaction``."""
 
-    __slots__ = ("_meta", "_state", "_version", "_lock", "_watches", "_validator")
+    __slots__ = (
+        "_history",
+        "_lock",
+        "_max_history",
+        "_meta",
+        "_min_history",
+        "_state",
+        "_validator",
+        "_version",
+        "_watches",
+    )
 
     def __init__(
         self,
@@ -42,6 +68,14 @@ class Ref(RefBase[T], Generic[T]):
         self._state = state
         self._version = 0
         self._lock = threading.RLock()
+        # Clojure's default is to retain no history eagerly, while allowing a
+        # transaction implementation to grow up to ten entries when it needs
+        # old snapshots. Basilisp's optimistic transactions retain their own
+        # read values, so the minimum history is the portable observable
+        # retention requirement here.
+        self._history: deque[T] = deque()
+        self._min_history = 0
+        self._max_history = 10
         self._watches = lmap.EMPTY
         self._validator = validator
         if validator is not None:
@@ -63,6 +97,56 @@ class Ref(RefBase[T], Generic[T]):
     def _read_committed(self) -> tuple[T, int]:
         with self._lock:
             return self._state, self._version
+
+    def history_count(self) -> int:
+        """Return the number of retained committed Ref values."""
+        with self._lock:
+            return len(self._history)
+
+    def min_history(self) -> int:
+        """Return the configured minimum number of retained values."""
+        with self._lock:
+            return self._min_history
+
+    def set_min_history(self, value: Any) -> "Ref[T]":
+        """Set the minimum committed-value history retained by this Ref.
+
+        As with Clojure, changing a control does not eagerly discard values
+        which were already retained. Later commits grow the history until the
+        new non-negative minimum is satisfied.
+        """
+        with self._lock:
+            self._min_history = _history_limit(value, "minimum")
+        return self
+
+    def max_history(self) -> int:
+        """Return the configured maximum number of retained values."""
+        with self._lock:
+            return self._max_history
+
+    def set_max_history(self, value: Any) -> "Ref[T]":
+        """Set the maximum history control and return this Ref.
+
+        Basilisp transactions do not consume historical snapshots, unlike the
+        JVM STM. The control is still retained because it is public Ref state;
+        a minimum history always takes precedence over a smaller maximum, as
+        it does in Clojure.
+        """
+        with self._lock:
+            self._max_history = _history_limit(value, "maximum")
+        return self
+
+    def _record_history(self, value: T) -> None:
+        """Retain a prior committed value when the configured minimum needs it.
+
+        The caller holds ``_lock``. History is intentionally never trimmed by
+        changing a control: Clojure retains entries already accumulated under
+        an earlier minimum. A later commit therefore only fills a higher
+        minimum and leaves existing values intact.
+        """
+        target = max(0, self._min_history)
+        if len(self._history) < target:
+            self._history.append(value)
 
 
 class _Transaction:
@@ -166,6 +250,7 @@ class _Transaction:
             for ref, _old, value in changes:
                 ref._validate(value)
             for ref, _old, value in changes:
+                ref._record_history(ref._state)
                 ref._state = value
                 ref._version += 1
             return changes
@@ -247,6 +332,27 @@ def ensure(ref: Ref[T]) -> T:
     return _require_transaction().ensure(ref)
 
 
+def ref_history_count(ref: Ref[Any]) -> int:
+    """Return the number of committed values retained by ``ref``."""
+    return _require_ref(ref).history_count()
+
+
+def ref_min_history(ref: Ref[Any], value: Any = _NO_HISTORY_VALUE) -> int | Ref[Any]:
+    """Get, or set and return, ``ref``'s minimum history control."""
+    checked_ref = _require_ref(ref)
+    if value is _NO_HISTORY_VALUE:
+        return checked_ref.min_history()
+    return checked_ref.set_min_history(value)
+
+
+def ref_max_history(ref: Ref[Any], value: Any = _NO_HISTORY_VALUE) -> int | Ref[Any]:
+    """Get, or set and return, ``ref``'s maximum history control."""
+    checked_ref = _require_ref(ref)
+    if value is _NO_HISTORY_VALUE:
+        return checked_ref.max_history()
+    return checked_ref.set_max_history(value)
+
+
 def after_commit(action: Callable[[], Any]) -> None:
     """Run ``action`` once after the current transaction commits successfully.
 
@@ -312,3 +418,9 @@ def _require_transaction() -> _Transaction:
     if transaction is None:
         raise RuntimeError("this operation requires an active transaction")
     return transaction
+
+
+def _require_ref(ref: Any) -> Ref[Any]:
+    if not isinstance(ref, Ref):
+        raise TypeError("Ref history operations require a Ref")
+    return ref

@@ -94,8 +94,10 @@ behavior; new Basilisp code should normally use ``dosync``.
 ``commute`` replays its update function against the latest committed value and
 therefore requires a retry-safe, commutative function. ``ensure`` marks a Ref
 for normal version validation when a transaction would otherwise use only
-commute semantics. History controls remain intentionally unimplemented. ``io!``
-is an explicit guard for known impure operations, and agent dispatches inside
+commute semantics. ``ref-history-count``, ``ref-min-history``, and
+``ref-max-history`` provide Clojure-shaped committed-history controls; the
+configured minimum is retained after successful commits. ``io!`` is an
+explicit guard for known impure operations, and agent dispatches inside
 ``dosync`` are deferred until a successful commit; neither mechanism can detect
 arbitrary Python side effects in a retried transaction body.
 

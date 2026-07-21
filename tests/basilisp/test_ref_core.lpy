@@ -27,6 +27,24 @@
     (is (= 5 @value))
     (is (= 5 (dosync (ensure value))))))
 
+(deftest core-ref-history-controls-test
+  (let [value (ref 0)]
+    (is (= 0 (ref-history-count value)))
+    (is (= 0 (ref-min-history value)))
+    (is (= 10 (ref-max-history value)))
+    (is (identical? value (ref-min-history value 3)))
+    (is (identical? value (ref-max-history value 5)))
+    (doseq [n (range 1 7)]
+      (is (= n (dosync (ref-set value n)))))
+    (is (= 3 (ref-history-count value)))
+    (is (= 3 (ref-min-history value)))
+    (is (= 5 (ref-max-history value)))
+    (ref-min-history value 0)
+    (ref-max-history value 1)
+    (dosync (ref-set value 7))
+    ;; Earlier retained history stays available after a control is lowered.
+    (is (= 3 (ref-history-count value)))))
+
 (deftest core-ref-operations-require-a-transaction-test
   (let [value (ref 1)]
     (is (thrown? python/RuntimeError (alter value inc)))
