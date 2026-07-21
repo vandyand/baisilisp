@@ -1,0 +1,62 @@
+(ns tests.basilisp.tools-reader-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader :as tr]
+            [clojure.tools.reader.reader-types :as rt]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]))
+
+(deftest read-and-read-string-handle-standard-options-and-eof
+  (is (= [1 :two] (tr/read-string "[1 :two]")))
+  (is (nil? (tr/read-string nil)))
+  (is (nil? (tr/read-string "")))
+  (is (= :selected (tr/read-string "#?(:lpy :selected :default :wrong)")))
+  (is (= '(:lpy :selected :default :wrong)
+         (:form (tr/read-string {:read-cond :preserve}
+                                "#?(:lpy :selected :default :wrong)"))))
+  (let [r (rt/string-push-back-reader "1 2")]
+    (is (= 1 (tr/read r)))
+    (is (= 2 (tr/read r)))
+    (is (= :done (tr/read r false :done)))
+    (is (thrown? EOFError (tr/read r))))
+  (binding [tr/*data-readers* {'demo/tag (fn [x] [:tagged x])}]
+    (is (= [:tagged 42] (tr/read-string "#demo/tag 42")))))
+
+(deftest source-logging-readers-preserve-form-boundaries-and-source
+  (let [r (rt/source-logging-push-back-reader "  [1 :two] \n ; note\n {:x 3}  ")]
+    (is (rt/source-logging-reader? r))
+    (is (= [[1 :two] "[1 :two]"] (tr/read+string r)))
+    (is (= [{:x 3} "; note\n {:x 3}"] (tr/read+string r)))
+    (is (= [:done ""] (tr/read+string r false :done))))
+  (is (thrown? TypeError
+               (tr/read+string (rt/string-push-back-reader "1")))))
+
+(deftest reader-types-maintain-pushback-and-location-state
+  (let [r (rt/indexing-push-back-reader "ab\n" 2 "sample.lpy")]
+    (is (rt/indexing-reader? r))
+    (is (rt/line-start? r))
+    (is (= 1 (rt/get-line-number r)))
+    (is (= 1 (rt/get-column-number r)))
+    (is (= "sample.lpy" (rt/get-file-name r)))
+    (is (= "a" (rt/peek-char r)))
+    (is (= "a" (rt/read-char r)))
+    (is (= 2 (rt/get-column-number r)))
+    (rt/unread r "a")
+    (is (= "a" (rt/read-char r)))
+    (is (= "b" (rt/read-char r)))
+    (is (= "" (rt/read-line r)))
+    (is (= 2 (rt/get-line-number r)))
+    (is (rt/line-start? r))))
+
+(deftest repeated-reads-survive-parser-lookahead-under-fuzzing
+  ;; This catches the subtle regression where a fresh parser is wrapped around
+  ;; a stream for every read and silently consumes its lookahead character.
+  (let [property (prop/for-all [xs (gen/vector (gen/choose -100000 100000))]
+                   (let [source (str (pr-str xs) " " (pr-str xs))
+                         r (rt/string-push-back-reader source)]
+                     (and (= xs (tr/read r))
+                          (= xs (tr/read r))
+                          (= :eof (tr/read r false :eof)))))]
+    (let [result (tc/quick-check 600 property :seed 20260722 :max-size 80)]
+      (is (:pass? result))
+      (is (= 600 (:num-tests result))))))

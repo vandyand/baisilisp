@@ -1,0 +1,58 @@
+(ns basilisp.tools.reader
+  "Portable `clojure.tools.reader` API backed by Basilisp's reader engine."
+  (:refer-basilisp :exclude [read read-string read+string])
+  (:require [basilisp.tools.reader.reader-types :as reader-types])
+  (:import [basilisp.lang.reader :as reader]
+           [basilisp.lang.runtime :as runtime]
+           [basilisp.tools_reader :as backend]))
+
+(def ^:dynamic *read-eval* true)
+(def ^:dynamic *data-readers* {})
+(def ^:dynamic *default-data-reader-fn* nil)
+(def ^:dynamic *suppress-read* false)
+(def ^:dynamic resolve-symbol runtime/resolve-alias)
+(def default-data-readers basilisp.lang.reader.ReaderContext/_DATA_READERS)
+
+(defn- read* [opts stream]
+  (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
+    (backend/read_form stream
+                       (= eof :eofthrow)
+                       eof
+                       resolve-symbol
+                       *data-readers*
+                       (:features opts)
+                       (not= :preserve (:read-cond opts))
+                       *default-data-reader-fn*)))
+
+(defn read
+  ([] (read *in*))
+  ([stream] (read stream true nil))
+  ([opts stream] (read* opts stream))
+  ([stream eof-error? eof-value]
+   (backend/read_form stream eof-error? eof-value resolve-symbol *data-readers* nil true
+                      *default-data-reader-fn*)))
+
+(defn read-string
+  ([s] (read-string {} s))
+  ([opts s]
+   (when (and s (not= s ""))
+     (read opts (reader-types/string-push-back-reader s)))))
+
+(defn read+string
+  ([] (read+string (reader-types/source-logging-push-back-reader *in*)))
+  ([stream] (read+string stream true nil))
+  ([stream eof-error? eof-value]
+   (vec (backend/read_form_with_source stream eof-error? eof-value resolve-symbol *data-readers*
+                                       nil true *default-data-reader-fn*)))
+  ([opts stream]
+   (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
+     (vec (backend/read_form_with_source stream (= eof :eofthrow) eof resolve-symbol
+                                         *data-readers* (:features opts)
+                                         (not= :preserve (:read-cond opts))
+                                         *default-data-reader-fn*)))))
+
+(defn read-regex [reader char opts pending-forms]
+  (backend/read_regex reader char opts pending-forms))
+
+(defmacro syntax-quote [form]
+  (backend/syntax_quote form resolve-symbol *data-readers* nil true *default-data-reader-fn*))

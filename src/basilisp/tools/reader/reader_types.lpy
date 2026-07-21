@@ -1,0 +1,39 @@
+(ns basilisp.tools.reader.reader-types
+  "Portable `clojure.tools.reader.reader-types` compatibility API."
+  (:import [basilisp.tools_reader :as backend]))
+
+(defn string-reader [s] (backend/string_reader s))
+(defn push-back-reader
+  ([reader] (backend/push_back_reader reader))
+  ([reader buffer-length] (backend/push_back_reader reader buffer-length)))
+(defn string-push-back-reader
+  ([s] (backend/string_push_back_reader s))
+  ([s buffer-length] (backend/string_push_back_reader s buffer-length)))
+(defn input-stream-reader [stream] (backend/input_stream_reader stream))
+(defn input-stream-push-back-reader
+  ([stream] (backend/input_stream_push_back_reader stream))
+  ([stream buffer-length] (backend/input_stream_push_back_reader stream buffer-length)))
+(defn indexing-push-back-reader
+  ([reader] (backend/indexing_push_back_reader reader))
+  ([reader buffer-length] (backend/indexing_push_back_reader reader buffer-length))
+  ([reader buffer-length file-name]
+   (backend/indexing_push_back_reader reader buffer-length file-name)))
+(defn source-logging-push-back-reader
+  ([reader] (backend/source_logging_push_back_reader reader))
+  ([reader buffer-length] (backend/source_logging_push_back_reader reader buffer-length))
+  ([reader buffer-length file-name]
+   (backend/source_logging_push_back_reader reader buffer-length file-name)))
+
+(defn read-char [reader] (backend/read_char reader))
+(defn peek-char [reader] (backend/peek_char reader))
+(defn unread [reader char] (backend/unread reader char))
+(defn indexing-reader? [reader] (backend/indexing_reader reader))
+(defn source-logging-reader? [reader] (backend/source_logging_reader reader))
+(defn get-line-number [reader] (backend/get_line_number reader))
+(defn get-column-number [reader] (backend/get_column_number reader))
+(defn get-file-name [reader] (backend/get_file_name reader))
+(defn line-start? [reader] (backend/line_start reader))
+(defn read-line [reader] (backend/read_line reader))
+
+(defmacro log-source [_reader & body]
+  `(do ~@body))

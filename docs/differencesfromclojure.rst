@@ -353,4 +353,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   module. Its trace level maps to Basilisp's level 5 and fatal maps to Python
   ``CRITICAL``; logger back-end selection follows Python configuration rather
   than SLF4J/JUL discovery.
+* :lpy:ns:`basilisp.tools.reader` provides the portable
+  ``clojure.tools.reader`` single-form reader and its stateful
+  ``reader-types`` constructors. It preserves stream lookahead across repeated
+  reads and supports source logging, reader-condition options, and tagged
+  reader bindings. JVM reader evaluation and Java class construction remain
+  intentionally unavailable.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``
