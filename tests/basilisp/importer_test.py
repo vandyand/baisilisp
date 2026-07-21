@@ -225,6 +225,28 @@ class TestImporter:
         assert filename == ns.find(sym.symbol("runtime-file")).value
         assert filename == ns.find(sym.symbol("macro-file")).value
 
+    def test_import_module_binds_source_path_during_execution_and_macroexpansion(
+        self, make_new_module, load_namespace, module_dir
+    ):
+        ns_name = "importer.namespace.source-path"
+        filename = os.path.join(module_dir, "importer", "namespace", "source_path.lpy")
+        make_new_module(
+            "importer",
+            "namespace",
+            "source_path.lpy",
+            module_text=f"""
+            (ns {ns_name})
+            (defmacro expansion-source-path [] *source-path*)
+            (def runtime-source-path *source-path*)
+            (def macro-source-path (expansion-source-path))
+            """,
+        )
+
+        ns = load_namespace(ns_name)
+
+        assert filename == ns.find(sym.symbol("runtime-source-path")).value
+        assert filename == ns.find(sym.symbol("macro-source-path")).value
+
     def test_reload_module(
         self, do_not_cache_namespaces, make_new_module, load_namespace
     ):
@@ -418,6 +440,35 @@ class TestImporter:
 
         assert filename == ns.find(sym.symbol("runtime-file")).value
         assert filename == ns.find(sym.symbol("macro-file")).value
+
+    def test_import_cached_module_binds_source_path(
+        self, do_cache_namespaces, make_new_module, load_namespace, module_dir
+    ):
+        ns_name = "importer.namespace.cached-source-path"
+        filename = os.path.join(
+            module_dir, "importer", "namespace", "cached_source_path.lpy"
+        )
+        make_new_module(
+            "importer",
+            "namespace",
+            "cached_source_path.lpy",
+            module_text=f"""
+            (ns {ns_name})
+            (defmacro expansion-source-path [] *source-path*)
+            (def runtime-source-path *source-path*)
+            (def macro-source-path (expansion-source-path))
+            """,
+        )
+
+        p = Process(target=_import_module, args=(munge(ns_name),))
+        p.start()
+        p.join()
+        assert 0 == p.exitcode
+
+        ns = load_namespace(ns_name)
+
+        assert filename == ns.find(sym.symbol("runtime-source-path")).value
+        assert filename == ns.find(sym.symbol("macro-source-path")).value
 
     def test_import_module_with_macro_defined_in_try_from_cache(
         self, do_cache_namespaces, make_new_module, load_namespace

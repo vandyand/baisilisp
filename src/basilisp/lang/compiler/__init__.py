@@ -173,23 +173,37 @@ _sentinel = object()
 
 
 @contextlib.contextmanager
-def _file_binding(filename: str):
-    """Bind ``*file*`` for file-backed compilation and nil for interactive input."""
+def _source_bindings(filename: str):
+    """Bind source context Vars while compilation evaluates a form or module.
+
+    ``*file*`` is nil for interactive input while ``*source-path*`` has
+    Clojure's ``"NO_SOURCE_FILE"`` sentinel. Nested interactive compilation
+    (notably ``eval`` from a file) inherits an enclosing source context.
+    """
     file_var = runtime.Var.find(runtime.FILE_VAR_SYM)
-    if file_var is None:
+    source_path_var = runtime.Var.find(runtime.SOURCE_PATH_VAR_SYM)
+    if file_var is None and source_path_var is None:
         # The core namespace may be in its own bootstrap sequence.
         yield
         return
 
     is_interactive = filename.startswith("<") or filename == "NO_SOURCE_PATH"
-    if is_interactive and file_var.is_thread_bound:
+    if is_interactive and any(
+        var is not None and var.is_thread_bound for var in (file_var, source_path_var)
+    ):
         # Nested eval/compilation inherits the file which initiated evaluation,
         # as Clojure does for eval forms encountered in source files.
         yield
         return
 
-    file_value = None if is_interactive else filename
-    with runtime.bindings({file_var: file_value}):
+    bindings = {}
+    if file_var is not None:
+        bindings[file_var] = None if is_interactive else filename
+    if source_path_var is not None:
+        bindings[source_path_var] = (
+            runtime.NO_SOURCE_FILE if is_interactive else filename
+        )
+    with runtime.bindings(bindings):
         yield
 
 
@@ -208,7 +222,7 @@ def compile_and_exec_form(
     if form is None:
         return None
 
-    with _file_binding(ctx.filename):
+    with _source_bindings(ctx.filename):
         if not ns.module.__basilisp_bootstrapped__:
             _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, ns.module)
 
@@ -314,7 +328,7 @@ def compile_module(
     Basilisp import machinery, to allow callers to import Basilisp modules from
     Python code.
     """
-    with _file_binding(ctx.filename):
+    with _source_bindings(ctx.filename):
         _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, module)
 
         with _compile_time_macro_defs(ctx, module, collect_bytecode=collect_bytecode):
@@ -343,7 +357,7 @@ def compile_bytecode(
     namespaces. When the cached bytecode is reloaded from disk, it needs to be
     compiled within a bootstrapped module. This function bootstraps the module
     and then proceeds to compile a collection of bytecodes into the module."""
-    with _file_binding(gctx.filename):
+    with _source_bindings(gctx.filename):
         _bootstrap_module(gctx, optimizer, module)
         for bytecode in code:
             exec(bytecode, module.__dict__)  # pylint: disable=exec-used  # nosec 6102

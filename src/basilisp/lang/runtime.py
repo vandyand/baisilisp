@@ -112,6 +112,9 @@ NS_VAR_NAME = "*ns*"
 NS_VAR_SYM = sym.symbol(NS_VAR_NAME, ns=CORE_NS)
 FILE_VAR_NAME = "*file*"
 FILE_VAR_SYM = sym.symbol(FILE_VAR_NAME, ns=CORE_NS)
+SOURCE_PATH_VAR_NAME = "*source-path*"
+SOURCE_PATH_VAR_SYM = sym.symbol(SOURCE_PATH_VAR_NAME, ns=CORE_NS)
+NO_SOURCE_FILE = "NO_SOURCE_FILE"
 IMPORT_MODULE_VAR_NAME = "*import-module*"
 IMPORT_MODULE_VAR_SYM = sym.symbol(IMPORT_MODULE_VAR_NAME, ns=CORE_NS)
 NS_VAR_NS = CORE_NS
@@ -2944,6 +2947,17 @@ def bootstrap_core(compiler_opts: CompilerOpts) -> None:
             }
         ),
     )
+
+    # Clojure exposes a separately named source-path Var which is dynamic at
+    # the runtime level but intentionally has no ``:dynamic`` metadata. It is
+    # used by loading/compilation machinery and is also user-bindable.
+    source_path_var = Var.intern(
+        CORE_NS_SYM,
+        sym.symbol(SOURCE_PATH_VAR_NAME),
+        NO_SOURCE_FILE,
+        dynamic=True,
+    )
+    source_path_var.reset_meta(None)
 
     # Dynamic Var examined by the compiler when importing new Namespaces
     Var.intern(

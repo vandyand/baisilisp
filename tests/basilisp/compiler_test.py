@@ -1,4 +1,5 @@
 import asyncio
+import concurrent.futures
 import datetime
 import decimal
 import importlib
@@ -172,6 +173,108 @@ class TestFileVar:
         file_var = runtime.Var.find(runtime.FILE_VAR_SYM)
         assert file_var is not None
         assert file_var.value is None
+
+
+class TestSourcePathVar:
+    @pytest.fixture
+    def compiler_file_path(self, tmp_path: Path) -> str:
+        return str(tmp_path / "source_path_var_test.lpy")
+
+    def test_source_path_var_is_bound_for_file_backed_compilation(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile("*source-path*")
+
+    def test_source_path_var_is_bound_during_macroexpansion(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile(
+            "(defmacro expanded-source-path [] *source-path*) (expanded-source-path)"
+        )
+
+    def test_eval_inherits_enclosing_source_path(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile("(eval '*source-path*)")
+
+    def test_interactive_compilation_binds_no_source_file(self, ns: runtime.Namespace):
+        form = next(reader.read_str("*source-path*"))
+        ctx = compiler.CompilerContext("<Interactive Test>")
+
+        assert runtime.NO_SOURCE_FILE == compiler.compile_and_exec_form(form, ctx, ns)
+
+    def test_source_path_var_can_be_user_bound_without_dynamic_metadata(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        source_path_var = runtime.Var.find(runtime.SOURCE_PATH_VAR_SYM)
+        assert source_path_var is not None
+        assert source_path_var.dynamic
+        assert source_path_var.meta is None
+
+        assert ["bound", compiler_file_path] == list(
+            lcompile('[(binding [*source-path* "bound"] *source-path*) *source-path*]')
+        )
+
+    @settings(
+        deadline=None,
+        suppress_health_check=[HealthCheck.function_scoped_fixture],
+    )
+    @given(
+        st.lists(
+            st.sampled_from(
+                (
+                    "*source-path*",
+                    "(let [source-path *source-path*] source-path)",
+                    "(do *source-path*)",
+                    "((fn [] *source-path*))",
+                    "(eval '*source-path*)",
+                )
+            ),
+            min_size=1,
+            max_size=24,
+        )
+    )
+    def test_source_path_var_fuzzes_nested_runtime_reads(
+        self, lcompile: CompileFn, compiler_file_path: str, forms
+    ):
+        assert [compiler_file_path] * len(forms) == list(
+            lcompile(f"[{ ' '.join(forms) }]")
+        )
+
+    def test_source_path_var_binding_does_not_leak_after_compiler_error(
+        self, lcompile: CompileFn
+    ):
+        with pytest.raises(compiler.CompilerException):
+            lcompile("source-path-var-does-not-exist")
+
+        source_path_var = runtime.Var.find(runtime.SOURCE_PATH_VAR_SYM)
+        assert source_path_var is not None
+        assert runtime.NO_SOURCE_FILE == source_path_var.value
+
+    def test_source_path_var_is_thread_local_during_concurrent_compilation(self):
+        def compile_source_path(index: int) -> str:
+            ns_name = f"tests.source-path-thread-{index}"
+            ns_sym = sym.symbol(ns_name)
+            ns = get_or_create_ns(ns_sym)
+            try:
+                with runtime.ns_bindings(ns_name):
+                    form = next(reader.read_str("*source-path*"))
+                    return compiler.compile_and_exec_form(
+                        form,
+                        compiler.CompilerContext(f"source-path-thread-{index}.lpy"),
+                        ns,
+                    )
+            finally:
+                runtime.Namespace.remove(ns_sym)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=8) as executor:
+            assert [f"source-path-thread-{index}.lpy" for index in range(8)] == list(
+                executor.map(compile_source_path, range(8))
+            )
+
+        source_path_var = runtime.Var.find(runtime.SOURCE_PATH_VAR_SYM)
+        assert source_path_var is not None
+        assert runtime.NO_SOURCE_FILE == source_path_var.value
 
 
 @pytest.fixture
