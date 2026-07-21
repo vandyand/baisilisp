@@ -95,7 +95,10 @@ The PyTest plugin remains the normal project test runner. For interactive work,
 ``run-all-tests``. They execute ``deftest`` Vars using the namespace's declared
 fixtures, print a summary, and return a map with ``:test``, ``:pass``, ``:fail``,
 and ``:error`` counts. ``successful?`` returns whether a summary has no failures
-or errors.
+or errors. The standard ``clojure.test`` import path also supplies low-level
+``test-var``, ``*report-counters*``, ``with-test-out``, and assertion extension
+helpers, so Clojure-oriented custom reporters can run unchanged over ordinary
+Python text writers.
 
 .. code-block:: clojure
 

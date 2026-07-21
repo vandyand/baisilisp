@@ -24,9 +24,19 @@
       2 (+ 1 1)
       4 (* 2 2))))
 
+(t/deftest report-counter-assertions
+  (t/is true)
+  (t/is (odd? 3)))
+
+(def report-counters
+  (binding [t/*report-counters* (ref t/*initial-report-counters*)]
+    (t/test-var #'report-counter-assertions)
+    @t/*report-counters*))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
           (t/test-ns 'conformance.testing-cases)))
 
 (emit-case :assertions-and-fixtures @fixture-events)
+(emit-case :test-var-report-counters report-counters)

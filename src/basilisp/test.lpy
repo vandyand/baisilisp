@@ -21,7 +21,8 @@
   (nor are they compatible with) PyTest fixtures."
   (:import
    inspect
-   types)
+   types
+   [basilisp.lang.stm :as stm])
   (:require
    [basilisp.template :as template]))
 
@@ -35,6 +36,27 @@
 (def ^:dynamic *testing-contexts* '())
 (def ^:dynamic *test-results* nil)
 (def ^:dynamic *test-output* true)
+;; Clojure.test reporting bindings.  The existing structured runner remains the
+;; source of its summaries; these Vars let ordinary Clojure.test extensions and
+;; custom reporters use their documented counter/output hooks.
+(def ^:dynamic *stack-trace-depth* nil)
+(def ^:dynamic *initial-report-counters* {:test 0 :pass 0 :fail 0 :error 0})
+(def ^:dynamic *report-counters* nil)
+(def ^:dynamic *test-out* *out*)
+
+(defmacro with-test-out
+  "Run ``body`` with ``*out*`` bound to the current ``*test-out*`` writer."
+  [& body]
+  `(binding [*out* *test-out*]
+     ~@body))
+
+(defn inc-report-counter
+  "Increment ``name`` in the active Clojure-style report counter, if any."
+  [name]
+  (when *report-counters*
+    (if (instance? stm/Ref *report-counters*)
+      (dosync (commute *report-counters* update name (fnil inc 0)))
+      (swap! *report-counters* update name (fnil inc 0)))))
 
 (defmulti ^:dynamic report
   "Report an assertion event. Applications may add methods to customize reporting.
@@ -48,31 +70,42 @@
   test's structured result remains independent of its presentation."
   [m]
   (case (:type m)
-    :pass    (vswap! *test-passes* inc)
-    :fail    (vswap! *test-failures* conj (assoc m :type :failure))
-    :failure (vswap! *test-failures* conj m)
-    :error   (vswap! *test-failures* conj m)
+    :pass    (when *test-passes* (vswap! *test-passes* inc))
+    :fail    (when *test-failures* (vswap! *test-failures* conj (assoc m :type :failure)))
+    :failure (when *test-failures* (vswap! *test-failures* conj m))
+    :error   (when *test-failures* (vswap! *test-failures* conj m))
     nil))
 
 (defmethod report :pass
   [m]
-  (record-report! m))
+  (record-report! m)
+  (inc-report-counter :pass))
 
 (defmethod report :fail
   [m]
-  (record-report! m))
+  (record-report! m)
+  (inc-report-counter :fail))
 
 (defmethod report :failure
   [m]
-  (record-report! m))
+  (record-report! m)
+  (inc-report-counter :fail))
 
 (defmethod report :error
   [m]
-  (record-report! m))
+  (record-report! m)
+  (inc-report-counter :error))
 
 (defmethod report :default
   [m]
   (println m))
+
+;; Standard lifecycle events are hooks for alternate reporters; the default
+;; Clojure.test behavior intentionally produces no output for them.
+(defmethod report :begin-test-ns [_])
+(defmethod report :end-test-ns [_])
+(defmethod report :begin-test-var [_])
+(defmethod report :end-test-var [_])
 
 (defn do-report
   "Add the current test context to assertion event ``m`` and dispatch it through
@@ -183,6 +216,62 @@
   (if (seq fixtures)
     (reduce #(compose-fixtures %1 %2) fixtures)
     (constantly nil)))
+
+(defn file-position
+  "Return ``[filename line-number]`` for the caller ``n`` frames above this one.
+
+  This deprecated Clojure.test helper uses Python frame information rather than
+  JVM stack-trace elements, but retains its useful source-location shape.
+  "
+  [n]
+  (loop [frame (inspect/currentframe)
+         remaining (+ n 1)]
+    (if (or (nil? frame) (zero? remaining))
+      (if frame
+        [(.-co_filename (.-f_code frame)) (.-f_lineno frame)]
+        [nil nil])
+      (recur (.-f_back frame) (dec remaining)))))
+
+(defn get-possibly-unbound-var
+  "Like ``var-get`` but return ``nil`` when a Basilisp Var is unbound."
+  [v]
+  (when (.-is-bound v)
+    (var-get v)))
+
+(defn function?
+  "Return true for a function or a symbol resolving to a non-macro function."
+  [value]
+  (if (symbol? value)
+    (when-let [v (resolve value)]
+      (when-let [f (get-possibly-unbound-var v)]
+        (and (fn? f) (not (:macro (meta v))))))
+    (fn? value)))
+
+(defn assert-predicate
+  "Generate Clojure.test-style assertion code for a predicate call form."
+  [msg form]
+  (let [args (rest form)
+        pred (first form)]
+    `(let [values# (list ~@args)
+           result# (apply ~pred values#)]
+       (if result#
+         (do-report {:type :pass :message ~msg
+                     :expected (quote ~form) :actual (cons (quote ~pred) values#)})
+         (do-report {:type :fail :message ~msg
+                     :expected (quote ~form)
+                     :actual (list (quote not) (cons (quote ~pred) values#))}))
+       result#)))
+
+(defn assert-any
+  "Generate Clojure.test-style assertion code for an arbitrary form."
+  [msg form]
+  `(let [value# ~form]
+     (if value#
+       (do-report {:type :pass :message ~msg
+                   :expected (quote ~form) :actual value#})
+       (do-report {:type :fail :message ~msg
+                   :expected (quote ~form) :actual value#}))
+     value#))
 
 (defmulti
   ^{:arglists '([msg expr])}
@@ -303,18 +392,9 @@
 
 (defmethod assert-expr :default
   [msg expr]
-  `(let [computed# ~expr]
-     (if computed#
-       (do-report {:type :pass
-                   :message ~msg
-                   :expr (quote ~expr)
-                   :actual computed#
-                   :expected (quote ~expr)})
-       (do-report {:type :fail
-                   :message ~msg
-                   :expr (quote ~expr)
-                   :actual computed#
-                   :expected (quote ~expr)}))))
+  (if (and (sequential? expr) (function? (first expr)))
+    (assert-predicate msg expr)
+    (assert-any msg expr)))
 
 (defmulti gen-assert
   "Legacy assertion generation extension point. New code should extend
@@ -328,6 +408,15 @@
 (defmethod gen-assert :default
   [expr msg _]
   (assert-expr msg expr))
+
+(defmacro try-expr
+  "Evaluate a generated assertion and report an unexpected ordinary exception."
+  [msg form]
+  `(try
+     ~(assert-expr msg form)
+     (catch python/Exception e#
+       (do-report {:type :error :message ~msg
+                   :expected (quote ~form) :actual e#}))))
 
 (defmacro is
   "Assert that a test condition, ``expr``, is true. :lpy:fn:`is` assertion failures are
@@ -453,9 +542,14 @@
   (when *load-tests*
     (let [test-name-sym (vary-meta name-sym assoc ::test true)
           test-name-str (name test-name-sym)
-          test-ns-name  `(quote ~(symbol (name *ns*)))]
-      `(def ~test-name-sym
-         ~(test-fn-form test-ns-name test-name-str body)))))
+          test-ns-name  `(quote ~(symbol (name *ns*)))
+          v             (gensym "v")]
+      `(let [~v (def ~test-name-sym
+                  ~(test-fn-form test-ns-name test-name-str body))]
+         ;; Clojure.test exposes the test body through ordinary :test metadata
+         ;; as well as its runner's internal marker.
+         (alter-meta! ~v assoc :test (var-get ~v))
+         ~v))))
 
 (defmacro deftest-
   "Like :lpy:fn:`deftest`, but creates a private test Var."
@@ -463,9 +557,12 @@
   (when *load-tests*
     (let [test-name-sym (vary-meta name-sym assoc ::test true :private true)
           test-name-str (name test-name-sym)
-          test-ns-name  `(quote ~(symbol (name *ns*)))]
-      `(def ~test-name-sym
-         ~(test-fn-form test-ns-name test-name-str body)))))
+          test-ns-name  `(quote ~(symbol (name *ns*)))
+          v             (gensym "v")]
+      `(let [~v (def ~test-name-sym
+                  ~(test-fn-form test-ns-name test-name-str body))]
+         (alter-meta! ~v assoc :test (var-get ~v))
+         ~v))))
 
 (defmacro with-test
   "Associate test assertions with a definition. The definition must return a Var.
@@ -548,10 +645,33 @@
 
 (defn ^:private test-function
   [v]
-  (let [test (::test (meta v))]
-    (if (fn? test)
-      test
-      (var-get v))))
+  (let [metadata (meta v)
+        test     (::test metadata)]
+    (cond
+      (fn? test) test
+      test (var-get v)
+      :else (:test metadata))))
+
+(defn test-var
+  "Run a Var's ``:test`` metadata function with Clojure-style report events.
+
+  Basilisp's PyTest runner additionally records a structured per-test result,
+  but this low-level entry point intentionally returns the same report-driven
+  behavior expected by Clojure.test extensions.
+  "
+  [v]
+  (when-let [test (test-function v)]
+    (binding [*testing-vars* (conj *testing-vars* v)]
+      (do-report {:type :begin-test-var :var v})
+      (inc-report-counter :test)
+      (try
+        (test)
+        (catch python/Exception e
+          (do-report {:type :error
+                      :message "Uncaught exception, not in assertion."
+                      :expected nil
+                      :actual e})))
+      (do-report {:type :end-test-var :var v}))))
 
 (defn ^:private run-test-var*
   [v]
@@ -569,7 +689,7 @@
 
 (defn ^:private test-var?
   [v]
-  (boolean (::test (meta v))))
+  (boolean (or (::test (meta v)) (:test (meta v)))))
 
 (defn test-vars
   "Run the supplied test Vars with the ``:once`` and ``:each`` fixtures declared
@@ -607,37 +727,38 @@
   When ``ns`` defines ``test-ns-hook``, call that hook instead of automatically
   selecting test Vars. Direct ``deftest`` calls made by the hook are aggregated."
   [ns]
-  (let [ns (the-ns ns)]
-    (when *test-output*
-      (println "Testing" (.-name ns)))
-    (if-let [hook (get (ns-interns ns) 'test-ns-hook)]
-      (binding [*test-results* (volatile! [])]
-        (let [hook-outcome (try
-                             {:result ((var-get hook))}
-                             (catch python/Exception e
-                               {:error e}))
-              results      (deref *test-results*)
-              test-summary (reduce (fn [summary {:keys [name result]}]
-                                     (doseq [failure (:failures result)]
-                                       (when *test-output*
-                                         (report-test-failure name failure)))
-                                     (merge-summaries summary
-                                                      (summarize-test-result result)))
-                                   (empty-summary)
-                                   results)
-              hook-summary (cond
-                             (:error hook-outcome)
-                             (do
-                               (report {:type :hook-error
-                                        :exception (:error hook-outcome)})
-                               {:test 0 :pass 0 :fail 0 :error 1})
+  (binding [*report-counters* (ref *initial-report-counters*)]
+    (let [ns (the-ns ns)]
+      (when *test-output*
+        (println "Testing" (.-name ns)))
+      (if-let [hook (get (ns-interns ns) 'test-ns-hook)]
+        (binding [*test-results* (volatile! [])]
+          (let [hook-outcome (try
+                               {:result ((var-get hook))}
+                               (catch python/Exception e
+                                 {:error e}))
+                results      (deref *test-results*)
+                test-summary (reduce (fn [summary {:keys [name result]}]
+                                       (doseq [failure (:failures result)]
+                                         (when *test-output*
+                                           (report-test-failure name failure)))
+                                       (merge-summaries summary
+                                                        (summarize-test-result result)))
+                                     (empty-summary)
+                                     results)
+                hook-summary (cond
+                               (:error hook-outcome)
+                               (do
+                                 (report {:type :hook-error
+                                          :exception (:error hook-outcome)})
+                                 {:test 0 :pass 0 :fail 0 :error 1})
 
-                             (seq results) (empty-summary)
-                             (map? (:result hook-outcome))
-                             (summarize-test-result (:result hook-outcome))
-                             :else (empty-summary))]
-          (merge-summaries test-summary hook-summary)))
-      (test-all-vars ns))))
+                               (seq results) (empty-summary)
+                               (map? (:result hook-outcome))
+                               (summarize-test-result (:result hook-outcome))
+                               :else (empty-summary))]
+            (merge-summaries test-summary hook-summary)))
+        (test-all-vars ns)))))
 
 (defn ^:private report-summary
   [summary]
@@ -648,17 +769,20 @@
 
 (defmethod report :fixture-error
   [m]
+  (inc-report-counter :error)
   (when *test-output*
     (println "ERROR in test fixture:" (python/repr (:exception m)))))
 
 (defmethod report :test-error
   [m]
+  (inc-report-counter :error)
   (when *test-output*
     (println (str "ERROR in (" (:test-name m) "): "
                   (python/repr (:exception m))))))
 
 (defmethod report :hook-error
   [m]
+  (inc-report-counter :error)
   (when *test-output*
     (println "ERROR in test-ns-hook:" (python/repr (:exception m)))))
 

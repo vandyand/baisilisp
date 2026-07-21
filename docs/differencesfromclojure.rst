@@ -350,7 +350,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   explicit ``with-gen`` strategy.
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
-* :lpy:ns:`basilisp.test` is a port of ``clojure.test``
+* :lpy:ns:`basilisp.test` is a port of ``clojure.test``. It supports the
+  standard low-level ``test-var``/``:test`` metadata path, report counters,
+  output rebinding, and assertion-extension helpers alongside Basilisp's
+  PyTest-oriented structured test results. Stack locations use Python frames,
+  and ordinary Python text writers replace JVM ``PrintWriter`` values.
 * :lpy:ns:`basilisp.test.check` supplies the portable ``clojure.test.check``
   property-testing boundary: deterministic seeded generation, composable
   generators, shrinking, ``for-all``, ``quick-check``, and ``defspec``. Its
