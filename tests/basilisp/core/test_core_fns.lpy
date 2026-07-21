@@ -281,6 +281,47 @@
   (doseq [input [true false ##NaN ##Inf ##-Inf "NaN" "Infinity" "-Infinity"]]
     (is (thrown? python/TypeError (bigdec input)))))
 
+(deftest clojure-scalar-coercion-contract-test
+  ;; Python constructors accept strings and booleans, unlike Clojure casts.
+  (doseq [coerce [byte short int long float double]]
+    (is (thrown? python/TypeError (coerce "1")))
+    (is (thrown? python/TypeError (coerce true))))
+
+  ;; Checked integer casts truncate, accept characters, and enforce JVM widths.
+  (is (= -1 (byte -1.9)))
+  (is (= 65 (byte \A)))
+  (is (= 65 (short \A)))
+  (is (= 65 (int \A)))
+  (is (= 65 (long \A)))
+  (is (= -1 (int -1.9)))
+  (doseq [[coerce value] [[byte 128]
+                          [short 32768]
+                          [int 2147483648]
+                          [long 9223372036854775808]]]
+    (is (thrown? python/ValueError (coerce value))))
+
+  ;; ``float`` is IEEE-754 single precision even though its host value is a
+  ;; Python double; ``double`` retains the Python double representation.
+  (is (= 16777216 (int (float 16777217))))
+  (is (= 16777217 (int (double 16777217))))
+  (is (thrown? python/ValueError (float ##Inf)))
+  (is (true? (infinite? (double ##Inf))))
+
+  ;; Unchecked casts wrap fixed-width integers rather than inheriting Python's
+  ;; arbitrary-precision result.
+  (is (= -128 (unchecked-byte 128)))
+  (is (= -1 (unchecked-byte ##Inf)))
+  (is (= -32768 (unchecked-short 32768)))
+  (is (= -2147483648 (unchecked-int 2147483648)))
+  (is (= -9223372036854775808 (unchecked-long 9223372036854775808)))
+  (is (= 65535 (int (unchecked-char -1))))
+  (is (= 65 (int (unchecked-char \A))))
+
+  ;; Big conversions deliberately retain Clojure's numeric-string parsing.
+  (is (= 42 (bigint "42")))
+  (is (= 1.25M (bigdec "1.25")))
+  (is (= 1.1M (bigdec 1.1))))
+
 (deftest vary-meta-test
   (testing "with lists"
     (let [l  '(:list)

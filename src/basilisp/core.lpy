@@ -19,6 +19,7 @@
          [basilisp.core_interop :as core-interop]
          basilisp.lang.character
          basilisp.lang.agent
+         basilisp.lang.numeric_coerce
          basilisp.lang.primitive_array
          basilisp.lang.regex
          basilisp.lang.stm
@@ -2049,36 +2050,28 @@
 ;;;;;;;;;;;;;;;;;;;
 
 (defn bigdec
-  "Coerce ``x`` to a Python :external:py:class:`decimal.Decimal`\\."
+  "Coerce a number or numeric string ``x`` to a finite Python
+  :external:py:class:`decimal.Decimal`\\."
   [x]
-  ;; Python considers booleans integers and Decimal can represent NaN and
-  ;; infinities, while Clojure's BigDecimal coercion accepts neither.
-  (when (boolean? x)
-    (throw (python/TypeError #f"Expected a finite number: {x}")))
-  (let [result (if (instance? fractions/Fraction x)
-                 (operator/truediv (decimal/Decimal (.-numerator x)) (.-denominator x))
-                 (decimal/Decimal x))]
-    (if (.is_finite result)
-      result
-      (throw (python/TypeError #f"Expected a finite number: {x}")))))
+  (basilisp.lang.numeric_coerce/bigdec x))
 
-(defn ^:inline bigint
+(defn bigint
   "Coerce ``x`` to an integer.
 
   Python's builtin ``int`` type is arbitrary precision, so there is no difference
   between ``bigint``\\, ``biginteger``\\, and Python's builtin
   :external:py:class:`int`\\."
   [x]
-  (python/int x))
+  (basilisp.lang.numeric_coerce/bigint x))
 
-(defn ^:inline biginteger
+(defn biginteger
   "Coerce ``x`` to an integer.
 
   Python's builtin ``int`` type is arbitrary precision, so there is no difference
   between ``bigint``\\, ``biginteger``\\, and Python's builtin
   :external:py:class:`int`\\."
   [x]
-  (python/int x))
+  (basilisp.lang.numeric_coerce/bigint x))
 
 (defn ^:no-inline boolean
   "Coerce ``x`` to a boolean.
@@ -2093,11 +2086,7 @@
 (defn byte
   "Coerce ``x`` to a byte (an integer between -128 and 127)."
   [x]
-  (let [b (python/int x)]
-    (if (operator/contains (python/range -128 128) b)
-      b
-      (throw
-       (python/ValueError (str "cannot coerce " (python/repr x) " to byte"))))))
+  (basilisp.lang.numeric_coerce/checked-integer x 8))
 
 (defn byte-string
   "Coerce ``x`` to a byte string (Python :external:py:class:`bytes` object).
@@ -2125,43 +2114,42 @@
                               (python/ValueError
                                (str "cannot cast " (python/repr x) " to char")))))
 
-(defn ^:inline double
+(defn double
   "Coerce ``x`` to a float.
 
   Python does not differentiate between ``float`` and ``double``. Python
   :external:py:class:`float`\\s are double precision."
   [x]
-  (python/float x))
+  (basilisp.lang.numeric_coerce/double x))
 
-(defn ^:inline float
+(defn float
   "Coerce ``x`` to a :external:py:class:`float`\\.
 
-  If ``x`` is string, it is parsed as a floating point number."
+  The returned Python float carries Clojure/JVM single-precision rounding."
   [x]
-  (python/float x))
+  (basilisp.lang.numeric_coerce/checked-float x))
 
-(defn ^:inline int
-  "Coerce ``x`` to an :external:py:class:`int`\\. Characters become their Unicode ordinal."
+(defn int
+  "Coerce ``x`` to a signed 32-bit :external:py:class:`int`\\. Characters become
+  their UTF-16 ordinal."
   [x]
-  (if (char? x)
-    (python/ord (.-value x))
-    (python/int x)))
+  (basilisp.lang.numeric_coerce/checked-integer x 32))
 
-(defn ^:inline long
+(defn long
   "Coerce ``x`` to an :external:py:class:`int`\\.
 
   Python does not support `long` types, so the value is coerced to an integer as by
   :lpy:fn:`int`\\."
   [x]
-  (python/int x))
+  (basilisp.lang.numeric_coerce/checked-integer x 64))
 
-(defn ^:inline short
+(defn short
   "Coerce ``x`` to an :external:py:class:`int`\\.
 
   Python does not support `short` types, so the value is coerced to an integer as by
   :lpy:fn:`int`\\."
   [x]
-  (python/int x))
+  (basilisp.lang.numeric_coerce/checked-integer x 16))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Unchecked Arithmetic ;;
@@ -2256,41 +2244,37 @@
 (defn unchecked-byte
   "Coerce ``x`` to a byte. Value may be truncated or rounded."
   [x]
-  (byte (mod x 256)))
+  (basilisp.lang.numeric_coerce/unchecked-integer x 8 ** :infinity-bits 64))
 
 (defn unchecked-char
   "Coerce ``x`` to a char. Value may be truncated or rounded."
   [x]
-  (cond
-    (and (instance? python/int x) (not (instance? python/bool x))) (char (mod x 65536))
-    :else                    (char x)))
+  (basilisp.lang.numeric_coerce/unchecked-char x))
 
-(defcopy unchecked-double
-  "Same as :lpy:fn:`double`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  double)
-(defcopy unchecked-float
-  "Same as :lpy:fn:`float`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  float)
+(defn unchecked-double
+  "Coerce a number to a double without rejecting infinities."
+  [x]
+  (basilisp.lang.numeric_coerce/double x))
 
-(defcopy unchecked-int
-  "Same as :lpy:fn:`int`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  int)
-(defcopy unchecked-long
-  "Same as :lpy:fn:`long`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  long)
-(defcopy unchecked-short
-  "Same as :lpy:fn:`short`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  short)
+(defn unchecked-float
+  "Coerce a number to a single-precision float without rejecting infinities."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-float x))
+
+(defn unchecked-int
+  "Coerce ``x`` to a signed 32-bit integer with two's-complement wrapping."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer x 32 ** :allow-character true))
+
+(defn unchecked-long
+  "Coerce ``x`` to a signed 64-bit integer with two's-complement wrapping."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer x 64))
+
+(defn unchecked-short
+  "Coerce ``x`` to a signed 16-bit integer with two's-complement wrapping."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer x 16 ** :infinity-bits 64))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Arrays (Python List) ;;
@@ -3762,7 +3746,10 @@
   ([x]
    (lazy-seq (cons x (repeat x))))
   ([n x]
-   (let [n (int n)]
+   ;; This is an internal Python sequence count, not the public Clojure
+   ;; fixed-width ``int`` coercion. Preserve the pre-existing host conversion
+   ;; (and its error contract) for this Python-native helper.
+   (let [n (python/int n)]
      (lazy-seq
       (when (> n 0)
         (cons x (repeat (dec n) x)))))))
@@ -8530,7 +8517,9 @@
         (- unix-epoch)
         (.total-seconds)
         (* 1000)
-        (int))))
+        ;; Datetime milliseconds routinely exceed the Clojure ``int`` range;
+        ;; the public result is a long-sized timestamp.
+        (python/int))))
 
 (defn ^:inline inst-ms
   "Return the number of milliseconds since the Unix epoch

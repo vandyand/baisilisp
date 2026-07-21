@@ -1,0 +1,53 @@
+;; Scalar casts are a high-leverage language boundary: Python constructors are
+;; more permissive than Clojure's numeric coercions, so compare only portable
+;; data views and exception presence here.
+
+(defn emit-case [case value]
+  (println (pr-str {:case case :value value})))
+
+(defn rejected? [f]
+  (try
+    (f)
+    false
+    (catch Exception _ true)))
+
+(emit-case :checked
+           {:character [(byte \A) (short \A) (int \A) (long \A)]
+            :truncated [(byte -1.9) (short -1.9) (int -1.9) (long -1.9)]
+            :width-errors [(rejected? #(byte 128))
+                           (rejected? #(short 32768))
+                           (rejected? #(int 2147483648))
+                           (rejected? #(long 9223372036854775808))]
+            :host-coercion-errors
+            [(rejected? #(byte "1"))
+             (rejected? #(short "1"))
+             (rejected? #(int "1"))
+             (rejected? #(long "1"))
+             (rejected? #(float "1"))
+             (rejected? #(double "1"))
+             (rejected? #(float \1))
+             (rejected? #(double \1))]
+            :single-precision [(int (float 16777217))
+                               (int (unchecked-float 16777217))]
+            :float-infinity-error (rejected? #(float ##Inf))
+            :double-infinity (infinite? (double ##Inf))})
+
+(emit-case :unchecked
+           {:integer [(unchecked-byte 128)
+                      (unchecked-byte ##Inf)
+                      (unchecked-short 32768)
+                      (unchecked-short ##-Inf)
+                      (unchecked-int 2147483648)
+                      (unchecked-int ##Inf)
+                      (unchecked-long 9223372036854775808)]
+            :characters [(int (unchecked-char -1))
+                         (int (unchecked-char \A))
+                         (int (unchecked-char ##NaN))]
+            :float-infinity (infinite? (unchecked-float ##Inf))})
+
+(emit-case :big
+           {:bigint [(bigint "42") (bigint 1.9) (bigint 1/2)]
+            :bigdec [(bigdec "1.25") (bigdec 1.1) (bigdec 1/2)]
+            :rejected [(rejected? #(bigint ##NaN))
+                       (rejected? #(bigdec ##NaN))
+                       (rejected? #(bigdec \1))]})

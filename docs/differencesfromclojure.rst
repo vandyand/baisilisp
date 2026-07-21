@@ -27,7 +27,10 @@ Type Differences
 * ``nil`` corresponds to Python's ``None``\.
 * Python does not offer different integer sizes, so ``short``, ``int``, and ``long`` are identical.
 * Python does not offer different precision floating point numbers, so ``double`` and ``float`` are identical.
-* Type coercions generally delegate to the relevant Python constructor, which handles such things natively.
+* Numeric values remain Python-hosted, but Clojure's scalar coercion functions
+  enforce their accepted inputs and fixed-width bounds. ``float`` returns a
+  Python float carrying JVM single-precision rounding; it cannot expose a
+  distinct host float type.
 * ``array-map``, sorted maps, and sorted sets are available. Their implementations
   use Python-hosted persistent collections rather than Clojure's JVM collection
   classes.
@@ -188,8 +191,6 @@ boundaries, but it is not a namespace-preserving or streaming XML API.
 
 basilisp.core
 -------------
-
-- :lpy:fn:`basilisp.core/float` coerces its argument to a floating-point number. When given a string input, Basilisp will try to parse it as a floating-point number, whereas Clojure will raise an error if the input is a character or a string.
 
 - :lpy:fn:`basilisp.core/alter-var-root`: updates to a Var’s root via this function may not reflect in code that directly references the Var unless the Var is marked with ``^:redef`` metadata or declared as a dynamic variable. This is due to the :ref:`Direct Linking Optimization <direct_linking>` and differs with Clojure where such changes are always visible.
 

@@ -58,6 +58,15 @@ Complex numbers are backed by Python's :external:py:class:`complex`.
 
 Ratios are represented by Python's :external:py:class:`fractions.Fraction` type.
 
+The Clojure scalar coercion functions preserve their language-facing contract
+despite these Python representations. ``byte``, ``short``, ``int``, and
+``long`` accept numeric values (and characters) with checked JVM-width bounds;
+``float`` performs IEEE-754 single-precision rounding while ``double`` retains
+Python's double precision. They do not inherit Python's implicit string or
+boolean conversions. ``bigint`` and ``bigdec`` are the deliberate exceptions:
+like Clojure, they also parse numeric strings. The corresponding
+``unchecked-*`` casts apply two's-complement wrapping.
+
 .. seealso::
 
    :ref:`arithmetic`
