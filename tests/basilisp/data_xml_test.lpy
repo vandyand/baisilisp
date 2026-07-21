@@ -3,6 +3,7 @@
   (:require [basilisp.test :refer [deftest is]]
             [clojure.data.xml :as xml]
             [clojure.data.xml.event :as event]
+            [clojure.data.xml.tree :as tree]
             [clojure.test.check :as tc]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]))
@@ -92,6 +93,31 @@
   (is (thrown? python/ValueError (xml/event-node (xml/->EndElementEvent))))
   (is (thrown? python/ValueError (xml/event-element (xml/->CharsEvent "x")))))
 
+(deftest event-tree-and-flatten-elements-roundtrip-all-supported-node-kinds
+  (let [source (xml/element :root {:enabled "true"}
+                            (xml/element :child {:n "1"} "text")
+                            (xml/cdata "a < b")
+                            (xml/xml-comment " note "))
+        events (vec (xml/flatten-elements [source]))
+        rebuilt (xml/event-tree events)]
+    (is (= source rebuilt))
+    (is (instance? xml/StartElementEvent (first events)))
+    (is (instance? xml/CDataEvent (nth events 4)))
+    (is (instance? xml/CommentEvent (nth events 5)))
+    (is (xml/event-exit? (last events)))
+    (is (= {} (event/element-nss source))))
+  (let [events (vec (xml/flatten-elements [nil true false 42 :name]))]
+    (is (= ["" "true" "false" "42"]
+           (mapv #(.-str %) (take 4 events))))
+    (is (= :name (.-qn (last events)))))
+  (let [generic (tree/seq-tree (fn [value children]
+                                 (when (= :open value) [children]))
+                               #{:close} str
+                               [:open 1 :close :after :close :rest])]
+    (is (= "1" (first (first (first (first generic))))))
+    (is (= ":after" (second (first generic))))
+    (is (= :rest (first (rest generic))))))
+
 (deftest seeded-tree-roundtrips-never-drop-content-or-attributes
   (let [property
         (prop/for-all [value (gen/vector (gen/choose 0 1000000) 1 8)]
@@ -114,5 +140,16 @@
                             (filter #(instance? xml/CharsEvent %) events))]
             (= (mapv str values) chars)))
         result (tc/quick-check 250 property :seed 20260726 :max-size 20)]
+    (is (:pass? result))
+    (is (= 250 (:num-tests result)))))
+
+(deftest seeded-flatten-event-tree-roundtrips-never-drop-mixed-content
+  (let [property
+        (prop/for-all [values (gen/vector (gen/choose 0 1000000) 0 8)]
+          (let [children (mapv #(xml/element :item {:n (str %)}
+                                             (str %) (xml/cdata (str "c" %))) values)
+                source (apply xml/element :root {:count (str (count values))} children)]
+            (= source (xml/event-tree (xml/flatten-elements [source])))))
+        result (tc/quick-check 250 property :seed 20260727 :max-size 20)]
     (is (:pass? result))
     (is (= 250 (:num-tests result)))))

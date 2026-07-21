@@ -9,8 +9,9 @@ import xml.etree.ElementTree as etree
 import xml.sax
 import xml.sax.handler
 from collections import deque
-from collections.abc import Mapping, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
+from itertools import chain
 from typing import Any
 from urllib.parse import quote, unquote
 
@@ -315,8 +316,8 @@ def event_seq(source: Any, options: Mapping[Any, Any] | None = None):
 
 
 def event_exit(value: Any) -> bool:
-    """Return true for an end-element event."""
-    return isinstance(value, EndElementEvent)
+    """Return true for the canonical end-element event singleton."""
+    return value is end_element_event
 
 
 def event_node(value: Any) -> Any:
@@ -335,6 +336,122 @@ def event_element(value: Any, content: Sequence[Any] | None = None):
     if not isinstance(value, (StartElementEvent, EmptyElementEvent)):
         raise ValueError("event-element requires a start or empty-element event")
     return element(value.tag, value.attrs, content)
+
+
+def element_nss(_value: Any) -> lmap.PersistentMap:
+    """Return the lexical namespace environment associated with an element.
+
+    ElementTree and SAX resolve names to URI-qualified keywords but do not retain
+    lexical prefix declarations.  The portable tree representation therefore
+    has no extra namespace environment to expose.
+    """
+    return lmap.EMPTY
+
+
+def _xml_string(value: Any) -> str:
+    if value is None:
+        return ""
+    if value is True:
+        return "true"
+    if value is False:
+        return "false"
+    if isinstance(value, (bytes, bytearray, memoryview)):
+        return bytes(value).decode("utf-8")
+    return str(value)
+
+
+def flatten_elements(elements: Iterable[Any]):
+    """Lazily flatten XML elements and leaf nodes into data.xml events.
+
+    An explicit iterator stack preserves depth-first order without recursively
+    entering Python generators, so unusually deep yet valid element trees do
+    not depend on the interpreter recursion limit.
+    """
+    if elements is None:
+        return
+    stack: list[tuple[str, Any]] = [("items", iter(elements))]
+    event_types = (
+        StartElementEvent,
+        EmptyElementEvent,
+        CharsEvent,
+        CDataEvent,
+        CommentEvent,
+        QNameEvent,
+        EndElementEvent,
+    )
+    while stack:
+        kind, payload = stack.pop()
+        if kind == "event":
+            yield payload
+            continue
+        try:
+            value = next(payload)
+        except StopIteration:
+            continue
+        stack.append(("items", payload))
+        if isinstance(value, event_types):
+            yield value
+        elif isinstance(value, CData):
+            yield CDataEvent(value.content)
+        elif isinstance(value, Comment):
+            yield CommentEvent(value.content)
+        elif isinstance(value, kw.Keyword):
+            yield QNameEvent(value)
+        elif isinstance(value, Mapping):
+            if not element_p(value):
+                raise ValueError(
+                    "flatten-elements requires XML elements, nodes, or sequences"
+                )
+            tag = value[kw.keyword("tag")]
+            attrs = lmap.map(dict(value.get(kw.keyword("attrs"), {})))
+            contents = iter(value.get(kw.keyword("content")) or ())
+            try:
+                first = next(contents)
+            except StopIteration:
+                yield EmptyElementEvent(tag, attrs, element_nss(value))
+            else:
+                yield StartElementEvent(tag, attrs, element_nss(value))
+                stack.append(("event", end_element_event))
+                stack.append(("items", chain((first,), contents)))
+        elif (
+            isinstance(value, str)
+            or value is None
+            or isinstance(value, (bool, int, float, bytes, bytearray, memoryview))
+        ):
+            yield CharsEvent(_xml_string(value))
+        elif isinstance(value, Iterable):
+            stack.append(("items", iter(value)))
+        else:
+            yield CharsEvent(_xml_string(value))
+
+
+def event_tree(events: Iterable[Any]):
+    """Build the first XML tree represented by an event stream.
+
+    The stack-based implementation avoids Python recursion limits on untrusted,
+    deeply nested XML while consuming no events after the first complete tree.
+    """
+    stack: list[tuple[StartElementEvent, list[Any]]] = []
+    for value in events:
+        if isinstance(value, StartElementEvent):
+            stack.append((value, []))
+            continue
+        if isinstance(value, EmptyElementEvent):
+            node = event_element(value)
+        elif event_exit(value):
+            if not stack:
+                raise ValueError("XML event stream has an unmatched end element")
+            start, content = stack.pop()
+            node = event_element(start, content)
+        else:
+            node = event_node(value)
+        if stack:
+            stack[-1][1].append(node)
+        else:
+            return node
+    if stack:
+        raise ValueError("XML event stream ended before its element was closed")
+    return None
 
 
 def element(

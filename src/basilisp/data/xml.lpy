@@ -55,6 +55,7 @@
 (defn ->CommentEvent [s] (backend/CommentEvent s))
 (defn ->QNameEvent [name] (backend/QNameEvent name))
 (defn ->EndElementEvent [] end-element-event)
+(defn element-nss [element] (backend/element_nss element))
 
 (declare sexps-as-fragment)
 
@@ -96,6 +97,9 @@
 (defn event-element
   ([event] (backend/event_element event))
   ([event content] (backend/event_element event content)))
+(defn flatten-elements [elements]
+  (iterator-seq (backend/flatten_elements elements)))
+(defn event-tree [events] (backend/event_tree events))
 (defn emit [element writer & {:as opts}] (backend/emit element writer opts))
 (defn emit-str [element & {:as opts}] (backend/emit_str element opts))
 (defn indent [element writer & {:as opts}] (backend/indent element writer opts))

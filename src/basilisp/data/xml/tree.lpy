@@ -1,0 +1,22 @@
+(ns basilisp.data.xml.tree
+  "Tree assembly and event flattening helpers for `clojure.data.xml.tree`."
+  (:require [basilisp.data.xml :as xml]))
+
+(defn seq-tree
+  "Turn enter/exit/node events into a lazy forest and remaining event sequence."
+  [parent exit? node coll]
+  (lazy-seq
+   (when-let [[event] (seq coll)]
+     (let [more (rest coll)]
+       (if (exit? event)
+         (cons nil more)
+         (let [tree (seq-tree parent exit? node more)]
+           (if-let [p (parent event (lazy-seq (first tree)))]
+             (let [subtree (seq-tree parent exit? node (lazy-seq (rest tree)))]
+               (cons (cons p (lazy-seq (first subtree)))
+                     (lazy-seq (rest subtree))))
+             (cons (cons (node event) (lazy-seq (first tree)))
+                   (lazy-seq (rest tree))))))))))
+
+(def flatten-elements xml/flatten-elements)
+(def event-tree xml/event-tree)

@@ -18,6 +18,7 @@
 (def ->CommentEvent xml/->CommentEvent)
 (def ->QNameEvent xml/->QNameEvent)
 (def ->EndElementEvent xml/->EndElementEvent)
+(def element-nss xml/element-nss)
 (def event-exit? xml/event-exit?)
 (def event-node xml/event-node)
 (def event-element xml/event-element)
