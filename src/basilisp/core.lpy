@@ -5394,9 +5394,23 @@
 
 (def
   ^{:doc     "Resolver used for resolving namespace aliases when reading
-              forms using read, read-string, etc."
+              forms using read, read-string, etc.
+
+              Deprecated compatibility spelling; bind :lpy:var:`*reader-resolver*`
+              for Clojure-compatible reader control."
     :dynamic true}
   *resolver*
+  basilisp.lang.runtime/resolve-alias)
+
+(def
+  ^{:doc     "Resolver used for namespace aliases and syntax quotes read by
+              :lpy:fn:`read`, :lpy:fn:`read-string`, and :lpy:fn:`read+string`.
+
+              This is the Clojure-compatible public spelling. It accepts a function
+              from a Symbol to its resolved Symbol. When bound, it takes precedence
+              over Basilisp's legacy :lpy:var:`*resolver*` binding."
+    :dynamic true}
+  *reader-resolver*
   basilisp.lang.runtime/resolve-alias)
 
 (def ^{:doc "When no data reader is found for a tag and ``*default-data-reader-fn*``
@@ -5421,6 +5435,13 @@
         (basilisp.lang.compiler/compile-and-exec-form form ctx *ns*)))
 
     :else nil))
+
+(defn- reader-resolver-fn
+  "Return the active reader resolver while preserving legacy *resolver* bindings."
+  []
+  (if (.-is_thread_bound (var *reader-resolver*))
+    *reader-resolver*
+    *resolver*))
 
 (defn read-seq
   "Create an lazy sequence that will contain each form from the
@@ -5450,7 +5471,7 @@
   ([opts stream]
    (let [read (:read opts basilisp.lang.reader/read)]
      (iterator-seq (read stream
-                         *resolver*
+                         (reader-resolver-fn)
                          *data-readers*
                          (:eof opts)
                          (= (:eof opts) :eofthrow)
@@ -5507,7 +5528,7 @@
    (let [eof    (if (contains? opts :eof) (:eof opts) :eofthrow)
          result (basilisp.lang.reader/read-with-source
                  stream
-                 *resolver*
+                 (reader-resolver-fn)
                  *data-readers*
                  eof
                  (= eof :eofthrow)

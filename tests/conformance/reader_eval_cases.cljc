@@ -17,3 +17,9 @@
               (rejected? #(read-string "#=(+ 20 22)")))
             (binding [*read-eval* :unknown]
               (rejected? #(read-string "1")))])
+
+(let [form (read-string "`portable-name")]
+  (emit-case :syntax-quote
+             [(name (first form))
+              (name (second form))
+              (boolean (namespace (second form)))]))

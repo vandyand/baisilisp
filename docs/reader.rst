@@ -27,6 +27,11 @@ default: bind it to ``false`` to reject ``#=`` entirely. Binding it to
 ``:unknown`` rejects all reads until the caller selects an explicit true or
 false policy.
 
+Syntax quotes and namespace aliases read through these functions use the
+dynamic ``*reader-resolver*`` function. It receives a Symbol and returns its
+resolved Symbol. Basilisp's older ``*resolver*`` binding remains supported for
+compatibility, but an explicit ``*reader-resolver*`` binding takes precedence.
+
 .. _reader_numeric_literals:
 
 Numeric Literals

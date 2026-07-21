@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 52 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (627 shared Vars and 59 Basilisp
+This document classifies the 51 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (628 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -45,6 +45,9 @@ for interactive input; nested ``eval`` preserves its enclosing source binding.
 ``*read-eval*`` now controls Clojure-compatible ``#=`` evaluation in the core
 reader APIs. Bind it to ``false`` to reject reader evaluation, or ``:unknown``
 to require an explicit true/false policy before any read.
+``*reader-resolver*`` now controls alias and syntax-quote resolution in those
+same reader APIs, while preserving bindings to Basilisp's older ``*resolver*``
+spelling.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -60,7 +63,7 @@ deferrals.
 
 `*allow-unresolved-vars*`, `*compile-files*`,
 `*compile-path*`, `*fn-loader*`,
-`*reader-resolver*`, `*repl*`, `*source-path*`, `*suppress-read*`,
+`*repl*`, `*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `definline`, `gen-class`,
 `method-sig`, and `with-loading-context`.

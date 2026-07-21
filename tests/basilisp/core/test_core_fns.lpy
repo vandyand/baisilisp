@@ -702,6 +702,18 @@
                (binding [*read-eval* :unknown]
                  (read-string "1")))))
 
+(deftest reader-resolver-test
+  (is (= '(quote fixed/resolved)
+         (binding [*reader-resolver* (fn [_] 'fixed/resolved)]
+           (read-string "`source"))))
+  (is (= '(quote legacy/resolved)
+         (binding [*resolver* (fn [_] 'legacy/resolved)]
+           (read-string "`source"))))
+  (is (= '(quote new/resolved)
+         (binding [*resolver*        (fn [_] 'legacy/resolved)
+                   *reader-resolver* (fn [_] 'new/resolved)]
+           (read-string "`source")))))
+
 
 ;;;;;;;;;;
 ;; Load ;;

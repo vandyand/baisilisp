@@ -60,6 +60,43 @@ def test_core_reader_eval_obeys_dynamic_bindings(core_ns):
 
 
 @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+@given(st.from_regex(r"[a-z][a-z0-9-]{0,20}", fullmatch=True))
+def test_reader_resolver_rewrites_generated_syntax_quote_symbols(core_ns, name):
+    reader_resolver = core_ns.find(sym.symbol("*reader-resolver*"))
+    assert reader_resolver is not None
+    read_string = core_ns.find(sym.symbol("read-string"))
+    assert read_string is not None
+
+    with runtime.bindings(
+        {reader_resolver: lambda _symbol: sym.symbol("resolved", name)}
+    ):
+        form = read_string.value(f"`{name}")
+
+    assert form[1] == sym.symbol("resolved", ns=name)
+
+
+def test_reader_resolver_preserves_legacy_bindings_and_new_binding_precedence(core_ns):
+    reader_resolver = core_ns.find(sym.symbol("*reader-resolver*"))
+    legacy_resolver = core_ns.find(sym.symbol("*resolver*"))
+    read_string = core_ns.find(sym.symbol("read-string"))
+    assert reader_resolver is not None
+    assert legacy_resolver is not None
+    assert read_string is not None
+
+    with runtime.bindings(
+        {legacy_resolver: lambda _symbol: sym.symbol("legacy", "target")}
+    ):
+        assert read_string.value("`source")[1] == sym.symbol("legacy", ns="target")
+    with runtime.bindings(
+        {
+            legacy_resolver: lambda _symbol: sym.symbol("legacy", "target"),
+            reader_resolver: lambda _symbol: sym.symbol("new", "target"),
+        }
+    ):
+        assert read_string.value("`source")[1] == sym.symbol("new", ns="target")
+
+
+@settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
 @given(
     st.integers(min_value=-(10**12), max_value=10**12),
     st.integers(min_value=-(10**12), max_value=10**12),
