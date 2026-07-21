@@ -32,7 +32,7 @@ from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.compiler.constants import SYM_INLINE_META_KW, SYM_PRIVATE_META_KEY
-from basilisp.lang.exception import format_exception
+from basilisp.lang.exception import ExceptionInfo, format_exception
 from basilisp.lang.interfaces import IRecord, IType, IWithMeta
 from basilisp.lang.runtime import Var
 from basilisp.lang.util import demunge
@@ -5861,6 +5861,114 @@ class TestRequire:
         assert string_ns.join is lcompile(
             "(use '[basilisp [string :only [join]]]) join"
         )
+
+    def test_require_refer_rename(self, lcompile: CompileFn):
+        assert "prefix" == lcompile(
+            "(require '[basilisp.string :refer [lower-case] "
+            ':rename {lower-case lower}]) (lower "PREFIX")'
+        )
+
+    def test_require_refer_rename_preserves_unmapped_var(self, lcompile: CompileFn):
+        assert ["prefix", False] == list(
+            lcompile(
+                "(require '[basilisp.string :refer [lower-case] "
+                ":rename {upper-case upper}]) "
+                '[(lower-case "PREFIX") (boolean (resolve \'upper))]'
+            )
+        )
+
+    def test_require_rename_without_refer_is_inert(self, lcompile: CompileFn):
+        assert False is lcompile(
+            "(require '[basilisp.string :rename {lower-case lower}]) "
+            "(boolean (resolve 'lower))"
+        )
+
+    def test_require_allows_nil_rename(self, lcompile: CompileFn):
+        assert "prefix" == lcompile(
+            "(require '[basilisp.string :refer [lower-case] :rename nil]) "
+            '(lower-case "PREFIX")'
+        )
+
+    def test_require_refer_all_rename_and_exclude(self, lcompile: CompileFn):
+        assert ["PREFIX", False, False] == list(
+            lcompile(
+                "(require '[basilisp.string :refer :all :exclude [lower-case] "
+                ":rename {upper-case upper}]) "
+                '[(upper "prefix") (boolean (resolve \'upper-case)) '
+                "(boolean (resolve 'lower-case))]"
+            )
+        )
+
+    def test_use_rename_preserves_unmapped_var(self, lcompile: CompileFn):
+        assert ["prefix", "MIXED"] == list(
+            lcompile(
+                "(use '[basilisp.string :only [lower-case upper-case] "
+                ":rename {lower-case lower}]) "
+                '[(lower "PREFIX") (upper-case "mixed")]'
+            )
+        )
+
+    def test_use_empty_only_does_not_refer_renamed_var(self, lcompile: CompileFn):
+        assert False is lcompile(
+            "(use '[basilisp.string :only [] :rename {lower-case lower}]) "
+            "(boolean (resolve 'lower))"
+        )
+
+    def test_refer_rename_preserves_unmapped_var(self, lcompile: CompileFn):
+        assert ["prefix", "MIXED"] == list(
+            lcompile(
+                "(refer 'basilisp.string :only '[lower-case upper-case] "
+                ":rename '{lower-case lower}) "
+                '[(lower "PREFIX") (upper-case "mixed")]'
+            )
+        )
+
+    def test_refer_empty_only_does_not_refer_renamed_var(self, lcompile: CompileFn):
+        assert False is lcompile(
+            "(refer 'basilisp.string :only '[] :rename '{lower-case lower}) "
+            "(boolean (resolve 'lower))"
+        )
+
+    def test_require_rejects_non_map_rename(self, lcompile: CompileFn):
+        with pytest.raises(ExceptionInfo):
+            lcompile(
+                "(require '[basilisp.string :refer [lower-case] "
+                ":rename [lower-case lower]])"
+            )
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(
+        st.lists(
+            st.sampled_from(
+                (
+                    ("lower-case", "renamed-lower", "MiXeD", "mixed"),
+                    ("upper-case", "renamed-upper", "MiXeD", "MIXED"),
+                    ("trim", "renamed-trim", "  trimmed  ", "trimmed"),
+                )
+            ),
+            min_size=1,
+            max_size=3,
+            unique_by=lambda entry: entry[0],
+        )
+    )
+    def test_require_refer_rename_fuzzes_subsets_and_order(
+        self, lcompile: CompileFn, renamed_vars
+    ):
+        """Every explicitly referred Var remains callable through its renamed symbol."""
+        referred = " ".join(source for source, _, _, _ in renamed_vars)
+        renames = " ".join(
+            f"{source} {target}" for source, target, _, _ in renamed_vars
+        )
+        calls = " ".join(
+            f'({target} "{argument}")' for _, target, argument, _ in renamed_vars
+        )
+
+        actual = lcompile(
+            f"(require '[basilisp.string :refer [{referred}] :rename {{{renames}}}]) "
+            f"[{calls}]"
+        )
+
+        assert list(actual) == [expected for _, _, _, expected in renamed_vars]
 
     @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
     @given(

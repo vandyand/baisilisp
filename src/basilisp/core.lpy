@@ -6011,14 +6011,25 @@
   This should allow for automatically importing Clojure's included core libraries such
   as ``clojure.string``."
   [req]
-  (rewrite-clojure-libspec
-   (cond
-     (vector? req) (merge {:namespace (first req)}
-                          (apply hash-map (rest req)))
-     (symbol? req) {:namespace req}
-     :else         (throw
-                    (ex-info "Invalid libspec for require"
-                             {:value req})))))
+  (let [libspec (cond
+                  (vector? req) (merge {:namespace (first req)}
+                                       (apply hash-map (rest req)))
+                  (symbol? req) {:namespace req}
+                  :else         (throw
+                                 (ex-info "Invalid libspec for require"
+                                          {:value req})))]
+    (when (contains? libspec :rename)
+      (let [rename (:rename libspec)]
+        (when-not (or (nil? rename) (map? rename))
+          (throw (ex-info "Libspec :rename must be a map or nil"
+                          {:value req :rename rename})))
+        (when (map? rename)
+          (doseq [entry rename]
+            (when-not (and (symbol? (key entry))
+                           (symbol? (val entry)))
+              (throw (ex-info "Libspec :rename entries must map symbols to symbols"
+                              {:value req :rename rename :entry entry})))))))
+    (rewrite-clojure-libspec libspec)))
 
 (def ^:private require-flags #{:reload :reload-all})
 
@@ -6071,23 +6082,27 @@
   "Return a map of symbols to interned Vars in the Namespace ``referred-ns`` subject
   to the filters described in ``libspec``\\."
   [referred-ns libspec]
-  (when (= :all (:refer libspec))
-    (throw
-     (ex-info "cannot specify :refer :all for refer; use (refer 'ns-sym) instead"
-              {:libspec libspec})))
-  (let [only    (set (or (:refer libspec) (:only libspec)))
-        exclude (set (:exclude libspec))
-        rename  (get libspec :rename {})]
-    (cond->> (ns-interns referred-ns)
-      (seq only)    (filter (fn [entry]
-                              (contains? only (key entry))))
-      (seq exclude) (remove (fn [entry]
-                              (contains? exclude (key entry))))
-      (seq rename)  (reduce* (fn [m entry]
-                               (if (rename (key entry))
-                                 (assoc m (rename (key entry)) (val entry))
-                                 m))
-                             {}))))
+  (let [refer         (:refer libspec)
+        refer-given?  (contains? libspec :refer)
+        only-given?   (contains? libspec :only)
+        only          (set (cond
+                             (= :all refer) nil
+                             refer-given?  refer
+                             :else         (:only libspec)))
+        only-filter?  (and (not= :all refer)
+                           (or refer-given? only-given?))
+        exclude       (set (:exclude libspec))
+        rename        (get libspec :rename {})]
+    (reduce* (fn [m entry]
+               (assoc m
+                      (get rename (key entry) (key entry))
+                      (val entry)))
+             {}
+             (cond->> (ns-interns referred-ns)
+               only-filter?  (filter (fn [entry]
+                                       (contains? only (key entry))))
+               (seq exclude) (remove (fn [entry]
+                                       (contains? exclude (key entry))))))))
 
 (defn ^:private refer-lib
   "Refer Vars into ``requiring-ns`` as described by ``libspec``\\.
@@ -6119,6 +6134,8 @@
     keywords; the namespace need not exist at all; can be combined with ``:as``
   - ``:refer [& syms]`` which will refer syms in the local namespace directly
   - ``:refer :all`` which will refer all symbols from the namespace directly
+  - ``:exclude [& syms]`` which omits syms from a ``:refer :all`` import
+  - ``:rename {old-sym new-sym}`` which gives referred symbols new local names
 
   A Clojure-style prefix list may group namespaces with a common prefix, for example
   ``[basilisp [string :as str] set]``. Prefix lists are one level deep, matching
@@ -6169,22 +6186,28 @@
         (do
           (require-lib current-ns libspec flags)
 
-          ;; Add refers
+          ;; Add refers and apply any requested local renames through the same
+          ;; filtering path used by `refer` and `use`.
           (let [new-ns    (the-ns (:namespace libspec))
                 refer-opt (:refer libspec)]
             (cond
               (= :all refer-opt)
-              (.refer-all current-ns new-ns)
+              (if (or (seq (:exclude libspec))
+                      (seq (:rename libspec)))
+                (refer-lib current-ns libspec)
+                (.refer-all current-ns new-ns))
 
               (seq refer-opt)
-              (let [new-ns-interns (ns-interns new-ns)]
+              (do
+                ;; Preserve the established error when an explicit `:refer`
+                ;; names a missing Var before applying its possible rename.
                 (doseq [var-sym refer-opt]
-                  (if-let [var (get new-ns-interns var-sym)]
-                    (.add-refer current-ns var-sym var)
+                  (when-not (get (ns-interns new-ns) var-sym)
                     (throw
                      (ex-info "Cannot find Var in the given namespace"
                               {:namespace new-ns
-                               :var       var-sym})))))
+                               :var       var-sym}))))
+                (refer-lib current-ns libspec))
 
               :else nil)))))
     nil))

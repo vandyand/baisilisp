@@ -33,7 +33,13 @@
   (is (thrown? basilisp.lang.exception/ExceptionInfo
                (require '[basilisp [core [protocols :as protocols]]])))
   (is (thrown? basilisp.lang.exception/ExceptionInfo
-               (require '[basilisp [:as invalid-child]]))))
+               (require '[basilisp [:as invalid-child]])))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (require '[basilisp.string :refer [non-existent-var]
+                          :rename {non-existent-var renamed}])))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (require '[basilisp.string :refer [lower-case]
+                          :rename [lower-case lower]]))))
 
 (deftest requiring-resolve-test
   (is (thrown? basilisp.lang.exception/ExceptionInfo (requiring-resolve 'a-symbol)))
