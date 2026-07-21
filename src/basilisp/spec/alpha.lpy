@@ -12,6 +12,28 @@
   (basilisp.lang.spec/fspec ** :args args :ret ret :fn fn))
 (defn with-gen [spec generator]
   (basilisp.lang.spec/with-gen spec generator))
+(defn gen
+  "Return a portable ``test.check`` generator for ``spec``.
+
+  ``overrides`` maps a spec name or path to a generator (or zero-argument
+  generator factory), matching Clojure's ``s/gen`` override convention.
+  "
+  ([spec] (basilisp.lang.spec/gen spec))
+  ([spec overrides] (basilisp.lang.spec/gen spec overrides)))
+(defn exercise
+  "Generate values for ``spec`` paired with their conformed values."
+  ([spec] (basilisp.lang.spec/exercise spec))
+  ([spec n] (basilisp.lang.spec/exercise spec n))
+  ([spec n overrides] (basilisp.lang.spec/exercise spec n overrides)))
+(defn exercise-fn
+  "Apply a function to generated samples from its ``fdef`` argument spec."
+  ([target] (exercise-fn target 10))
+  ([target n]
+   (let [target (if (symbol? target) (resolve target) target)]
+     (basilisp.lang.spec/exercise-fn target n)))
+  ([target n function-spec]
+   (let [target (if (symbol? target) (resolve target) target)]
+     (basilisp.lang.spec/exercise-fn target n function-spec))))
 (defn fdef* [target args ret fn]
   (basilisp.lang.spec/fdef target ** :args args :ret ret :fn fn))
 (defmacro fdef [target & opts]

@@ -85,3 +85,16 @@
                     {:n n :xs xs})]
     (is (every? (fn [{:keys [n xs]}] (= n (count xs)))
                 (gen/sample generator 300)))))
+
+(deftest fixed-arity-properties-handle-wide-integer-shrink-trees
+  ;; This specifically exercises the tuple generator used by for-all*.  Wide
+  ;; integer generators have deep shrink trees; combining them must retain
+  ;; fixed arity without eagerly materializing their cross-product.
+  (let [result (tc/quick-check 500
+                               (prop/for-all [left gen/large-integer
+                                              right gen/large-integer]
+                                 (= (+ left right) (+ right left)))
+                               :seed 20260720
+                               :max-size 100)]
+    (is (:pass? result))
+    (is (= 500 (:num-tests result)))))

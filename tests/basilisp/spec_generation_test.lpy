@@ -1,0 +1,101 @@
+(ns tests.basilisp.spec-generation-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as sgen]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]))
+
+(def age-key :tests.spec-generation/age)
+(def name-key :tests.spec-generation/name)
+(def person-key :tests.spec-generation/person)
+
+(s/def age-key
+       (s/with-gen (s/and int? #(<= 0 % 130)) #(sgen/choose 0 130)))
+(s/def name-key string?)
+(s/def person-key (s/keys :req [age-key name-key]))
+
+(defn add-two [x y] (+ x y))
+(s/fdef add-two :args (s/cat :x int? :y int?) :ret int?)
+(defn identity-int [value] value)
+(s/fdef identity-int
+        :args (s/cat :value (s/with-gen int? (fn [] (sgen/return "invalid"))))
+        :ret int?)
+
+(deftest generators-are-deterministic-and-only-produce-valid-values
+  (let [spec (s/tuple (s/coll-of #{:red :green :blue}
+                                 :kind vector?
+                                 :min-count 2
+                                 :max-count 7
+                                 :distinct true)
+                      (s/map-of string? (s/nilable int?)))
+        generator (s/gen spec)
+        property (prop/for-all [seed (gen/choose 0 1000000000)]
+                   (let [value (sgen/generate generator 8 seed)]
+                     (s/valid? spec value)))
+        first-run (tc/quick-check 200 property :seed 8117 :max-size 12)
+        second-run (tc/quick-check 200 property :seed 8117 :max-size 12)]
+    (is (:pass? first-run))
+    (is (= (dissoc first-run :time-elapsed-ms)
+           (dissoc second-run :time-elapsed-ms)))
+    (is (every? #(s/valid? spec %)
+                (map #(sgen/generate generator 8 %) (range 150))))))
+
+(deftest named-and-path-overrides-supersede-child-generators
+  (testing "a registered spec key override controls values nested in s/keys"
+    (let [values (map #(sgen/generate (s/gen person-key {age-key (fn [] (sgen/return 42))}) 20 %)
+                      (range 150))]
+      (is (every? #(= 42 (age-key %)) values))
+      (is (every? #(s/valid? person-key %) values))))
+  (testing "a path override controls an anonymous tuple child"
+    (let [spec (s/tuple int? string?)
+          generated (sgen/generate (s/gen spec {[0] #(sgen/return 7)}) 20 71)]
+      (is (= 7 (first generated)))
+      (is (s/valid? spec generated))))
+  (testing "invalid explicit generators are rejected rather than leaking bad values"
+    (is (thrown? Exception
+                 (sgen/generate (s/gen int? {int? #(sgen/return "not-an-integer")})
+                              10
+                              4)))))
+
+(deftest regex-generators-and-exercise-preserve-conformance
+  (let [spec (s/cat :label string? :values (s/+ int?))
+        values (map #(sgen/generate (s/gen spec) 35 %) (range 250))
+        exercised (s/exercise spec 180)]
+    (is (every? #(s/valid? spec %) values))
+    (is (every? (fn [[value conformed]]
+                  (and (s/valid? spec value)
+                       (= conformed (s/conform spec value))))
+                exercised)))
+  (let [spec (s/alt :flag boolean? :items (s/+ keyword?))
+        values (map #(sgen/generate (s/gen spec) 30 %) (range 250))]
+    (is (every? #(s/valid? spec %) values)))
+  (let [choice (s/or :text string? :number int?)
+        bounded (s/& (s/+ int?) #(< (count %) 5))]
+    (is (every? #(s/valid? choice %)
+                (map #(sgen/generate (s/gen choice) 20 %) (range 180))))
+    (is (every? #(s/valid? bounded %)
+                (map #(sgen/generate (s/gen bounded) 10 %) (range 120))))))
+
+(deftest with-gen-and-exercise-fn-use-test-check-generators
+  (let [spec (s/with-gen #(and (int? %) (<= 10 % 20)) #(sgen/choose 10 20))
+        values (map #(sgen/generate (s/gen spec) 10 %) (range 180))]
+    (is (every? #(<= 10 % 20) values)))
+  (let [examples (s/exercise-fn (var add-two) 60)]
+    (is (= 60 (count examples)))
+    (is (every? (fn [[args result]]
+                  (and (= 2 (count args))
+                       (integer? result)
+                       (= result (+ (first args) (second args)))))
+                examples)))
+  (is (= 12 (count (s/exercise-fn 'tests.basilisp.spec-generation-test/add-two 12))))
+  (is (thrown? Exception (s/exercise-fn (var identity-int) 1))))
+
+(deftest core-predicate-specs-use-meaningful-host-generators
+  (doseq [[spec predicate] [[qualified-keyword? qualified-keyword?]
+                           [seqable? seqable?]
+                           [decimal? decimal?]
+                           [inst? inst?]
+                           [uri? uri?]]]
+    (let [values (map #(sgen/generate (s/gen spec) 12 %) (range 90))]
+      (is (every? predicate values)))))

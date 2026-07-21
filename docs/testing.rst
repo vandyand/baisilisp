@@ -73,6 +73,18 @@ zero-argument constructors, matching Clojure's public API.
 
    (sgen/generate (sgen/vector (sgen/int) 1 4))
 
+``clojure.spec.alpha/gen`` builds those generators from portable spec
+descriptors. ``exercise`` returns generated values paired with their conformed
+forms, and ``exercise-fn`` applies a function to samples from its ``fdef``
+argument spec.
+
+.. code-block:: clojure
+
+   (require '[clojure.spec.alpha :as s]
+            '[clojure.spec.gen.alpha :as sgen])
+
+   (sgen/generate (s/gen (s/coll-of int? :min-count 1 :max-count 4)))
+
 .. _testing_repl:
 
 Running Tests at the REPL

@@ -330,8 +330,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   descriptor domains or explicit ``with-gen`` strategies.
   :lpy:ns:`basilisp.spec.gen.alpha` provides the standard
   ``clojure.spec.gen.alpha`` generator facade, including Clojure-style
-  primitive constructors and built-in predicate generators. The full
-  ``s/gen`` generation engine is not yet complete.
+  primitive constructors and built-in predicate generators. ``s/gen``,
+  ``s/exercise``, and ``s/exercise-fn`` generate portable predicate,
+  collection, map, key, tuple, regex, and explicit ``with-gen`` descriptors.
+  Recursive, ``multi-spec``, and function-value generation still require an
+  explicit ``with-gen`` strategy.
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``

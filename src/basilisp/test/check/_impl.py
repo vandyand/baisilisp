@@ -385,21 +385,19 @@ def tuple_gen(*generators: Generator) -> Generator:
             for g, state in zip(generators, rng.split_n(len(generators)))
         )
 
-        # Unlike a generated collection, tuple has a fixed arity.  Removing
-        # an element would make a property function receive the wrong number
-        # of arguments during shrinking.
-        def make_tuple(items: tuple[RoseTree, ...]) -> RoseTree:
-            child_trees = []
-            for index, item in enumerate(items):
-                for child in item.children:
-                    replacement = list(items)
-                    replacement[index] = child
-                    child_trees.append(make_tuple(tuple(replacement)))
-            return RoseTree(
-                lvec.vector(item.root for item in items), tuple(child_trees)
-            )
-
-        return make_tuple(trees)
+        # Unlike a generated collection, tuple has a fixed arity. Removing an
+        # element would make a property function receive the wrong number of
+        # arguments during shrinking.  Keep one immediate shrink per member,
+        # but do not recursively build every combination of member shrink
+        # trees: two 64-bit integer generators otherwise materialize an
+        # exponential tree before the property can run at all.
+        children: list[RoseTree] = []
+        for index, item in enumerate(trees):
+            for child in item.children:
+                roots = [tree.root for tree in trees]
+                roots[index] = child.root
+                children.append(RoseTree(lvec.vector(roots)))
+        return RoseTree(lvec.vector(tree.root for tree in trees), tuple(children))
 
     return Generator(produce)
 

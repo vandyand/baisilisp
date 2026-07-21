@@ -162,7 +162,13 @@ def fspec(
 
 
 def with_gen(spec: Any, generator: Any) -> _WithGen:
-    """Attach an explicit Hypothesis strategy or strategy factory to ``spec``."""
+    """Attach an explicit generator or generator factory to ``spec``.
+
+    ``s/gen`` consumes portable test.check generators, while
+    ``basilisp.spec.test.alpha/check`` consumes Hypothesis strategies. Keeping
+    the descriptor neutral lets the same ``with-gen`` form serve each public
+    API without making validation itself depend on either generator engine.
+    """
     return _WithGen(spec, generator)
 
 
@@ -432,6 +438,416 @@ def _flatten_generated_values(values: Iterable[Any]) -> tuple[Any, ...]:
     for value in values:
         flattened.extend(value)
     return tuple(flattened)
+
+
+# ``s/gen`` uses Basilisp's portable test.check implementation, rather than
+# Hypothesis.  The latter remains the engine for spec.test/check because it
+# gives Python tests excellent shrinking and diagnostics; keeping the two
+# paths separate means requesting a normal Clojure generator never introduces
+# an optional dependency.
+def gen(spec: Any, overrides: Mapping[Any, Any] | None = None) -> Any:
+    """Return a portable test.check generator for ``spec``.
+
+    Values yielded by the returned generator are always filtered through the
+    supplied spec.  This makes explicit generators and generator overrides a
+    safe extension point, just as they are in Clojure's ``s/gen``.
+    """
+    impl = _test_check_impl()
+    generated = _generator_for_value(spec, overrides or {}, (), frozenset())
+    return impl.such_that(
+        lambda value: valid(spec, value), generated, {"max-tries": 100}
+    )
+
+
+def exercise(
+    spec: Any, n: int = 10, overrides: Mapping[Any, Any] | None = None
+) -> vec.PersistentVector:
+    """Generate ``n`` values for ``spec`` paired with their conformed values."""
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        raise ValueError("exercise sample count must be a non-negative integer")
+    impl = _test_check_impl()
+    return vec.v(
+        *(
+            vec.v(value, conform(spec, value))
+            for value in impl.sample(gen(spec, overrides), n)
+        )
+    )
+
+
+def exercise_fn(
+    target: Any, n: int = 10, function_spec: _FSpec | None = None
+) -> vec.PersistentVector:
+    """Apply a function to generated samples from its registered ``:args`` spec."""
+    if isinstance(n, bool) or not isinstance(n, int) or n < 0:
+        raise ValueError("exercise-fn sample count must be a non-negative integer")
+    if isinstance(target, Var):
+        function = target.root
+        function_spec = function_spec or get_fspec(target)
+    elif callable(target):
+        function = target
+    else:
+        raise TypeError("exercise-fn expects a callable or a Basilisp Var")
+    if not isinstance(function_spec, _FSpec) or function_spec.args is None:
+        raise ValueError("No :args spec found, can't generate")
+    impl = _test_check_impl()
+    return vec.v(
+        *(
+            vec.v(args, function(*args))
+            for args in impl.sample(gen(function_spec.args), n)
+        )
+    )
+
+
+def _test_check_impl() -> Any:
+    # This import is intentionally lazy: spec validation must not make the
+    # property-testing implementation a startup dependency.
+    from basilisp.test.check import _impl
+
+    return _impl
+
+
+def _generator_override(
+    spec: Any, overrides: Mapping[Any, Any], path: tuple[Any, ...]
+) -> Any | None:
+    if not overrides:
+        return None
+    sentinel = object()
+    candidate = overrides.get(spec, sentinel)
+    if candidate is sentinel:
+        candidate = overrides.get(vec.v(*path), sentinel)
+    if candidate is sentinel:
+        return None
+    return _resolve_test_check_generator(candidate)
+
+
+def _resolve_test_check_generator(source: Any) -> Any:
+    impl = _test_check_impl()
+    generator = source if impl.generator_q(source) else source()
+    if not impl.generator_q(generator):
+        raise TypeError(
+            "s/gen overrides and with-gen must provide test.check generators"
+        )
+    return generator
+
+
+def _generator_for_value(
+    spec: Any,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    overridden = _generator_override(spec, overrides, path)
+    if overridden is not None:
+        return overridden
+    if isinstance(spec, _WithGen):
+        return _resolve_test_check_generator(spec.generator)
+    if isinstance(spec, kw.Keyword):
+        if spec in seen:
+            raise TypeError(
+                "cannot generate recursively-defined specs without an explicit with-gen"
+            )
+        resolved = get_spec(spec)
+        if resolved is None:
+            raise TypeError(f"cannot generate values for undefined spec {spec}")
+        return _generator_for_value(resolved, overrides, (*path, spec), seen | {spec})
+    if isinstance(spec, _And):
+        errors: list[TypeError] = []
+        for child in spec.specs:
+            try:
+                candidate = _generator_for_value(child, overrides, path, seen)
+                return impl.such_that(
+                    lambda value: valid(spec, value), candidate, {"max-tries": 100}
+                )
+            except TypeError as exc:
+                errors.append(exc)
+        raise TypeError(
+            "cannot generate values for s/and without a generatable child"
+        ) from (errors[-1] if errors else None)
+    if isinstance(spec, _Or):
+        return impl.one_of(
+            _generator_for_value(child, overrides, (*path, tag), seen)
+            for tag, child in spec.branches
+        )
+    if isinstance(spec, _Nilable):
+        return impl.one_of(
+            (impl.return_(None), _generator_for_value(spec.spec, overrides, path, seen))
+        )
+    if isinstance(spec, _CollOf):
+        child = _generator_for_value(spec.spec, overrides, path, seen)
+        lower = spec.count if spec.count is not None else spec.min_count
+        upper = spec.count if spec.count is not None else spec.max_count
+        if spec.distinct:
+            options: dict[str, Any] = {}
+            if lower is not None:
+                options["min-elements"] = lower
+            if upper is not None:
+                options["max-elements"] = upper
+            generated = impl.vector_distinct(child, options)
+        else:
+            generated = impl.vector(child, lower, upper)
+        return _collection_generator_for_kind(generated, spec.kind)
+    if isinstance(spec, _MapOf):
+        return impl.map_gen(
+            _generator_for_value(spec.key_spec, overrides, path, seen),
+            _generator_for_value(spec.value_spec, overrides, path, seen),
+        )
+    if isinstance(spec, _Keys):
+        return _keys_generator(spec, overrides, path, seen)
+    if isinstance(spec, _Tuple):
+        return impl.tuple_gen(
+            *(
+                _generator_for_value(child, overrides, (*path, index), seen)
+                for index, child in enumerate(spec.specs)
+            )
+        )
+    if isinstance(spec, _Regex):
+        return _regex_generator(spec, overrides, path, seen)
+    if isinstance(spec, _FSpec):
+        raise TypeError("cannot generate function values for fspec; use with-gen")
+    if isinstance(spec, _MultiSpec):
+        raise TypeError(
+            "cannot generate multi-spec values without an explicit with-gen"
+        )
+    return _generator_for_predicate(spec)
+
+
+def _collection_generator_for_kind(generator: Any, kind: Any | None) -> Any:
+    impl = _test_check_impl()
+    if kind in (None, vec.PersistentVector) or _callable_name(kind) == "vector__Q__":
+        return generator
+    if kind is list or _callable_name(kind) == "list__Q__":
+        return impl.fmap(list, generator)
+    if kind is tuple or _callable_name(kind) == "tuple__Q__":
+        return impl.fmap(tuple, generator)
+    raise TypeError("cannot generate values for coll-of with an arbitrary :kind")
+
+
+def _keys_generator(
+    spec: _Keys,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    required = tuple(
+        (key, _generator_for_value(key, overrides, (*path, key), seen))
+        for key in spec.required
+    )
+    optional = tuple(
+        (key, _generator_for_value(key, overrides, (*path, key), seen))
+        for key in spec.optional
+    )
+    parts = [generator for _key, generator in required]
+    parts.extend(
+        impl.tuple_gen(impl.boolean, generator) for _key, generator in optional
+    )
+    if not parts:
+        return impl.return_(lmap.map({}))
+
+    def build(values: Sequence[Any]) -> IPersistentMap:
+        result = {
+            key: values[index] for index, (key, _generator) in enumerate(required)
+        }
+        offset = len(required)
+        for index, (key, _generator) in enumerate(optional):
+            present, value = values[offset + index]
+            if present:
+                result[key] = value
+        return lmap.map(result)
+
+    return impl.fmap(build, impl.tuple_gen(*parts))
+
+
+def _regex_generator(
+    spec: Any,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    overridden = _generator_override(spec, overrides, path)
+    if overridden is not None:
+        return overridden
+    if isinstance(spec, _WithGen):
+        return _resolve_test_check_generator(spec.generator)
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        if resolved is None:
+            raise TypeError(f"cannot generate values for undefined spec {spec}")
+        return _regex_generator(resolved, overrides, (*path, spec), seen | {spec})
+    if isinstance(spec, _Cat):
+        return impl.fmap(
+            lambda values: vec.v(*_flatten_generated_values(values)),
+            impl.tuple_gen(
+                *(
+                    _regex_generator(child, overrides, (*path, tag), seen)
+                    for tag, child in spec.branches
+                )
+            ),
+        )
+    if isinstance(spec, _Alt):
+        return impl.one_of(
+            _regex_generator(child, overrides, (*path, tag), seen)
+            for tag, child in spec.branches
+        )
+    if isinstance(spec, _Repeat):
+        repeated = impl.vector(
+            _regex_generator(spec.spec, overrides, path, seen), spec.minimum
+        )
+        return impl.fmap(
+            lambda values: vec.v(*_flatten_generated_values(values)), repeated
+        )
+    if isinstance(spec, _Maybe):
+        return impl.one_of(
+            (
+                impl.return_(vec.EMPTY),
+                _regex_generator(spec.spec, overrides, path, seen),
+            )
+        )
+    if isinstance(spec, _Amp):
+        generated = _regex_generator(spec.spec, overrides, path, seen)
+        return impl.such_that(
+            lambda value: valid(spec, value), generated, {"max-tries": 100}
+        )
+    return impl.fmap(
+        lambda value: vec.v(value), _generator_for_value(spec, overrides, path, seen)
+    )
+
+
+def _callable_name(value: Any) -> str | None:
+    return getattr(value, "__name__", None)
+
+
+def _generator_for_predicate(spec: Any) -> Any:
+    impl = _test_check_impl()
+    if isinstance(spec, IPersistentSet) or isinstance(spec, (set, frozenset)):
+        if not spec:
+            raise TypeError("cannot generate values from an empty set spec")
+        return impl.elements(spec)
+    if spec is int:
+        return impl.large_integer
+    if spec is str:
+        return impl.string_alphanumeric
+    if spec is bool:
+        return impl.boolean
+    if spec is float:
+        return impl.double
+    if spec is bytes:
+        return impl.bytes
+    if spec is type(None):
+        return impl.return_(None)
+
+    name = _callable_name(spec)
+    simple: dict[str, Any] = {
+        "any__Q__": impl.any,
+        "boolean__Q__": impl.boolean,
+        "bytes__Q__": impl.bytes,
+        "char__Q__": impl.char,
+        "double__Q__": impl.double,
+        "float__Q__": impl.double,
+        "int__Q__": impl.large_integer,
+        "integer__Q__": impl.large_integer,
+        "keyword__Q__": impl.keyword_ns,
+        "list__Q__": impl.list_gen(impl.simple_type_printable),
+        "map__Q__": impl.map_gen(
+            impl.simple_type_printable, impl.simple_type_printable
+        ),
+        "number__Q__": impl.one_of((impl.large_integer, impl.double)),
+        "ratio__Q__": impl.ratio,
+        "seq__Q__": impl.list_gen(impl.simple_type_printable),
+        "set__Q__": impl.set_gen(impl.simple_type_printable),
+        "string__Q__": impl.string_alphanumeric,
+        "symbol__Q__": impl.symbol_ns,
+        "uuid__Q__": impl.uuid,
+        "vector__Q__": impl.vector(impl.simple_type_printable),
+    }
+    if name in simple:
+        return simple[name]
+    if name == "some__Q__":
+        return impl.such_that(bool, impl.any_printable, {"max-tries": 100})
+    if name == "nil__Q__":
+        return impl.return_(None)
+    if name == "true__Q__":
+        return impl.return_(True)
+    if name == "false__Q__":
+        return impl.return_(False)
+    if name == "zero__Q__":
+        return impl.return_(0)
+    if name == "pos_int__Q__":
+        return impl.large_integer_star({"min": 1})
+    if name == "neg_int__Q__":
+        return impl.large_integer_star({"max": -1})
+    if name == "nat_int__Q__":
+        return impl.large_integer_star({"min": 0})
+    if name in {"ident__Q__", "qualified_ident__Q__"}:
+        return impl.one_of((impl.keyword_ns, impl.symbol_ns))
+    if name == "simple_ident__Q__":
+        return impl.one_of((impl.keyword, impl.symbol))
+    if name == "simple_keyword__Q__":
+        return impl.keyword
+    if name == "qualified_keyword__Q__":
+        return impl.keyword_ns
+    if name == "simple_symbol__Q__":
+        return impl.symbol
+    if name == "qualified_symbol__Q__":
+        return impl.symbol_ns
+    if name == "seqable__Q__":
+        return impl.one_of(
+            (
+                impl.return_(None),
+                impl.list_gen(impl.simple_type_printable),
+                impl.vector(impl.simple_type_printable),
+                impl.map_gen(impl.simple_type_printable, impl.simple_type_printable),
+                impl.set_gen(impl.simple_type_printable),
+                impl.string_alphanumeric,
+            )
+        )
+    if name == "indexed__Q__":
+        return impl.vector(impl.simple_type_printable)
+    if name == "associative__Q__":
+        return impl.one_of(
+            (
+                impl.vector(impl.simple_type_printable),
+                impl.map_gen(impl.simple_type_printable, impl.simple_type_printable),
+            )
+        )
+    if name == "sequential__Q__":
+        return impl.one_of(
+            (
+                impl.vector(impl.simple_type_printable),
+                impl.list_gen(impl.simple_type_printable),
+            )
+        )
+    if name == "coll__Q__":
+        return impl.one_of(
+            (
+                impl.vector(impl.simple_type_printable),
+                impl.list_gen(impl.simple_type_printable),
+                impl.map_gen(impl.simple_type_printable, impl.simple_type_printable),
+                impl.set_gen(impl.simple_type_printable),
+            )
+        )
+    if name == "rational__Q__":
+        return impl.one_of((impl.large_integer, impl.ratio))
+    if name == "decimal__Q__":
+        import decimal
+
+        return impl.fmap(
+            lambda value: decimal.Decimal(str(value)),
+            impl.double_star({"infinite?": False, "NaN?": False}),
+        )
+    if name == "inst__Q__":
+        import datetime
+
+        return impl.return_(datetime.datetime(1970, 1, 1))
+    if name in {"uri__Q__", "uri_qmark"}:
+        import urllib.parse
+
+        return impl.fmap(
+            lambda value: urllib.parse.urlparse(f"https://{value}.example"), impl.uuid
+        )
+    raise TypeError(f"cannot generate values for {spec!r}; wrap it with with-gen")
 
 
 def _validate_instrument_target(target: Var) -> None:
