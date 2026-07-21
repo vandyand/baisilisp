@@ -1798,6 +1798,50 @@ class _TypeAbstractness:
     supertype_already_weakref: bool
 
 
+def __warn_inherited_member_mismatch(
+    ctx: AnalyzerContext,
+    member: DefTypeMember,
+    message: str,
+    warning_class: str,
+    mismatch_kind: str,
+    data: Mapping[kw.Keyword, Any],
+) -> None:
+    """Emit a source-located diagnostic for an inherited member mismatch."""
+    source_data: dict[kw.Keyword, Any] = {FILE_KW: member.env.file}
+    for key, value in (
+        (LINE_KW, member.env.line),
+        (COL_KW, member.env.col),
+        (END_LINE_KW, member.env.end_line),
+        (END_COL_KW, member.env.end_col),
+    ):
+        if value is not None:
+            source_data[key] = value
+    diagnostic = lmap.map(
+        {
+            kw.keyword("type"): "CompilerWarning",
+            kw.keyword("class"): warning_class,
+            kw.keyword("message"): message,
+            kw.keyword("phase"): CompilerPhase.ANALYZING.value,
+            kw.keyword("source"): lmap.map(source_data),
+            kw.keyword("data"): lmap.map(
+                {
+                    kw.keyword("kind", ns="basilisp.compiler"): kw.keyword(
+                        mismatch_kind, ns="basilisp.compiler"
+                    ),
+                    kw.keyword("method", ns="basilisp.compiler"): member.python_name,
+                    **data,
+                }
+            ),
+        }
+    )
+    logger.warning(
+        "%s Basilisp diagnostic: %s",
+        message,
+        lrepr(diagnostic),
+        extra={"basilisp_diagnostic": diagnostic},
+    )
+
+
 def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-locals,too-many-statements
     ctx: AnalyzerContext,
     special_form: sym.Symbol,
@@ -1835,11 +1879,7 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
 
     field_names = frozenset(fields)
     member_names = frozenset(deftype_or_reify_python_member_names(members))
-    method_members = {
-        member.python_name: member
-        for member in members
-        if isinstance(member, DefTypeMethod)
-    }
+    interface_members = {member.python_name: member for member in members}
     all_member_names = field_names.union(member_names)
     all_interface_methods: set[str] = set()
     for interface in interfaces:
@@ -1907,7 +1947,7 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
             interface_property_names: frozenset[str] = frozenset(
                 method
                 for method in interface_names
-                if isinstance(getattr(interface_type, method), property)
+                if isinstance(inspect.getattr_static(interface_type, method), property)
             )
             interface_method_names = interface_names - interface_property_names
             if not interface_method_names.issubset(member_names):
@@ -1929,9 +1969,59 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
 
             all_interface_methods.update(interface_names)
             if ctx.warn_on_arity_mismatch:
-                for method_name in interface_method_names:
-                    member = method_members.get(method_name)
+                for method_name in interface_names:
+                    member = interface_members.get(method_name)
                     if member is None:
+                        continue
+                    descriptor = inspect.getattr_static(interface_type, method_name)
+                    expected_member_kind = (
+                        "property"
+                        if isinstance(descriptor, property)
+                        else (
+                            "classmethod"
+                            if isinstance(descriptor, classmethod)
+                            else (
+                                "staticmethod"
+                                if isinstance(descriptor, staticmethod)
+                                else "method"
+                            )
+                        )
+                    )
+                    actual_member_kind = (
+                        "property"
+                        if isinstance(member, DefTypeProperty)
+                        else (
+                            "classmethod"
+                            if isinstance(member, DefTypeClassMethod)
+                            else (
+                                "staticmethod"
+                                if isinstance(member, DefTypeStaticMethod)
+                                else "method"
+                            )
+                        )
+                    )
+                    if actual_member_kind != expected_member_kind:
+                        message = (
+                            f"{special_form} implements method '{method_name}' as "
+                            f"{actual_member_kind}; expected {expected_member_kind}"
+                        )
+                        __warn_inherited_member_mismatch(
+                            ctx,
+                            member,
+                            message,
+                            "basilisp.lang.compiler.InterfaceMemberKindWarning",
+                            "inherited-method-kind-mismatch",
+                            {
+                                kw.keyword(
+                                    "expected-kind", ns="basilisp.compiler"
+                                ): expected_member_kind,
+                                kw.keyword(
+                                    "actual-kind", ns="basilisp.compiler"
+                                ): actual_member_kind,
+                            },
+                        )
+                        continue
+                    if isinstance(member, DefTypeProperty):
                         continue
                     try:
                         params = tuple(
@@ -1951,67 +2041,44 @@ def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-loca
                         for param in params
                     ):
                         continue
-                    expected_arity = len(params) - 1
-                    supports_arity = expected_arity in {
-                        arity.fixed_arity for arity in member.arities
-                    } or (
-                        member.is_variadic and expected_arity >= member.max_fixed_arity
+                    expected_arity = len(params) - int(
+                        not isinstance(descriptor, (classmethod, staticmethod))
                     )
-                    if not supports_arity:
-                        actual_arities = ", ".join(
-                            str(arity.fixed_arity) for arity in member.arities
+                    if isinstance(member, DefTypeMethod):
+                        actual_arities = tuple(
+                            arity.fixed_arity for arity in member.arities
                         )
+                        supports_arity = expected_arity in actual_arities or (
+                            member.is_variadic
+                            and expected_arity >= member.max_fixed_arity
+                        )
+                    else:
+                        actual_arities = (member.fixed_arity,)
+                        supports_arity = (
+                            expected_arity == member.fixed_arity
+                            or member.is_variadic
+                            and expected_arity >= member.fixed_arity
+                        )
+                    if not supports_arity:
+                        actual_arities_message = ", ".join(map(str, actual_arities))
                         message = (
                             f"{special_form} implements method '{method_name}' with "
-                            f"arities {actual_arities}; expected {expected_arity}"
+                            f"arities {actual_arities_message}; expected {expected_arity}"
                         )
-                        source_data: dict[kw.Keyword, Any] = {FILE_KW: member.env.file}
-                        for key, value in (
-                            (LINE_KW, member.env.line),
-                            (COL_KW, member.env.col),
-                            (END_LINE_KW, member.env.end_line),
-                            (END_COL_KW, member.env.end_col),
-                        ):
-                            if value is not None:
-                                source_data[key] = value
-                        diagnostic = lmap.map(
-                            {
-                                kw.keyword("type"): "CompilerWarning",
-                                kw.keyword("class"): (
-                                    "basilisp.lang.compiler.ArityMismatchWarning"
-                                ),
-                                kw.keyword("message"): message,
-                                kw.keyword("phase"): CompilerPhase.ANALYZING.value,
-                                kw.keyword("source"): lmap.map(source_data),
-                                kw.keyword("data"): lmap.map(
-                                    {
-                                        kw.keyword("kind", ns="basilisp.compiler"): (
-                                            kw.keyword(
-                                                "inherited-method-arity-mismatch",
-                                                ns="basilisp.compiler",
-                                            )
-                                        ),
-                                        kw.keyword(
-                                            "method", ns="basilisp.compiler"
-                                        ): method_name,
-                                        kw.keyword(
-                                            "expected-arity", ns="basilisp.compiler"
-                                        ): expected_arity,
-                                        kw.keyword(
-                                            "actual-arities", ns="basilisp.compiler"
-                                        ): tuple(
-                                            arity.fixed_arity
-                                            for arity in member.arities
-                                        ),
-                                    }
-                                ),
-                            }
-                        )
-                        logger.warning(
-                            "%s Basilisp diagnostic: %s",
+                        __warn_inherited_member_mismatch(
+                            ctx,
+                            member,
                             message,
-                            lrepr(diagnostic),
-                            extra={"basilisp_diagnostic": diagnostic},
+                            "basilisp.lang.compiler.ArityMismatchWarning",
+                            "inherited-method-arity-mismatch",
+                            {
+                                kw.keyword(
+                                    "expected-arity", ns="basilisp.compiler"
+                                ): expected_arity,
+                                kw.keyword(
+                                    "actual-arities", ns="basilisp.compiler"
+                                ): actual_arities,
+                            },
                         )
             supertype_possibly_weakref.append(__is_type_weakref(interface_type))
         else:

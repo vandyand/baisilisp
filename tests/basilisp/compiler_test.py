@@ -1637,7 +1637,90 @@ class TestDefType:
             pt = Point.create(1, 2, z=3)
             assert (1, 2, 3) == (pt.x, pt.y, pt.z)
 
+        def test_deftype_warns_on_interface_classmethod_arity_mismatch(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithClassArity
+              (python/type "WithClassArity"
+                           #py (abc/ABC)
+                           #py {"create"
+                                (python/classmethod
+                                 (abc/abstractmethod
+                                  (fn [cls value]))) }))
+            (deftype* Point []
+              :implements [WithClassArity]
+              (^:classmethod create [cls] :incorrect))
+            """)
+
+            assert any(
+                "implements method 'create' with arities 0; expected 1" in message
+                for _, _, message in caplog.record_tuples
+            )
+            diagnostic = next(
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+            )
+            data = diagnostic.val_at(kw.keyword("data"))
+            assert "create" == data.val_at(kw.keyword("method", ns="basilisp.compiler"))
+            assert 1 == data.val_at(
+                kw.keyword("expected-arity", ns="basilisp.compiler")
+            )
+            assert (0,) == data.val_at(
+                kw.keyword("actual-arities", ns="basilisp.compiler")
+            )
+
     class TestDefTypeMethod:
+        def test_deftype_warns_on_interface_descriptor_kind_mismatch(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithDescriptors
+              (python/type "WithDescriptors"
+                           #py (abc/ABC)
+                           #py {"build"
+                                (python/classmethod
+                                 (abc/abstractmethod (fn [cls])))
+                                "label"
+                                (python/property
+                                 (abc/abstractmethod (fn [self]))) }))
+            (deftype* Point []
+              :implements [WithDescriptors]
+              (build [this] :incorrect-kind)
+              (label [this] :incorrect-kind))
+            """)
+
+            diagnostics = [
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("kind", ns="basilisp.compiler")
+                )
+                == kw.keyword("inherited-method-kind-mismatch", ns="basilisp.compiler")
+            ]
+            assert 2 == len(diagnostics)
+            mismatch_data = {
+                diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                ): (
+                    diagnostic.val_at(kw.keyword("data")).val_at(
+                        kw.keyword("expected-kind", ns="basilisp.compiler")
+                    ),
+                    diagnostic.val_at(kw.keyword("data")).val_at(
+                        kw.keyword("actual-kind", ns="basilisp.compiler")
+                    ),
+                )
+                for diagnostic in diagnostics
+            }
+            assert {
+                "build": ("classmethod", "method"),
+                "label": ("property", "method"),
+            } == mismatch_data
+
         def test_deftype_warns_on_interface_method_arity_mismatch(
             self, lcompile: CompileFn, caplog
         ):
@@ -2331,6 +2414,123 @@ class TestDefType:
               (^:staticmethod dostatic []))
               """)
             assert None is Point.dostatic()
+
+        def test_deftype_warns_on_interface_staticmethod_arity_mismatch(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithStaticArity
+              (python/type "WithStaticArity"
+                           #py (abc/ABC)
+                           #py {"dostatic"
+                                (python/staticmethod
+                                 (abc/abstractmethod
+                                  (fn [value]))) }))
+            (deftype* Point []
+              :implements [WithStaticArity]
+              (^:staticmethod dostatic [] :incorrect))
+            """)
+
+            assert any(
+                "implements method 'dostatic' with arities 0; expected 1" in message
+                for _, _, message in caplog.record_tuples
+            )
+
+        @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+        @given(
+            expected_arity=st.integers(min_value=0, max_value=6),
+            actual_arity=st.integers(min_value=0, max_value=6),
+        )
+        def test_deftype_staticmethod_arity_diagnostics_fuzz(
+            self,
+            lcompile: CompileFn,
+            caplog,
+            expected_arity: int,
+            actual_arity: int,
+        ):
+            """Every fixed static arity is checked without a self adjustment."""
+            caplog.clear()
+            expected_args = " ".join(
+                f"expected_arg_{index}" for index in range(expected_arity)
+            )
+            actual_args = " ".join(
+                f"actual_arg_{index}" for index in range(actual_arity)
+            )
+            lcompile(f"""
+            (import* abc)
+            (def StaticArityInterface
+              (python/type "StaticArityInterface"
+                           #py (abc/ABC)
+                           #py {{"build"
+                                (python/staticmethod
+                                 (abc/abstractmethod
+                                  (fn [{expected_args}])))}}))
+            (deftype* StaticArityImplementation []
+              :implements [StaticArityInterface]
+              (^:staticmethod build [{actual_args}] :ok))
+            """)
+
+            diagnostics = [
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                )
+                == "build"
+            ]
+            assert bool(diagnostics) is (expected_arity != actual_arity)
+            if diagnostics:
+                data = diagnostics[-1].val_at(kw.keyword("data"))
+                assert expected_arity == data.val_at(
+                    kw.keyword("expected-arity", ns="basilisp.compiler")
+                )
+                assert (actual_arity,) == data.val_at(
+                    kw.keyword("actual-arities", ns="basilisp.compiler")
+                )
+
+        @pytest.mark.parametrize(
+            ("expected_args", "actual_args", "warns"),
+            [
+                ("first second", "& rest", False),
+                ("", "first & rest", True),
+            ],
+        )
+        def test_deftype_staticmethod_variadic_arity_diagnostics(
+            self,
+            lcompile: CompileFn,
+            caplog,
+            expected_args: str,
+            actual_args: str,
+            warns: bool,
+        ):
+            """Variadic overrides accept only interface arities at or above their floor."""
+            caplog.clear()
+            lcompile(f"""
+            (import* abc)
+            (def StaticVariadicInterface
+              (python/type "StaticVariadicInterface"
+                           #py (abc/ABC)
+                           #py {{"build"
+                                (python/staticmethod
+                                 (abc/abstractmethod
+                                  (fn [{expected_args}])))}}))
+            (deftype* StaticVariadicImplementation []
+              :implements [StaticVariadicInterface]
+              (^:staticmethod build [{actual_args}] :ok))
+            """)
+
+            diagnostics = [
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                )
+                == "build"
+            ]
+            assert bool(diagnostics) is warns
 
         def test_deftype_staticmethod_disallows_recur(
             self,
