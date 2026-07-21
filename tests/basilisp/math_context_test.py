@@ -6,8 +6,7 @@ from hypothesis import HealthCheck, given, settings
 from hypothesis import strategies as st
 
 from basilisp.lang import map as lmap
-from basilisp.lang import numbers
-from basilisp.lang import runtime
+from basilisp.lang import numbers, runtime
 from basilisp.lang import symbol as sym
 
 
@@ -95,13 +94,28 @@ def test_math_context_binding_matches_python_decimal_context(
     context = _context(precision, rounding)
 
     with decimal.localcontext(context):
+        expected_add = decimal.Decimal(numerator) + decimal.Decimal(denominator)
+        expected_subtract = decimal.Decimal(numerator) - decimal.Decimal(denominator)
+        expected_multiply = decimal.Decimal(numerator) * decimal.Decimal(denominator)
         expected = decimal.Decimal(numerator) / decimal.Decimal(denominator)
 
     with runtime.bindings(lmap.map({math_context: context})):
+        actual_add = numbers.add(
+            decimal.Decimal(numerator), decimal.Decimal(denominator)
+        )
+        actual_subtract = numbers.subtract(
+            decimal.Decimal(numerator), decimal.Decimal(denominator)
+        )
+        actual_multiply = numbers.multiply(
+            decimal.Decimal(numerator), decimal.Decimal(denominator)
+        )
         actual = numbers.divide(
             decimal.Decimal(numerator), decimal.Decimal(denominator)
         )
 
+    assert actual_add == expected_add
+    assert actual_subtract == expected_subtract
+    assert actual_multiply == expected_multiply
     assert actual == expected
 
 

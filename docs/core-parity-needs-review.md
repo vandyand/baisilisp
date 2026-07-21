@@ -29,8 +29,9 @@ and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-s
 `commute`,
 `ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
 ``*math-context*`` and ``with-precision`` now provide Clojure-compatible
-dynamic decimal context behavior, including the default ``HALF_UP`` rounding
-mode and restoration after nested bindings.
+dynamic decimal context behavior: nil selects unlimited exact BigDecimal
+arithmetic, while finite contexts restore after nested bindings and default to
+``HALF_UP`` rounding.
 The agent lifecycle names `await`, `release-pending-sends`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, and
 `shutdown-agents` are also implemented. Bare ``await`` remains Basilisp's async

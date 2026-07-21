@@ -15,6 +15,7 @@ import struct
 from fractions import Fraction
 from typing import Any
 
+from basilisp.lang import numbers as lisp_numbers
 from basilisp.lang.character import Character
 
 
@@ -170,8 +171,8 @@ def bigdec(value: Any) -> decimal.Decimal:
     else:
         value = _numeric(value)
         if isinstance(value, Fraction):
-            result = decimal.Decimal(value.numerator) / decimal.Decimal(
-                value.denominator
+            result = lisp_numbers.divide(
+                decimal.Decimal(value.numerator), decimal.Decimal(value.denominator)
             )
         elif isinstance(value, float):
             # BigDecimal.valueOf(double), used by Clojure, receives the decimal

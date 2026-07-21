@@ -52,7 +52,7 @@ Basilisp exposes all of the built-in numeric types from Python and operations wi
 Integral values correspond to Python's arbitrary precision :external:py:class:`int` type.
 
 Floating point values are represented by :external:py:class:`float`.
-For fixed-point arithmetic with user specified precision (corresponding with Clojure's ``BigDecimal`` type float suffixed with an ``M``), Basilisp uses Python's :external:py:class:`decimal.Decimal` class. ``with-precision`` dynamically binds ``*math-context*`` so decimal operations use the requested precision and rounding mode. Its default is Clojure-compatible ``HALF_UP``; binding ``*math-context*`` directly accepts a Python :external:py:class:`decimal.Context` and restores the prior context when the binding exits.
+For fixed-point arithmetic with user specified precision (corresponding with Clojure's ``BigDecimal`` type float suffixed with an ``M``), Basilisp uses Python's :external:py:class:`decimal.Decimal` class. When ``*math-context*`` is ``nil`` (the default), Basilisp arithmetic uses Clojure-compatible unlimited, exact decimal operations; a non-terminating division raises an error. ``with-precision`` dynamically binds ``*math-context*`` so decimal operations use the requested precision and rounding mode. Its default is Clojure-compatible ``HALF_UP``; binding ``*math-context*`` directly accepts a Python :external:py:class:`decimal.Context` and restores the prior context when the binding exits.
 
 Complex numbers are backed by Python's :external:py:class:`complex`.
 

@@ -8,6 +8,28 @@
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
 
+(defn rejected? [f]
+  (try
+    (f)
+    false
+    (catch Exception _ true)))
+
+(emit-case :unlimited-exact
+           [(str (+ 123456789012345678901234567890M 1M))
+            (str (- 123456789012345678901234567890M 1M))
+            (str (* 12345678901234567890M 12345678901234567890M))
+            (str (/ 1.00M 2M))
+            (str (/ 0.00M 3M))
+            (str (/ 0M 3.00M))
+            (str (/ 2.00M 1.0M))
+            (str (/ 1M 0.20M))
+            (str (+ 1.20M -1.2M))])
+
+(emit-case :unlimited-rejections
+           [(rejected? #(/ 1M 3M))
+            (rejected? #(+ 1M 1/3))
+            (rejected? #(bigdec 1/3))])
+
 (emit-case :with-precision
            [(str (with-precision 2 (/ 1M 8M)))
             (str (with-precision 2 :rounding HALF_EVEN (/ 1M 8M)))])
@@ -31,3 +53,12 @@
                     (/ 1M 7M))
                   "|"
                   (/ 1M 7M))))
+
+(emit-case :nil-math-context
+           (binding [*math-context*
+                     #?(:clj (java.math.MathContext. 2 java.math.RoundingMode/HALF_UP)
+                        :lpy (decimal/Context 2 decimal/ROUND_HALF_UP))]
+             [(str (/ 1M 7M))
+              (binding [*math-context* nil]
+                (rejected? #(/ 1M 7M)))
+              (str (/ 1M 7M))]))

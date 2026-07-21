@@ -296,6 +296,13 @@
     -1 -21 4))
 
 (deftest math-context-test
+  (is (thrown? decimal/Inexact (/ 1M 3M)))
+  (is (thrown? decimal/Inexact (+ 1M 1/3)))
+  (is (= 123456789012345678901234567891M
+         (+ 123456789012345678901234567890M 1M)))
+  (is (= 152415787532388367501905199875019052100M
+         (* 12345678901234567890M 12345678901234567890M)))
+  (is (= 0.50M (/ 1.00M 2M)))
   (is (= 0.13M (with-precision 2 (/ 1M 8M))))
   (is (= 0.12M (with-precision 2 :rounding HALF_EVEN (/ 1M 8M))))
   (is (= 0.143M

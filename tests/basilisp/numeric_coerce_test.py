@@ -4,10 +4,11 @@ import struct
 from fractions import Fraction
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
-from basilisp.lang.character import Character
 from basilisp.lang import numeric_coerce as coerce
+from basilisp.lang.character import Character
 
 
 def _signed(value: int, bits: int) -> int:
@@ -102,6 +103,8 @@ def test_bigint_and_bigdec_keep_clojures_string_exceptions_and_decimal_spelling(
     assert coerce.bigdec("1.25") == decimal.Decimal("1.25")
     assert coerce.bigdec(1.1) == decimal.Decimal("1.1")
     assert coerce.bigdec(Fraction(1, 2)) == decimal.Decimal("0.5")
+    with pytest.raises(decimal.Inexact):
+        coerce.bigdec(Fraction(1, 3))
     for value in (True, Character("1"), float("nan"), float("inf")):
         with pytest.raises((TypeError, ValueError, OverflowError)):
             coerce.bigint(value)

@@ -10,6 +10,132 @@ from basilisp.lang.typing import LispNumber
 T_num = TypeVar("T_num", bound=LispNumber)
 
 
+def _uses_unlimited_decimal_math() -> bool:
+    """Return whether core decimal operations should use Clojure's exact mode.
+
+    Clojure represents an unbound ``*math-context*`` as ``nil``.  In that mode
+    ``BigDecimal`` arithmetic is exact rather than subject to an ambient,
+    finite-precision context.  Python's ``decimal`` module always has such a
+    context, so Basilisp implements the exact operations explicitly whenever
+    the corresponding dynamic Var is nil.
+    """
+
+    # Import lazily: this module is used while the runtime and core namespace
+    # bootstrap, before basilisp.core/*math-context* necessarily exists.
+    from basilisp.lang import runtime
+
+    math_context = runtime.Var.find(
+        runtime.sym.symbol(runtime.MATH_CONTEXT_VAR_NAME, ns=runtime.CORE_NS)
+    )
+    return math_context is None or math_context.value is None
+
+
+def _decimal_coefficient_and_exponent(value: decimal.Decimal) -> tuple[int, int]:
+    """Return a finite Decimal's signed coefficient and base-ten exponent."""
+
+    decimal_tuple = value.as_tuple()
+    coefficient = int("".join(map(str, decimal_tuple.digits)) or "0")
+    if decimal_tuple.sign:
+        coefficient = -coefficient
+    return coefficient, decimal_tuple.exponent
+
+
+def _decimal_from_coefficient(coefficient: int, exponent: int) -> decimal.Decimal:
+    """Build a Decimal without applying Python's active decimal context."""
+
+    sign = int(coefficient < 0)
+    digits = tuple(map(int, str(abs(coefficient)))) if coefficient else (0,)
+    return decimal.Decimal((sign, digits, exponent))
+
+
+def _exact_decimal_add(
+    x: decimal.Decimal, y: decimal.Decimal, *, subtract: bool = False
+) -> decimal.Decimal:
+    """Add or subtract finite Decimals with BigDecimal's unlimited precision."""
+
+    if not x.is_finite() or not y.is_finite():
+        return x - y if subtract else x + y
+
+    x_coefficient, x_exponent = _decimal_coefficient_and_exponent(x)
+    y_coefficient, y_exponent = _decimal_coefficient_and_exponent(y)
+    if subtract:
+        y_coefficient = -y_coefficient
+    exponent = min(x_exponent, y_exponent)
+    coefficient = x_coefficient * 10 ** (
+        x_exponent - exponent
+    ) + y_coefficient * 10 ** (y_exponent - exponent)
+    return _decimal_from_coefficient(coefficient, exponent)
+
+
+def _exact_decimal_multiply(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    """Multiply finite Decimals with BigDecimal's unlimited precision."""
+
+    if not x.is_finite() or not y.is_finite():
+        return x * y
+
+    x_coefficient, x_exponent = _decimal_coefficient_and_exponent(x)
+    y_coefficient, y_exponent = _decimal_coefficient_and_exponent(y)
+    return _decimal_from_coefficient(
+        x_coefficient * y_coefficient, x_exponent + y_exponent
+    )
+
+
+def _exact_decimal_divide(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    """Divide finite Decimals exactly, rejecting non-terminating expansions."""
+
+    if not x.is_finite() or not y.is_finite():
+        return x / y
+
+    x_coefficient, x_exponent = _decimal_coefficient_and_exponent(x)
+    y_coefficient, y_exponent = _decimal_coefficient_and_exponent(y)
+    if y_coefficient == 0:
+        return x / y
+
+    divisor = abs(y_coefficient)
+    common_factor = math.gcd(abs(x_coefficient), divisor)
+    numerator = x_coefficient // common_factor
+    divisor //= common_factor
+    twos = fives = 0
+    while divisor % 2 == 0:
+        divisor //= 2
+        twos += 1
+    while divisor % 5 == 0:
+        divisor //= 5
+        fives += 1
+    if divisor != 1:
+        raise decimal.Inexact("Non-terminating decimal expansion")
+
+    decimal_places = max(twos, fives)
+    coefficient = (
+        numerator * 2 ** (decimal_places - twos) * 5 ** (decimal_places - fives)
+    )
+    if y_coefficient < 0:
+        coefficient = -coefficient
+    return _decimal_from_coefficient(
+        coefficient, x_exponent - y_exponent - decimal_places
+    )
+
+
+def _decimal_add(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    return _exact_decimal_add(x, y) if _uses_unlimited_decimal_math() else x + y
+
+
+def _decimal_subtract(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    return (
+        _exact_decimal_add(x, y, subtract=True)
+        if _uses_unlimited_decimal_math()
+        else x - y
+    )
+
+
+def _decimal_divide(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    return _exact_decimal_divide(x, y) if _uses_unlimited_decimal_math() else x / y
+
+
+def _decimal_multiply(x: decimal.Decimal, y: decimal.Decimal) -> decimal.Decimal:
+    return _exact_decimal_multiply(x, y) if _uses_unlimited_decimal_math() else x * y
+
+
 def _normalize_fraction_result(
     f: Callable[[T_num, LispNumber], LispNumber],
 ) -> Callable[[T_num, LispNumber], LispNumber]:
@@ -38,7 +164,7 @@ def _to_decimal(x: LispNumber) -> decimal.Decimal:
     to simplify that coercion.."""
     if isinstance(x, Fraction):
         numerator, denominator = x.as_integer_ratio()
-        return decimal.Decimal(numerator) / decimal.Decimal(denominator)
+        return _decimal_divide(decimal.Decimal(numerator), decimal.Decimal(denominator))
     return decimal.Decimal(x)
 
 
@@ -61,14 +187,22 @@ def add(x: LispNumber, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _add_float(x: float, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return float(decimal.Decimal(x) + y)
+        return float(_decimal_add(decimal.Decimal(x), y))
+    return x + y
+
+
+@add.register(int)
+@_normalize_fraction_result
+def _add_int(x: int, y: LispNumber) -> LispNumber:
+    if isinstance(y, decimal.Decimal):
+        return _decimal_add(decimal.Decimal(x), y)
     return x + y
 
 
 @add.register(decimal.Decimal)
 @_normalize_fraction_result
 def _add_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
-    v = x + _to_decimal(y)
+    v = _decimal_add(x, _to_decimal(y))
     return float(v) if isinstance(y, float) else v
 
 
@@ -76,7 +210,7 @@ def _add_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _add_fraction(x: Fraction, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return _to_decimal(x) + y
+        return _decimal_add(_to_decimal(x), y)
     return x + y
 
 
@@ -91,14 +225,22 @@ def subtract(x: LispNumber, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _subtract_float(x: float, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return float(decimal.Decimal(x) - y)
+        return float(_decimal_subtract(decimal.Decimal(x), y))
+    return x - y
+
+
+@subtract.register(int)
+@_normalize_fraction_result
+def _subtract_int(x: int, y: LispNumber) -> LispNumber:
+    if isinstance(y, decimal.Decimal):
+        return _decimal_subtract(decimal.Decimal(x), y)
     return x - y
 
 
 @subtract.register(decimal.Decimal)
 @_normalize_fraction_result
 def _subtract_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
-    v = x - _to_decimal(y)
+    v = _decimal_subtract(x, _to_decimal(y))
     return float(v) if isinstance(y, float) else v
 
 
@@ -106,7 +248,7 @@ def _subtract_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _subtract_fraction(x: Fraction, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return _to_decimal(x) - y
+        return _decimal_subtract(_to_decimal(x), y)
     return x - y
 
 
@@ -123,6 +265,8 @@ def divide(x: LispNumber, y: LispNumber) -> LispNumber:
 def _divide_ints(x: int, y: LispNumber) -> LispNumber:
     if isinstance(y, int):
         return Fraction(x, y)
+    if isinstance(y, decimal.Decimal):
+        return _decimal_divide(decimal.Decimal(x), y)
     return x / y
 
 
@@ -130,7 +274,7 @@ def _divide_ints(x: int, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _divide_float(x: float, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return float(decimal.Decimal(x) / y)
+        return float(_decimal_divide(decimal.Decimal(x), y))
     try:
         return x / y
     except ZeroDivisionError:
@@ -145,7 +289,7 @@ def _divide_float(x: float, y: LispNumber) -> LispNumber:
 @divide.register(decimal.Decimal)
 @_normalize_fraction_result
 def _divide_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
-    v = x / _to_decimal(y)
+    v = _decimal_divide(x, _to_decimal(y))
     return float(v) if isinstance(y, float) else v
 
 
@@ -153,7 +297,7 @@ def _divide_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _divide_fraction(x: Fraction, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return _to_decimal(x) / y
+        return _decimal_divide(_to_decimal(x), y)
     return x / y
 
 
@@ -168,14 +312,22 @@ def multiply(x: LispNumber, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _multiply_float(x: float, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return float(decimal.Decimal(x) * y)
+        return float(_decimal_multiply(decimal.Decimal(x), y))
+    return x * y
+
+
+@multiply.register(int)
+@_normalize_fraction_result
+def _multiply_int(x: int, y: LispNumber) -> LispNumber:
+    if isinstance(y, decimal.Decimal):
+        return _decimal_multiply(decimal.Decimal(x), y)
     return x * y
 
 
 @multiply.register(decimal.Decimal)
 @_normalize_fraction_result
 def _multiply_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
-    v = x * _to_decimal(y)
+    v = _decimal_multiply(x, _to_decimal(y))
     return float(v) if isinstance(y, float) else v
 
 
@@ -183,7 +335,7 @@ def _multiply_decimal(x: decimal.Decimal, y: LispNumber) -> LispNumber:
 @_normalize_fraction_result
 def _multiply_fraction(x: Fraction, y: LispNumber) -> LispNumber:
     if isinstance(y, decimal.Decimal):
-        return _to_decimal(x) * y
+        return _decimal_multiply(_to_decimal(x), y)
     return x * y
 
 

@@ -4657,9 +4657,9 @@
   "The active Python :external:py:class:`decimal.Context` for decimal arithmetic.
 
   Bind a context to apply its precision, rounding, traps, and exponent limits to
-  Basilisp decimal operations in the current thread. ``nil`` leaves Python's current
-  decimal context unchanged. :lpy:fn:`with-precision` supplies a compatible context
-  automatically."
+  Basilisp decimal operations in the current thread. ``nil`` selects Clojure's
+  unlimited exact arithmetic for Basilisp numeric operations. :lpy:fn:`with-precision`
+  supplies a compatible context automatically."
   nil)
 
 (defn decimal-context
