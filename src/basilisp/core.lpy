@@ -1206,6 +1206,13 @@
 ;; Agents ;;
 ;;;;;;;;;;;;
 
+(def ^:dynamic *agent*
+  "The agent currently running an action on this thread, else ``nil``.
+
+  Agent actions bind this after carrying the sender's ordinary dynamic bindings,
+  so an incidental caller binding cannot disguise the target agent."
+  nil)
+
 (defn agent
   "Create a serialized, executor-backed mutable reference."
   ([state]
@@ -1238,8 +1245,28 @@
 (defn ^:inline error-handler [agent]
   (.get-error-handler agent))
 
+(defn- agent-bound-fn*
+  "Capture normal dynamic bindings for an agent action and bind its target.
+
+  ``*agent*`` is intentionally excluded from the captured bindings: Clojure
+  installs the executing agent after dynamic-binding conveyance, so a caller's
+  manual binding must not replace the target visible inside the action."
+  [agent f]
+  (let [current-bindings (.dissoc (basilisp.lang.runtime/get-thread-bindings)
+                                  #'*agent*)]
+    (fn [& args]
+      (basilisp.lang.runtime/push-thread-bindings current-bindings)
+      (try
+        (basilisp.lang.runtime/push-thread-bindings {#'*agent* agent})
+        (try
+          (apply f args)
+          (finally
+            (basilisp.lang.runtime/pop-thread-bindings)))
+        (finally
+          (basilisp.lang.runtime/pop-thread-bindings))))))
+
 (defn- dispatch-agent-action [executor agent f args]
-  (let [bound-f (bound-fn* f)
+  (let [bound-f (agent-bound-fn* agent f)
         action  #(.submit-args agent executor bound-f args)]
     (if (basilisp.lang.stm/in-transaction)
       (do

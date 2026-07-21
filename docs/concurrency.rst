@@ -21,6 +21,9 @@ Bare ``await`` remains the Python async special form, so synchronous Clojure
 agent waiting uses the qualified ``clojure.core/await`` or
 ``basilisp.core/await`` spelling. ``basilisp.concurrent/wait`` remains a
 clear Python-facing alias for the non-failure-blocking ``await-agent`` helper.
+Within an action, dynamic ``*agent*`` is the target agent; it is ``nil``
+outside an action. Ordinary dynamic bindings from the sender are conveyed to
+the action, but a caller's own ``*agent*`` binding cannot replace that target.
 ``await`` and ``await-for`` reject transaction and agent-action contexts;
 they add Clojure-style barrier actions and a settled failed agent rejects that
 dispatch. ``await1`` waits only for pending work and returns its agent, so an

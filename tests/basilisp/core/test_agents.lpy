@@ -6,6 +6,8 @@
   (:require
    [basilisp.test :refer [deftest is]]))
 
+(def ^:dynamic *agent-context-probe* :root)
+
 (deftest agent-serial-state-test
   (let [a       (agent 0)
         _send   (send a + 1)
@@ -43,6 +45,24 @@
         error    (agent-error a)]
     (is (= 1 state))
     (is (instance? python/ValueError error))))
+
+(deftest current-agent-binding-test
+  (let [a      (agent nil)
+        b      (agent nil)
+        seen-a (promise)
+        seen-b (promise)]
+    ;; The executing target wins over a caller's arbitrary dynamic binding.
+    (binding [*agent* :caller *agent-context-probe* :captured]
+      (send a (fn [state]
+                (deliver seen-a [(identical? a *agent*) *agent-context-probe*])
+                (send b (fn [next-state]
+                          (deliver seen-b [(identical? b *agent*) *agent-context-probe*])
+                          next-state))
+                state)))
+    (clojure.core/await a b)
+    (is (= [true :captured] (deref seen-a 1000 false)))
+    (is (= [true :captured] (deref seen-b 1000 false)))
+    (is (nil? *agent*))))
 
 (deftest send-via-test
   (let [executor (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "agent-via")
