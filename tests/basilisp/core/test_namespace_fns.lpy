@@ -28,7 +28,12 @@
     (is (= :a redeffable))))
 
 (deftest require-test
-  (is (thrown? basilisp.lang.exception/ExceptionInfo (require '[basilisp.set :refer [non-existent-var]]))))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (require '[basilisp.set :refer [non-existent-var]])))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (require '[basilisp [core [protocols :as protocols]]])))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (require '[basilisp [:as invalid-child]]))))
 
 (deftest requiring-resolve-test
   (is (thrown? basilisp.lang.exception/ExceptionInfo (requiring-resolve 'a-symbol)))

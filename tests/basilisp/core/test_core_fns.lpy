@@ -643,7 +643,14 @@
     (binding [*ns* *ns*]
       (eval '(ns test-core-fns.ns-with-import (:import [time :as time-alias])))
       (is (= *ns* (the-ns 'test-core-fns.ns-with-import)))
-      (is (= "Thu Jan  1 00:00:01 1970" (eval '(time-alias/asctime (time-alias/gmtime 1))))))))
+      (is (= "Thu Jan  1 00:00:01 1970" (eval '(time-alias/asctime (time-alias/gmtime 1)))))))
+
+  (testing "eval ns with import prefix lists"
+    (binding [*ns* *ns*]
+      (eval '(ns test-core-fns.ns-with-prefix-import
+               (:import [urllib [parse :as url]])))
+      (is (= *ns* (the-ns 'test-core-fns.ns-with-prefix-import)))
+      (is (= "/path" (.-path (eval '(url/urlparse "https://example.test/path"))))))))
 
 ;;;;;;;;;;
 ;; Read ;;

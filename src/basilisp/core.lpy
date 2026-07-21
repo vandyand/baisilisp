@@ -5866,6 +5866,63 @@
   [sym]
   (ns-resolve *ns* sym))
 
+(defn ^:private qualify-libspec
+  "Join a namespace/module prefix and child symbol with a period."
+  [prefix child]
+  (symbol (str prefix "." child)))
+
+(defn ^:private prefix-libspec?
+  "Return true when ``libspec`` is a Clojure namespace prefix list.
+
+  A prefix list begins with a symbol and has one or more child specs. Direct
+  option specs such as ``[foo.bar :as foo]`` are deliberately excluded."
+  [libspec]
+  (and (sequential? libspec)
+       (symbol? (first libspec))
+       (< 1 (count libspec))
+       (not-any? keyword? libspec)))
+
+(defn ^:private expand-prefixed-libspec
+  "Expand a Clojure prefix list to ordinary fully-qualified libspecs.
+
+  A child may be either a plain symbol or an option vector such as
+  ``[child :as alias]``. The returned vectors preserve every option unchanged
+  after only qualifying their leading symbol. Nested prefix lists are rejected,
+  matching Clojure's one-prefix grammar."
+  ([libspec]
+   (expand-prefixed-libspec nil libspec))
+  ([prefix libspec]
+   (cond
+     (prefix-libspec? libspec)
+     (do
+       (when prefix
+         (throw (ex-info "Nested prefix libspecs are not supported by Clojure"
+                         {:prefix prefix :value libspec})))
+       (let [child-prefix (first libspec)]
+         (mapcat #(expand-prefixed-libspec child-prefix %) (rest libspec))))
+
+     (nil? prefix)
+     (list libspec)
+
+     (symbol? libspec)
+     (list (qualify-libspec prefix libspec))
+
+     (sequential? libspec)
+     (let [child (first libspec)]
+       (when-not (symbol? child)
+         (throw (ex-info "Prefix libspec child must begin with a symbol"
+                         {:prefix prefix :value libspec})))
+       (list (vec (cons (qualify-libspec prefix child) (rest libspec)))))
+
+     :else
+     (throw (ex-info "Invalid prefix libspec"
+                     {:prefix prefix :value libspec})))))
+
+(defn ^:private expand-prefixed-libspecs
+  "Expand every prefix list in a sequence of require/use/import arguments."
+  [libspecs]
+  (mapcat expand-prefixed-libspec libspecs))
+
 (defmacro import
   "Import Python modules by name.
 
@@ -5877,6 +5934,10 @@
   - ``:refer [& syms]`` which will refer module members in the local namespace
     directly
   - ``:refer :all`` which will refer all module members from the namespace directly
+
+  A Clojure-style prefix list may group modules with a common prefix, for example
+  ``[urllib [parse :as url] request]``. Prefix lists are one level deep, matching
+  Clojure.
 
   Note that unlike in Python, ``import`` ed Python module names are always hoisted to
   the current Namespace, so imported names will be available within a Namespace even
@@ -5896,7 +5957,7 @@
   ;; to the new ns, the global python namespace can still refer to the
   ;; old python global ns where the import would have been evaluated
   ;; otherwise.
-  (let [form `(do (import* ~@modules)
+  (let [form `(do (import* ~@(expand-prefixed-libspecs modules))
                   nil)]
     `(eval '~form  *ns*)))
 
@@ -6059,6 +6120,10 @@
   - ``:refer [& syms]`` which will refer syms in the local namespace directly
   - ``:refer :all`` which will refer all symbols from the namespace directly
 
+  A Clojure-style prefix list may group namespaces with a common prefix, for example
+  ``[basilisp [string :as str] set]``. Prefix lists are one level deep, matching
+  Clojure.
+
   Arguments may also be flags, which are optional. Flags are keywords. The following
   flags are supported:
 
@@ -6094,7 +6159,7 @@
   [& args]
   (let [current-ns *ns*
         groups     (libspecs-and-flags args)
-        libspecs   (first groups)
+        libspecs   (expand-prefixed-libspecs (first groups))
         flags      (second groups)]
     (doseq [libspec (map require-libspec libspecs)]
       (if (and (:as-alias libspec) (not (:as libspec)))
@@ -6170,6 +6235,10 @@
   - symbols, which name fully qualified namespaces
   - vectors, which take the form ``[namespace-symbol & opts]``
 
+  A Clojure-style prefix list may group namespaces with a common prefix, for example
+  ``[basilisp [string :only [join]] set]``. Prefix lists are one level deep,
+  matching Clojure.
+
   ``use`` is like :lpy:fn:`require` which also refers all Vars from the requiring
   Namespace afterwards. Libspecs passed to ``use`` may include filters as defined in
   :lpy:fn:`refer` to narrow down the referred Vars.
@@ -6185,7 +6254,7 @@
   [& args]
   (let [current-ns *ns*
         groups     (libspecs-and-flags args)
-        libspecs   (first groups)
+        libspecs   (expand-prefixed-libspecs (first groups))
         flags      (second groups)]
     (doseq [libspec (map require-libspec libspecs)]
       ;; Remove the :refer key to avoid having require-lib
@@ -6281,7 +6350,7 @@
         imports       (when (:import opts)
                         (map (fn [v]
                                `(import ~v))
-                             (:import opts)))]
+                             (expand-prefixed-libspecs (:import opts))))]
     `(^:use-var-indirection do
        (in-ns (quote ~name))
        (swap! *loaded-libs* conj (quote ~name))

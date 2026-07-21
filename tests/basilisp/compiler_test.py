@@ -18,6 +18,8 @@ from tempfile import TemporaryDirectory
 from unittest.mock import Mock
 
 import pytest
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from basilisp.lang import compiler as compiler
 from basilisp.lang import keyword as kw
@@ -3477,6 +3479,16 @@ class TestImport:
 
         assert os.path.exists is lcompile("(import [os.path :as path]) path/exists")
 
+    def test_prefix_import_lists(self, lcompile: CompileFn):
+        import urllib.parse
+
+        assert urllib.parse.urlparse is lcompile(
+            "(import [urllib [parse :as url]]) url/urlparse"
+        )
+        assert urllib.parse.urlparse is lcompile(
+            "(import (urllib parse)) urllib.parse/urlparse"
+        )
+
     def test_warn_on_duplicated_import_name(
         self, lcompile: CompileFn, assert_matching_logs
     ):
@@ -5837,6 +5849,46 @@ class TestRequire:
     )
     def test_multi_require(self, lcompile: CompileFn, string_ns, set_ns, code: str):
         assert [string_ns.join, set_ns.union] == list(lcompile(code))
+
+    def test_prefix_require_list(self, lcompile: CompileFn, string_ns, set_ns):
+        assert [string_ns.join, set_ns.union] == list(
+            lcompile(
+                "(require '[basilisp [string :as str] [set :as set]]) [str/join set/union]"
+            )
+        )
+
+    def test_prefix_use_list(self, lcompile: CompileFn, string_ns):
+        assert string_ns.join is lcompile(
+            "(use '[basilisp [string :only [join]]]) join"
+        )
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(
+        st.lists(
+            st.sampled_from((("string", "str", "join"), ("set", "set", "union"))),
+            min_size=1,
+            max_size=2,
+            unique_by=lambda child: child[0],
+        ),
+        st.sampled_from((("[", "]"), ("(", ")"))),
+    )
+    def test_prefix_require_list_fuzzes_child_order_and_shape(
+        self, lcompile: CompileFn, string_ns, set_ns, children, delimiters
+    ):
+        """Fuzz valid child order and prefix-list shape with stable aliases."""
+        opening, closing = delimiters
+        child_specs = " ".join(f"[{name} :as {alias}]" for name, alias, _ in children)
+        result_forms = " ".join(f"{alias}/{member}" for _, alias, member in children)
+        expected = {
+            "string": string_ns.join,
+            "set": set_ns.union,
+        }
+
+        actual = lcompile(
+            f"(require '{opening}basilisp {child_specs}{closing}) [{result_forms}]"
+        )
+
+        assert list(actual) == [expected[name] for name, _, _ in children]
 
     def test_warn_on_duplicated_require_name(
         self, lcompile: CompileFn, assert_matching_logs
