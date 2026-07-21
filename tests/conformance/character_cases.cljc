@@ -11,7 +11,10 @@
          (str \Z)
          (pr-str (vec "aZ"))
          (pr-str (set "aba"))
-         (pr-str {\a :char "a" :string})
+         (let [m {\a :char "a" :string}]
+           {:char-value? (= :char (get m \a))
+            :string-value? (= :string (get m "a"))
+            :distinct-keys? (= 2 (count m))})
          (pr-str [(first "aZ") (nth "aZ" 1) (get "aZ" 0)])]]
   (prn value))
 

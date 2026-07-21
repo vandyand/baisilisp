@@ -484,10 +484,10 @@ prefer-method,true,true,shared
 prefers,true,true,shared
 primitives-classnames,true,false,missing-in-basilisp
 print,true,true,shared
-print-ctor,true,false,missing-in-basilisp
+print-ctor,true,true,shared
 print-dup,true,true,shared
 print-method,true,true,shared
-print-simple,true,false,missing-in-basilisp
+print-simple,true,true,shared
 print-str,true,true,shared
 printf,true,true,shared
 println,true,true,shared

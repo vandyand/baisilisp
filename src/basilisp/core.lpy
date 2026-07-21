@@ -6967,6 +6967,48 @@
     (let [t (:type (meta x))]
       (if (keyword? t) t (type x)))))
 
+(defn ^:private write-print-meta
+  "Write the metadata prefix Clojure print helpers use for ``object``."
+  [object writer]
+  (let [m (meta object)]
+    (when (and (some? m)
+               (pos? (count m))
+               (or *print-dup*
+                   (and *print-meta* *print-readably*)))
+      (.write writer "^")
+      (if (and (= 1 (count m)) (contains? m :tag))
+        (write-print-object writer (:tag m) false)
+        (write-print-object writer m false))
+      (.write writer " "))))
+
+(defn print-simple
+  "Write ``object`` using its string representation, prefixed by printable metadata.
+
+  This is the public helper used by Clojure's default printing path. Unlike
+  :lpy:fn:`print-method`, it deliberately bypasses multimethod dispatch after
+  writing the metadata prefix."
+  [object writer]
+  (write-print-meta object writer)
+  ;; Clojure's persistent collections include printable metadata in ``str``.
+  ;; Basilisp's host-side ``str`` intentionally does not, so reproduce that
+  ;; second prefix here to preserve public ``print-simple`` behavior.
+  (when (coll? object)
+    (write-print-meta object writer))
+  (.write writer (str object)))
+
+(defn print-ctor
+  "Write a constructor-style representation of ``object`` to ``writer``.
+
+  ``print-args`` receives ``object`` and ``writer`` and writes the constructor
+  arguments. Basilisp uses the Python ``module.Qualname`` of the runtime type
+  in place of Clojure's JVM class name."
+  [object print-args writer]
+  (let [type (python/type object)]
+    (.write writer "#=(")
+    (.write writer (str (.-__module__ type) "." (.-__qualname__ type) ". "))
+    (print-args object writer)
+    (.write writer ")")))
+
 (defmethod print-method :default
   [x writer]
   (.write writer (basilisp.lang.runtime/lrepr x

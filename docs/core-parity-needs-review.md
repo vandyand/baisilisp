@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 41 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (638 shared Vars and 59 Basilisp
+This document classifies the 39 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (640 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -28,7 +28,7 @@ The following symbols are now implemented and no longer appear as gaps:
 `set-error-handler!`, `set-error-mode!`, `test`, `unsigned-bit-shift-right`,
 and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
 `commute`, `ensure`, `ref-history-count`, `ref-min-history`, `ref-max-history`,
-`sync`, `seque`, `print-method`, and `print-dup`.
+`sync`, `seque`, `print-method`, `print-dup`, `print-simple`, and `print-ctor`.
 ``*math-context*`` and ``with-precision`` now provide Clojure-compatible
 dynamic decimal context behavior: nil selects unlimited exact BigDecimal
 arithmetic, while finite contexts restore after nested bindings and default to
@@ -67,6 +67,10 @@ and reject unknown ones.
 ``create-struct`` now creates an identity-bearing fixed-key basis. ``struct``
 and ``struct-map`` retain those fixed keys while allowing removable extension
 keys, and ``accessor`` accepts only values built from its exact basis.
+``print-simple`` now writes Clojure-style qualifying metadata followed by the
+ordinary string representation. ``print-ctor`` likewise accepts Clojure's
+writer callback shape, with the explicitly Python-hosted
+``module.Qualname`` type label in place of a JVM class name.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -96,7 +100,7 @@ compatibility promise would be false.
 `->ArrayChunk`, `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`,
 `-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `chunk`, `chunk-append`, `chunk-buffer`,
 `chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
-`primitives-classnames`, `print-ctor`, `print-simple`, `proxy-call-with-super`, `proxy-name`,
+`primitives-classnames`, `proxy-call-with-super`, `proxy-name`,
 `seq-to-map-for-destructuring`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception

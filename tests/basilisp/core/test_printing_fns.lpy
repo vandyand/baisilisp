@@ -158,6 +158,51 @@
     (is (thrown? python/ValueError (pr-str (->BrokenPrint))))
     (is (= "<still-usable>" (pr-str (->CustomPrint "still-usable"))))))
 
+(deftest print-helper-test
+  (testing "print-simple uses str without dispatching through print-method"
+    (let [value  [(->CustomPrint "value") :key "text"]
+          writer (io/StringIO)]
+      (print-simple value writer)
+      (is (= (str value) (.getvalue writer)))
+      (is (not= (pr-str value) (.getvalue writer)))))
+
+  (testing "print-simple emits metadata under Clojure's printing policy"
+    (let [value (with-meta [1] {:tag 'kind})]
+      (is (= "[1]"
+             (let [writer (io/StringIO)]
+               (print-simple value writer)
+               (.getvalue writer))))
+      (is (= "^kind ^kind [1]"
+             (binding [*print-meta* true *print-readably* true]
+               (let [writer (io/StringIO)]
+                 (print-simple value writer)
+                 (.getvalue writer)))))
+      (is (= "^kind ^kind [1]"
+             (binding [*print-dup* true]
+               (let [writer (io/StringIO)]
+                 (print-simple value writer)
+                 (.getvalue writer)))))))
+
+  (testing "print-ctor delegates arguments to its callback and labels Python types"
+    (let [writer (io/StringIO)
+          value  :value
+          calls  (atom [])]
+      (print-ctor value
+                  (fn [object callback-writer]
+                    (swap! calls conj object)
+                    (.write callback-writer "ARGS"))
+                  writer)
+      (is (= [value] @calls))
+      (is (= (str "#=(" (.-__module__ (python/type value)) "."
+                  (.-__qualname__ (python/type value)) ". ARGS)")
+             (.getvalue writer)))))
+
+  (testing "callback failures remain visible to callers"
+    (is (thrown? python/ValueError
+                 (print-ctor :value
+                             (fn [_ _] (throw (python/ValueError "broken callback")))
+                             (io/StringIO))))))
+
 (defn- bio-write
   "Helper fn to write the ``strings`` to the ByteIO buffer ``bio``
   and return the contents of the buffer."
