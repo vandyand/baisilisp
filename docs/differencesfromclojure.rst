@@ -74,10 +74,10 @@ That said, there are some fundamental differences and omissions in Basilisp that
 * ``seque`` is available as a bounded queued lazy sequence. It uses a
   Python-owned daemon producer rather than Clojure's global Agent executor;
   consumer-visible values and completion behavior are preserved.
-* Basilisp provides executor-backed Agents.
-  ``await-agent`` is the synchronous wait operation; ``await`` remains the
-  Python async special form and is intentionally not repurposed as an agent
-  wait function.
+* Basilisp provides executor-backed Agents. ``await`` remains the Python async
+  special form when unqualified, while ``clojure.core/await`` and
+  ``basilisp.core/await`` expose the Clojure agent wait contract.
+  ``await-agent`` remains the direct Python-oriented wait operation.
 * All Vars are reified at runtime and users may use the :lpy:fn:`binding` macro as in Clojure.
 
   * Non-dynamic Vars are compiled into Python variables and references to those Vars are made using Python variables using :ref:`direct_linking`.
@@ -219,11 +219,13 @@ Agents
 
 Basilisp provides executor-backed agents with serialized actions, error handling,
 and bounded waiting. Agent sends within a ``dosync`` transaction are deferred
-until the transaction successfully commits. Agents do not provide JVM executor
-controls. In particular,
-``set-agent-send-executor!``, ``set-agent-send-off-executor!``, and
-``shutdown-agents`` are intentionally unavailable because Python executors have
-explicit application ownership. See :ref:`concurrency`.
+until the transaction successfully commits. ``set-agent-send-executor!``,
+``set-agent-send-off-executor!``, ``shutdown-agents``, and
+``release-pending-sends`` are available with Clojure-shaped global behavior.
+Python callers still own replacement and prior executor lifecycle. The one
+syntax-level difference is that unqualified ``await`` remains async; use
+``clojure.core/await`` or ``basilisp.core/await`` for an agent wait. See
+:ref:`concurrency`.
 
 .. _host_interop_differences:
 

@@ -21,6 +21,22 @@
   (emit-case :transactional-agent-send
              {:result result :waited waited :values values}))
 
+(let [agent-state (agent 0)
+      _send (send agent-state + 3)
+      waited #?(:clj (await agent-state)
+                :lpy (clojure.core/await agent-state))]
+  (emit-case :agent-await
+             {:waited waited :value @agent-state
+              :await-for (await-for 1000 agent-state)
+              :released (release-pending-sends)}))
+
+(let [agent-state (agent 0)
+      _send (send agent-state + 4)
+      returned (await1 agent-state)]
+  (emit-case :agent-await1
+             {:same-agent (identical? returned agent-state)
+              :value @agent-state}))
+
 (let [value (atom 0)
       events (atom [])]
   (add-watch value :record (fn [_ _ old new] (swap! events conj [old new])))

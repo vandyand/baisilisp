@@ -78,8 +78,9 @@ The next STM phases are intentionally ordered:
    ``basilisp.core``: ``ref``, ``dosync``, ``alter``, ``ref-set``, ``commute``,
    and ``ensure``. The shared Clojure/Basilisp Ref fixture verifies sequential
    transaction, nesting, watch, validator, metadata, commute, and ensure
-   behavior. ``await`` remains an async special form, with ``await-agent`` as
-   the intentional agent-wait spelling.
+   behavior. Unqualified ``await`` remains an async special form, while the
+   qualified ``clojure.core/await`` spelling provides Clojure's agent wait
+   contract alongside ``await-agent``.
 
 This ordering follows the observable Clojure contract: transactions are
 atomic, consistent, isolated, and retry on conflict; ``commute`` deliberately

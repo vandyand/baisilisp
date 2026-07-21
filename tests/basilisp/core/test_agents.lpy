@@ -1,6 +1,7 @@
 (ns tests.basilisp.core.test-agents
   (:import time
            threading
+           random
            [basilisp.lang.futures :as futures])
   (:require
    [basilisp.test :refer [deftest is]]))
@@ -53,15 +54,20 @@
       (finally
         (.shutdown executor)))))
 
-(deftest await1-waits-for-restart-test
-  (let [a        (agent 0)
-        _failed  (send a (fn [_] (throw (python/ValueError "bad action"))))
-        _waited  (await-agent a)
-        waiter   (future (await1 a))]
+(deftest await1-waits-for-pending-action-test
+  (let [a       (agent 0)
+        started (promise)
+        release (promise)
+        _sent   (send a (fn [state]
+                          (deliver started true)
+                          (deref release)
+                          (inc state)))
+        _ready  (deref started 1000 false)
+        waiter  (future (await1 a))]
     (time/sleep 0.05)
     (is (false? (future-done? waiter)))
-    (restart-agent a)
-    (is (nil? (deref waiter 1000 :timeout)))
+    (deliver release true)
+    (is (identical? a (deref waiter 1000 :timeout)))
     (is (true? (future-done? waiter)))))
 
 (deftest agent-await-for-test
@@ -91,3 +97,148 @@
         _restart (restart-agent a 2 :clear-actions true)
         _waited2 (await-agent a)]
     (is (= 2 @a))))
+
+(deftest clojure-agent-waits-and-context-guards-test
+  (let [a       (agent 0)
+        _sent   (send a + 1)
+        waited  (clojure.core/await a)]
+    (is (nil? waited))
+    (is (= 1 @a))
+    (is (thrown? python/RuntimeError
+                 (dosync (clojure.core/await a)))))
+  (let [a       (agent 0)
+        blocked (promise)
+        release (promise)
+        _sent   (send a (fn [state]
+                          (deliver blocked true)
+                          (deref release)
+                          (inc state)))]
+    (is (true? (deref blocked 1000 false)))
+    (is (false? (await-for 1 a)))
+    (deliver release true)
+    (is (true? (await-for 1000 a))))
+  (let [a        (agent 0)
+        _failed  (send a (fn [_] (throw (python/ValueError "wait failure"))))
+        _settled (await-agent a)]
+    (is (thrown? python/RuntimeError (clojure.core/await a)))
+    (is (thrown? python/RuntimeError (await-for 1 a)))
+    (is (identical? a (await1 a))))
+  (let [a       (agent 0)
+        result  (promise)
+        _sent   (send a (fn [state]
+                          (try
+                            (clojure.core/await a)
+                            (deliver result :not-rejected)
+                            (catch python/Exception _
+                              (deliver result :rejected)))
+                          state))]
+    (await-agent a)
+    (is (= :rejected (deref result 1000 :timeout)))))
+
+(deftest global-agent-executors-preserve-dispatch-ownership-test
+  (let [old-send     *agent-send-executor*
+        old-send-off *agent-send-off-executor*
+        send-a       (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "lifecycle-send-a")
+        send-b       (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "lifecycle-send-b")
+        off-a        (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "lifecycle-off-a")
+        off-b        (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "lifecycle-off-b")
+        started      (promise)
+        release      (promise)
+        a            (agent [])]
+    (try
+      (is (identical? send-a (set-agent-send-executor! send-a)))
+      (is (identical? off-a (set-agent-send-off-executor! off-a)))
+      (send a (fn [state]
+                (deliver started true)
+                (deref release)
+                (conj state (.-name (threading/current_thread)))))
+      (is (true? (deref started 1000 false)))
+      ;; This action was queued before the replacement and must retain send-a.
+      (send a (fn [state] (conj state (.-name (threading/current_thread)))))
+      (set-agent-send-executor! send-b)
+      (send a (fn [state] (conj state (.-name (threading/current_thread)))))
+      (set-agent-send-off-executor! off-b)
+      (send-off a (fn [state] (conj state (.-name (threading/current_thread)))))
+      (deliver release true)
+      (clojure.core/await a)
+      (is (= ["lifecycle-send-a"
+              "lifecycle-send-a"
+              "lifecycle-send-b"
+              "lifecycle-off-b"]
+             (mapv #(first (.rsplit % "_" 1)) @a)))
+      (is (= 0 (release-pending-sends)))
+      (finally
+        (set-agent-send-executor! old-send)
+        (set-agent-send-off-executor! old-send-off)
+        (.shutdown send-a)
+        (.shutdown send-b)
+        (.shutdown off-a)
+        (.shutdown off-b)))))
+
+(deftest global-agent-executor-seeded-switch-stress-test
+  (let [old-send     *agent-send-executor*
+        old-send-off *agent-send-off-executor*
+        send-a       (futures/ThreadPoolExecutor ** :max-workers 3 :thread-name-prefix "fuzz-send-a")
+        send-b       (futures/ThreadPoolExecutor ** :max-workers 3 :thread-name-prefix "fuzz-send-b")
+        off-a        (futures/ThreadPoolExecutor ** :max-workers 3 :thread-name-prefix "fuzz-off-a")
+        off-b        (futures/ThreadPoolExecutor ** :max-workers 3 :thread-name-prefix "fuzz-off-b")
+        executors    [[send-a "fuzz-send-a" false]
+                      [send-b "fuzz-send-b" false]
+                      [off-a "fuzz-off-a" true]
+                      [off-b "fuzz-off-b" true]]
+        source       (random/Random 20260730)
+        agents       (vec (repeatedly 9 #(agent [])))]
+    (try
+      (dotimes [i 240]
+        (let [[executor prefix send-off?] (nth executors (.randint source 0 3))
+              target                    (nth agents (.randint source 0 8))]
+          (if send-off?
+            (set-agent-send-off-executor! executor)
+            (set-agent-send-executor! executor))
+          ((if send-off? send-off send)
+           target
+           (fn [state index expected-prefix]
+             (conj state [index expected-prefix (.-name (threading/current_thread))]))
+           i
+           prefix)))
+      (apply clojure.core/await agents)
+      (let [events (vec (mapcat deref agents))]
+        (is (= 240 (count events)))
+        (is (= (set (range 240)) (set (map first events))))
+        (is (every? (fn [[_ prefix thread-name]]
+                      (.startswith thread-name prefix))
+                    events)))
+      (finally
+        (set-agent-send-executor! old-send)
+        (set-agent-send-off-executor! old-send-off)
+        (.shutdown send-a)
+        (.shutdown send-b)
+        (.shutdown off-a)
+        (.shutdown off-b)))))
+
+(deftest shutdown-agents-stops-current-global-executors-test
+  (let [old-send     *agent-send-executor*
+        old-send-off *agent-send-off-executor*
+        send-pool    (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "shutdown-send")
+        off-pool     (futures/ThreadPoolExecutor ** :max-workers 1 :thread-name-prefix "shutdown-off")
+        started      (promise)
+        release      (promise)
+        a            (agent 0)]
+    (try
+      (set-agent-send-executor! send-pool)
+      (set-agent-send-off-executor! off-pool)
+      (send a (fn [state]
+                (deliver started true)
+                (deref release)
+                (inc state)))
+      (is (true? (deref started 1000 false)))
+      (is (nil? (shutdown-agents)))
+      (deliver release true)
+      (await-agent a)
+      (is (= 1 @a))
+      (is (thrown? python/RuntimeError (send a inc)))
+      (finally
+        (set-agent-send-executor! old-send)
+        (set-agent-send-off-executor! old-send-off)
+        (.shutdown send-pool)
+        (.shutdown off-pool)))))

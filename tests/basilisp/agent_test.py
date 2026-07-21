@@ -34,6 +34,22 @@ def test_agent_restart_can_replace_state_with_none():
     assert a.deref() is None
 
 
+def test_current_agent_marker_is_visible_only_while_running_an_action():
+    observed = []
+    a = agent.Agent(0)
+
+    def action(state):
+        observed.append(agent.current_agent())
+        return state + 1
+
+    with ThreadPoolExecutor(max_workers=1) as executor:
+        a.submit(executor, action)
+        assert a.await_completion(timeout=2)
+
+    assert observed == [a]
+    assert agent.current_agent() is None
+
+
 def test_agent_continues_after_raising_error_handler():
     def action_that_fails(_state):
         raise ValueError("action failed")

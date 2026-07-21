@@ -1127,6 +1127,25 @@
 (atexit/register (.-shutdown *agent-send-executor*))
 (atexit/register (.-shutdown *agent-send-off-executor*))
 
+(defn set-agent-send-executor!
+  "Set the process-wide executor used by subsequent ``send`` actions.
+
+  The caller owns the replacement executor. The prior executor is left running,
+  just as Clojure leaves lifecycle decisions for a supplied executor to its
+  caller. Actions already queued retain the executor selected when they were
+  dispatched."
+  [executor]
+  (.bind-root #'*agent-send-executor* executor)
+  executor)
+
+(defn set-agent-send-off-executor!
+  "Set the process-wide executor used by subsequent ``send-off`` actions.
+
+  The caller owns the replacement executor; it is not implicitly shut down."
+  [executor]
+  (.bind-root #'*agent-send-off-executor* executor)
+  executor)
+
 ;; Declare `bound-fn*` now for use in `future-call`, though it is defined much later
 ;; with the rest of the Var binding functions and macros.
 (def ^:redef bound-fn*)
@@ -1226,6 +1245,27 @@
   [executor agent f & args]
   (dispatch-agent-action executor agent f args))
 
+(defn release-pending-sends
+  "Return the count of agent actions released from the current action.
+
+  Basilisp submits ordinary nested agent sends immediately, so it has no
+  Clojure JVM-style pending-send queue to release and this reliably returns
+  zero. Sends made within ``dosync`` remain deferred until commit."
+  []
+  0)
+
+(defn shutdown-agents
+  "Initiate non-blocking shutdown of the current global agent executors.
+
+  Already-running actions are allowed to finish. New ``send`` and ``send-off``
+  actions are rejected by the shut-down executor until a replacement is
+  installed with ``set-agent-send-executor!`` or
+  ``set-agent-send-off-executor!``."
+  []
+  (.shutdown *agent-send-executor* ** :wait false)
+  (.shutdown *agent-send-off-executor* ** :wait false)
+  nil)
+
 (defn io!
   "Reject an explicitly marked I/O operation within a transaction.
 
@@ -1305,13 +1345,44 @@
       (recur (rest agents))))
   nil)
 
-(defn await1
-  "Wait for one agent, including until a failed agent is restarted."
-  [agent]
-  (.await-completion agent nil ** :wait-on-failure true)
+(defn- assert-agent-wait-context!
+  []
+  (io!)
+  (when (basilisp.lang.agent/current-agent)
+    (throw (python/Exception "Can't await in agent action"))))
+
+(defn await
+  "Wait indefinitely for actions already dispatched to ``agents``.
+
+  Because ``await`` is also Basilisp's async special form, ordinary calls use
+  the qualified spelling ``basilisp.core/await`` (or ``clojure.core/await``).
+  Use ``await-agent`` or ``basilisp.concurrent/wait`` when an unqualified
+  synchronous spelling is preferable. A failed agent rejects the barrier
+  action and raises through the normal ``send`` path."
+  [& agents]
+  (assert-agent-wait-context!)
+  (loop [agents agents]
+    (when-let [agent (first agents)]
+      ;; Match Clojure's barrier-action model: a failed agent rejects this
+      ;; dispatch, while a failure after the barrier is queued retains the
+      ;; unfinished barrier until that agent is restarted.
+      (send agent (fn [state] state))
+      (.await-completion agent nil ** :wait-on-failure true)
+      (recur (rest agents))))
   nil)
 
+(defn await1
+  "Wait for one pending agent action, returning ``agent``.
+
+  A settled failed agent has no pending action and is returned immediately,
+  matching Clojure's ``await1`` behavior."
+  [agent]
+  (when (.pending agent)
+    (basilisp.core/await agent))
+  agent)
+
 (defn await-for [timeout-ms & agents]
+  (assert-agent-wait-context!)
   (let [deadline (operator/add (py-time/monotonic)
                                (operator/truediv timeout-ms 1000.0))]
     (loop [agents agents]
@@ -1319,9 +1390,11 @@
         (let [remaining (operator/sub deadline (py-time/monotonic))]
           (if (operator/le remaining 0)
             false
-            (if (.await-completion agent remaining)
-              (recur (rest agents))
-              false)))
+            (do
+              (send agent (fn [state] state))
+              (if (.await-completion agent remaining ** :wait-on-failure true)
+                (recur (rest agents))
+                false))))
         true))))
 
 (defn clear-agent-errors [agent]

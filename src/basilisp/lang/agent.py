@@ -14,6 +14,19 @@ from basilisp.lang.reference import RefBase
 
 T = TypeVar("T")
 _UNSET = object()
+_CURRENT_AGENT = threading.local()
+
+
+def current_agent() -> "Agent[Any] | None":
+    """Return the agent whose action is executing on this thread, if any.
+
+    The marker gives the Clojure-facing blocking wait functions a reliable way
+    to reject self-deadlocking waits from an agent action.  It is deliberately
+    thread-local: agents may execute concurrently, while every individual
+    agent still serializes its own action queue.
+    """
+
+    return getattr(_CURRENT_AGENT, "value", None)
 
 
 class Agent(RefBase[T], Generic[T]):
@@ -230,12 +243,20 @@ class Agent(RefBase[T], Generic[T]):
             _, f, args = self._queue.popleft()
             state = self._state
 
+        previous_agent = getattr(_CURRENT_AGENT, "value", _UNSET)
+        _CURRENT_AGENT.value = self
         try:
-            new_state = f(state, *args)
-            self._validate(new_state)
-        except BaseException as exc:  # preserve user action failures on the agent
-            self._handle_failure(exc)
-            return
+            try:
+                new_state = f(state, *args)
+                self._validate(new_state)
+            except BaseException as exc:  # preserve user action failures on the agent
+                self._handle_failure(exc)
+                return
+        finally:
+            if previous_agent is _UNSET:
+                del _CURRENT_AGENT.value
+            else:
+                _CURRENT_AGENT.value = previous_agent
 
         with self._condition:
             old = self._state

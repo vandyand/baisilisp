@@ -15,21 +15,30 @@ iterable objects.
 Agent Compatibility
 -------------------
 
-``agent``, ``send``, ``send-off``, ``send-via``, ``agent-error``, ``await1``,
-and ``await-for`` are available from :lpy:ns:`basilisp.core`. Use
-``basilisp.concurrent/wait`` for synchronous waiting because bare ``await`` is
-reserved for async functions. ``await1`` retains Clojure's behavior of waiting
-for a failed agent to be restarted.
+``agent``, ``send``, ``send-off``, ``send-via``, ``agent-error``, ``await``,
+``await1``, and ``await-for`` are available from :lpy:ns:`basilisp.core`.
+Bare ``await`` remains the Python async special form, so synchronous Clojure
+agent waiting uses the qualified ``clojure.core/await`` or
+``basilisp.core/await`` spelling. ``basilisp.concurrent/wait`` remains a
+clear Python-facing alias for the non-failure-blocking ``await-agent`` helper.
+``await`` and ``await-for`` reject transaction and agent-action contexts;
+they add Clojure-style barrier actions and a settled failed agent rejects that
+dispatch. ``await1`` waits only for pending work and returns its agent, so an
+already failed agent returns immediately.
 
 Executor Ownership
 ------------------
 
 ``send-via`` accepts an application-owned thread executor for one agent action;
 its workers must share the process memory that owns the agent.
-Basilisp intentionally does not implement global executor replacement or
-``shutdown-agents``: Python executors have explicit application ownership, and
-replacing or shutting down shared process-wide executors would make unrelated
-work fail unpredictably.
+``set-agent-send-executor!`` and ``set-agent-send-off-executor!`` replace the
+process-wide executors used by future ``send`` and ``send-off`` calls. Queued
+actions retain the executor selected at dispatch time; the caller owns any
+replacement and prior executors. ``shutdown-agents`` initiates non-blocking
+shutdown of the current global executors, allowing running actions to complete
+while rejecting new ones. ``release-pending-sends`` returns zero: Basilisp
+dispatches ordinary nested sends immediately, while transaction sends remain
+deferred until commit.
 
 Queued Sequences
 ----------------
