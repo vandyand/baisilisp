@@ -282,9 +282,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   text streams; non-seekable streams retain an internal unread suffix between
   calls instead of requiring a JVM ``PushbackReader``.
 * :lpy:ns:`basilisp.data.xml` provides the namespace-aware XML tree, QName,
-  PRXML, and string/writer emit surface from ``clojure.data.xml``. It rejects
-  DTD/entity declarations and does not expose JVM pull-event records or lazy
-  streaming trees.
+  PRXML, string/writer emit, and lazy SAX ``event-seq`` surface from
+  ``clojure.data.xml``. It rejects DTD/entity declarations. Event location
+  metadata and lexical namespace-prefix maps are unavailable on Python's SAX
+  API (``location-info`` is ``nil`` and ``nss`` is empty).
 * :lpy:ns:`basilisp.data.codec.base64` provides the portable
   ``clojure.data.codec.base64`` byte-array API. It accepts Python bytes-like
   values and binary streams in place of JVM byte arrays and streams.

@@ -1,0 +1,23 @@
+(ns basilisp.data.xml.event
+  "Event record compatibility surface for `clojure.data.xml.event`."
+  (:require [basilisp.data.xml :as xml]))
+
+(def StartElementEvent xml/StartElementEvent)
+(def EmptyElementEvent xml/EmptyElementEvent)
+(def CharsEvent xml/CharsEvent)
+(def CDataEvent xml/CDataEvent)
+(def CommentEvent xml/CommentEvent)
+(def QNameEvent xml/QNameEvent)
+(def EndElementEvent xml/EndElementEvent)
+(def end-element-event xml/end-element-event)
+
+(def ->StartElementEvent xml/->StartElementEvent)
+(def ->EmptyElementEvent xml/->EmptyElementEvent)
+(def ->CharsEvent xml/->CharsEvent)
+(def ->CDataEvent xml/->CDataEvent)
+(def ->CommentEvent xml/->CommentEvent)
+(def ->QNameEvent xml/->QNameEvent)
+(def ->EndElementEvent xml/->EndElementEvent)
+(def event-exit? xml/event-exit?)
+(def event-node xml/event-node)
+(def event-element xml/event-element)

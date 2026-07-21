@@ -1,5 +1,5 @@
 (ns basilisp.data.xml
-  "Portable tree-level `clojure.data.xml` compatibility API."
+  "Portable tree and streaming-event `clojure.data.xml` compatibility API."
   (:import [basilisp.data_xml :as backend]))
 
 (defn encode-uri [uri] (backend/encode_uri uri))
@@ -31,6 +31,30 @@
 (defn tagged-element [value]
   (if (map? value) (map->Element value)
       (throw (ex-info "Unsupported element representation" {:element value}))))
+
+;; Event records mirror the public clojure.data.xml.event record names.  They
+;; are Python dataclasses, so their fields are available with normal interop
+;; (for example, ``(.-tag event)`` and ``(.-str event)``).
+(def StartElementEvent backend/StartElementEvent)
+(def EmptyElementEvent backend/EmptyElementEvent)
+(def CharsEvent backend/CharsEvent)
+(def CDataEvent backend/CDataEvent)
+(def CommentEvent backend/CommentEvent)
+(def QNameEvent backend/QNameEvent)
+(def EndElementEvent backend/EndElementEvent)
+(def end-element-event backend/end_element_event)
+
+(defn ->StartElementEvent
+  ([tag attrs nss] (backend/StartElementEvent tag attrs nss))
+  ([tag attrs nss location-info] (backend/StartElementEvent tag attrs nss location-info)))
+(defn ->EmptyElementEvent
+  ([tag attrs nss] (backend/EmptyElementEvent tag attrs nss))
+  ([tag attrs nss location-info] (backend/EmptyElementEvent tag attrs nss location-info)))
+(defn ->CharsEvent [s] (backend/CharsEvent s))
+(defn ->CDataEvent [s] (backend/CDataEvent s))
+(defn ->CommentEvent [s] (backend/CommentEvent s))
+(defn ->QNameEvent [name] (backend/QNameEvent name))
+(defn ->EndElementEvent [] end-element-event)
 
 (declare sexps-as-fragment)
 
@@ -65,6 +89,13 @@
 
 (defn parse [source & {:as opts}] (backend/parse source opts))
 (defn parse-str [source & {:as opts}] (backend/parse source opts))
+(defn event-seq [source & {:as opts}]
+  (iterator-seq (backend/event_seq source opts)))
+(defn event-exit? [event] (backend/event_exit event))
+(defn event-node [event] (backend/event_node event))
+(defn event-element
+  ([event] (backend/event_element event))
+  ([event content] (backend/event_element event content)))
 (defn emit [element writer & {:as opts}] (backend/emit element writer opts))
 (defn emit-str [element & {:as opts}] (backend/emit_str element opts))
 (defn indent [element writer & {:as opts}] (backend/indent element writer opts))

@@ -1,17 +1,23 @@
 basilisp.data.xml
 =================
 
-``basilisp.data.xml`` provides the portable tree-level
+``basilisp.data.xml`` provides the portable tree and event-level
 ``clojure.data.xml`` API through the standard ``clojure.data.xml`` import
 path. ``parse``/``parse-str`` return immutable ``{:tag :attrs :content}``
 element maps, including URI-qualified keyword QNames. ``emit``/``emit-str``
 and their indented counterparts write compatible XML to Python text writers.
 
 DTD and entity declarations are rejected before parsing, and input is bounded
-by ``:max-chars`` (4 MiB by default). The JVM pull-event record and lazy
-stream APIs are not exposed in this tree tranche; Python's ElementTree parser
-does not offer their equivalent event/location contract without a separate
-streaming backend.
+by ``:max-chars`` (4 MiB by default). ``event-seq`` is a lazy SAX-backed event
+stream: it consumes a text reader incrementally and emits the familiar start,
+empty, character, CDATA, comment, and end-element records without realizing a
+tree. ``event-node`` and ``event-element`` convert those records back into the
+tree representation.
+
+Python's SAX API does not provide JVM StAX location metadata or the lexical
+namespace-prefix environment, so event ``location-info`` is ``nil`` and
+``nss`` is an empty map. Processing instructions are safely skipped because
+``clojure.data.xml`` has no corresponding event record.
 
 .. autonamespace:: basilisp.data.xml
    :members:

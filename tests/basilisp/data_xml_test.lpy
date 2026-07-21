@@ -2,6 +2,7 @@
   (:import io)
   (:require [basilisp.test :refer [deftest is]]
             [clojure.data.xml :as xml]
+            [clojure.data.xml.event :as event]
             [clojure.test.check :as tc]
             [clojure.test.check.generators :as gen]
             [clojure.test.check.properties :as prop]))
@@ -54,6 +55,43 @@
     (is (= " shown " (.-content (second (:content tree)))))
     (is (= :child (:tag (last (:content tree)))))))
 
+(deftest event-seq-streams-data-xml-records-and-tree-helpers
+  (let [events (vec (xml/event-seq "<root a='1'>x<empty/><child><![CDATA[y < z]]></child></root>"))
+        [root chars empty child cdata child-exit root-exit] events]
+    (is (= 7 (count events)))
+    (is (instance? xml/StartElementEvent root))
+    (is (instance? event/StartElementEvent root))
+    (is (= :root (.-tag root)))
+    (is (= "1" (get (.-attrs root) :a)))
+    (is (= "x" (.-str chars)))
+    (is (instance? xml/EmptyElementEvent empty))
+    (is (= :empty (.-tag empty)))
+    (is (= :child (.-tag child)))
+    (is (instance? xml/CDataEvent cdata))
+    (is (= "y < z" (.-str cdata)))
+    (is (event/event-exit? child-exit))
+    (is (xml/event-exit? root-exit))
+    (is (= "x" (xml/event-node chars)))
+    (is (= (xml/cdata "y < z") (xml/event-node cdata)))
+    (is (= {:tag :root :attrs {:a "1"}}
+           (xml/event-element root)))))
+
+(deftest event-seq-options-and-security-match-tree-parsing
+  (let [without-comments (vec (xml/event-seq "<root><!-- hidden --></root>"))
+        with-comments (vec (xml/event-seq "<root><!-- shown --></root>"
+                                         :include-node? #{:element :characters :comment}))]
+    ;; A suppressed comment still makes the lexical element non-empty.
+    (is (instance? xml/StartElementEvent (first without-comments)))
+    (is (xml/event-exit? (second without-comments)))
+    (is (instance? xml/CommentEvent (second with-comments)))
+    (is (= " shown " (.-str (second with-comments))))
+    (is (= (xml/xml-comment " shown ") (xml/event-node (second with-comments)))))
+  (is (thrown? python/ValueError
+               (doall (xml/event-seq "<!DOCTYPE root [<!ENTITY bomb 'x'>]><root>&bomb;</root>"))))
+  (is (thrown? python/ValueError (doall (xml/event-seq "<root/>" :max-chars 1))))
+  (is (thrown? python/ValueError (xml/event-node (xml/->EndElementEvent))))
+  (is (thrown? python/ValueError (xml/event-element (xml/->CharsEvent "x")))))
+
 (deftest seeded-tree-roundtrips-never-drop-content-or-attributes
   (let [property
         (prop/for-all [value (gen/vector (gen/choose 0 1000000) 1 8)]
@@ -64,3 +102,17 @@
         result (tc/quick-check 300 property :seed 20260724 :max-size 30)]
     (is (:pass? result))
     (is (= 300 (:num-tests result)))))
+
+(deftest seeded-event-streams-preserve-all-character-content
+  (let [property
+        (prop/for-all [values (gen/vector (gen/choose 0 1000000) 0 10)]
+          (let [source (str "<root>"
+                            (apply str (map #(str "<n>" % "</n>") values))
+                            "</root>")
+                events (vec (xml/event-seq source))
+                chars (mapv #(.-str %)
+                            (filter #(instance? xml/CharsEvent %) events))]
+            (= (mapv str values) chars)))
+        result (tc/quick-check 250 property :seed 20260726 :max-size 20)]
+    (is (:pass? result))
+    (is (= 250 (:num-tests result)))))
