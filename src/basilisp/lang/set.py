@@ -10,6 +10,7 @@ from typing_extensions import Unpack
 
 from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang.equality import unkey as public_key
+from basilisp.lang.hashing import hash_unordered
 from basilisp.lang.interfaces import (
     IEvolveableCollection,
     ILispObject,
@@ -119,7 +120,7 @@ class PersistentSet(
         return len(self) == len(other) and all(member in other for member in self)
 
     def __hash__(self):
-        return hash(frozenset(self._inner.keys()))
+        return hash_unordered(self)
 
     def __iter__(self):
         yield from (public_key(key) for key in self._inner.keys())

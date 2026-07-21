@@ -74,6 +74,12 @@ set members. Use ``==`` for a cross-family numeric comparison. Python has one
 host float type, so it cannot preserve Clojure's additional distinction between
 single-precision ``float`` and double-precision values after coercion.
 
+The corresponding ``hash`` values use Clojure's deterministic signed 32-bit
+algorithms for Basilisp values, including strings, names, numbers, and nested
+persistent collections. Equal Basilisp values therefore keep equal hashes
+across processes instead of inheriting Python's randomized string hashes.
+Python-only objects without a Clojure analogue retain a narrowed host hash.
+
 .. seealso::
 
    :ref:`arithmetic`

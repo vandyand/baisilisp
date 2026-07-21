@@ -47,6 +47,11 @@ the cross-family numeric comparison. Python provides only one host
 additional distinction between a JVM single-precision ``float`` and a
 double-precision value after either crosses the host boundary.
 
+For values in the Basilisp language data model, ``hash`` uses Clojure's
+deterministic signed 32-bit algorithms rather than Python's process-randomized
+object hashes. Python-only objects still use a narrowed host hash because they
+have no portable Clojure hash contract.
+
 .. note::
 
    Basilisp's ``=`` will perform as expected when using Python :external:py:class:`decimal.Decimal` typed :ref:`floating-point numbers <numbers>`.

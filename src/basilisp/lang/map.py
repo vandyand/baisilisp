@@ -12,6 +12,7 @@ from typing_extensions import Unpack
 from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang.equality import numeric_equiv
 from basilisp.lang.equality import unkey as public_key
+from basilisp.lang.hashing import hash_unordered
 from basilisp.lang.interfaces import (
     IEvolveableCollection,
     ILispObject,
@@ -283,7 +284,9 @@ class PersistentMap(
         return self._inner[equivalence_key(item)]
 
     def __hash__(self):
-        return hash(self._inner)
+        return hash_unordered(
+            MapEntry.of(public_key(key), value) for key, value in self._inner.items()
+        )
 
     def __iter__(self):
         return (public_key(key) for key in self._inner)

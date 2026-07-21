@@ -27,6 +27,7 @@ import attr
 from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
 from basilisp.lang import equality
+from basilisp.lang import hashing
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import obj as lobj
@@ -1947,6 +1948,12 @@ def numeric_equals(v1, v2) -> bool:
     """Compare numbers with Clojure ``==`` semantics."""
 
     return equality.numeric_compare(v1, v2)
+
+
+def clojure_hash(value) -> int:
+    """Return Clojure's deterministic signed 32-bit hash for ``value``."""
+
+    return hashing.clojure_hash(value)
 
 
 T_comparable = TypeVar("T_comparable", bound=Comparable)

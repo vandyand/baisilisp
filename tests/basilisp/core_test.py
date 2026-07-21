@@ -16,6 +16,7 @@ from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.exception import ExceptionInfo
+from basilisp.lang.hashing import clojure_hash
 from basilisp.lang.interfaces import IExceptionInfo
 
 
@@ -294,7 +295,7 @@ class TestComparison:
         assert False is core.identical__Q__(object(), object())
 
     def test_hash(self, lisp_value):
-        assert hash(lisp_value) == core.hash_(lisp_value)
+        assert clojure_hash(lisp_value) == core.hash_(lisp_value)
 
 
 class TestIsAny:

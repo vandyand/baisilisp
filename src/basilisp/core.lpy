@@ -910,9 +910,9 @@
   (basilisp.lang.runtime/apply-kw f args))
 
 (defn ^:inline hash
-  "Return the hash code for its argument."
+  "Return Clojure's deterministic signed 32-bit hash for its argument."
   [x]
-  (python/hash x))
+  (basilisp.lang.runtime/clojure-hash x))
 
 (defn ^:inline identical?
   "Return ``true`` if ``x`` and ``y`` are the same object, otherwise ``false``\\."

@@ -24,7 +24,6 @@ from typing_extensions import Self, Unpack
 
 # pylint: disable=import-error,no-name-in-module
 from basilisp._lang.seq import SeqIterator as _SeqIterator
-from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang.equality import numeric_equiv
 from basilisp.lang.obj import LispObject as _LispObject
 from basilisp.lang.obj import PrintSettings, seq_lrepr
@@ -737,14 +736,13 @@ def seq_equals(s1: Union["ISeq", ISequential], s2: Any) -> bool:
 
 
 def seq_hash(s: Iterable[Any]) -> int:
-    """Return the shared hash for finite sequential collections.
+    """Return Clojure's ordered hash for a sequential collection."""
+    # Import lazily because ``hashing`` dispatches through the interfaces in
+    # this module.  The Clojure hash is also the Python hash for persistent
+    # sequential values, preserving the equal-values/equal-hashes invariant.
+    from basilisp.lang.hashing import hash_ordered
 
-    Basilisp lists, vectors, queues, and seqs compare by their ordered values,
-    so equal instances must also hash identically when used as map keys or set
-    members. Python's backing persistent collection hashes are type-specific;
-    normalize through a tuple instead.
-    """
-    return hash(tuple(equivalence_key(value) for value in s))
+    return hash_ordered(s)
 
 
 T_inner = TypeVar("T_inner")
