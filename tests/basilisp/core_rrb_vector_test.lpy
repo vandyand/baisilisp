@@ -1,0 +1,32 @@
+(ns tests.basilisp.core-rrb-vector-test
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.core.rrb-vector :as rrb]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]))
+
+(deftest public-vector-constructors-and-boundaries
+  (is (= [] (rrb/vector)))
+  (is (= [1 2 3] (rrb/vector 1 2 3)))
+  (is (= [1 2 3] (rrb/vec '(1 2 3))))
+  (is (= [1 2 3 4] (rrb/catvec [1] [2 3] [4])))
+  (is (= [2 3] (rrb/subvec [1 2 3 4] 1 3)))
+  (is (= [3 4] (rrb/subvec [1 2 3 4] 2)))
+  (is (= [1 2] (rrb/vector-of :int 1 2)))
+  (is (thrown? Exception (rrb/catvec [1] '(2))))
+  (is (thrown? Exception (rrb/subvec '(1 2) 0 1)))
+  (is (thrown? Exception (rrb/subvec [1] 2))))
+
+(deftest concatenation-and-slicing-match-vector-model-under-fuzzing
+  (let [property
+        (prop/for-all [left (gen/vector (gen/choose -10000 10000) 0 16)
+                       right (gen/vector (gen/choose -10000 10000) 0 16)]
+          (let [joined (rrb/catvec left right)
+                start (if (zero? (count joined)) 0 (mod (count left) (inc (count joined))))
+                end (count joined)]
+            (and (= (into left right) joined)
+                 (= (basilisp.core/vec (drop start joined))
+                    (rrb/subvec joined start end)))))
+        result (tc/quick-check 250 property :seed 20260725 :max-size 24)]
+    (is (:pass? result))
+    (is (= 250 (:num-tests result)))))

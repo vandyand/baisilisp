@@ -1,0 +1,35 @@
+(ns basilisp.core.rrb-vector
+  "Portable `clojure.core.rrb-vector` collection API.
+
+  Basilisp vectors already have immutable value semantics. This namespace
+  supplies the RRB-vector public operations with correctness-first persistent
+  vectors; Python does not expose the JVM's specialized RRB node layout or
+  primitive unboxing representation.
+  "
+  (:refer-basilisp :exclude [subvec vec vector vector-of]))
+
+(defn- require-vector [value]
+  (when-not (vector? value)
+    (throw (python/TypeError (str "Expected vector; got " (type value))))))
+
+(defn catvec
+  ([] [])
+  ([vector] (do (require-vector vector) vector))
+  ([left right]
+   (require-vector left)
+   (require-vector right)
+   (into left right))
+  ([left right & vectors]
+   (reduce catvec (catvec left right) vectors)))
+
+(defn subvec
+  ([vector start] (subvec vector start (count vector)))
+  ([vector start end]
+   (require-vector vector)
+   ;; `basilisp.core/subvec` already validates bounds; wrapping in `vec`
+   ;; guarantees an independent persistent vector rather than a view.
+   (basilisp.core/vec (basilisp.core/subvec vector start end))))
+
+(defn vector [& values] (basilisp.core/vec values))
+(defn vec [coll] (basilisp.core/vec coll))
+(defn vector-of [type & values] (apply basilisp.core/vector-of type values))

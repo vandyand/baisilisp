@@ -292,6 +292,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``clojure.data.priority-map`` map/priority-queue contract. Its implementation
   orders entries on demand rather than exposing a JVM sorted-map representation.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
+* :lpy:ns:`basilisp.core.rrb-vector` provides the public
+  ``clojure.core.rrb-vector`` constructors, concatenation, and non-view
+  slicing operations over ordinary persistent Basilisp vectors. It does not
+  claim the JVM's specialized RRB storage or primitive unboxing layout.
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``repl``/``io-prepl``/``remote-prepl`` support through the
   ``clojure.core.server`` import path. Its generic listener uses Python text
