@@ -3097,7 +3097,8 @@
   collection, you can call :lpy:fn:`persistent!` to return a persistent version of that
   data structure."
   [coll]
-  (if (instance? basilisp.lang.interfaces/IEvolveableCollection coll)
+  (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection coll)
+           (not (instance? basilisp.lang.map/PersistentStructMap coll)))
     (.to-transient coll)
     (throw
      (ex-info (str "Object of type " (type coll) " does not implement "
@@ -4116,7 +4117,7 @@
 (defn create-struct
   "Return a structure basis containing ``keys`` in declaration order."
   [& keys]
-  (vec keys))
+  (basilisp.lang.map/struct-definition keys))
 
 (defmacro defstruct
   "Define ``name`` as a structure basis created from ``keys``."
@@ -4124,18 +4125,23 @@
   `(def ~name (create-struct ~@keys)))
 
 (defn struct
-  "Return a map with the keys from structure basis ``s`` and positional values.
+  "Return a struct map with the keys from structure basis ``s`` and positional values.
 
   Omitted values default to ``nil``."
   [s & vals]
-  (when (> (count vals) (count s))
-    (throw (python/ValueError "Too many values supplied for structure basis")))
-  (zipmap s (concat vals (repeat nil))))
+  (apply basilisp.lang.map/struct s vals))
 
 (defn struct-map
   "Return a map initialized from structure basis ``s`` and key-value pairs."
   [s & inits]
-  (apply assoc (apply struct s []) inits))
+  (apply basilisp.lang.map/struct-map s inits))
+
+(defn accessor
+  "Return a fixed-slot accessor for ``key`` in structure basis ``s``.
+
+  The returned function only accepts struct maps created from the same basis."
+  [s key]
+  (basilisp.lang.map/accessor s key))
 
 (defn merge
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a duplicate key
@@ -9102,12 +9108,14 @@
             ;; collection through one would silently return an unordered map
             ;; or set. Clojure's `into` preserves the target's sorted type.
             (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.map/PersistentStructMap to))
             (not (instance? basilisp.lang.set/PersistentSortedSet to)))
      (with-meta (persistent! (reduce conj! (transient to) from)) (meta to))
      (reduce conj to from)))
   ([to xform from]
    (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection to)
             (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.map/PersistentStructMap to))
             (not (instance? basilisp.lang.set/PersistentSortedSet to)))
      (with-meta (persistent! (transduce xform conj! (transient to) from)) (meta to))
      (transduce xform conj to from))))

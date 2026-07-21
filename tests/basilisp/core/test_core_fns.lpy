@@ -48,12 +48,25 @@
 
 (deftest struct-test
   (let [basis (create-struct :a :b)]
-    (is (= [:a :b] basis))
+    (is (not (vector? basis)))
     (is (= {:a nil :b nil} (struct basis)))
     (is (= {:a 1 :b nil} (struct basis 1)))
     (is (= {:a nil :b 2 :c 3} (struct-map basis :b 2 :c 3)))
     (is (= {:a 1 :b 2} (struct parity-struct 1 2)))
-    (is (thrown? python/ValueError (struct basis 1 2 3)))))
+    (is (thrown? python/ValueError (struct basis 1 2 3)))
+    (let [value  (struct-map basis :a 1 :b 2)
+          get-a  (accessor basis :a)
+          other  (create-struct :a :b)]
+      (is (= 1 (get-a value)))
+      (is (= {:a 1 :b 2 :extra 3} (assoc value :extra 3)))
+      (is (= value (dissoc (assoc value :extra 3) :extra)))
+      (is (= 1 (get-a (into value {:extra 3}))))
+      (is (thrown? basilisp.lang.exception/ExceptionInfo (transient value)))
+      (is (nil? (meta (empty (with-meta value {:struct :meta})))))
+      (is (thrown? python/RuntimeError (dissoc value :a)))
+      (is (thrown? python/RuntimeError (get-a {:a 1 :b 2})))
+      (is (thrown? python/RuntimeError (get-a (struct other 1 2))))
+      (is (thrown? python/ValueError (accessor basis :missing))))))
 
 (deftest bound-test
   (let [unbound (intern *ns* 'parity-unbound)]

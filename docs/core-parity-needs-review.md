@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 42 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (637 shared Vars and 59 Basilisp
+This document classifies the 41 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (638 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -17,6 +17,7 @@ one of those names.
 The following symbols are now implemented and no longer appear as gaps:
 
 `alias`, `array-map`, `bound?`, `comparator`, `create-struct`, `defstruct`,
+`accessor`,
 `agent`, `agent-error`, `agent-errors`, `await-for`, `clear-agent-errors`, `error-handler`,
 `error-mode`, `find-protocol-impl`, `find-protocol-method`, `line-seq`,
 `io!`, `list*`, `locking`, `hash-combine`, `hash-ordered-coll`, `hash-unordered-coll`,
@@ -63,6 +64,9 @@ and true renders the full map form, including extension entries.
 ``*suppress-read*`` now preserves every tagged literal as data while bound,
 including otherwise built-in tags; ordinary reads still resolve registered tags
 and reject unknown ones.
+``create-struct`` now creates an identity-bearing fixed-key basis. ``struct``
+and ``struct-map`` retain those fixed keys while allowing removable extension
+keys, and ``accessor`` accepts only values built from its exact basis.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -90,7 +94,7 @@ compatibility promise would be false.
 ### Clojure and JVM implementation internals
 
 `->ArrayChunk`, `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`,
-`-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `accessor`, `chunk`, `chunk-append`, `chunk-buffer`,
+`-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `chunk`, `chunk-append`, `chunk-buffer`,
 `chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
 `primitives-classnames`, `print-ctor`, `print-simple`, `proxy-call-with-super`, `proxy-name`,
 `seq-to-map-for-destructuring`.

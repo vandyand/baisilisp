@@ -83,7 +83,7 @@ PrintWriter-on,true,false,missing-in-basilisp
 StackTraceElement->vec,true,true,shared
 Throwable->map,true,true,shared
 abs,true,true,shared
-accessor,true,false,missing-in-basilisp
+accessor,true,true,shared
 aclone,true,true,shared
 add-classpath,true,false,missing-in-basilisp
 add-tap,true,true,shared

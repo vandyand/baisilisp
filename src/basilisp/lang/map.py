@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import functools
 import numbers
 from builtins import map as pymap
@@ -408,6 +410,181 @@ class PersistentMap(
         return init
 
 
+class StructDefinition:
+    """The fixed-key definition produced by Clojure-compatible ``create-struct``.
+
+    A structure definition is intentionally not a collection. It owns the identity
+    used by accessors and the declared key order used by its struct maps.
+    """
+
+    __slots__ = ("_keys", "_storage_keys")
+
+    def __init__(self, keys: Iterable[K]) -> None:
+        self._keys = tuple(keys)
+        self._storage_keys = tuple(equivalence_key(key) for key in self._keys)
+        if len(set(self._storage_keys)) != len(self._storage_keys):
+            raise ValueError("Struct keys must be unique")
+
+    @property
+    def keys(self) -> tuple[K, ...]:
+        return self._keys
+
+    @property
+    def storage_keys(self):
+        """Normalized keys used internally for persistent-map storage."""
+
+        return self._storage_keys
+
+    def contains_key(self, key: K) -> bool:
+        return equivalence_key(key) in self._storage_keys
+
+
+class PersistentStructMap(PersistentMap[K, V]):
+    """An immutable map with fixed struct keys and optional extension keys."""
+
+    __slots__ = ("_definition",)
+
+    def __init__(
+        self,
+        definition: StructDefinition,
+        m: "_Map[K, V]" | Mapping[K, V] | Iterable[tuple[K, V]],
+        meta: IPersistentMap | None = None,
+    ) -> None:
+        if not isinstance(definition, StructDefinition):
+            raise TypeError("Struct maps require a StructDefinition")
+        inner = (
+            m
+            if isinstance(m, _Map)
+            else _Map(
+                (equivalence_key(key), value)
+                for key, value in (m.items() if isinstance(m, Mapping) else m)
+            )
+        )
+        with inner.mutate() as mutable:
+            for key in definition.keys:
+                storage_key = equivalence_key(key)
+                if storage_key not in mutable:
+                    mutable[storage_key] = None
+            inner = mutable.finish()
+        super().__init__(inner, meta=meta)
+        self._definition = definition
+
+    @property
+    def definition(self) -> StructDefinition:
+        return self._definition
+
+    def _ordered_storage_keys(self):
+        yielded = set()
+        for storage_key in self._definition.storage_keys:
+            yielded.add(storage_key)
+            yield storage_key
+        for storage_key in self._inner:
+            if storage_key not in yielded:
+                yield storage_key
+
+    def _ordered_items(self):
+        for storage_key in self._ordered_storage_keys():
+            yield public_key(storage_key), self._inner[storage_key]
+
+    def __iter__(self):
+        return (key for key, _ in self._ordered_items())
+
+    def _lrepr(self, **kwargs: Unpack[PrintSettings]):
+        return map_lrepr(
+            self._ordered_items,
+            start="{",
+            end="}",
+            meta=self._meta,
+            **kwargs,
+        )
+
+    def _new(self, m: "_Map[K, V]", meta: IPersistentMap | None = None):
+        return PersistentStructMap(
+            self._definition, m, meta=self._meta if meta is None else meta
+        )
+
+    def with_meta(self, meta: IPersistentMap | None):
+        return PersistentStructMap(self._definition, self._inner, meta=meta)
+
+    def assoc(self, *kvs):
+        with self._inner.mutate() as mutable:
+            for key, value in partition(kvs, 2):
+                mutable[equivalence_key(key)] = value
+            return self._new(mutable.finish())
+
+    def dissoc(self, *ks):
+        with self._inner.mutate() as mutable:
+            for key in ks:
+                if self._definition.contains_key(key):
+                    raise RuntimeError("Can't remove struct key")
+                try:
+                    del mutable[equivalence_key(key)]
+                except KeyError:
+                    pass
+            return self._new(mutable.finish())
+
+    def cons(self, *elems):
+        result = self
+        try:
+            for elem in elems:
+                if isinstance(elem, (IPersistentMap, Mapping)):
+                    result = result.assoc(
+                        *tuple(item for pair in elem.items() for item in pair)
+                    )
+                elif isinstance(elem, IMapEntry):
+                    result = result.assoc(elem.key, elem.value)
+                elif elem is not None:
+                    entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
+                    result = result.assoc(entry.key, entry.value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Argument to map conj must be another Map or castable to MapEntry"
+            ) from exc
+        return result
+
+    def empty(self):
+        return PersistentStructMap(self._definition, _Map())
+
+    def to_transient(self):
+        raise TypeError("Struct maps do not support transient operations")
+
+    def seq(self) -> ISeq[IMapEntry[K, V]] | None:
+        if len(self._inner) == 0:
+            return None
+        return iterator_sequence(
+            MapEntry.of(key, value) for key, value in self._ordered_items()
+        )
+
+    def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
+        for key, value in self._ordered_items():
+            init = f(init, key, value)
+            if isinstance(init, Reduced):
+                return init.deref()
+        return init
+
+
+class StructAccessor:
+    """A fixed-slot accessor for one :class:`PersistentStructMap` definition."""
+
+    __slots__ = ("_definition", "_key")
+
+    def __init__(self, definition: StructDefinition, key: K) -> None:
+        if not isinstance(definition, StructDefinition):
+            raise TypeError("accessor requires a StructDefinition")
+        if not definition.contains_key(key):
+            raise ValueError("Not a key of struct")
+        self._definition = definition
+        self._key = key
+
+    def __call__(self, struct_map: PersistentStructMap[K, V]) -> V | None:
+        if (
+            not isinstance(struct_map, PersistentStructMap)
+            or struct_map.definition is not self._definition
+        ):
+            raise RuntimeError("Accessor/struct mismatch")
+        return struct_map.val_at(self._key)
+
+
 def _comparator_fn(comparator: Callable[[K, K], int | bool]):
     """Normalize Basilisp boolean and three-way comparator functions."""
 
@@ -547,6 +724,36 @@ def map(  # pylint:disable=redefined-builtin
     return PersistentMap.from_coll(
         kvs.items() if isinstance(kvs, Mapping) else kvs, meta=meta
     )
+
+
+def struct_definition(keys: Iterable[K]) -> StructDefinition:
+    """Create a fixed-key structure definition in declaration order."""
+
+    return StructDefinition(keys)
+
+
+def struct(definition: StructDefinition, *values: V) -> PersistentStructMap[K, V]:
+    """Create a struct map from positional values, defaulting omitted keys to nil."""
+
+    if not isinstance(definition, StructDefinition):
+        raise TypeError("struct requires a StructDefinition")
+    if len(values) > len(definition.keys):
+        raise ValueError("Too many values supplied for structure basis")
+    return PersistentStructMap(definition, zip(definition.keys, values))
+
+
+def struct_map(definition: StructDefinition, *inits) -> PersistentStructMap[K, V]:
+    """Create a struct map and associate the supplied key-value pairs."""
+
+    if len(inits) % 2:
+        raise ValueError("No value supplied for struct-map key")
+    return struct(definition).assoc(*inits)
+
+
+def accessor(definition: StructDefinition, key: K) -> StructAccessor[K, V]:
+    """Return a fixed-slot accessor for ``key`` in ``definition``."""
+
+    return StructAccessor(definition, key)
 
 
 def sorted_map(
