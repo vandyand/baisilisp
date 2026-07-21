@@ -1,0 +1,56 @@
+(ns tests.basilisp.spec-surface-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.spec.alpha :as s]
+            [clojure.spec.gen.alpha :as sgen]
+            [clojure.test.check.generators :as gen]))
+
+(def id-key :tests.spec-surface/id)
+(def title-key :tests.spec-surface/title)
+(def profile-key :tests.spec-surface/profile)
+
+(s/def id-key (s/with-gen (s/and int? pos?) #(sgen/choose 1 1000000)))
+(s/def title-key string?)
+(s/def profile-key (s/keys :req [id-key title-key]))
+
+(deftest first-class-specs-conformers-and-nonconforming-wrappers
+  (let [plain (s/spec int?)
+        parsed (s/conformer #(if (string? %) (int %) s/invalid) str)
+        raw-parsed (s/nonconforming parsed)]
+    (is (s/spec? plain))
+    (is (not (s/regex? plain)))
+    (is (s/regex? (s/cat :x int?)))
+    (is (= 42 (s/conform plain 42)))
+    (is (= 42 (s/conform parsed "42")))
+    (is (= "42" (s/unform parsed 42)))
+    (is (= "42" (s/conform raw-parsed "42")))
+    (is (s/invalid? (s/conform parsed "not-a-number")))
+    (is (thrown? Exception (sgen/generate (s/gen parsed) 10 7))))
+  (let [generated (s/spec int? :gen #(sgen/return 9))]
+    (is (= 9 (sgen/generate (s/gen generated) 10 8)))))
+
+(deftest merge-every-and-every-kv-compose-and-generate-valid-values
+  (let [with-id (s/keys :req [id-key])
+        with-title (s/keys :req [title-key])
+        profile (s/merge with-id with-title)
+        every-title (s/every string? :kind list? :min-count 2 :max-count 6)
+        attributes (s/every-kv keyword? (s/nilable int?))]
+    (is (s/valid? profile {id-key 4 title-key "Ada"}))
+    (is (not (s/valid? profile {id-key 4})))
+    (is (every? #(s/valid? profile %)
+                (map #(sgen/generate (s/gen profile) 12 %) (range 160))))
+    (is (every? #(s/valid? every-title %)
+                (map #(sgen/generate (s/gen every-title) 15 %) (range 160))))
+    (is (every? #(s/valid? attributes %)
+                (map #(sgen/generate (s/gen attributes) 12 %) (range 160))))))
+
+(deftest forms-and-diagnostics-are-useful-and-stable
+  (let [spec (s/and int? pos?)
+        description (s/describe spec)
+        details (s/explain-data spec -1)
+        message (s/explain-str spec -1)]
+    (is (= 'and (first description)))
+    (is (= 3 (count description)))
+    (is (seq (:basilisp.spec.alpha/problems details)))
+    (is (string? message))
+    (is (not (empty? message)))
+    (is (nil? (s/explain-data spec 7)))))

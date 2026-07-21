@@ -3,16 +3,19 @@
 from __future__ import annotations
 
 import functools
+import io
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
 from basilisp.lang import keyword as kw
+from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
+from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.exception import ExceptionInfo
-from basilisp.lang.interfaces import IPersistentMap, IPersistentSet
+from basilisp.lang.interfaces import IPersistentMap, IPersistentSet, ISequential
 from basilisp.lang.runtime import Var
 from basilisp.lang.util import munge
 
@@ -57,6 +60,27 @@ class _FSpec(_Spec):
 class _WithGen(_Spec):
     spec: Any
     generator: Any
+
+
+@dataclass(frozen=True)
+class _PredicateSpec(_Spec):
+    predicate: Any
+
+
+@dataclass(frozen=True)
+class _Conformer(_Spec):
+    conformer: Callable[[Any], Any]
+    unformer: Callable[[Any], Any] | None = None
+
+
+@dataclass(frozen=True)
+class _Nonconforming(_Spec):
+    spec: Any
+
+
+@dataclass(frozen=True)
+class _Merge(_Spec):
+    specs: tuple[Any, ...]
 
 
 @dataclass(frozen=True)
@@ -170,6 +194,78 @@ def with_gen(spec: Any, generator: Any) -> _WithGen:
     API without making validation itself depend on either generator engine.
     """
     return _WithGen(spec, generator)
+
+
+def spec(predicate: Any, generator: Any | None = None) -> _Spec:
+    """Create a first-class spec from a predicate or existing descriptor.
+
+    Raw predicates remain valid specs throughout Basilisp; this constructor is
+    useful when a library specifically needs a spec value (for ``spec?`` or a
+    supplied generator) rather than relying on that implicit coercion.
+    """
+    descriptor: Any = (
+        predicate if isinstance(predicate, _Spec) else _PredicateSpec(predicate)
+    )
+    return descriptor if generator is None else _WithGen(descriptor, generator)
+
+
+def spec_q(value: Any) -> Any | None:
+    """Return a first-class spec value, or ``None`` when ``value`` is not one."""
+    return value if isinstance(value, _Spec) and not isinstance(value, _Regex) else None
+
+
+def regex_q(value: Any) -> Any | None:
+    """Return a regex spec value, or ``None`` when ``value`` is not one."""
+    return value if isinstance(value, _Regex) else None
+
+
+def invalid_q(value: Any) -> bool:
+    return value is INVALID
+
+
+def conformer(
+    conform_fn: Callable[[Any], Any], unform_fn: Callable[[Any], Any] | None = None
+) -> _Conformer:
+    if not callable(conform_fn):
+        raise TypeError("conformer requires a callable conform function")
+    if unform_fn is not None and not callable(unform_fn):
+        raise TypeError("conformer unform function must be callable")
+    return _Conformer(conform_fn, unform_fn)
+
+
+def nonconforming(spec_: Any) -> _Nonconforming:
+    return _Nonconforming(spec_)
+
+
+def merge_(*specs: Any) -> _Merge:
+    if not specs:
+        raise ValueError("merge requires at least one map spec")
+    return _Merge(tuple(specs))
+
+
+def every(
+    spec_: Any,
+    *,
+    kind: Any | None = None,
+    count: int | None = None,
+    min_count: int | None = None,
+    max_count: int | None = None,
+    distinct: bool = False,
+) -> _CollOf:
+    """Portable ``s/every`` using the same collection semantics as ``coll-of``."""
+    return coll_of(
+        spec_,
+        kind=kind,
+        count=count,
+        min_count=min_count,
+        max_count=max_count,
+        distinct=distinct,
+    )
+
+
+def every_kv(key_spec: Any, value_spec: Any) -> _MapOf:
+    """Portable ``s/every-kv`` alias for a map-of descriptor."""
+    return map_of(key_spec, value_spec)
 
 
 def fdef(
@@ -346,6 +442,16 @@ def _strategy_for_value(spec: Any) -> Any:
     strategies = _hypothesis_strategies()
     if isinstance(spec, _WithGen):
         return _resolve_strategy(spec.generator)
+    if isinstance(spec, _PredicateSpec):
+        return _strategy_for_value(spec.predicate)
+    if isinstance(spec, _Nonconforming):
+        return _strategy_for_value(spec.spec)
+    if isinstance(spec, _Merge):
+        return strategies.tuples(
+            *(_strategy_for_value(child) for child in spec.specs)
+        ).map(_merge_maps)
+    if isinstance(spec, _Conformer):
+        raise TypeError("cannot generate values for conformer; wrap it with with-gen")
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:
@@ -438,6 +544,15 @@ def _flatten_generated_values(values: Iterable[Any]) -> tuple[Any, ...]:
     for value in values:
         flattened.extend(value)
     return tuple(flattened)
+
+
+def _merge_maps(values: Iterable[Any]) -> IPersistentMap:
+    result: dict[Any, Any] = {}
+    for value in values:
+        if not _mapping(value):
+            raise TypeError("merge specs must conform to maps")
+        result.update(value)
+    return lmap.map(result)
 
 
 # ``s/gen`` uses Basilisp's portable test.check implementation, rather than
@@ -542,6 +657,22 @@ def _generator_for_value(
         return overridden
     if isinstance(spec, _WithGen):
         return _resolve_test_check_generator(spec.generator)
+    if isinstance(spec, _PredicateSpec):
+        return _generator_for_value(spec.predicate, overrides, path, seen)
+    if isinstance(spec, _Nonconforming):
+        return _generator_for_value(spec.spec, overrides, path, seen)
+    if isinstance(spec, _Merge):
+        return impl.fmap(
+            _merge_maps,
+            impl.tuple_gen(
+                *(
+                    _generator_for_value(child, overrides, path, seen)
+                    for child in spec.specs
+                )
+            ),
+        )
+    if isinstance(spec, _Conformer):
+        raise TypeError("cannot generate values for conformer; wrap it with with-gen")
     if isinstance(spec, kw.Keyword):
         if spec in seen:
             raise TypeError(
@@ -617,7 +748,7 @@ def _collection_generator_for_kind(generator: Any, kind: Any | None) -> Any:
     if kind in (None, vec.PersistentVector) or _callable_name(kind) == "vector__Q__":
         return generator
     if kind is list or _callable_name(kind) == "list__Q__":
-        return impl.fmap(list, generator)
+        return impl.fmap(llist.list, generator)
     if kind is tuple or _callable_name(kind) == "tuple__Q__":
         return impl.fmap(tuple, generator)
     raise TypeError("cannot generate values for coll-of with an arbitrary :kind")
@@ -987,6 +1118,14 @@ def unform(spec: Any, value: Any) -> Any:
         return vec.v(*_unform_regex(spec, value))
     if isinstance(spec, _WithGen):
         return unform(spec.spec, value)
+    if isinstance(spec, _PredicateSpec):
+        return unform(spec.predicate, value)
+    if isinstance(spec, _Conformer):
+        return value if spec.unformer is None else spec.unformer(value)
+    if isinstance(spec, _Nonconforming):
+        return value
+    if isinstance(spec, _Merge):
+        return _merge_maps(unform(child, value) for child in reversed(spec.specs))
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         return value if resolved is None else unform(resolved, value)
@@ -1003,6 +1142,91 @@ def explain_data(spec: Any, value: Any) -> IPersistentMap | None:
     if _conform(spec, value, (), (), (), problems) is not INVALID:
         return None
     return lmap.map({_PROBLEMS: vec.v(*problems)})
+
+
+def form(spec_: Any) -> Any:
+    """Return a data representation of a portable spec descriptor."""
+    if isinstance(spec_, _WithGen):
+        return form(spec_.spec)
+    if isinstance(spec_, _PredicateSpec):
+        return form(spec_.predicate)
+    if isinstance(spec_, _Conformer):
+        values = [sym.symbol("conformer"), spec_.conformer]
+        if spec_.unformer is not None:
+            values.append(spec_.unformer)
+        return llist.l(*values)
+    if isinstance(spec_, _Nonconforming):
+        return llist.l(sym.symbol("nonconforming"), form(spec_.spec))
+    if isinstance(spec_, _Merge):
+        return llist.l(sym.symbol("merge"), *(form(child) for child in spec_.specs))
+    if isinstance(spec_, _And):
+        return llist.l(sym.symbol("and"), *(form(child) for child in spec_.specs))
+    if isinstance(spec_, _Or):
+        return llist.l(
+            sym.symbol("or"),
+            *(item for tag, child in spec_.branches for item in (tag, form(child))),
+        )
+    if isinstance(spec_, _Nilable):
+        return llist.l(sym.symbol("nilable"), form(spec_.spec))
+    if isinstance(spec_, _CollOf):
+        return llist.l(sym.symbol("coll-of"), form(spec_.spec))
+    if isinstance(spec_, _MapOf):
+        return llist.l(
+            sym.symbol("map-of"), form(spec_.key_spec), form(spec_.value_spec)
+        )
+    if isinstance(spec_, _Keys):
+        return llist.l(sym.symbol("keys"))
+    if isinstance(spec_, _Tuple):
+        return llist.l(sym.symbol("tuple"), *(form(child) for child in spec_.specs))
+    return spec_
+
+
+def describe(spec_: Any) -> Any:
+    """Return a compact data description of a portable spec descriptor."""
+    return form(spec_)
+
+
+def explain_printer(data: IPersistentMap | None, writer: Any = None) -> None:
+    """Print a concise, host-portable explanation for ``explain-data`` output."""
+    stream = writer if writer is not None else None
+
+    def emit(message: str) -> None:
+        if stream is None:
+            print(message)
+        else:
+            stream.write(message + "\n")
+
+    if data is None:
+        emit("Success!")
+        return
+    for problem in data.val_at(_PROBLEMS, vec.EMPTY):
+        value = problem.val_at(_VAL)
+        predicate = problem.val_at(_PRED)
+        message = f"{value!r} - failed: {predicate!r}"
+        location = problem.val_at(_IN, vec.EMPTY)
+        path = problem.val_at(_PATH, vec.EMPTY)
+        via = problem.val_at(_VIA, vec.EMPTY)
+        if len(location):
+            message += f" in: {location!r}"
+        if len(path):
+            message += f" at: {path!r}"
+        if len(via):
+            message += f" spec: {via[len(via) - 1]!r}"
+        emit(message)
+
+
+def explain_out(data: IPersistentMap | None) -> None:
+    explain_printer(data)
+
+
+def explain(spec_: Any, value: Any) -> None:
+    explain_out(explain_data(spec_, value))
+
+
+def explain_str(spec_: Any, value: Any) -> str:
+    output = io.StringIO()
+    explain_printer(explain_data(spec_, value), output)
+    return output.getvalue()
 
 
 def and_(*specs: Any) -> _And:
@@ -1098,6 +1322,31 @@ def _conform(
         )
     if isinstance(spec, _WithGen):
         return _conform(spec.spec, value, path, via, location, problems)
+    if isinstance(spec, _PredicateSpec):
+        return _conform(spec.predicate, value, path, via, location, problems)
+    if isinstance(spec, _Conformer):
+        try:
+            conformed = spec.conformer(value)
+        except BaseException:
+            conformed = INVALID
+        return (
+            conformed
+            if conformed is not INVALID
+            else _invalid(spec, value, path, via, location, problems)
+        )
+    if isinstance(spec, _Nonconforming):
+        conformed = _conform(spec.spec, value, path, via, location, problems)
+        return INVALID if conformed is INVALID else value
+    if isinstance(spec, _Merge):
+        conformed: list[Any] = []
+        for child in spec.specs:
+            result = _conform(child, value, path, via, location, problems)
+            if result is INVALID:
+                return INVALID
+            if not _mapping(result):
+                return _invalid(spec, value, path, via, location, problems)
+            conformed.append(result)
+        return _merge_maps(conformed)
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:
@@ -1389,7 +1638,9 @@ def _mapping(value: Any) -> bool:
 
 
 def _sequence(value: Any) -> bool:
-    return isinstance(value, Sequence) and not isinstance(value, (bytes, str))
+    return isinstance(value, (Sequence, ISequential)) and not isinstance(
+        value, (bytes, str)
+    )
 
 
 def _regex_sequence(value: Any) -> bool:

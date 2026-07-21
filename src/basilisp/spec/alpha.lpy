@@ -1,11 +1,31 @@
 (ns basilisp.spec.alpha
   "Portable value validation and conforming inspired by clojure.spec.alpha."
-  (:refer-basilisp :exclude [* + ? & alt cat])
+  (:refer-basilisp :exclude [* + ? & alt cat merge])
   (:import basilisp.lang.spec))
 
 (def invalid basilisp.lang.spec/INVALID)
 
 (defn def [key spec] (basilisp.lang.spec/define key spec))
+(defn spec
+  "Create a first-class spec descriptor from ``predicate``."
+  ([predicate] (basilisp.lang.spec/spec predicate))
+  ([predicate & {:keys [gen]}] (basilisp.lang.spec/spec predicate gen)))
+(defn spec? [value] (basilisp.lang.spec/spec-q value))
+(defn regex? [value] (basilisp.lang.spec/regex-q value))
+(defn invalid? [value] (basilisp.lang.spec/invalid-q value))
+(defn conformer
+  ([conform-fn] (basilisp.lang.spec/conformer conform-fn))
+  ([conform-fn unform-fn] (basilisp.lang.spec/conformer conform-fn unform-fn)))
+(defn nonconforming [spec] (basilisp.lang.spec/nonconforming spec))
+(defn merge [& specs] (apply basilisp.lang.spec/merge- specs))
+(defn every [spec & {:keys [kind count min-count max-count distinct]}]
+  (basilisp.lang.spec/every spec ** :kind kind :count count :min-count min-count :max-count max-count :distinct (boolean distinct)))
+(defn every-kv [key-spec value-spec] (basilisp.lang.spec/every-kv key-spec value-spec))
+(defn form [spec] (basilisp.lang.spec/form spec))
+(defn describe [spec] (basilisp.lang.spec/describe spec))
+(defn explain [spec value] (basilisp.lang.spec/explain spec value))
+(defn explain-str [spec value] (basilisp.lang.spec/explain-str spec value))
+(defn explain-out [data] (basilisp.lang.spec/explain-out data))
 (defn get-spec [key] (basilisp.lang.spec/get-spec key))
 (defn get-fspec [target] (basilisp.lang.spec/get-fspec target))
 (defn fspec [& {:keys [args ret fn]}]
