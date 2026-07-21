@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 49 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (630 shared Vars and 59 Basilisp
+This document classifies the 48 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (631 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -52,6 +52,8 @@ spelling.
 action, and remains ``nil`` outside one.
 ``definline`` now defines Clojure-compatible callable functions and inline
 expansions together, using Basilisp's existing compiler inlining controls.
+``*repl*`` is now true while CLI, socket, and session-backed interactive REPLs
+evaluate a form, and false outside that context.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -67,7 +69,7 @@ deferrals.
 
 `*allow-unresolved-vars*`, `*compile-files*`,
 `*compile-path*`, `*fn-loader*`,
-`*repl*`, `*source-path*`, `*suppress-read*`,
+`*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `gen-class`,
 `method-sig`, and `with-loading-context`.

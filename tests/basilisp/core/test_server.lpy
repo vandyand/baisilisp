@@ -123,8 +123,9 @@
         s    (server/start-server {:port 0 :name name :accept server/repl})]
     (try
       (let [response (repl-request (server-port s)
-                                   "(+ 20 22)\n(+ *1 1)\n(/ 1 0)\n(+ 6 1)\n:repl/quit\n(+ 100 1)\n")]
+                                   "*repl*\n(+ 20 22)\n(+ *1 1)\n(/ 1 0)\n(+ 6 1)\n:repl/quit\n(+ 100 1)\n")]
         (is (str/includes? response "user=> "))
+        (is (str/includes? response "true"))
         (is (str/includes? response "42"))
         (is (str/includes? response "43"))
         (is (str/includes? response "builtins.ZeroDivisionError"))

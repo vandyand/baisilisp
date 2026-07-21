@@ -258,6 +258,10 @@ class TestREPL:
         result = run_cli(["repl"], input="(+ 1 2)")
         assert "basilisp.user=> 3\nbasilisp.user=> " == result.out
 
+    def test_repl_binds_current_repl_var(self, run_cli):
+        result = run_cli(["repl"], input="*repl*")
+        assert "basilisp.user=> true\nbasilisp.user=> " == result.out
+
     def test_syntax_error(self, run_cli):
         result = run_cli(["repl"], input="(+ 1 2")
         assert "basilisp.user=> basilisp.user=> " == result.out
@@ -362,7 +366,9 @@ cli_run_args_params = [
     (["1", "2", "3"], f"6{os.linesep}"),
     (["--", "1", "2", "3"], f"6{os.linesep}"),
 ]
-cli_run_args_code = "(println (apply + (map int *command-line-args*)))"
+# Clojure's fixed-width ``int`` rejects strings. ``bigint`` is the portable
+# numeric parser for the string-valued ``*command-line-args*`` Var.
+cli_run_args_code = "(println (apply + (map bigint *command-line-args*)))"
 
 
 class TestRun:

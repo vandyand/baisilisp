@@ -1,6 +1,10 @@
 from __future__ import annotations
 
 import os
+from concurrent.futures import ThreadPoolExecutor
+
+from hypothesis import HealthCheck, given, settings
+from hypothesis import strategies as st
 
 from basilisp.contrib import repl_session
 from basilisp.lang import compiler
@@ -43,6 +47,70 @@ def test_repl_session_keeps_history_namespace_and_stream_events():
     finally:
         runtime.Namespace.remove(child_name)
         runtime.Namespace.remove(session_name)
+
+
+def test_repl_session_binds_current_repl_var_and_restores_it():
+    session_name = sym.symbol("tests.repl-session-context")
+    events: list[tuple[str, str]] = []
+    repl_var = runtime.Var.find(sym.symbol(runtime.REPL_VAR_NAME, ns="basilisp.core"))
+    assert repl_var is not None
+    session = repl_session.ReplSession.create(session_name)
+    try:
+        assert _evaluate(session, "*repl*", events).value is True
+        assert (
+            _evaluate(session, "(binding [*repl* false] *repl*)", events).value is False
+        )
+        assert _evaluate(session, "*repl*", events).value is True
+        assert repl_var.value is False
+    finally:
+        runtime.Namespace.remove(session_name)
+
+
+@settings(
+    deadline=None,
+    suppress_health_check=[HealthCheck.function_scoped_fixture],
+)
+@given(st.lists(st.booleans(), min_size=1, max_size=32))
+def test_repl_session_fuzzes_nested_repl_bindings(values):
+    session_name = sym.symbol("tests.repl-session-context-fuzz")
+    events: list[tuple[str, str]] = []
+    session = repl_session.ReplSession.create(session_name)
+    try:
+        for value in values:
+            literal = "true" if value else "false"
+            result = _evaluate(
+                session,
+                f"(binding [*repl* {literal}] [*repl*])",
+                events,
+            )
+            assert list(result.value) == [value]
+            assert _evaluate(session, "*repl*", events).value is True
+    finally:
+        runtime.Namespace.remove(session_name)
+
+
+def test_repl_sessions_keep_current_repl_var_thread_local():
+    sessions = [
+        repl_session.ReplSession.create(sym.symbol(f"tests.repl-session-thread-{i}"))
+        for i in range(8)
+    ]
+    try:
+        with ThreadPoolExecutor(max_workers=8) as executor:
+            results = list(
+                executor.map(
+                    lambda session: _evaluate(session, "*repl*", []).value,
+                    sessions,
+                )
+            )
+        assert results == [True] * len(sessions)
+        repl_var = runtime.Var.find(
+            sym.symbol(runtime.REPL_VAR_NAME, ns="basilisp.core")
+        )
+        assert repl_var is not None
+        assert repl_var.value is False
+    finally:
+        for session in sessions:
+            runtime.Namespace.remove(session.namespace.name)
 
 
 def test_repl_session_retains_exceptions_and_stops_on_repl_quit():

@@ -85,6 +85,7 @@ def evaluate_form(
         _core_var("*2"): session.two,
         _core_var("*3"): session.three,
         _core_var("*e"): session.error,
+        _core_var(runtime.REPL_VAR_NAME): True,
     }
     with runtime.bindings(bindings):
         started = time.perf_counter_ns()

@@ -570,31 +570,31 @@ def repl(
 
     # Bind user-settable dynamic Vars to their existing value to allow users to
     # conveniently (set! *var* val) at the REPL without needing `binding`.
-    with runtime.bindings(
-        {
-            var: var.value
-            for var in map(
-                lambda name: runtime.Var.find_safe(
-                    sym.symbol(name, ns=runtime.CORE_NS)
-                ),
-                [
-                    "*e",
-                    "*1",
-                    "*2",
-                    "*3",
-                    "*assert*",
-                    "*data-readers*",
-                    "*resolver*",
-                    runtime.PRINT_DUP_VAR_NAME,
-                    runtime.PRINT_LEVEL_VAR_NAME,
-                    runtime.PRINT_READABLY_VAR_NAME,
-                    runtime.PRINT_LEVEL_VAR_NAME,
-                    runtime.PRINT_META_VAR_NAME,
-                    runtime.PRINT_NAMESPACE_MAPS_VAR_NAME,
-                ],
-            )
-        }
-    ):
+    repl_bindings = {
+        var: var.value
+        for var in map(
+            lambda name: runtime.Var.find_safe(sym.symbol(name, ns=runtime.CORE_NS)),
+            [
+                "*e",
+                "*1",
+                "*2",
+                "*3",
+                "*assert*",
+                "*data-readers*",
+                "*resolver*",
+                runtime.PRINT_DUP_VAR_NAME,
+                runtime.PRINT_LEVEL_VAR_NAME,
+                runtime.PRINT_READABLY_VAR_NAME,
+                runtime.PRINT_LEVEL_VAR_NAME,
+                runtime.PRINT_META_VAR_NAME,
+                runtime.PRINT_NAMESPACE_MAPS_VAR_NAME,
+            ],
+        )
+    }
+    repl_bindings[
+        runtime.Var.find_safe(sym.symbol(runtime.REPL_VAR_NAME, ns=runtime.CORE_NS))
+    ] = True
+    with runtime.bindings(repl_bindings):
         repl_module = bootstrap_repl(ctx, args.default_ns)
         ns_var = runtime.set_current_ns(args.default_ns)
 

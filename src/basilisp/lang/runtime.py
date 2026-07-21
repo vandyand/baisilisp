@@ -24,10 +24,9 @@ from typing import AbstractSet, Any, NoReturn, Optional, TypeVar, Union, cast
 
 import attr
 
-from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
-from basilisp.lang import equality
-from basilisp.lang import hashing
+from basilisp.lang import equality, hashing
+from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import obj as lobj
@@ -139,6 +138,7 @@ PRINT_READABLY_VAR_NAME = "*print-readably*"
 PRINT_METHOD_VAR_NAME = "print-method"
 PRINT_DUP_METHOD_VAR_NAME = "print-dup"
 MATH_CONTEXT_VAR_NAME = "*math-context*"
+REPL_VAR_NAME = "*repl*"
 PYTHON_VERSION_VAR_NAME = "*python-version*"
 BASILISP_VERSION_VAR_NAME = "*basilisp-version*"
 

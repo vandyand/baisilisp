@@ -1213,6 +1213,10 @@
   so an incidental caller binding cannot disguise the target agent."
   nil)
 
+(def ^:dynamic *repl*
+  "True while an interactive Basilisp REPL evaluates a form, else false."
+  false)
+
 (defn agent
   "Create a serialized, executor-backed mutable reference."
   ([state]

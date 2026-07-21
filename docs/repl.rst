@@ -40,6 +40,8 @@ The following Vars are defined and may be useful when using the REPL:
 
 * :lpy:var:`*e` holds the most recent exception that was thrown (if one)
 * :lpy:var:`*1`, :lpy:var:`*2`, :lpy:var:`*3`: hold the value of the last 3 results
+* :lpy:var:`*repl*` is ``true`` while the interactive evaluator is running a
+  form, and ``false`` outside it
 
 .. lpy:currentns:: basilisp.repl
 
