@@ -1,0 +1,66 @@
+(ns tests.basilisp.data-xml-test
+  (:import io)
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.data.xml :as xml]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]))
+
+(deftest qnames-and-tree-elements-preserve-namespace-meaning
+  (let [tag (xml/qname "urn:example:catalog" "book")]
+    (is (= "urn:example:catalog" (xml/qname-uri tag)))
+    (is (= "book" (xml/qname-local tag)))
+    (is (xml/namespaced? tag))
+    (is (= tag (xml/as-qname tag)))
+    (is (= "urn:example:catalog" (xml/symbol-uri (xml/uri-symbol "urn:example:catalog")))))
+  (let [tree (xml/parse-str "<root xmlns='urn:example'><child a='1'>text</child></root>")]
+    (is (= "urn:example" (xml/qname-uri (:tag tree))))
+    (is (= "root" (xml/qname-local (:tag tree))))
+    (is (= "urn:example" (xml/qname-uri (:tag (first (:content tree))))))
+    (is (= "1" (get (:attrs (first (:content tree))) :a)))
+    (is (re-find #"urn:example" (xml/emit-str tree)))))
+
+(deftest emit-parse-prxml-and-indentation-contracts
+  (let [tree (xml/sexp-as-element [:root {:answer 42} [:child "hello"]])
+        emitted (xml/emit-str tree)
+        writer (io/StringIO)]
+    (is (xml/element? tree))
+    (is (= {:tag :root :attrs {:answer "42"}
+            :content [{:tag :child :content ["hello"]}]}
+           (xml/parse-str emitted)))
+    (xml/emit tree writer :declaration false)
+    (is (= "<root answer=\"42\"><child>hello</child></root>" (.getvalue writer)))
+    (is (re-find #"\n  <child>" (xml/indent-str tree)))
+    (is (= "<root><![CDATA[a < b]]></root>"
+           (xml/emit-str (xml/element :root nil (xml/cdata "a < b")) :declaration false)))
+    (let [prxml (xml/sexp-as-element [:root [:child] "tail"])]
+      (is (= :root (:tag prxml)))
+      (is (= :child (:tag (first (:content prxml)))))
+      (is (= "tail" (second (:content prxml)))))
+    (is (thrown? Exception (xml/sexp-as-element [[:a] [:b]])))))
+
+(deftest parser-rejects-expansion-input-and-respects-options
+  (is (thrown? python/ValueError
+               (xml/parse-str "<!DOCTYPE root [<!ENTITY bomb 'x'>]><root>&bomb;</root>")))
+  (is (thrown? python/ValueError (xml/parse-str "<x/>" :max-chars 1)))
+  (is (= {:tag :root :content ["x"]}
+         (xml/parse (io/StringIO "<root>x</root>"))))
+  (is (= {:tag :root :content ["x" {:tag :child}]}
+         (xml/parse-str "<root>x<!-- hidden --><child/></root>")))
+  (let [tree (xml/parse-str "<root>x<!-- shown --><child/></root>"
+                            :include-node? #{:element :characters :comment})]
+    (is (= :root (:tag tree)))
+    (is (= "x" (first (:content tree))))
+    (is (= " shown " (.-content (second (:content tree)))))
+    (is (= :child (:tag (last (:content tree)))))))
+
+(deftest seeded-tree-roundtrips-never-drop-content-or-attributes
+  (let [property
+        (prop/for-all [value (gen/vector (gen/choose 0 1000000) 1 8)]
+          (let [children (mapv #(xml/element :item {:n (str %)} (str %)) value)
+                tree (apply xml/element :root {:count (str (count value))} children)
+                parsed (xml/parse-str (xml/emit-str tree))]
+            (= tree parsed)))
+        result (tc/quick-check 300 property :seed 20260724 :max-size 30)]
+    (is (:pass? result))
+    (is (= 300 (:num-tests result)))))

@@ -1,0 +1,71 @@
+(ns basilisp.data.xml
+  "Portable tree-level `clojure.data.xml` compatibility API."
+  (:import [basilisp.data_xml :as backend]))
+
+(defn encode-uri [uri] (backend/encode_uri uri))
+(defn decode-uri [uri] (backend/decode_uri uri))
+(defn qname
+  ([local] (backend/qname local))
+  ([uri local] (backend/qname uri local))
+  ([uri local prefix] (backend/qname uri local prefix)))
+(defn qname-uri [name] (backend/qname_uri name))
+(defn qname-local [name] (backend/qname_local name))
+(defn namespaced? [name] (not= "" (qname-uri name)))
+(defn as-qname [name] (qname (qname-uri name) (qname-local name)))
+(defn uri-symbol [uri] (symbol (str "xmlns." (encode-uri uri))))
+(defn symbol-uri [symbol]
+  (let [name (str symbol)]
+    (if (.startswith name "xmlns.")
+      (decode-uri (subs name 6))
+      (throw (ex-info "Uri symbol not valid" {:sym symbol})))))
+
+(defn element
+  ([tag] (backend/element tag))
+  ([tag attrs] (backend/element tag attrs))
+  ([tag attrs & content] (backend/element tag attrs content)))
+(defn element? [value] (backend/element_p value))
+(defn cdata [content] (backend/CData content))
+(defn xml-comment [content] (backend/Comment content))
+(defn map->Element [value]
+  (backend/element (:tag value) (:attrs value) (:content value)))
+(defn tagged-element [value]
+  (if (map? value) (map->Element value)
+      (throw (ex-info "Unsupported element representation" {:element value}))))
+
+(declare sexps-as-fragment)
+
+(defn- sexp-element [tag attrs children]
+  (cond
+    (= :-cdata tag) (cdata (first children))
+    (= :-comment tag) (xml-comment (first children))
+    (not (keyword? tag))
+    (throw (ex-info "PRXML element tag must be a keyword" {:tag tag}))
+    :else (backend/element tag attrs (mapcat sexps-as-fragment children))))
+
+(defn sexps-as-fragment
+  ([] nil)
+  ([sexp]
+   (cond
+     (vector? sexp)
+     (let [[tag & tail] sexp
+           attrs (when (map? (first tail)) (first tail))
+           children (if attrs (rest tail) tail)]
+       [(sexp-element tag attrs children)])
+     (sequential? sexp) (mapcat sexps-as-fragment sexp)
+     (keyword? sexp) [(element sexp)]
+     (nil? sexp) nil
+     :else [(str sexp)]))
+  ([sexp & sexps] (mapcat sexps-as-fragment (cons sexp sexps))))
+
+(defn sexp-as-element [sexp]
+  (let [[root & more] (seq (sexps-as-fragment sexp))]
+    (when (seq more)
+      (throw (python/ValueError "Cannot have multiple root elements")))
+    root))
+
+(defn parse [source & {:as opts}] (backend/parse source opts))
+(defn parse-str [source & {:as opts}] (backend/parse source opts))
+(defn emit [element writer & {:as opts}] (backend/emit element writer opts))
+(defn emit-str [element & {:as opts}] (backend/emit_str element opts))
+(defn indent [element writer & {:as opts}] (backend/indent element writer opts))
+(defn indent-str [element & {:as opts}] (backend/indent_str element opts))
