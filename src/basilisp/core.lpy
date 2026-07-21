@@ -5691,6 +5691,41 @@
   [o meta]
   (.reset-meta o meta))
 
+(defmacro definline
+  "Experimental: define a named function whose body is its inline expansion.
+
+  Like Clojure's ``definline``, calls may be inlined as if the function were a
+  macro while a normal callable Var remains available for non-inlined calls.
+  Declarations use the ``defn`` docstring and metadata prefix forms followed by
+  one fixed-arity argument vector and one expansion expression. Variadic
+  argument vectors are not supported."
+  [name & decl]
+  (let [parsed
+        (loop [pre-args []
+               tail     decl]
+          (cond
+            (vector? (first tail)) [pre-args tail]
+            (seq tail)             (recur (conj pre-args (first tail))
+                                           (rest tail))
+            :else                  (throw
+                                    (ex-info "definline requires an argument vector"
+                                             {:name name :declaration decl}))))
+        pre-args (first parsed)
+        tail     (second parsed)
+        args     (first tail)
+        expr     (second tail)]
+    (when (some #{'&} args)
+      (throw (ex-info "definline does not support variadic arguments"
+                      {:name name :args args})))
+    (when (nil? expr)
+      (throw (ex-info "definline requires an expansion expression"
+                      {:name name :declaration decl})))
+    `(do
+       (defn ~name ~@pre-args ~args
+         ~(apply (eval (list `fn args expr)) args))
+       (alter-meta! (var ~name) assoc :inline (fn ~name ~args ~expr))
+       (var ~name))))
+
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; Ref (Atom/Var) Utilities ;;
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

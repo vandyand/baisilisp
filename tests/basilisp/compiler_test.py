@@ -3366,6 +3366,61 @@ def test_fn_call(lcompile: CompileFn):
 
 
 class TestFunctionInlining:
+    @pytest.mark.parametrize("inline_functions", [True, False])
+    def test_definline_defines_callable_with_metadata(
+        self, lcompile: CompileFn, inline_functions: bool
+    ):
+        result = lcompile(
+            """
+            (def returned
+              (definline plus-one "increment a number" {:custom :metadata}
+                [x]
+                `(+ 1 ~x)))
+
+            [(identical? returned #'plus-one)
+             (plus-one 41)
+             ^:no-inline (plus-one 41)
+             (boolean (:inline (meta #'plus-one)))
+             (:doc (meta #'plus-one))
+             (:custom (meta #'plus-one))]
+            """,
+            opts={compiler.INLINE_FUNCTIONS: inline_functions},
+        )
+
+        assert result == vec.v(
+            True, 42, 42, True, "increment a number", kw.keyword("metadata")
+        )
+
+    def test_definline_honors_basilisp_no_inline_control(self, lcompile: CompileFn):
+        result = lcompile("""
+            (definline expand-twice [x] `(+ ~x ~x))
+
+            (let [inline-calls    (atom 0)
+                  no-inline-calls (atom 0)]
+              [(expand-twice (swap! inline-calls inc))
+               @inline-calls
+               ^:no-inline (expand-twice (swap! no-inline-calls inc))
+               @no-inline-calls])
+            """)
+
+        # An inlined expansion substitutes the call form twice. Basilisp's
+        # documented ^:no-inline control preserves the generated callable
+        # path, which evaluates its argument once before entering the body.
+        assert result == vec.v(3, 2, 2, 1)
+
+    @pytest.mark.parametrize(
+        "source",
+        [
+            "(definline no-args)",
+            "(definline variadic [& xs] xs)",
+        ],
+    )
+    def test_definline_rejects_invalid_declarations(
+        self, lcompile: CompileFn, source: str
+    ):
+        with pytest.raises(compiler.CompilerException):
+            lcompile(source)
+
     def test_cannot_inline_variadic_fn(self, lcompile: CompileFn):
         with pytest.raises(compiler.CompilerException):
             lcompile("(defn ^:inline f [& args] args)")

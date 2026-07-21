@@ -145,6 +145,13 @@ The Basilisp compiler supports inlining function calls directly into a call site
 Inline definitions can be provided for named (:lpy:fn:`defn`\'ed) functions by providing an anonymous function on the ``:inline`` meta key.
 The compiler will automatically inline calls to functions annotated with such a function in their meta if inlining is enabled.
 
+For Clojure source compatibility, ``definline`` defines both a normal
+callable function and its ``:inline`` expansion in one declaration. It accepts
+the usual ``defn`` docstring and metadata prefix forms followed by one
+fixed-arity argument vector and one expansion expression. Variadic declarations
+are not supported. The ordinary function remains available whenever inlining is
+disabled or not selected for a call site.
+
 The compiler additionally supports automatically generating inline function definitions for simple functions.
 Functions annotated with a boolean ``:inline`` meta key will have inline definitions generated automatically at compile time and will thereafter be eligible to be inlined (subject to the current function inlining settings set on the compiler).
 Only "simple" functions are eligible for inlining.
