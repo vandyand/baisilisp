@@ -9,6 +9,9 @@ from immutables import Map as _Map
 from immutables import MapMutation
 from typing_extensions import Unpack
 
+from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang.equality import numeric_equiv
+from basilisp.lang.equality import unkey as public_key
 from basilisp.lang.interfaces import (
     IEvolveableCollection,
     ILispObject,
@@ -44,6 +47,12 @@ T_reduce = TypeVar("T_reduce")
 _ENTRY_SENTINEL = object()
 
 
+def _public_items(items: Iterable[tuple[Any, V]]) -> Iterable[tuple[Any, V]]:
+    """Expose collection storage keys without numeric-equivalence wrappers."""
+
+    return ((public_key(key), value) for key, value in items)
+
+
 class TransientMap(ITransientMap[K, V]):
     __slots__ = ("_inner",)
 
@@ -54,10 +63,10 @@ class TransientMap(ITransientMap[K, V]):
         return True
 
     def __call__(self, key, default=None):
-        return self._inner.get(key, default)
+        return self._inner.get(equivalence_key(key), default)
 
     def __contains__(self, item):
-        return item in self._inner
+        return equivalence_key(item) in self._inner
 
     def __eq__(self, other):
         return self is other
@@ -71,30 +80,31 @@ class TransientMap(ITransientMap[K, V]):
             # the missing value.
             if len(t) == 2:
                 k, v = t
-                self._inner[k] = v
+                self._inner[equivalence_key(k)] = v
             else:
-                self._inner[t[0]] = None  # type: ignore[assignment]
+                self._inner[equivalence_key(t[0])] = None  # type: ignore[assignment]
         return self
 
     def contains_transient(self, k: K) -> bool:
-        return k in self._inner
+        return equivalence_key(k) in self._inner
 
     def dissoc_transient(self, *ks: K) -> "TransientMap[K, V]":
         for k in ks:
             try:
-                del self._inner[k]
+                del self._inner[equivalence_key(k)]
             except KeyError:
                 pass
         return self
 
     def entry_transient(self, k: K) -> IMapEntry[K, V] | None:
-        v = self._inner.get(k, cast("V", _ENTRY_SENTINEL))
+        storage_key = equivalence_key(k)
+        v = self._inner.get(storage_key, cast("V", _ENTRY_SENTINEL))
         if v is _ENTRY_SENTINEL:
             return None
-        return MapEntry.of(k, v)
+        return MapEntry.of(public_key(storage_key), v)
 
     def val_at(self, k, default=None):
-        return self._inner.get(k, default)
+        return self._inner.get(equivalence_key(k), default)
 
     def cons_transient(  # type: ignore[override]
         self,
@@ -109,14 +119,14 @@ class TransientMap(ITransientMap[K, V]):
             for elem in elems:
                 if isinstance(elem, (IPersistentMap, Mapping)):
                     for k, v in elem.items():
-                        self._inner[k] = v
+                        self._inner[equivalence_key(k)] = v
                 elif isinstance(elem, IMapEntry):
-                    self._inner[elem.key] = elem.value
+                    self._inner[equivalence_key(elem.key)] = elem.value
                 elif elem is None:
                     continue
                 else:
                     entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
-                    self._inner[entry.key] = entry.value
+                    self._inner[equivalence_key(entry.key)] = entry.value
         except (TypeError, ValueError) as e:
             raise ValueError(
                 "Argument to map conj must be another Map or castable to MapEntry"
@@ -231,7 +241,7 @@ class PersistentMap(
         m: "_Map[K, V]",
         meta: IPersistentMap | None = None,
     ) -> None:
-        self._inner = m
+        self._inner = _Map((equivalence_key(key), value) for key, value in m.items())
         self._meta = meta
 
     @classmethod
@@ -240,16 +250,23 @@ class PersistentMap(
         members: Mapping[K, V] | Iterable[tuple[K, V]],
         meta: IPersistentMap | None = None,
     ) -> "PersistentMap[K, V]":
-        return PersistentMap(_Map(members), meta=meta)
+        return PersistentMap(
+            (
+                _Map((equivalence_key(key), value) for key, value in members.items())
+                if isinstance(members, Mapping)
+                else _Map((equivalence_key(key), value) for key, value in members)
+            ),
+            meta=meta,
+        )
 
     def __bool__(self):
         return True
 
     def __call__(self, key, default=None):
-        return self._inner.get(key, default)
+        return self._inner.get(equivalence_key(key), default)
 
     def __contains__(self, item):
-        return item in self._inner
+        return equivalence_key(item) in self._inner
 
     def __eq__(self, other):
         if self is other:
@@ -258,23 +275,25 @@ class PersistentMap(
             return NotImplemented
         if len(self._inner) != len(other):
             return False
-        return self._inner == other
+        return all(
+            key in other and numeric_equiv(self[key], other[key]) for key in self
+        )
 
     def __getitem__(self, item):
-        return self._inner[item]
+        return self._inner[equivalence_key(item)]
 
     def __hash__(self):
         return hash(self._inner)
 
     def __iter__(self):
-        return iter(self._inner)
+        return (public_key(key) for key in self._inner)
 
     def __len__(self):
         return len(self._inner)
 
     def _lrepr(self, **kwargs: Unpack[PrintSettings]):
         return map_lrepr(
-            self._inner.items,
+            lambda: _public_items(self._inner.items()),
             start="{",
             end="}",
             meta=self._meta,
@@ -291,33 +310,37 @@ class PersistentMap(
     def assoc(self, *kvs):
         with self._inner.mutate() as m:
             for k, v in partition(kvs, 2):
-                m[k] = v
+                m[equivalence_key(k)] = v
             return PersistentMap(m.finish(), meta=self._meta)
 
     def contains(self, k):
-        return k in self._inner
+        return equivalence_key(k) in self._inner
 
     def dissoc(self, *ks):
         with self._inner.mutate() as m:
             for k in ks:
                 try:
-                    del m[k]
+                    del m[equivalence_key(k)]
                 except KeyError:
                     pass
             return PersistentMap(m.finish(), meta=self._meta)
 
     def entry(self, k):
-        v = self._inner.get(k, cast("V", _ENTRY_SENTINEL))
+        storage_key = equivalence_key(k)
+        v = self._inner.get(storage_key, cast("V", _ENTRY_SENTINEL))
         if v is _ENTRY_SENTINEL:
             return None
-        return MapEntry.of(k, v)
+        return MapEntry.of(public_key(storage_key), v)
 
     def val_at(self, k, default=None):
-        return self._inner.get(k, default)
+        return self._inner.get(equivalence_key(k), default)
 
     def update(self, *maps: Mapping[K, V]) -> "PersistentMap":
-        m: _Map = self._inner.update(*(m.items() for m in maps))
-        return PersistentMap(m, meta=self._meta)
+        with self._inner.mutate() as m:
+            for map_ in maps:
+                for key, value in map_.items():
+                    m.set(equivalence_key(key), value)
+            return PersistentMap(m.finish(), meta=self._meta)
 
     def update_with(  # type: ignore[return]
         self, merge_fn: Callable[[V, V], V], *maps: Mapping[K, V]
@@ -325,7 +348,11 @@ class PersistentMap(
         with self._inner.mutate() as m:
             for map in maps:
                 for k, v in map.items():
-                    m.set(k, merge_fn(m[k], v) if k in m else v)
+                    storage_key = equivalence_key(k)
+                    m.set(
+                        storage_key,
+                        merge_fn(m[storage_key], v) if storage_key in m else v,
+                    )
             return PersistentMap(m.finish(), meta=self._meta)
 
     def cons(  # type: ignore[override, return]
@@ -342,14 +369,14 @@ class PersistentMap(
                 for elem in elems:
                     if isinstance(elem, (IPersistentMap, Mapping)):
                         for k, v in elem.items():
-                            m.set(k, v)
+                            m.set(equivalence_key(k), v)
                     elif isinstance(elem, IMapEntry):
-                        m.set(elem.key, elem.value)
+                        m.set(equivalence_key(elem.key), elem.value)
                     elif elem is None:
                         continue
                     else:
                         entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
-                        m.set(entry.key, entry.value)
+                        m.set(equivalence_key(entry.key), entry.value)
             except (TypeError, ValueError) as e:
                 raise ValueError(
                     "Argument to map conj must be another Map or castable to MapEntry"
@@ -363,14 +390,16 @@ class PersistentMap(
     def seq(self) -> ISeq[IMapEntry[K, V]] | None:
         if len(self._inner) == 0:
             return None
-        return iterator_sequence((MapEntry.of(k, v) for k, v in self._inner.items()))
+        return iterator_sequence(
+            (MapEntry.of(public_key(k), v) for k, v in self._inner.items())
+        )
 
     def to_transient(self) -> TransientMap[K, V]:
         return TransientMap(self._inner.mutate())
 
     def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
         for k, v in self._inner.items():
-            init = f(init, k, v)
+            init = f(init, public_key(k), v)
             if isinstance(init, Reduced):
                 return init.deref()
         return init
@@ -419,7 +448,7 @@ class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
             return compare(left[0], right[0])
 
         return sorted(
-            self._inner.items(),
+            _public_items(self._inner.items()),
             key=functools.cmp_to_key(compare_entries),
         )
 
@@ -447,26 +476,30 @@ class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
     def assoc(self, *kvs):
         with self._inner.mutate() as m:
             for k, v in partition(kvs, 2):
-                m[k] = v
+                m[equivalence_key(k)] = v
             return self._new(m.finish())
 
     def dissoc(self, *ks):
         with self._inner.mutate() as m:
             for k in ks:
                 try:
-                    del m[k]
+                    del m[equivalence_key(k)]
                 except KeyError:
                     pass
             return self._new(m.finish())
 
     def update(self, *maps: Mapping[K, V]):
-        return self._new(self._inner.update(*(m.items() for m in maps)))
+        return self._new(super().update(*maps)._inner)
 
     def update_with(self, merge_fn: Callable[[V, V], V], *maps: Mapping[K, V]):
         with self._inner.mutate() as m:
             for map_ in maps:
                 for k, v in map_.items():
-                    m.set(k, merge_fn(m[k], v) if k in m else v)
+                    storage_key = equivalence_key(k)
+                    m.set(
+                        storage_key,
+                        merge_fn(m[storage_key], v) if storage_key in m else v,
+                    )
             return self._new(m.finish())
 
     def cons(self, *elems):
@@ -500,7 +533,7 @@ EMPTY: PersistentMap = PersistentMap.from_coll(())
 
 
 def map(  # pylint:disable=redefined-builtin
-    kvs: Mapping[K, V], meta: IPersistentMap | None = None
+    kvs: Mapping[K, V] | Iterable[tuple[K, V]], meta: IPersistentMap | None = None
 ) -> PersistentMap[K, V]:
     """Creates a new map."""
     # For some reason, creating a new `immutables.Map` instance from an existing
@@ -508,7 +541,9 @@ def map(  # pylint:disable=redefined-builtin
     # returns only the keys rather than tuple of key/value pairs, even though it
     # adheres to the `Mapping` protocol. Passing the `.items()` directly bypasses
     # this problem.
-    return PersistentMap.from_coll(kvs.items(), meta=meta)
+    return PersistentMap.from_coll(
+        kvs.items() if isinstance(kvs, Mapping) else kvs, meta=meta
+    )
 
 
 def sorted_map(
@@ -517,7 +552,11 @@ def sorted_map(
     """Create a persistent map whose iteration order follows ``comparator``."""
     if len(pairs) % 2:
         raise ValueError("Sorted map requires an even number of key-value arguments")
-    return PersistentSortedMap(_Map(partition(pairs, 2)), comparator, meta=meta)
+    return PersistentSortedMap(
+        _Map((equivalence_key(key), value) for key, value in partition(pairs, 2)),
+        comparator,
+        meta=meta,
+    )
 
 
 def m(**kvs) -> PersistentMap[str, V]:
@@ -528,7 +567,7 @@ def m(**kvs) -> PersistentMap[str, V]:
 def from_entries(entries: Iterable[MapEntry[K, V]]) -> PersistentMap[K, V]:  # type: ignore[return]
     with _Map().mutate() as m:  # type: ignore[var-annotated]
         for entry in entries:
-            m.set(entry.key, entry.value)
+            m.set(equivalence_key(entry.key), entry.value)
         return PersistentMap(m.finish())
 
 

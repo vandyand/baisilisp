@@ -26,6 +26,7 @@ import attr
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
+from basilisp.lang import equality
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import obj as lobj
@@ -1936,12 +1937,16 @@ def _deref(o: IDeref):
 
 
 def equals(v1, v2) -> bool:
-    """Compare two objects by value. Unlike the standard Python equality operator,
-    this function does not consider 1 == True or 0 == False. All other equality
-    operations are the same and performed using Python's equality operator."""
+    """Compare two values with Clojure's portable numeric equivalence."""
     if isinstance(v1, (bool, type(None))) or isinstance(v2, (bool, type(None))):
         return v1 is v2
-    return v1 == v2
+    return equality.numeric_equiv(v1, v2)
+
+
+def numeric_equals(v1, v2) -> bool:
+    """Compare numbers with Clojure ``==`` semantics."""
+
+    return equality.numeric_compare(v1, v2)
 
 
 T_comparable = TypeVar("T_comparable", bound=Comparable)

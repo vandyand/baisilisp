@@ -8,6 +8,8 @@ from immutables import Map as _Map
 from immutables import MapMutation
 from typing_extensions import Unpack
 
+from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang.equality import unkey as public_key
 from basilisp.lang.interfaces import (
     IEvolveableCollection,
     ILispObject,
@@ -39,7 +41,7 @@ class TransientSet(ITransientSet[T]):
         return default
 
     def __contains__(self, item):
-        return item in self._inner
+        return equivalence_key(item) in self._inner
 
     def __eq__(self, other):
         return self is other
@@ -49,13 +51,13 @@ class TransientSet(ITransientSet[T]):
 
     def cons_transient(self, *elems: T) -> "TransientSet":
         for elem in elems:
-            self._inner.set(elem, elem)
+            self._inner.set(equivalence_key(elem), equivalence_key(elem))
         return self
 
     def disj_transient(self, *elems: T) -> "TransientSet":
         for elem in elems:
             try:
-                del self._inner[elem]
+                del self._inner[equivalence_key(elem)]
             except KeyError:
                 pass
         return self
@@ -78,14 +80,23 @@ class PersistentSet(
     __slots__ = ("_inner", "_meta")
 
     def __init__(self, m: "_Map[T, T]", meta: IPersistentMap | None = None) -> None:
-        self._inner = m
+        self._inner = _Map(
+            (equivalence_key(public_key(key)), equivalence_key(public_key(key)))
+            for key in m.keys()
+        )
         self._meta = meta
 
     @classmethod
     def from_iterable(
         cls, members: Iterable[T] | None, meta: IPersistentMap | None = None
     ) -> "PersistentSet":
-        return PersistentSet(_Map((m, m) for m in (members or ())), meta=meta)
+        return PersistentSet(
+            _Map(
+                (equivalence_key(member), equivalence_key(member))
+                for member in (members or ())
+            ),
+            meta=meta,
+        )
 
     _from_iterable = from_iterable  # type: ignore[assignment]
 
@@ -98,26 +109,26 @@ class PersistentSet(
         return default
 
     def __contains__(self, item):
-        return item in self._inner
+        return equivalence_key(item) in self._inner
 
     def __eq__(self, other):
         if self is other:
             return True
         if not isinstance(other, AbstractSet):
             return NotImplemented
-        return _PySet.__eq__(self, other)
+        return len(self) == len(other) and all(member in other for member in self)
 
     def __hash__(self):
-        return self._hash()
+        return hash(frozenset(self._inner.keys()))
 
     def __iter__(self):
-        yield from self._inner.keys()
+        yield from (public_key(key) for key in self._inner.keys())
 
     def __len__(self):
         return len(self._inner)
 
     def _lrepr(self, **kwargs: Unpack[PrintSettings]):
-        return _seq_lrepr(self._inner, "#{", "}", meta=self._meta, **kwargs)
+        return _seq_lrepr(self, "#{", "}", meta=self._meta, **kwargs)
 
     issubset = _PySet.__le__
     issuperset = _PySet.__ge__
@@ -156,14 +167,15 @@ class PersistentSet(
     def cons(self, *elems: T) -> "PersistentSet[T]":  # type: ignore[return]
         with self._inner.mutate() as m:
             for elem in elems:
-                m.set(elem, elem)
+                storage_key = equivalence_key(elem)
+                m.set(storage_key, storage_key)
             return PersistentSet(m.finish(), meta=self.meta)
 
     def disj(self, *elems: T) -> "PersistentSet[T]":  # type: ignore[return]
         with self._inner.mutate() as m:
             for elem in elems:
                 try:
-                    del m[elem]
+                    del m[equivalence_key(elem)]
                 except KeyError:
                     pass
             return PersistentSet(m.finish(), meta=self.meta)
@@ -216,7 +228,7 @@ class PersistentSortedSet(PersistentSet[T]):
 
     def _sorted_members(self):
         return sorted(
-            self._inner.keys(),
+            (public_key(key) for key in self._inner.keys()),
             key=functools.cmp_to_key(_comparator_fn(self._comparator)),
         )
 
@@ -237,14 +249,15 @@ class PersistentSortedSet(PersistentSet[T]):
     def cons(self, *elems: T):
         with self._inner.mutate() as m:
             for elem in elems:
-                m.set(elem, elem)
+                storage_key = equivalence_key(elem)
+                m.set(storage_key, storage_key)
             return self._new(m.finish())
 
     def disj(self, *elems: T):
         with self._inner.mutate() as m:
             for elem in elems:
                 try:
-                    del m[elem]
+                    del m[equivalence_key(elem)]
                 except KeyError:
                     pass
             return self._new(m.finish())
@@ -280,5 +293,7 @@ def sorted_set(
 ) -> PersistentSortedSet[T]:
     """Create a persistent set whose iteration order follows ``comparator``."""
     return PersistentSortedSet(
-        _Map((member, member) for member in members), comparator, meta=meta
+        _Map((equivalence_key(member), equivalence_key(member)) for member in members),
+        comparator,
+        meta=meta,
     )

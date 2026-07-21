@@ -67,6 +67,13 @@ boolean conversions. ``bigint`` and ``bigdec`` are the deliberate exceptions:
 like Clojure, they also parse numeric strings. The corresponding
 ``unchecked-*`` casts apply two's-complement wrapping.
 
+Ordinary ``=`` also follows Clojure's numeric equality families: integral,
+ratio, floating-point, and decimal values are distinct even when their
+mathematical values match. This same rule applies to persistent map keys and
+set members. Use ``==`` for a cross-family numeric comparison. Python has one
+host float type, so it cannot preserve Clojure's additional distinction between
+single-precision ``float`` and double-precision values after coercion.
+
 .. seealso::
 
    :ref:`arithmetic`

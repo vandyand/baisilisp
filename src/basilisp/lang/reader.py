@@ -23,6 +23,7 @@ from typing_extensions import Unpack
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
+from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -757,12 +758,17 @@ def _read_set(ctx: ReaderContext) -> lset.PersistentSet:
     assert start == "{"
 
     def set_if_valid(s: Collection) -> lset.PersistentSet:
-        coll_set = set(s)
-        if len(s) != len(coll_set):
-            dupes = ", ".join(
-                lrepr(k) for k, v in collections.Counter(s).items() if v > 1
-            )
-            raise ctx.syntax_error(f"Duplicated values in set: {dupes}")
+        seen: dict[Any, Any] = {}
+        dupes: list[Any] = []
+        for value in s:
+            storage_key = equivalence_key(value)
+            if storage_key in seen:
+                dupes.append(value)
+            else:
+                seen[storage_key] = value
+        if dupes:
+            duplicate_values = ", ".join(lrepr(value) for value in dupes)
+            raise ctx.syntax_error(f"Duplicated values in set: {duplicate_values}")
         return lset.set(s)
 
     return _read_coll(ctx, set_if_valid, "}", "set")
@@ -838,23 +844,26 @@ def _read_map(ctx: ReaderContext, namespace: str | None = None) -> lmap.Persiste
     reader = ctx.reader
     start = reader.advance()
     assert start == "{"
-    d: MutableMapping[Any, Any] = {}
+    entries: list[tuple[Any, Any]] = []
+    seen: set[Any] = set()
     process_key = _map_key_processor(namespace)
     try:
         # pylint: disable=redefined-loop-name
         for k, v in partition(list(__read_map_elems(ctx)), 2):
             k = process_key(k)
             try:
-                if k in d:
+                storage_key = equivalence_key(k)
+                if storage_key in seen:
                     raise ctx.syntax_error(f"Duplicate key '{k}' in map literal")
             except TypeError as e:
                 raise ctx.syntax_error("Map keys must be hashable") from e
             else:
-                d[k] = v
+                seen.add(storage_key)
+                entries.append((k, v))
     except ValueError as e:
         raise ctx.syntax_error("Unexpected char '}'; expected map value") from e
     else:
-        return lmap.map(d)
+        return lmap.PersistentMap.from_coll(entries)
 
 
 def _read_namespaced_map(ctx: ReaderContext) -> lmap.PersistentMap:

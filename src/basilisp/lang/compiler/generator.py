@@ -3554,7 +3554,15 @@ def _map_to_py_ast(
     return GeneratedPyAST(
         node=ast.Call(
             func=_NEW_MAP_FN_NAME,
-            args=[ast.Dict(keys=list(keys), values=list(vals))],
+            args=[
+                ast.List(
+                    elts=[
+                        ast.Tuple(elts=[key, value], ctx=ast.Load())
+                        for key, value in zip(keys, vals)
+                    ],
+                    ctx=ast.Load(),
+                )
+            ],
             keywords=Maybe(meta_ast)
             .map(lambda p: [ast.keyword(arg="meta", value=p.node)])
             .or_else_get([]),
@@ -3956,7 +3964,15 @@ def _const_map_to_py_ast(
     return GeneratedPyAST(
         node=ast.Call(
             func=_NEW_MAP_FN_NAME,
-            args=[ast.Dict(keys=list(keys), values=list(vals))],
+            args=[
+                ast.List(
+                    elts=[
+                        ast.Tuple(elts=[key, value], ctx=ast.Load())
+                        for key, value in zip(keys, vals)
+                    ],
+                    ctx=ast.Load(),
+                )
+            ],
             keywords=Maybe(meta).map(lambda p: [p.node]).or_else_get([]),
         ),
         dependencies=list(

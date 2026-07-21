@@ -24,6 +24,8 @@ from typing_extensions import Self, Unpack
 
 # pylint: disable=import-error,no-name-in-module
 from basilisp._lang.seq import SeqIterator as _SeqIterator
+from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang.equality import numeric_equiv
 from basilisp.lang.obj import LispObject as _LispObject
 from basilisp.lang.obj import PrintSettings, seq_lrepr
 
@@ -729,7 +731,7 @@ def seq_equals(s1: Union["ISeq", ISequential], s2: Any) -> bool:
     for e1, e2 in itertools.zip_longest(s1, s2, fillvalue=sentinel):  # type: ignore[arg-type]
         if bool(e1 is sentinel) or bool(e2 is sentinel):
             return False
-        if e1 != e2:
+        if not numeric_equiv(e1, e2):
             return False
     return True
 
@@ -742,7 +744,7 @@ def seq_hash(s: Iterable[Any]) -> int:
     members. Python's backing persistent collection hashes are type-specific;
     normalize through a tuple instead.
     """
-    return hash(tuple(s))
+    return hash(tuple(equivalence_key(value) for value in s))
 
 
 T_inner = TypeVar("T_inner")

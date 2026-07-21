@@ -922,9 +922,9 @@
 (defn =
   "Return ``true`` if ``x`` and ``y`` are equal, otherwise ``false``\\.
 
-  Number equality follows Python's ``=`` semantics whereby \"a
-  comparison between numbers of different types behaves as though the
-  exact values of those numbers were being compared\"."
+  As in Clojure, numeric values from different equality families (integer,
+  ratio, floating, and decimal) are not equal even when their mathematical
+  values coincide."
   ([_] true)
   ([x & args]
    (if (seq (rest args))
@@ -939,9 +939,21 @@
   (not (apply = args)))
 
 (defn ==
-  "Alias for :lpy:fn:`=`."
-  [& args]
-  (apply = args))
+  "Return true when numeric arguments have the same mathematical value.
+
+  Unlike :lpy:fn:`=` this comparison crosses Clojure numeric families and
+  rejects non-numeric values."
+  ([x]
+   (basilisp.lang.runtime/numeric-equals x x))
+  ([x y]
+   (basilisp.lang.runtime/numeric-equals x y))
+  ([x y & args]
+   (loop [left x right y remaining args]
+     (if (basilisp.lang.runtime/numeric-equals left right)
+       (if-let [next-value (first remaining)]
+         (recur right next-value (rest remaining))
+         true)
+       false))))
 
 (defn >
   "Return ``true`` if arguments are monotonically decreasing, otherwise ``false``\\."

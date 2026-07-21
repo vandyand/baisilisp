@@ -735,14 +735,18 @@
 ;;;;;;;;;;;;;;;;
 
 (deftest arithmetic-equality-test
-  (testing "int and float type equality"
+  (testing "Clojure equality keeps numeric families distinct"
     (is (not= 1 1.00001))
-    (is (= 1 1.0000000000000000000000009)))
+    (is (not= 1 1.0000000000000000000000009))
+    (is (not= 1 1M))
+    (is (not= 1.0 1M)))
 
-  (testing "== is an alias of ="
+  (testing "== compares mathematical numeric values"
     (let [f 1.0000000000000000000000009]
-      (is (= 1 f))
-      (is (== 1 f)))))
+      (is (not= 1 f))
+      (is (== 1 f))
+      (is (== 1 1M))
+      (is (thrown? python/TypeError (== 1 "1"))))))
 
 (deftest promoting-subtraction-test
   (is (= -7 (-' 7)))
