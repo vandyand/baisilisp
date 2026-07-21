@@ -45,7 +45,7 @@ symbol,clojure_core,basilisp_core,status
 *repl*,true,true,shared
 *resolver*,false,true,basilisp-extension
 *source-path*,true,true,shared
-*suppress-read*,true,false,missing-in-basilisp
+*suppress-read*,true,true,shared
 *unchecked-math*,true,false,missing-in-basilisp
 *use-context-classloader*,true,false,missing-in-basilisp
 *verbose-defrecords*,true,true,shared

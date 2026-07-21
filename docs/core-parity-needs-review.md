@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 43 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (636 shared Vars and 59 Basilisp
+This document classifies the 42 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (637 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -60,6 +60,9 @@ evaluate a form, and false outside that context.
 ``*verbose-defrecords*`` now matches Clojure's duplicate-printing switch:
 with ``*print-dup*`` true, false renders the compact positional record form
 and true renders the full map form, including extension entries.
+``*suppress-read*`` now preserves every tagged literal as data while bound,
+including otherwise built-in tags; ordinary reads still resolve registered tags
+and reject unknown ones.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -75,7 +78,6 @@ deferrals.
 
 `*allow-unresolved-vars*`, `*compile-files*`,
 `*compile-path*`, `*fn-loader*`,
-`*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `gen-class`,
 `method-sig`, and `with-loading-context`.

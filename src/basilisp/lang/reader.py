@@ -411,6 +411,7 @@ class ReaderContext:
         process_reader_cond: bool = True,
         default_data_reader_fn: DefaultDataReaderFn | None = None,
         reader_eval: ReaderEvalFn | None = None,
+        process_tagged_literals: bool = True,
     ) -> None:
         self._data_readers = lmap.EMPTY if data_readers is None else data_readers
         self._default_data_reader_fn = (
@@ -425,7 +426,13 @@ class ReaderContext:
         self._reader = reader
         self._reader_eval = reader_eval
         self._resolve = (lambda x: x) if resolver is None else resolver
-        self._process_tagged_literals: collections.deque[bool] = collections.deque([])
+        # Keep the reader-wide policy at the bottom of this stack. Nested
+        # reader conditionals temporarily defer tagged-literal processing while
+        # they choose a feature branch, then restore this policy before the
+        # selected branch is resolved.
+        self._process_tagged_literals: collections.deque[bool] = collections.deque(
+            [process_tagged_literals]
+        )
         self._in_anon_fn: collections.deque[bool] = collections.deque([])
         self._syntax_quoted: collections.deque[bool] = collections.deque([])
         self._gensym_env: collections.deque[GenSymEnvironment] = collections.deque([])
@@ -1627,7 +1634,9 @@ def _select_reader_conditional_branch(
     def resolve_tagged_literals(form: LispReaderForm):
         if isinstance(form, TaggedLiteral):
             resolved = _postwalk(resolve_tagged_literals, form.form)
-            return _resolve_tagged_literal(ctx, form.tag, resolved)
+            if ctx.should_process_tagged_literals:
+                return _resolve_tagged_literal(ctx, form.tag, resolved)
+            return tagged_literal(form.tag, resolved)
         return form
 
     return _postwalk(
@@ -1969,6 +1978,7 @@ def read(  # pylint: disable=too-many-arguments
     reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
+    process_tagged_literals: bool = True,
 ) -> Iterable[RawReaderForm]:
     """Read the contents of a stream as a Lisp expression.
 
@@ -1993,6 +2003,10 @@ def read(  # pylint: disable=too-many-arguments
     processed. If none are specified, then the `:default` and `:lpy` features
     are provided.
 
+    ``process_tagged_literals`` controls whether tagged literals invoke their
+    registered readers. When false, every tagged literal, including built-ins,
+    is preserved as a :class:`~basilisp.lang.tagged.TaggedLiteral` value.
+
     ``reader_eval`` is an optional callback for Clojure's ``#=`` reader macro.
     It receives the parsed form and its return value replaces that form. Without
     a callback, reader evaluation is rejected rather than evaluated implicitly.
@@ -2006,6 +2020,7 @@ def read(  # pylint: disable=too-many-arguments
         eof=eof,
         features=features,
         process_reader_cond=process_reader_cond,
+        process_tagged_literals=process_tagged_literals,
         default_data_reader_fn=default_data_reader_fn,
         reader_eval=reader_eval,
     )
@@ -2037,6 +2052,7 @@ def read_with_source(  # pylint: disable=too-many-arguments
     reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
+    process_tagged_literals: bool = True,
 ) -> tuple[RawReaderForm, str] | None:
     """Read one form and return it with its original trimmed source text."""
     try:
@@ -2052,6 +2068,7 @@ def read_with_source(  # pylint: disable=too-many-arguments
         eof=eof,
         features=features,
         process_reader_cond=process_reader_cond,
+        process_tagged_literals=process_tagged_literals,
         default_data_reader_fn=default_data_reader_fn,
         reader_eval=reader_eval,
     )
@@ -2088,6 +2105,7 @@ def read_str(  # pylint: disable=too-many-arguments
     reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
+    process_tagged_literals: bool = True,
 ) -> Iterable[RawReaderForm]:
     """Read the contents of a string as a Lisp expression.
 
@@ -2106,6 +2124,7 @@ def read_str(  # pylint: disable=too-many-arguments
             is_eof_error=is_eof_error,
             features=features,
             process_reader_cond=process_reader_cond,
+            process_tagged_literals=process_tagged_literals,
             default_data_reader_fn=default_data_reader_fn,
             reader_eval=reader_eval,
             init_line=init_line,
@@ -2123,6 +2142,7 @@ def read_file(  # pylint: disable=too-many-arguments
     process_reader_cond: bool = True,
     default_data_reader_fn: DefaultDataReaderFn | None = None,
     reader_eval: ReaderEvalFn | None = None,
+    process_tagged_literals: bool = True,
 ) -> Iterable[RawReaderForm]:
     """Read the contents of a file as a Lisp expression.
 
@@ -2137,6 +2157,7 @@ def read_file(  # pylint: disable=too-many-arguments
             is_eof_error=is_eof_error,
             features=features,
             process_reader_cond=process_reader_cond,
+            process_tagged_literals=process_tagged_literals,
             default_data_reader_fn=default_data_reader_fn,
             reader_eval=reader_eval,
         )

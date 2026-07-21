@@ -22,7 +22,8 @@
                        *data-readers*
                        (:features opts)
                        (not= :preserve (:read-cond opts))
-                       *default-data-reader-fn*)))
+                       *default-data-reader-fn*
+                       (not *suppress-read*))))
 
 (defn read
   ([] (read *in*))
@@ -30,7 +31,7 @@
   ([opts stream] (read* opts stream))
   ([stream eof-error? eof-value]
    (backend/read_form stream eof-error? eof-value resolve-symbol *data-readers* nil true
-                      *default-data-reader-fn*)))
+                      *default-data-reader-fn* (not *suppress-read*))))
 
 (defn read-string
   ([s] (read-string {} s))
@@ -43,13 +44,14 @@
   ([stream] (read+string stream true nil))
   ([stream eof-error? eof-value]
    (vec (backend/read_form_with_source stream eof-error? eof-value resolve-symbol *data-readers*
-                                       nil true *default-data-reader-fn*)))
+                                       nil true *default-data-reader-fn* (not *suppress-read*))))
   ([opts stream]
    (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
      (vec (backend/read_form_with_source stream (= eof :eofthrow) eof resolve-symbol
                                          *data-readers* (:features opts)
                                          (not= :preserve (:read-cond opts))
-                                         *default-data-reader-fn*)))))
+                                         *default-data-reader-fn*
+                                         (not *suppress-read*))))))
 
 (defn read-regex [reader char opts pending-forms]
   (backend/read_regex reader char opts pending-forms))

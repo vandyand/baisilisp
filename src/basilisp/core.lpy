@@ -5456,6 +5456,15 @@
   *read-eval*
   true)
 
+(def ^{:doc "When true, :lpy:fn:`read`, :lpy:fn:`read-string`, and
+            :lpy:fn:`read+string` preserve tagged literals as data instead of
+            invoking their readers. This is useful when inspecting forms whose
+            data-reader implementations are unavailable. The default ``nil``
+            matches Clojure."
+       :dynamic true}
+  *suppress-read*
+  nil)
+
 (def
   ^{:doc     "Resolver used for resolving namespace aliases when reading
               forms using read, read-string, etc.
@@ -5545,7 +5554,8 @@
                          (reader-eval-fn)
                          **
                          :init-line (:init-line opts)
-                         :init-column (:init-column opts))))))
+                         :init-column (:init-column opts)
+                         :process-tagged-literals (not *suppress-read*))))))
 
 (defn read-string
   "Read a string of Basilisp code.
@@ -5601,7 +5611,8 @@
                  *default-data-reader-fn*
                  (reader-eval-fn)
                  (:init-line opts)
-                 (:init-column opts))]
+                 (:init-column opts)
+                 (not *suppress-read*))]
      (when result
        (vec result)))))
 

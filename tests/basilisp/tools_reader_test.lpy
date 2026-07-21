@@ -22,6 +22,26 @@
   (binding [tr/*data-readers* {'demo/tag (fn [x] [:tagged x])}]
     (is (= [:tagged 42] (tr/read-string "#demo/tag 42")))))
 
+(deftest suppress-read-preserves-tagged-literals
+  (let [source   "#demo/tag {:x [1 2]}"
+        expected (tagged-literal 'demo/tag {:x [1 2]})]
+    (is (= expected
+           (binding [tr/*suppress-read* true]
+             (tr/read-string source))))
+    (is (= expected
+           (binding [tr/*suppress-read* true]
+             (tr/read (rt/string-push-back-reader source)))))
+    (is (= [expected source]
+           (binding [tr/*suppress-read* true]
+             (tr/read+string (rt/source-logging-push-back-reader source)))))
+    (is (= expected
+           (binding [tr/*data-readers* {'demo/tag (fn [x] [:resolved x])}
+                     tr/*suppress-read* true]
+             (tr/read-string source))))
+    (is (= [:resolved {:x [1 2]}]
+           (binding [tr/*data-readers* {'demo/tag (fn [x] [:resolved x])}]
+             (tr/read-string source))))))
+
 (deftest source-logging-readers-preserve-form-boundaries-and-source
   (let [r (rt/source-logging-push-back-reader "  [1 :two] \n ; note\n {:x 3}  ")]
     (is (rt/source-logging-reader? r))
@@ -60,3 +80,15 @@
     (let [result (tc/quick-check 600 property :seed 20260722 :max-size 80)]
       (is (:pass? result))
       (is (= 600 (:num-tests result))))))
+
+(deftest suppress-read-preserves-arbitrary-tagged-data-under-fuzzing
+  (let [property (prop/for-all [tag-name (gen/elements ["demo/tag" "vendor/thing" "local"])
+                                value    (gen/vector (gen/choose -100000 100000))]
+                   (let [tag    (symbol tag-name)
+                         source (str "#" tag " " (pr-str value))]
+                     (= (tagged-literal tag value)
+                        (binding [tr/*suppress-read* true]
+                          (tr/read-string source)))))
+        result (tc/quick-check 600 property :seed 20260723 :max-size 80)]
+    (is (:pass? result))
+    (is (= 600 (:num-tests result)))))

@@ -702,6 +702,32 @@
                (binding [*read-eval* :unknown]
                  (read-string "1")))))
 
+(deftest suppress-read-test
+  (let [source   "#demo/tag {:a [1 2]}"
+        expected (tagged-literal 'demo/tag {:a [1 2]})]
+    (is (nil? *suppress-read*))
+    (is (thrown? basilisp.lang.reader/SyntaxError
+                 (read-string source)))
+    (is (= expected
+           (binding [*suppress-read* true]
+             (read-string source))))
+    (is (= expected
+           (binding [*suppress-read* true]
+             (read (io/StringIO source)))))
+    (is (= [expected source]
+           (binding [*suppress-read* true]
+             (read+string (io/StringIO source)))))
+    (is (= (tagged-literal 'inst "2020-01-01")
+           (binding [*suppress-read* true]
+             (read-string "#inst \"2020-01-01\""))))
+    (is (= expected
+           (binding [*data-readers* {'demo/tag (fn [x] [:resolved x])}
+                     *suppress-read* true]
+             (read-string source))))
+    (is (= [:resolved {:a [1 2]}]
+           (binding [*data-readers* {'demo/tag (fn [x] [:resolved x])}]
+             (read-string source))))))
+
 (deftest reader-resolver-test
   (is (= '(quote fixed/resolved)
          (binding [*reader-resolver* (fn [_] 'fixed/resolved)]

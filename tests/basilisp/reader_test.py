@@ -15,7 +15,6 @@ from hypothesis import given
 from hypothesis import strategies as st
 
 from basilisp.lang import keyword as kw
-from basilisp.lang.character import Character
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -25,6 +24,7 @@ from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import util as langutil
 from basilisp.lang import vector as vec
+from basilisp.lang.character import Character
 from basilisp.lang.exception import format_exception
 from basilisp.lang.interfaces import IPersistentSet
 from basilisp.lang.reader import Resolver
@@ -43,6 +43,7 @@ def read_str_first(
     is_eof_error: bool = False,
     features: IPersistentSet[kw.Keyword] | None = None,
     process_reader_cond: bool = True,
+    process_tagged_literals: bool = True,
     default_data_reader_fn=None,
 ):
     """Read the first form from the input string. If no form
@@ -56,11 +57,21 @@ def read_str_first(
                 is_eof_error=is_eof_error,
                 features=features,
                 process_reader_cond=process_reader_cond,
+                process_tagged_literals=process_tagged_literals,
                 default_data_reader_fn=default_data_reader_fn,
             )
         )
     except StopIteration:
         return None
+
+
+def test_reader_optional_arguments_remain_positionally_compatible():
+    default_reader = lambda tag, form: tagged_literal(tag, vec.v(form, "default"))
+    assert tagged_literal(sym.symbol("tag", ns="demo"), vec.v(1, "default")) == next(
+        reader.read_str(
+            "#demo/tag 1", None, None, reader.EOF, False, None, True, default_reader
+        )
+    )
 
 
 def semantic_metadata(form):
@@ -1906,6 +1917,15 @@ class TestReaderConditional:
         assert None is read_str_first("#?(:clj 1 :cljs 2)")
         assert [[], (), {}, set()] == read_str_first(
             "#?(:cljs #js [] :lpy #py [#py [] #py () #py {} #py #{}] :default [])"
+        )
+
+    def test_tagged_literals_can_be_suppressed_after_branch_selection(self):
+        assert tagged_literal(sym.symbol("inst"), "2020-01-01") == read_str_first(
+            '#inst "2020-01-01"', process_tagged_literals=False
+        )
+        assert tagged_literal(sym.symbol("inst"), "2020-01-01") == read_str_first(
+            '#?(:lpy #inst "2020-01-01" :default :not-selected)',
+            process_tagged_literals=False,
         )
 
     def test_basic_form_preserving(self):

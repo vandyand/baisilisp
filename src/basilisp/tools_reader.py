@@ -78,6 +78,7 @@ class PushbackReader:
         process_reader_cond: bool,
         default_data_reader_fn: Any,
         with_source: bool = False,
+        process_tagged_literals: bool = True,
     ) -> Any:
         start = self._source_bounds()[0] if with_source else 0
         ctx = lreader.ReaderContext(
@@ -87,6 +88,7 @@ class PushbackReader:
             eof=eof_value,
             features=features,
             process_reader_cond=process_reader_cond,
+            process_tagged_literals=process_tagged_literals,
             default_data_reader_fn=default_data_reader_fn,
         )
         while True:
@@ -219,6 +221,7 @@ def read_form(
     features: Any,
     process_reader_cond: bool,
     default_data_reader_fn: Any,
+    process_tagged_literals: bool = True,
 ) -> Any:
     return _as_pushback_reader(reader).read_form(
         eof_error,
@@ -228,6 +231,7 @@ def read_form(
         features,
         process_reader_cond,
         default_data_reader_fn,
+        process_tagged_literals=process_tagged_literals,
     )
 
 
@@ -240,6 +244,7 @@ def read_form_with_source(
     features: Any,
     process_reader_cond: bool,
     default_data_reader_fn: Any,
+    process_tagged_literals: bool = True,
 ) -> tuple[Any, str]:
     reader = _as_pushback_reader(reader)
     if not reader.source_logging:
@@ -252,6 +257,7 @@ def read_form_with_source(
         features,
         process_reader_cond,
         default_data_reader_fn,
+        process_tagged_literals=process_tagged_literals,
         with_source=True,
     )
 
