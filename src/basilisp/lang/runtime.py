@@ -111,6 +111,8 @@ CORE_NS_SYM = sym.symbol(CORE_NS)
 CLOJURE_CORE_NS = "clojure.core"
 NS_VAR_NAME = "*ns*"
 NS_VAR_SYM = sym.symbol(NS_VAR_NAME, ns=CORE_NS)
+FILE_VAR_NAME = "*file*"
+FILE_VAR_SYM = sym.symbol(FILE_VAR_NAME, ns=CORE_NS)
 IMPORT_MODULE_VAR_NAME = "*import-module*"
 IMPORT_MODULE_VAR_SYM = sym.symbol(IMPORT_MODULE_VAR_NAME, ns=CORE_NS)
 NS_VAR_NS = CORE_NS
@@ -2865,6 +2867,24 @@ def bootstrap_core(compiler_opts: CompilerOpts) -> None:
         meta=lmap.map(
             {
                 _DOC_META_KEY: "If not ``nil``, corresponds to the module which is currently being imported."
+            }
+        ),
+    )
+
+    # Dynamic Var bound by the compiler while a source file is being analyzed,
+    # macroexpanded, or executed. Interactive compiler inputs intentionally bind
+    # it to nil, matching Clojure's REPL behavior.
+    Var.intern(
+        CORE_NS_SYM,
+        sym.symbol(FILE_VAR_NAME),
+        None,
+        dynamic=True,
+        meta=lmap.map(
+            {
+                _DOC_META_KEY: (
+                    "The current source file while Basilisp code is compiled or loaded, "
+                    "or ``nil`` for interactive input."
+                )
             }
         ),
     )

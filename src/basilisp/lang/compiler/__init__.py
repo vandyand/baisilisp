@@ -172,6 +172,27 @@ def _compile_time_macro_defs(
 _sentinel = object()
 
 
+@contextlib.contextmanager
+def _file_binding(filename: str):
+    """Bind ``*file*`` for file-backed compilation and nil for interactive input."""
+    file_var = runtime.Var.find(runtime.FILE_VAR_SYM)
+    if file_var is None:
+        # The core namespace may be in its own bootstrap sequence.
+        yield
+        return
+
+    is_interactive = filename.startswith("<") or filename == "NO_SOURCE_PATH"
+    if is_interactive and file_var.is_thread_bound:
+        # Nested eval/compilation inherits the file which initiated evaluation,
+        # as Clojure does for eval forms encountered in source files.
+        yield
+        return
+
+    file_value = None if is_interactive else filename
+    with runtime.bindings({file_var: file_value}):
+        yield
+
+
 def compile_and_exec_form(
     form: ReaderForm,
     ctx: CompilerContext,
@@ -187,45 +208,48 @@ def compile_and_exec_form(
     if form is None:
         return None
 
-    if not ns.module.__basilisp_bootstrapped__:
-        _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, ns.module)
+    with _file_binding(ctx.filename):
+        if not ns.module.__basilisp_bootstrapped__:
+            _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, ns.module)
 
-    last = _sentinel
-    with _compile_time_macro_defs(ctx, ns.module, collect_bytecode=collect_bytecode):
-        for unrolled_form in _flatmap_forms([form]):
-            final_wrapped_name = genname(wrapped_fn_name)
-            lisp_ast = analyze_form(ctx.analyzer_context, unrolled_form)
-            py_ast = gen_py_ast(ctx.generator_context, lisp_ast)
-            form_ast = list(
-                map(
-                    _statementize,
-                    itertools.chain(
-                        py_ast.dependencies,
-                        [
-                            _expressionize(
-                                GeneratedPyAST(node=py_ast.node), final_wrapped_name
-                            )
-                        ],
-                    ),
+        last = _sentinel
+        with _compile_time_macro_defs(
+            ctx, ns.module, collect_bytecode=collect_bytecode
+        ):
+            for unrolled_form in _flatmap_forms([form]):
+                final_wrapped_name = genname(wrapped_fn_name)
+                lisp_ast = analyze_form(ctx.analyzer_context, unrolled_form)
+                py_ast = gen_py_ast(ctx.generator_context, lisp_ast)
+                form_ast = list(
+                    map(
+                        _statementize,
+                        itertools.chain(
+                            py_ast.dependencies,
+                            [
+                                _expressionize(
+                                    GeneratedPyAST(node=py_ast.node), final_wrapped_name
+                                )
+                            ],
+                        ),
+                    )
                 )
-            )
 
-            ast_module = ast.Module(body=form_ast, type_ignores=[])
-            ast_module = ctx.py_ast_optimizer.visit(ast_module)
-            ast.fix_missing_locations(ast_module)
+                ast_module = ast.Module(body=form_ast, type_ignores=[])
+                ast_module = ctx.py_ast_optimizer.visit(ast_module)
+                ast.fix_missing_locations(ast_module)
 
-            _emit_ast_string(ast_module)
+                _emit_ast_string(ast_module)
 
-            bytecode = compile(ast_module, ctx.filename, "exec")
-            if collect_bytecode:
-                collect_bytecode(bytecode)
-            exec(
-                bytecode, ns.module.__dict__
-            )  # pylint: disable=exec-used  # nosec 6102
-            try:
-                last = getattr(ns.module, final_wrapped_name)()
-            finally:
-                del ns.module.__dict__[final_wrapped_name]
+                bytecode = compile(ast_module, ctx.filename, "exec")
+                if collect_bytecode:
+                    collect_bytecode(bytecode)
+                exec(
+                    bytecode, ns.module.__dict__
+                )  # pylint: disable=exec-used  # nosec 6102
+                try:
+                    last = getattr(ns.module, final_wrapped_name)()
+                finally:
+                    del ns.module.__dict__[final_wrapped_name]
 
     assert last is not _sentinel, "Must compile at least one form"
     return last
@@ -290,20 +314,21 @@ def compile_module(
     Basilisp import machinery, to allow callers to import Basilisp modules from
     Python code.
     """
-    _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, module)
+    with _file_binding(ctx.filename):
+        _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, module)
 
-    with _compile_time_macro_defs(ctx, module, collect_bytecode=collect_bytecode):
-        for form in _flatmap_forms(forms):
-            nodes = gen_py_ast(
-                ctx.generator_context, analyze_form(ctx.analyzer_context, form)
-            )
-            _incremental_compile_module(
-                ctx.py_ast_optimizer,
-                nodes,
-                module,
-                source_filename=ctx.filename,
-                collect_bytecode=collect_bytecode,
-            )
+        with _compile_time_macro_defs(ctx, module, collect_bytecode=collect_bytecode):
+            for form in _flatmap_forms(forms):
+                nodes = gen_py_ast(
+                    ctx.generator_context, analyze_form(ctx.analyzer_context, form)
+                )
+                _incremental_compile_module(
+                    ctx.py_ast_optimizer,
+                    nodes,
+                    module,
+                    source_filename=ctx.filename,
+                    collect_bytecode=collect_bytecode,
+                )
 
 
 def compile_bytecode(
@@ -318,9 +343,10 @@ def compile_bytecode(
     namespaces. When the cached bytecode is reloaded from disk, it needs to be
     compiled within a bootstrapped module. This function bootstraps the module
     and then proceeds to compile a collection of bytecodes into the module."""
-    _bootstrap_module(gctx, optimizer, module)
-    for bytecode in code:
-        exec(bytecode, module.__dict__)  # pylint: disable=exec-used  # nosec 6102
+    with _file_binding(gctx.filename):
+        _bootstrap_module(gctx, optimizer, module)
+        for bytecode in code:
+            exec(bytecode, module.__dict__)  # pylint: disable=exec-used  # nosec 6102
 
 
 _LOAD_SYM = sym.symbol("load", ns=runtime.CORE_NS)

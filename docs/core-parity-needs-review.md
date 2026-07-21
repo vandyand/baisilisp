@@ -1,6 +1,6 @@
 # Clojure Core Parity Classification
 
-This document classifies the 55 symbols reported missing by the refreshed
+This document classifies the 54 symbols reported missing by the refreshed
 `core_parity_matrix.py` run on 2026-07-21 (624 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
@@ -35,6 +35,9 @@ special form, so the Clojure agent wait is available as the qualified
 ``clojure.core/await`` or ``basilisp.core/await`` spelling.
 The Python-host compatibility forms `bean`, `enumeration-seq`, `uri?`,
 `StackTraceElement->vec`, and `Throwable->map` are also implemented.
+``*file*`` is dynamically bound to the active source path during compilation,
+macro expansion, module loading, and cached-bytecode execution. It is ``nil``
+for interactive input; nested ``eval`` preserves its enclosing source binding.
 
 ## Portable Implementation Targets
 
@@ -48,7 +51,7 @@ deferrals.
 ### Clojure compiler, reader, and Java class-loader state
 
 `*allow-unresolved-vars*`, `*compile-files*`,
-`*compile-path*`, `*file*`, `*fn-loader*`, `*math-context*`, `*read-eval*`,
+`*compile-path*`, `*fn-loader*`, `*math-context*`, `*read-eval*`,
 `*reader-resolver*`, `*repl*`, `*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `definline`, `gen-class`,

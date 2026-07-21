@@ -106,6 +106,74 @@ def assert_matching_logs(
     return _assert_matching_logs
 
 
+class TestFileVar:
+    @pytest.fixture
+    def compiler_file_path(self, tmp_path: Path) -> str:
+        return str(tmp_path / "file_var_test.lpy")
+
+    def test_file_var_is_bound_for_file_backed_compilation(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile("*file*")
+
+    def test_file_var_is_bound_during_macroexpansion(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile(
+            "(defmacro expanded-file [] *file*) (expanded-file)"
+        )
+
+    def test_eval_inherits_enclosing_file_context(
+        self, lcompile: CompileFn, compiler_file_path: str
+    ):
+        assert compiler_file_path == lcompile("(eval '*file*)")
+
+    def test_interactive_compilation_binds_nil_file(self, ns: runtime.Namespace):
+        form = next(reader.read_str("*file*"))
+        ctx = compiler.CompilerContext("<Interactive Test>")
+
+        assert compiler.compile_and_exec_form(form, ctx, ns) is None
+
+    @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+    @given(
+        st.lists(
+            st.sampled_from(
+                (
+                    "*file*",
+                    "(let [file *file*] file)",
+                    "(do *file*)",
+                    "((fn [] *file*))",
+                )
+            ),
+            min_size=1,
+            max_size=12,
+        )
+    )
+    def test_file_var_fuzzes_nested_runtime_reads(
+        self, lcompile: CompileFn, compiler_file_path: str, forms
+    ):
+        assert [compiler_file_path] * len(forms) == list(
+            lcompile(f"[{ ' '.join(forms) }]")
+        )
+
+    def test_file_var_binding_does_not_leak(self, lcompile: CompileFn):
+        lcompile("*file*")
+
+        file_var = runtime.Var.find(runtime.FILE_VAR_SYM)
+        assert file_var is not None
+        assert file_var.value is None
+
+    def test_file_var_binding_does_not_leak_after_compiler_error(
+        self, lcompile: CompileFn
+    ):
+        with pytest.raises(compiler.CompilerException):
+            lcompile("file-var-does-not-exist")
+
+        file_var = runtime.Var.find(runtime.FILE_VAR_SYM)
+        assert file_var is not None
+        assert file_var.value is None
+
+
 @pytest.fixture
 def assert_no_matching_logs(
     caplog,
