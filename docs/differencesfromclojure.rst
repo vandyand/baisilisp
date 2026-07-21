@@ -19,6 +19,11 @@ Unlike Clojure, Basilisp is hosted on the Python VM.
 Basilisp supports versions of Python 3.10+.
 Basilisp projects and libraries may both import Python code and be imported by Python code (once the Basilisp runtime has been :ref:`initialized <bootstrapping>` and the import hooks have been installed).
 
+``*basilisp-version*`` reports the installed Python-hosted runtime version.
+For source compatibility, ``*clojure-version*`` and ``clojure-version`` report
+the explicitly declared Clojure 1.12.4 target used by Basilisp's differential
+corpus; they do not claim that the runtime itself is JVM Clojure.
+
 .. _type_differences:
 
 Type Differences

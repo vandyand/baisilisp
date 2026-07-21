@@ -124,6 +124,17 @@ BASILISP_VERSION_STRING = importlib.metadata.version("baisilisp")
 BASILISP_VERSION = vec.vector(
     (int(s) if s.isdigit() else s) for s in BASILISP_VERSION_STRING.split(".")
 )
+# This is a source-compatibility target, not the version of the Python-hosted
+# Basilisp runtime. Keep it synchronized with the Clojure release exercised by
+# the differential conformance corpus.
+CLOJURE_COMPATIBILITY_VERSION = lmap.map(
+    {
+        kw.keyword("major"): 1,
+        kw.keyword("minor"): 12,
+        kw.keyword("incremental"): 4,
+        kw.keyword("qualifier"): None,
+    }
+)
 
 # Public basilisp.core symbol names
 COMPILER_OPTIONS_VAR_NAME = "*compiler-options*"
@@ -144,6 +155,7 @@ MATH_CONTEXT_VAR_NAME = "*math-context*"
 REPL_VAR_NAME = "*repl*"
 PYTHON_VERSION_VAR_NAME = "*python-version*"
 BASILISP_VERSION_VAR_NAME = "*basilisp-version*"
+CLOJURE_VERSION_VAR_NAME = "*clojure-version*"
 
 # Common meta keys
 _DOC_META_KEY = kw.keyword("doc")
@@ -3110,6 +3122,22 @@ def bootstrap_core(compiler_opts: CompilerOpts) -> None:
                 _DOC_META_KEY: (
                     "The current Basilisp version as a vector of "
                     "``[major, minor, revision]``."
+                )
+            }
+        ),
+    )
+    Var.intern(
+        CORE_NS_SYM,
+        sym.symbol(CLOJURE_VERSION_VAR_NAME),
+        CLOJURE_COMPATIBILITY_VERSION,
+        dynamic=True,
+        meta=lmap.map(
+            {
+                _DOC_META_KEY: (
+                    "The declared Clojure source-compatibility target as a map containing "
+                    "``:major``, ``:minor``, ``:incremental``, and ``:qualifier``. "
+                    "This is not the Basilisp runtime version; use ``*basilisp-version*`` "
+                    "for that value."
                 )
             }
         ),

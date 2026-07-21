@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 39 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (640 shared Vars and 59 Basilisp
+This document classifies the 37 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (642 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -71,6 +71,10 @@ keys, and ``accessor`` accepts only values built from its exact basis.
 ordinary string representation. ``print-ctor`` likewise accepts Clojure's
 writer callback shape, with the explicitly Python-hosted
 ``module.Qualname`` type label in place of a JVM class name.
+``*clojure-version*`` and ``clojure-version`` now declare the Clojure 1.12.4
+source-compatibility target used by the differential corpus. They never claim
+that Basilisp is a Clojure runtime; ``*basilisp-version*`` remains the
+Python-hosted implementation identity.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -146,11 +150,3 @@ minimum history is synchronized with successful commits.
 ``seque`` is also available with the portable queued-sequence contract: it
 accepts a positive buffer size or a queue-like object, preserves realized
 values, and ends after a producer error as Clojure's Agent-backed version does.
-
-### Version identity and unchecked arithmetic
-
-`*clojure-version*` and `clojure-version`.
-
-Reporting a fabricated Clojure version would misstate runtime identity. A
-future fork can define explicit compatibility metadata, but that requires a
-published versioning policy.

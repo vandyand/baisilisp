@@ -10,7 +10,7 @@ symbol,clojure_core,basilisp_core,status
 *allow-unresolved-vars*,true,false,missing-in-basilisp
 *assert*,true,true,shared
 *basilisp-version*,false,true,basilisp-extension
-*clojure-version*,true,false,missing-in-basilisp
+*clojure-version*,true,true,shared
 *command-line-args*,true,true,shared
 *compile-files*,true,false,missing-in-basilisp
 *compile-path*,true,false,missing-in-basilisp
@@ -182,7 +182,7 @@ chunked-seq?,true,false,missing-in-basilisp
 class,true,true,shared
 class?,true,true,shared
 clear-agent-errors,true,true,shared
-clojure-version,true,false,missing-in-basilisp
+clojure-version,true,true,shared
 coll?,true,true,shared
 comment,true,true,shared
 commute,true,true,shared

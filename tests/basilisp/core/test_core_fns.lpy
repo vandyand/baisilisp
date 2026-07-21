@@ -155,6 +155,23 @@
     "hi there i'm chris"       ["hi " "there " "i'm " "chris"]
     "today is my 1st birthday" ["today is my " 1 "st birthday"]))
 
+(deftest clojure-version-test
+  (testing "the root value declares the source-compatibility target, not Basilisp's runtime version"
+    (is (= {:major 1 :minor 12 :incremental 4 :qualifier nil}
+           *clojure-version*))
+    (is (= "1.12.4" (clojure-version)))
+    (is (not= (str/join "." *basilisp-version*) (clojure-version))))
+
+  (testing "dynamic version maps retain Clojure's optional segment formatting"
+    (are [version expected] (= expected
+                               (binding [*clojure-version* version]
+                                 (clojure-version)))
+      {:major 2 :minor 0} "2.0"
+      {:major 2 :minor 0 :incremental 0 :qualifier ""} "2.0.0"
+      {:major 2 :minor 0 :incremental 1 :qualifier "RC-1"} "2.0.1-RC-1"
+      {:major 2 :minor 0 :incremental 1 :qualifier "RC-1" :interim true}
+      "2.0.1-RC-1-SNAPSHOT")))
+
 (deftest boolean-test
   (testing "logical false values"
     (are [v] (false? (boolean v))
