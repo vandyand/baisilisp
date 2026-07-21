@@ -231,7 +231,9 @@ They evaluate to first-class character values, distinct from one-character strin
 
 The reader supports 6 special character literal names for common whitespace characters: ``\newline``, ``\space``, ``\tab``, ``\formfeed``, ``\backspace``, ``\return``.
 
-Unicode code points may be specified as ``\uXXXX`` where ``XXXX`` corresponds to the hex-code for unicode code point.
+UTF-16 code units may be specified as ``\uXXXX`` where ``XXXX`` is four
+hexadecimal digits. This matches Clojure's JVM character model; astral Unicode
+characters in strings therefore appear as two sequence elements.
 
 Otherwise, characters may be specified as ``\a``.
 

@@ -26,6 +26,7 @@
   (is (= [true true true] (vec (boolean-array 3 true))))
   (is (= [-1 2 0 0] (vec (byte-array 4 [-1 2]))))
   (is (= [(char 97) (char 937)] (vec (char-array "aΩ"))))
+  (is (= [55357 56832] (mapv int (char-array "😀"))))
   (is (= [-128 127] (vec (byte-array [128 -129]))))
   (is (= [-32768 32767] (vec (short-array [32768 -32769]))))
   (is (= [-2147483648 2147483647]

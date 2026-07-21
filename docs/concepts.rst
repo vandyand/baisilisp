@@ -76,12 +76,20 @@ Strings and Byte Strings
 Basilisp's string type is Python's base :external:py:class:`str` type.
 Python's byte string type :external:py:class:`bytes` is also supported.
 
+Language-facing string operations follow Clojure's JVM UTF-16 indexing model:
+``count``, ``seq``, ``nth``, ``get``, ``subs``, collection conversion, and
+``char-array`` operate on 16-bit code units rather than Python Unicode code
+points. Python interop still receives the original Python string. This matters
+for astral characters such as ``"😀"``, which count as two Basilisp/Clojure
+characters.
+
 .. note::
 
    Basilisp represents Clojure characters with a distinct immutable runtime value.
    Characters are not strings, including one-character strings. When passing a character
    to Python code, use ``str`` (or the value's ``.value`` attribute) to obtain its
-   one-character Python string.
+   one-code-unit Python string. An unpaired surrogate is rendered as ``\uXXXX``
+   when printed readably so ordinary UTF-8 text streams remain safe.
 
 .. seealso::
 

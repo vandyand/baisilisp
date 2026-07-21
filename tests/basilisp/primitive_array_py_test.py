@@ -128,6 +128,21 @@ def test_primitive_arrays_reject_cross_type_mutation_and_scalar_sequence_confusi
         int_array(1).assign(0, 1 << 31)
 
 
+def test_char_arrays_expand_python_astral_text_to_clojure_utf16_units():
+    assert [ord(character.value) for character in char_array("😀")] == [0xD83D, 0xDE00]
+
+
+@given(st.text())
+def test_char_arrays_fuzz_expand_python_text_to_utf16_units(value):
+    expected = value.encode("utf-16-le", "surrogatepass")
+    expected_units = [
+        int.from_bytes(expected[offset : offset + 2], "little")
+        for offset in range(0, len(expected), 2)
+    ]
+
+    assert [ord(character.value) for character in char_array(value)] == expected_units
+
+
 @given(
     st.lists(st.integers(min_value=-(1 << 31), max_value=(1 << 31) - 1), max_size=128)
 )

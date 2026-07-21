@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 60 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-20 (619 shared Vars and 58 Basilisp
+This document classifies the 55 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (624 shared Vars and 58 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -28,6 +28,11 @@ The following symbols are now implemented and no longer appear as gaps:
 and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
 `commute`,
 `ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
+The agent lifecycle names `await`, `release-pending-sends`,
+`set-agent-send-executor!`, `set-agent-send-off-executor!`, and
+`shutdown-agents` are also implemented. Bare ``await`` remains Basilisp's async
+special form, so the Clojure agent wait is available as the qualified
+``clojure.core/await`` or ``basilisp.core/await`` spelling.
 The Python-host compatibility forms `bean`, `enumeration-seq`, `uri?`,
 `StackTraceElement->vec`, and `Throwable->map` are also implemented.
 
@@ -80,9 +85,7 @@ Python objects, iterators, and parsed URIs.
 
 ### Agents and software transactional memory
 
-`*agent*`, `await`, `ref-history-count`, `ref-max-history`,
-`ref-min-history`, `release-pending-sends`,
-`set-agent-send-executor!`, `set-agent-send-off-executor!`, and `shutdown-agents`.
+`*agent*`, `ref-history-count`, `ref-max-history`, and `ref-min-history`.
 `sync` is now available as Clojure-compatible transaction syntax:
 its flags argument is documented as ignored by Clojure and is likewise ignored
 by Basilisp. `io!` is now provided as an explicit transaction side-effect guard,
@@ -93,10 +96,9 @@ semantics. Python threads, `asyncio`, and locks can support a useful native
 concurrency library, but they cannot truthfully implement Clojure STM by
 wrapping the existing atom abstraction. Basilisp now provides executor-backed
 `agent`, `send`, `send-off`, `send-via`, error handling, bounded `await-for`,
-and failure-blocking `await1`.
-Bare `await` remains unavailable as an agent wait function because it is a
-Python async special form; `await-agent` provides that synchronous wait
-operation instead.
+and Clojure-compatible `await1`. The public executor lifecycle operations and
+qualified ``await`` are now available; the internal ``*agent*`` binding and JVM
+Ref history controls remain omitted.
 `agent-errors` is now available as Clojure's deprecated one-item wrapper around
 `agent-error`.
 The portable Ref operations ``ref``, ``dosync``, ``alter``, ``ref-set``,

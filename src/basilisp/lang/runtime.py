@@ -1565,6 +1565,13 @@ def _count_sized(coll: Sized):
     return len(coll)
 
 
+@count.register(str)
+def _count_str(coll: str) -> int:
+    """Count strings as JVM/Clojure UTF-16 code units, not Python code points."""
+
+    return char.utf16_length(coll)
+
+
 @functools.singledispatch
 def nth(coll, i: int, notfound=IIndexed.NTH_SENTINEL):
     """Returns the ith element of coll (0-indexed), if it exists.
@@ -1591,7 +1598,7 @@ def _nth_sequence(coll: Sequence, i: int, notfound=IIndexed.NTH_SENTINEL):
 @nth.register(str)
 def _nth_str(coll: str, i: int, notfound=IIndexed.NTH_SENTINEL):
     try:
-        return char.character(coll[i])
+        return char.character(char.utf16_unit_at(coll, i))
     except IndexError as ex:
         if notfound is not IIndexed.NTH_SENTINEL:
             return notfound
@@ -1640,7 +1647,9 @@ def _contains_indexed(coll: Sequence, k: Any) -> bool:
 
 @contains.register(str)
 def _contains_str(s: str, k: Any) -> bool:
-    return _contains_indexed(s, k)
+    if not isinstance(k, int) or isinstance(k, bool):
+        raise TypeError(f"contains? index must be an integer; got '{type(k)}'")
+    return 0 <= k < char.utf16_length(s)
 
 
 @contains.register(list)
@@ -1683,7 +1692,7 @@ def _get_others(m, k, default=None):
 @get.register(str)
 def _get_str(m: str, k, default=None):
     try:
-        return char.character(m[k])
+        return char.character(char.utf16_unit_at(m, k))
     except (IndexError, TypeError, ValueError):
         return default
 

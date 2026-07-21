@@ -1,7 +1,7 @@
 # pylint: disable=abstract-class-instantiated,import-error,no-name-in-module
 from typing import Iterable, TypeVar
 
-from basilisp.lang.character import Character
+from basilisp.lang.character import Character, iter_utf16_units
 from basilisp._lang.seq import Cons as _Cons
 from basilisp._lang.seq import EmptySequence as _EmptySequenceNative
 from basilisp._lang.seq import LazySeq as _LazySeq
@@ -57,11 +57,11 @@ def iterator_sequence(s: Iterable[T]) -> ISeq[T]:
 
 
 def to_seq(s):
-    """Coerce values to sequences, preserving Clojure string character values."""
+    """Coerce values to sequences, preserving Clojure UTF-16 characters."""
     if isinstance(s, str):
         if not s:
             return None
-        return sequence(map(Character, s), support_single_use=True)
+        return sequence(map(Character, iter_utf16_units(s)), support_single_use=True)
     return _to_seq(s)
 
 

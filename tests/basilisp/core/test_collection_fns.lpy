@@ -14,7 +14,7 @@
     []            {}
     [:a :b :c]    [:a :b :c]
     [:a :b :c]    '(:a :b :c)
-    ["a" "b" "c"] "abc"
+    [\a \b \c]    "abc"
     [[:a 1]]      {:a 1}))
 
 (deftest set-test
@@ -27,7 +27,7 @@
     #{:a :b :c}      [:a :b :c]
     #{:a :b :c}      '(:a :b :c)
     #{:a :b :c}      #{:a :b :c}
-    #{"a" "b" "c"}   "abc"
+    #{\a \b \c}       "abc"
     #{[:a 1]}        {:a 1}
     #{[:a 1] [:b 2]} {:a 1 :b 2}))
 

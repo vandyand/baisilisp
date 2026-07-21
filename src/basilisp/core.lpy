@@ -2113,11 +2113,13 @@
 (defn char
   "Coerce an integer or character ``x`` to a character.
 
-  Natural integers are treated as Unicode ordinals. Other types result in a
-  ``ValueError``\\."
+  Natural UTF-16 code-unit integers (0 through 65535) are accepted. Other
+  values result in a ``ValueError``\\."
   [x]
   (cond
-    (instance? python/int x) (basilisp.lang.runtime/character (python/chr x))
+    (and (instance? python/int x)
+         (not (instance? python/bool x))
+         (<= 0 x 65535)) (basilisp.lang.runtime/character (python/chr x))
     (char? x)                x
     :else                    (throw
                               (python/ValueError
@@ -2260,7 +2262,7 @@
   "Coerce ``x`` to a char. Value may be truncated or rounded."
   [x]
   (cond
-    (instance? python/int x) (char (mod x sys/maxunicode))
+    (and (instance? python/int x) (not (instance? python/bool x))) (char (mod x 65536))
     :else                    (char x)))
 
 (defcopy unchecked-double
@@ -5116,11 +5118,14 @@
 
 (defn subs
   "Return a substring of ``s`` from the index ``start`` (inclusive) to index ``end``
-  exclusive, or the end of the string if no ``end`` is supplied."
+  exclusive, or the end of the string if no ``end`` is supplied.
+
+  String indexes are Clojure/JVM UTF-16 code-unit indexes, not Python Unicode
+  code-point indexes."
   ([s start]
-   (subs s start nil))
+   (basilisp.lang.character/utf16-substring s start))
   ([s start end]
-   (operator/getitem s (python/slice start end))))
+   (basilisp.lang.character/utf16-substring s start end)))
 
 ;;;;;;;;;;;;;;;;;;;;
 ;; File Functions ;;
@@ -5520,7 +5525,9 @@
   Note that unlike ``require``\\, files loaded by ``load-file`` will not be cached and
   will thus incur compilation time on subsequent loads."
   [path]
-  (with-open [f (python/open path ** :mode "r")]
+  ;; Clojure source is UTF-8. Relying on the host default corrupts ordinary
+  ;; Unicode source on Windows code pages before the reader sees it.
+  (with-open [f (python/open path ** :mode "r" :encoding "utf-8")]
     (load-reader f)))
 
 (defn- resolve-load-path

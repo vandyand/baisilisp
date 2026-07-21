@@ -16,7 +16,7 @@ import struct
 from collections.abc import Iterable, Iterator
 from typing import Any, TypeVar
 
-from basilisp.lang.character import Character
+from basilisp.lang.character import Character, iter_utf16_units
 
 
 def _integer(value: Any) -> int:
@@ -222,7 +222,7 @@ def _values(value: Any, array_type: type[PrimitiveArray]) -> Iterable[Any]:
     if value is None:
         return ()
     if array_type is CharArray and isinstance(value, str):
-        return (Character(char) for char in value)
+        return (Character(char) for char in iter_utf16_units(value))
     try:
         return iter(value)
     except TypeError as exc:
