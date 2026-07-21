@@ -1,0 +1,68 @@
+(ns basilisp.tools.namespace.parse
+  "Read namespace declarations and extract their direct dependencies."
+  (:require [clojure.tools.reader :as reader]))
+
+(defn comment? [form]
+  (and (list? form) (= 'comment (first form))))
+
+(defn ns-decl? [form]
+  (and (list? form) (= 'ns (first form))))
+
+(def clj-read-opts {:read-cond :allow :features #{:clj}})
+(def cljs-read-opts {:read-cond :allow :features #{:cljs}})
+(def lpy-read-opts {:read-cond :allow :features #{:lpy}})
+
+(defn read-ns-decl
+  ([rdr] (read-ns-decl rdr nil))
+  ([rdr read-opts]
+   (let [opts (assoc (or read-opts clj-read-opts) :eof ::eof)]
+     (loop []
+       (let [form (reader/read opts rdr)]
+         (cond
+           (ns-decl? form) form
+           (= ::eof form) nil
+           :else          (recur)))))))
+
+(defn- prefix-spec? [form]
+  (and (sequential? form)
+       (symbol? (first form))
+       (not-any? keyword? form)
+       (< 1 (count form))))
+
+(defn- option-spec? [form]
+  (and (sequential? form)
+       (or (symbol? (first form)) (string? (first form)))
+       (or (keyword? (second form)) (= 1 (count form)))))
+
+(defn- deps-from-libspec [prefix form]
+  (cond
+    (prefix-spec? form)
+    (mapcat #(deps-from-libspec
+              (symbol (str (when prefix (str prefix ".")) (first form)))
+              %)
+            (rest form))
+
+    (option-spec? form)
+    (when-not (= :as-alias (second form))
+      (deps-from-libspec prefix (first form)))
+
+    (symbol? form)
+    (list (symbol (str (when prefix (str prefix ".")) form)))
+
+    (or (keyword? form) (string? form)) nil
+
+    :else
+    (throw (ex-info "Unparsable namespace form"
+                    {:reason ::unparsable-ns-form :form form}))))
+
+(def ^:private ns-clause-heads
+  #{:use :require :require-macros 'use 'require 'require-macros})
+
+(defn- deps-from-ns-form [form]
+  (when (and (sequential? form) (contains? ns-clause-heads (first form)))
+    (mapcat #(deps-from-libspec nil %) (rest form))))
+
+(defn name-from-ns-decl [decl] (second decl))
+
+(defn deps-from-ns-decl [decl]
+  (set (mapcat deps-from-ns-form decl)))

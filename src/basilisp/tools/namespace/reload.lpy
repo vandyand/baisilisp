@@ -1,0 +1,36 @@
+(ns basilisp.tools.namespace.reload
+  "Execute pending unload and reload operations from a namespace tracker."
+  (:require [basilisp.tools.namespace.track :as track])
+  (:import [basilisp.tools_namespace :as backend]))
+
+(defn remove-lib [lib]
+  (backend/remove_namespace lib))
+
+(defn track-reload-one [tracker]
+  (let [unload (::track/unload tracker)
+        load (::track/load tracker)]
+    (cond
+      (seq unload)
+      (let [name (first unload)]
+        (remove-lib name)
+        (update tracker ::track/unload rest))
+
+      (seq load)
+      (let [name (first load)]
+        (try
+          (require name :reload)
+          (update tracker ::track/load rest)
+          (catch Exception error
+            (assoc tracker
+                   ::error error
+                   ::error-ns name
+                   ::track/unload load))))
+
+      :else tracker)))
+
+(defn track-reload [tracker]
+  (loop [tracker (dissoc tracker ::error ::error-ns)]
+    (if (and (not (::error tracker))
+             (or (seq (::track/load tracker)) (seq (::track/unload tracker))))
+      (recur (track-reload-one tracker))
+      tracker)))

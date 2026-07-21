@@ -1,0 +1,22 @@
+(ns basilisp.tools.namespace
+  "Deprecated compatibility facade for `clojure.tools.namespace`.
+
+  New code should require the focused `parse`, `find`, `file`, `track`, or
+  `repl` namespace directly, matching upstream tools.namespace guidance.
+  "
+  (:require [basilisp.tools.namespace.file :as file]
+            [basilisp.tools.namespace.find :as find]
+            [basilisp.tools.namespace.parse :as parse]))
+
+(def clojure-source-file? file/clojure-file?)
+(def find-clojure-sources-in-dir find/find-clojure-sources-in-dir)
+(def comment? parse/comment?)
+(def ns-decl? parse/ns-decl?)
+(def read-ns-decl parse/read-ns-decl)
+(def read-file-ns-decl file/read-file-ns-decl)
+(def find-ns-decls-in-dir find/find-ns-decls-in-dir)
+(def find-namespaces-in-dir find/find-namespaces-in-dir)
+(def clojure-sources-in-jar find/clojure-sources-in-jar)
+(def read-ns-decl-from-jarfile-entry find/read-ns-decl-from-jarfile-entry)
+(def find-ns-decls-in-jarfile find/find-ns-decls-in-jarfile)
+(def find-namespaces-in-jarfile find/find-namespaces-in-jarfile)

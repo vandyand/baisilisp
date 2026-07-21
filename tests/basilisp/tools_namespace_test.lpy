@@ -1,0 +1,129 @@
+(ns tests.basilisp.tools-namespace-test
+  (:import os pathlib sys zipfile)
+  (:require [basilisp.test :as test :refer [deftest is testing]]
+            [basilisp.test.fixtures :as fixtures :refer [*tempdir*]]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]
+            [clojure.tools.reader.reader-types :as reader-types]
+            [clojure.tools.namespace.dependency :as dependency]
+            [clojure.tools.namespace.dir :as dir]
+            [clojure.tools.namespace.file :as file]
+            [clojure.tools.namespace.find :as find]
+            [clojure.tools.namespace.parse :as parse]
+            [clojure.tools.namespace.repl :as repl]
+            [clojure.tools.namespace.reload :as reload]
+            [clojure.tools.namespace :as namespace]
+            [clojure.tools.namespace.track :as track]))
+
+(test/use-fixtures :each fixtures/tempdir fixtures/reset-path)
+
+(defn- write-source! [relative source]
+  (let [path (pathlib/Path *tempdir* relative)]
+    (.mkdir (.-parent path) ** :parents true :exist_ok true)
+    (spit path source)
+    path))
+
+(defn- var-value [namespace name]
+  @(ns-resolve (the-ns namespace) name))
+
+(deftest parse-handles-comments-reader-conditionals-prefixes-and-aliases
+  (let [source "; a leading comment\n(comment (def ignored true))\n(ns demo.app\n  (:require [alpha.beta :as beta]\n            [prefix [child :as c] [other :refer [x]]]\n            [skip.me :as-alias skip]\n            \"npm-package\"))"
+        declaration (parse/read-ns-decl
+                     (reader-types/string-push-back-reader source)
+                     parse/lpy-read-opts)]
+    (is (= 'demo.app (parse/name-from-ns-decl declaration)))
+    (is (= #{'alpha.beta 'prefix.child 'prefix.other}
+           (parse/deps-from-ns-decl declaration))))
+  (is (nil? (parse/read-ns-decl
+             (reader-types/string-push-back-reader "(+ 1 2)"))))
+  (is (thrown? Exception
+               (parse/deps-from-ns-decl '(ns invalid (:require 42))))))
+
+(deftest deprecated-root-namespace-retains-the-discovery-facade
+  (is (namespace/comment? '(comment (+ 1 2))))
+  (is (namespace/ns-decl? '(ns example.core))))
+
+(deftest dependency-graph-and-tracker-preserve-order-and-reject-cycles
+  (let [graph (-> (dependency/graph)
+                  (dependency/depend 'app 'service)
+                  (dependency/depend 'service 'database))
+        order (vec (dependency/topo-sort graph))]
+    (is (= #{'service 'database} (dependency/transitive-dependencies graph 'app)))
+    (is (= #{'app 'service} (dependency/transitive-dependents graph 'database)))
+    (is (< (.index order 'database) (.index order 'service) (.index order 'app)))
+    (is (thrown? Exception (dependency/depend graph 'database 'app))))
+  (let [tracker (track/add (track/tracker)
+                           {'app #{'service} 'service #{'database}})]
+    (is (= '(app service) (::track/unload tracker)))
+    ;; `database` is an unchanged external dependency, so only changed source
+    ;; namespaces (and their dependents) are scheduled for loading.
+    (is (= '(service app) (::track/load tracker)))
+    (is (= '(service app) (::track/load (track/remove tracker ['database]))))))
+
+(deftest source-discovery-tracks-additions-deletions-and-zip-archives
+  (let [root (pathlib/Path *tempdir*)
+        alpha (write-source! "demo/alpha.lpy" "(ns demo.alpha)")
+        beta (write-source! "demo/beta.lpy" "(ns demo.beta (:require [demo.alpha]))")
+        archive (pathlib/Path root "sources.zip")]
+    (is (= #{'demo.alpha 'demo.beta}
+           (set (find/find-namespaces-in-dir root find/lpy))))
+    (is (= 'demo.alpha (parse/name-from-ns-decl (file/read-file-ns-decl alpha parse/lpy-read-opts))))
+    (let [first-scan (dir/scan-dirs {} [root] {:platform find/lpy :add-all? true})]
+      (is (= '(demo.alpha demo.beta) (::track/load first-scan)))
+      ;; `scan-files` must realize a one-shot source iterable once before it
+      ;; computes both deletion and modification sets.
+      (is (= #{'demo.alpha 'demo.beta}
+             (set (vals (::file/filemap
+                         (dir/scan-files {}
+                                         (map identity [alpha beta])
+                                         {:platform find/lpy :add-all? true}))))))
+      (.unlink beta)
+      (let [second-scan (dir/scan-dirs first-scan [root] {:platform find/lpy})]
+        (is (not (contains? (::dir/files second-scan) beta)))
+        (is (not (contains? (::file/filemap second-scan) beta)))
+        (is (some #{'demo.beta} (::track/unload second-scan)))))
+    (with-open [jar (zipfile/ZipFile archive "w")]
+      (.writestr jar "archive/item.lpy" "(ns archive.item (:require [demo.alpha]))"))
+    (is (= ["archive/item.lpy"] (vec (find/sources-in-jar archive find/lpy))))
+    (is (= ['archive.item] (vec (find/find-namespaces-in-jarfile archive find/lpy))))))
+
+(deftest refresh-all-reloads-dependencies-before-their-dependents
+  (let [root (pathlib/Path *tempdir*)]
+    (try
+      (.insert sys/path 0 (str root))
+      (write-source! "refresh/dep.lpy" "(ns refresh.dep) (def value 1)")
+      (write-source! "refresh/app.lpy"
+                     "(ns refresh.app (:require [refresh.dep :as dep])) (def value dep/value)")
+      (repl/clear)
+      (repl/set-refresh-dirs root)
+      (is (= :ok (repl/refresh-all)))
+      (is (= 1 (var-value 'refresh.app 'value)))
+      (write-source! "refresh/dep.lpy" "(ns refresh.dep) (def value 2)")
+      (is (= :ok (repl/refresh-all)))
+      (is (= 2 (var-value 'refresh.app 'value)))
+      (finally
+        (when (find-ns 'refresh.app) (reload/remove-lib 'refresh.app))
+        (when (find-ns 'refresh.dep) (reload/remove-lib 'refresh.dep))
+        (repl/clear)))))
+
+(deftest randomized-acyclic-graphs-always-return-a-valid-topological-order
+  ;; Edges only point from a lower-numbered node to a higher-numbered one, so
+  ;; each generated graph is acyclic while still exercising sparse/dense cases.
+  (let [property
+        (prop/for-all [bits (gen/vector (gen/choose 0 1) 16 16)]
+          (let [edges (keep-indexed (fn [index bit]
+                                      (when (pos? bit) [index (inc index)]))
+                                    bits)
+                graph (reduce (fn [g [node dependency]]
+                                (dependency/depend g node dependency))
+                              (dependency/graph)
+                              edges)
+                order (vec (dependency/topo-sort graph))
+                positions (zipmap order (range))]
+            (every? (fn [[node dependency]]
+                      (< (positions dependency) (positions node)))
+                    edges)))
+        result (tc/quick-check 250 property :seed 20260723 :max-size 40)]
+    (is (:pass? result))
+    (is (= 250 (:num-tests result)))))

@@ -1,0 +1,69 @@
+(ns basilisp.tools.namespace.repl
+  "REPL helpers for safely refreshing changed Basilisp namespaces."
+  (:require [basilisp.tools.namespace.dir :as dir]
+            [basilisp.tools.namespace.find :as find]
+            [basilisp.tools.namespace.reload :as reload]
+            [basilisp.tools.namespace.track :as track]))
+
+(defonce ^:dynamic refresh-tracker (track/tracker))
+(defonce ^:dynamic refresh-dirs [])
+
+(defn- remove-disabled [tracker]
+  ;; Basilisp namespace metadata may be used with the same keys as upstream.
+  (let [load-disabled? (fn [name]
+                         (false? (::load (meta (find-ns name)))))
+        unload-disabled? (fn [name]
+                           (or (false? (::unload (meta (find-ns name))))
+                               (load-disabled? name)))]
+    (-> tracker
+        (update ::track/unload #(remove unload-disabled? %))
+        (update ::track/load #(remove load-disabled? %)))))
+
+(defn scan
+  ([] (scan nil))
+  ([options]
+   (alter-var-root #'refresh-tracker
+                   #(-> %
+                        (dir/scan-dirs refresh-dirs
+                                       (assoc (or options {}) :platform
+                                              (or (:platform options) find/lpy)))
+                        remove-disabled))))
+
+(defn refresh-scanned [& options]
+  (let [{:keys [after]} (apply hash-map options)]
+    (when after
+      (assert (symbol? after) ":after value must be a symbol")
+      (assert (namespace after) ":after value must be namespace-qualified"))
+    (prn :reloading (::track/load refresh-tracker))
+    (alter-var-root #'refresh-tracker reload/track-reload)
+    (if-let [error (::reload/error refresh-tracker)]
+      (do (prn :error-while-loading (::reload/error-ns refresh-tracker)) error)
+      (if after
+        (if-let [callback (resolve after)]
+          (callback)
+          (throw (Exception. (str "Cannot resolve :after symbol " after))))
+        :ok))))
+
+(defn refresh [& options]
+  (scan {:platform find/lpy})
+  (apply refresh-scanned options))
+
+(defn refresh-all [& options]
+  (scan {:platform find/lpy :add-all? true})
+  (apply refresh-scanned options))
+
+(defn set-refresh-dirs [& dirs]
+  (alter-var-root #'refresh-dirs (constantly (vec dirs))))
+
+(defn clear []
+  (alter-var-root #'refresh-tracker (constantly (track/tracker))))
+
+(defn disable-unload!
+  ([] (disable-unload! *ns*))
+  ([namespace] (alter-meta! namespace assoc ::unload false)))
+
+(defn disable-reload!
+  ([] (disable-reload! *ns*))
+  ([namespace]
+   (alter-meta! namespace assoc ::load false)
+   (disable-unload! namespace)))

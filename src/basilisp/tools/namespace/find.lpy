@@ -1,0 +1,93 @@
+(ns basilisp.tools.namespace.find
+  "Find namespace declarations in source trees and ZIP/JAR archives."
+  (:import zipfile)
+  (:require [basilisp.io :as io]
+            [clojure.tools.reader.reader-types :as reader-types]
+            [basilisp.tools.namespace.file :as file]
+            [basilisp.tools.namespace.parse :as parse]))
+
+(def clj {:read-opts parse/clj-read-opts :extensions file/clojure-extensions})
+(def cljs {:read-opts parse/cljs-read-opts :extensions file/clojurescript-extensions})
+(def lpy {:read-opts parse/lpy-read-opts :extensions file/basilisp-extensions})
+
+(defn- platform-or-default [platform] (or platform clj))
+
+(defn find-sources-in-dir
+  ([dir] (find-sources-in-dir dir nil))
+  ([dir platform]
+   (let [extensions (:extensions (platform-or-default platform))]
+     (->> (iterator-seq (.rglob (io/path dir) "*"))
+          (filter #(file/file-with-extension? % extensions))
+          (sort-by str)))))
+
+(defn find-clojure-sources-in-dir [dir] (find-sources-in-dir dir clj))
+
+(defn- with-source-meta [decl origin file-name]
+  (when (and decl (symbol? (second decl)))
+    (let [[_ name & more] decl]
+      (list* 'ns (with-meta name {:dir origin :file file-name}) more))))
+
+(defn find-ns-decls-in-dir
+  ([dir] (find-ns-decls-in-dir dir nil))
+  ([dir platform]
+   (keep (fn [source]
+           (try
+             (with-source-meta (file/read-file-ns-decl source (:read-opts platform))
+                               (str dir) (str source))
+             (catch Exception _ nil)))
+         (find-sources-in-dir dir platform))))
+
+(defn find-namespaces-in-dir
+  ([dir] (find-namespaces-in-dir dir nil))
+  ([dir platform] (map parse/name-from-ns-decl (find-ns-decls-in-dir dir platform))))
+
+(defn sources-in-jar
+  ([jar-file] (sources-in-jar jar-file nil))
+  ([jar-file platform]
+   (let [extensions (:extensions (platform-or-default platform))]
+     (with-open [jar (zipfile/ZipFile jar-file)]
+       (->> (.namelist jar)
+            (filter #(some (fn [extension] (.endswith % extension)) extensions))
+            sort
+            doall)))))
+
+(defn clojure-sources-in-jar [jar-file] (sources-in-jar jar-file clj))
+
+(defn read-ns-decl-from-jarfile-entry
+  ([jar-file entry-name] (read-ns-decl-from-jarfile-entry jar-file entry-name nil))
+  ([jar-file entry-name platform]
+   (try
+     (with-open [jar (zipfile/ZipFile jar-file)]
+       (let [source (.decode (.read jar entry-name) "utf-8")]
+         (with-source-meta
+          (parse/read-ns-decl (reader-types/string-push-back-reader source)
+                              (:read-opts platform))
+          (str jar-file) entry-name)))
+     (catch Exception _ nil))))
+
+(defn find-ns-decls-in-jarfile
+  ([jar-file] (find-ns-decls-in-jarfile jar-file nil))
+  ([jar-file platform]
+   (keep #(read-ns-decl-from-jarfile-entry jar-file % platform)
+         (sources-in-jar jar-file platform))))
+
+(defn find-namespaces-in-jarfile
+  ([jar-file] (find-namespaces-in-jarfile jar-file nil))
+  ([jar-file platform]
+   (map parse/name-from-ns-decl (find-ns-decls-in-jarfile jar-file platform))))
+
+(defn find-ns-decls
+  ([files] (find-ns-decls files nil))
+  ([files platform]
+   (mapcat (fn [source]
+             (let [path (io/path source)]
+               (cond
+                 (.is_dir path) (find-ns-decls-in-dir path platform)
+                 (and (.is_file path) (zipfile/is_zipfile path))
+                 (find-ns-decls-in-jarfile path platform)
+                 :else [])))
+           files)))
+
+(defn find-namespaces
+  ([files] (find-namespaces files nil))
+  ([files platform] (map parse/name-from-ns-decl (find-ns-decls files platform))))

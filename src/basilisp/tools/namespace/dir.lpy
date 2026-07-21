@@ -1,0 +1,52 @@
+(ns basilisp.tools.namespace.dir
+  "Track source-tree changes for namespace refresh workflows."
+  (:import sys time)
+  (:require [basilisp.io :as io]
+            [basilisp.set :as set]
+            [basilisp.tools.namespace.file :as file]
+            [basilisp.tools.namespace.find :as find]))
+
+(defn- canonical [path] (.resolve (io/path path)))
+
+(defn- find-files [dirs platform]
+  (->> dirs
+       (map canonical)
+       (filter #(.exists %))
+       (mapcat #(find/find-sources-in-dir % platform))
+       (map canonical)
+       distinct))
+
+(defn- modified-files [tracker files]
+  (filter #(< (or (::time tracker) 0) (.-st_mtime_ns (.stat %))) files))
+
+(defn- deleted-files [tracker files]
+  (set/difference (or (::files tracker) #{}) (set files)))
+
+(defn- update-files [tracker deleted modified platform]
+  (let [read-opts (:read-opts platform)]
+    (-> tracker
+        (update ::files #(apply disj (or % #{}) deleted))
+        (file/remove-files deleted)
+        (update ::files #(into (or % #{}) modified))
+        (file/add-files modified read-opts)
+        (assoc ::time (time/time_ns)))))
+
+(defn scan-files
+  ([tracker files] (scan-files tracker files nil))
+  ([tracker files options]
+   (let [files (vec (map canonical files))
+         deleted (seq (deleted-files tracker files))
+         modified (if (:add-all? options) files (seq (modified-files tracker files)))]
+     (if (or deleted modified)
+       (update-files tracker deleted modified (:platform options))
+       tracker))))
+
+(defn scan-dirs
+  ([tracker] (scan-dirs tracker nil nil))
+  ([tracker dirs] (scan-dirs tracker dirs nil))
+  ([tracker dirs options]
+   (let [dirs (or (seq dirs) (filter #(.is_dir (io/path %)) sys/path))]
+     (scan-files tracker (find-files dirs (:platform options)) options))))
+
+(defn scan [tracker & dirs] (scan-dirs tracker dirs {:platform find/clj}))
+(defn scan-all [tracker & dirs] (scan-dirs tracker dirs {:platform find/clj :add-all? true}))

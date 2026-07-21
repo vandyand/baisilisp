@@ -1,0 +1,46 @@
+(ns basilisp.tools.namespace.track
+  "Dependency tracker for namespace reload workflows."
+  (:refer-basilisp :exclude [remove])
+  (:require [basilisp.set :as set]
+            [basilisp.tools.namespace.dependency :as dep]))
+
+(defn- remove-deps [deps names] (reduce dep/remove-node deps names))
+
+(defn- add-deps [deps depmap]
+  (reduce (fn [graph [name dependencies]]
+            (reduce (fn [g dependency] (dep/depend g name dependency)) graph dependencies))
+          deps depmap))
+
+(defn- update-deps [deps depmap]
+  (add-deps (remove-deps deps (keys depmap)) depmap))
+
+(defn- affected-namespaces [deps names]
+  (set/union (set names) (dep/transitive-dependents-set deps (set names))))
+
+(defn add [tracker depmap]
+  (let [load (or (::load tracker) ())
+        unload (or (::unload tracker) ())
+        deps (or (::deps tracker) (dep/graph))
+        new-deps (update-deps deps depmap)
+        changed (affected-namespaces new-deps (keys depmap))
+        old-deps (if (empty? (dep/nodes deps)) new-deps deps)]
+    (assoc tracker
+           ::deps new-deps
+           ::unload (distinct (concat (reverse (sort (dep/topo-comparator old-deps) changed)) unload))
+           ::load (distinct (concat (sort (dep/topo-comparator new-deps) changed) load)))))
+
+(defn remove [tracker names]
+  (let [load (or (::load tracker) ())
+        unload (or (::unload tracker) ())
+        deps (or (::deps tracker) (dep/graph))
+        known (set (dep/nodes deps))
+        removed-names (filter known names)
+        new-deps (reduce dep/remove-all deps removed-names)
+        changed (affected-namespaces deps removed-names)]
+    (assoc tracker
+           ::deps new-deps
+           ::unload (distinct (concat (reverse (sort (dep/topo-comparator deps) changed)) unload))
+           ::load (distinct (filter (complement (set removed-names))
+                                    (concat (sort (dep/topo-comparator new-deps) changed) load))))))
+
+(defn tracker [] {})

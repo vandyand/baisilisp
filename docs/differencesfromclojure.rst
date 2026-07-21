@@ -359,4 +359,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   reads and supports source logging, reader-condition options, and tagged
   reader bindings. JVM reader evaluation and Java class construction remain
   intentionally unavailable.
+* :lpy:ns:`basilisp.tools.namespace` provides the portable source discovery,
+  dependency tracking, and REPL refresh workflow from
+  ``clojure.tools.namespace``. Its default refresh platform is Basilisp
+  ``.lpy``/``.cljc`` source with the ``:lpy`` feature; ``:clj`` and ``:cljs``
+  discovery platforms remain available explicitly. The upstream alpha,
+  destructive source-moving API is intentionally omitted.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``

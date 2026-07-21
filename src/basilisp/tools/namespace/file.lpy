@@ -1,0 +1,49 @@
+(ns basilisp.tools.namespace.file
+  "Read namespace declarations from Python-hosted source files."
+  (:require [basilisp.io :as io]
+            [clojure.tools.reader.reader-types :as reader-types]
+            [basilisp.tools.namespace.parse :as parse]
+            [basilisp.tools.namespace.track :as track]))
+
+(def clojure-extensions '(".clj" ".cljc"))
+(def clojurescript-extensions '(".cljs" ".cljc"))
+(def basilisp-extensions '(".lpy" ".cljc"))
+
+(defn read-file-ns-decl
+  ([file] (read-file-ns-decl file nil))
+  ([file read-opts]
+   (with-open [stream (io/reader file)]
+     (parse/read-ns-decl (reader-types/push-back-reader stream) read-opts))))
+
+(defn file-with-extension? [file extensions]
+  (let [path (io/path file)]
+    (and (.is_file path) (some #(.endswith (.-name path) %) extensions))))
+
+(defn clojure-file? [file] (file-with-extension? file clojure-extensions))
+(defn clojurescript-file? [file] (file-with-extension? file clojurescript-extensions))
+(defn basilisp-file? [file] (file-with-extension? file basilisp-extensions))
+
+(defn- files-and-deps [files read-opts]
+  (reduce (fn [m file]
+            (if-let [decl (read-file-ns-decl file read-opts)]
+              (let [deps (parse/deps-from-ns-decl decl)
+                    name (parse/name-from-ns-decl decl)]
+                (-> m
+                    (assoc-in [:depmap name] deps)
+                    (assoc-in [:filemap file] name)))
+              m))
+          {} files))
+
+(defn add-files
+  ([tracker files] (add-files tracker files nil))
+  ([tracker files read-opts]
+   (let [{:keys [depmap filemap]} (files-and-deps files read-opts)]
+     (-> tracker
+         (track/add depmap)
+         (update ::filemap #(merge (or % {}) filemap))))))
+
+(defn remove-files [tracker files]
+  (let [filemap (or (::filemap tracker) {})]
+    (-> tracker
+        (track/remove (keep filemap files))
+        (update ::filemap #(apply dissoc (or % {}) files)))))
