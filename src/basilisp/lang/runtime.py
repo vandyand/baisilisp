@@ -138,6 +138,7 @@ PRINT_NAMESPACE_MAPS_VAR_NAME = "*print-namespace-maps*"
 PRINT_READABLY_VAR_NAME = "*print-readably*"
 PRINT_METHOD_VAR_NAME = "print-method"
 PRINT_DUP_METHOD_VAR_NAME = "print-dup"
+MATH_CONTEXT_VAR_NAME = "*math-context*"
 PYTHON_VERSION_VAR_NAME = "*python-version*"
 BASILISP_VERSION_VAR_NAME = "*basilisp-version*"
 
@@ -519,18 +520,24 @@ FrameStack = IPersistentStack[Frame]
 class _ThreadBindings(threading.local):
     def __init__(self):
         self._bindings: FrameStack = vec.EMPTY
+        # Keep decimal context managers aligned with binding frames.  The decimal
+        # module's context is a separate piece of dynamic state, so it must be
+        # restored at precisely the same boundary as a bound *math-context* Var.
+        self._math_contexts: list[Any | None] = []
 
     def get_bindings(self) -> FrameStack:
         return self._bindings
 
-    def push_bindings(self, frame: Frame) -> None:
+    def push_bindings(self, frame: Frame, math_context: Any | None = None) -> None:
         self._bindings = self._bindings.cons(frame)
+        self._math_contexts.append(math_context)
 
-    def pop_bindings(self) -> Frame:
+    def pop_bindings(self) -> tuple[Frame, Any | None]:
         frame = self._bindings.peek()
         self._bindings = self._bindings.pop()
+        math_context = self._math_contexts.pop()
         assert frame is not None
-        return frame
+        return frame, math_context
 
 
 _THREAD_BINDINGS = _ThreadBindings()
@@ -1114,28 +1121,57 @@ def push_thread_bindings(m: IPersistentMap[Var, Any]) -> None:
     """Push thread local bindings for the Var keys in m using the values."""
     bindings = set()
 
-    for var, val in m.items():
+    # Validate the complete frame before mutating any Var or decimal state.  This
+    # matters especially for the low-level public API, which callers pair manually
+    # with pop_thread_bindings.
+    for var in m.keys():
         if not var.dynamic:
             raise RuntimeException(
                 "cannot set thread-local bindings for non-dynamic Var"
             )
-        var.push_bindings(val)
-        bindings.add(var)
 
-    _THREAD_BINDINGS.push_bindings(lset.set(bindings))
+    math_context_var = Var.find(sym.symbol(MATH_CONTEXT_VAR_NAME, ns=CORE_NS))
+    math_context = (
+        m.val_at(math_context_var)
+        if math_context_var is not None and math_context_var in m
+        else None
+    )
+    context_manager = (
+        decimal.localcontext(math_context) if math_context is not None else None
+    )
+
+    if context_manager is not None:
+        context_manager.__enter__()
+
+    try:
+        for var, val in m.items():
+            var.push_bindings(val)
+            bindings.add(var)
+
+        _THREAD_BINDINGS.push_bindings(lset.set(bindings), context_manager)
+    except BaseException:
+        for var in bindings:
+            var.pop_bindings()
+        if context_manager is not None:
+            context_manager.__exit__(None, None, None)
+        raise
 
 
 def pop_thread_bindings() -> None:
     """Pop the thread local bindings set by push_thread_bindings above."""
     try:
-        bindings = _THREAD_BINDINGS.pop_bindings()
+        bindings, context_manager = _THREAD_BINDINGS.pop_bindings()
     except IndexError as e:
         raise RuntimeException(
             "cannot pop thread-local bindings without prior push"
         ) from e
 
-    for var in bindings:
-        var.pop_bindings()
+    try:
+        for var in bindings:
+            var.pop_bindings()
+    finally:
+        if context_manager is not None:
+            context_manager.__exit__(None, None, None)
 
 
 ###################
@@ -2707,11 +2743,14 @@ def bindings(bindings: Mapping[Var, Any] | None = None):
     logger.debug(
         f"Binding thread-local values for Vars: {', '.join(map(str, m.keys()))}"
     )
+    pushed = False
     try:
         push_thread_bindings(m)
+        pushed = True
         yield
     finally:
-        pop_thread_bindings()
+        if pushed:
+            pop_thread_bindings()
         logger.debug(
             f"Reset thread-local bindings for Vars: {', '.join(map(str, m.keys()))}"
         )

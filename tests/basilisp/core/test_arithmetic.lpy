@@ -294,3 +294,20 @@
     -1 -3  2
     -1 -10 3
     -1 -21 4))
+
+(deftest math-context-test
+  (is (= 0.13M (with-precision 2 (/ 1M 8M))))
+  (is (= 0.12M (with-precision 2 :rounding HALF_EVEN (/ 1M 8M))))
+  (is (= 0.143M
+         (binding [*math-context* (decimal/Context 3 decimal/ROUND_HALF_UP)]
+           (/ 1M 7M))))
+  (is (= "0.14|0.143|0.14"
+         (with-precision 2
+           (str (/ 1M 7M)
+                "|"
+                (with-precision 3 (/ 1M 7M))
+                "|"
+                (/ 1M 7M)))))
+  (is (= 0.143M (with-precision 3 @(future (/ 1M 7M)))))
+  (is (thrown? decimal/Inexact
+               (with-precision 2 :rounding UNNECESSARY (/ 1M 3M)))))

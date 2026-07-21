@@ -4653,6 +4653,44 @@
    "UP"           decimal/ROUND_UP
    "ZERO_FIVE_UP" decimal/ROUND_05UP})
 
+(def ^:dynamic *math-context*
+  "The active Python :external:py:class:`decimal.Context` for decimal arithmetic.
+
+  Bind a context to apply its precision, rounding, traps, and exponent limits to
+  Basilisp decimal operations in the current thread. ``nil`` leaves Python's current
+  decimal context unchanged. :lpy:fn:`with-precision` supplies a compatible context
+  automatically."
+  nil)
+
+(defn decimal-context
+  "Return a Decimal context with Clojure's with-precision defaults."
+  ([precision]
+   (decimal-context precision nil))
+  ([precision rounding]
+   (let [current-ctx (.copy (decimal/getcontext))]
+     (cond
+       (nil? rounding)
+       (set! (.-rounding current-ctx) decimal/ROUND_HALF_UP)
+
+       (= "UNNECESSARY" rounding)
+       (let [current-traps (apply hash-map (mapcat identity (.items (.-traps current-ctx))))]
+         (set! (.-traps current-ctx)
+               (python/dict
+                (assoc current-traps decimal/Inexact true))))
+
+       (contains? decimal-rounding-modes rounding)
+       (set! (.-rounding current-ctx) (decimal-rounding-modes rounding))
+
+       :else
+       (throw
+        (python/ValueError
+         (str "Unexpected rounding mode "
+              rounding
+              "; expected one of: "
+              (.join ", " (keys decimal-rounding-modes))))))
+     (set! (.-prec current-ctx) precision)
+     current-ctx)))
+
 (defn local-decimal-context
   "Return a :external:py:func:`decimal.localcontext` context manager which sets
   the precision and rounding behavior of :external:py:class:`decimal.Decimal` instances
@@ -4665,27 +4703,7 @@
   ([precision]
    (local-decimal-context precision nil))
   ([precision rounding]
-   (let [current-ctx (.copy (decimal/getcontext))]
-     (when-not (nil? rounding)
-       (cond
-         (= "UNNECESSARY" rounding)
-         (let [current-traps (apply hash-map (mapcat identity (.items (.-traps current-ctx))))]
-           (set! (.-traps current-ctx)
-                 (python/dict
-                  (assoc current-traps decimal/Inexact true))))
-
-         (contains? decimal-rounding-modes rounding)
-         (set! (.-rounding current-ctx) (decimal-rounding-modes rounding))
-
-         :else
-         (throw
-          (python/ValueError
-           (str "Unexpected rounding mode "
-                rounding
-                "; expected one of: "
-                (.join ", " (keys decimal-rounding-modes)))))))
-     (set! (.-prec current-ctx) precision)
-     (decimal/localcontext current-ctx))))
+   (decimal/localcontext (decimal-context precision rounding))))
 
 (defmacro with-precision
   "Set the current precision and (optionally) rounding behavior of
@@ -4708,8 +4726,8 @@
         exprs          (if rounding
                          (nthrest exprs 2)
                          exprs)]
-    `(with [ctx# (local-decimal-context ~precision ~@(filter identity [rounding]))]
-           ~@exprs)))
+    `(binding [*math-context* (decimal-context ~precision ~@(filter identity [rounding]))]
+       ~@exprs)))
 
 (defn ^:inline get-thread-bindings
   "Return the current thread-local bindings as a map of Var/value pairs."

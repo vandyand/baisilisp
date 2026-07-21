@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 54 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (624 shared Vars and 58 Basilisp
+This document classifies the 53 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (626 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -28,6 +28,9 @@ The following symbols are now implemented and no longer appear as gaps:
 and `xml-seq`, plus `+'`, `-'`, `*'`, `await1`, `ref`, `dosync`, `alter`, `ref-set`,
 `commute`,
 `ensure`, `sync`, `seque`, `print-method`, and `print-dup`.
+``*math-context*`` and ``with-precision`` now provide Clojure-compatible
+dynamic decimal context behavior, including the default ``HALF_UP`` rounding
+mode and restoration after nested bindings.
 The agent lifecycle names `await`, `release-pending-sends`,
 `set-agent-send-executor!`, `set-agent-send-off-executor!`, and
 `shutdown-agents` are also implemented. Bare ``await`` remains Basilisp's async
@@ -51,7 +54,7 @@ deferrals.
 ### Clojure compiler, reader, and Java class-loader state
 
 `*allow-unresolved-vars*`, `*compile-files*`,
-`*compile-path*`, `*fn-loader*`, `*math-context*`, `*read-eval*`,
+`*compile-path*`, `*fn-loader*`, `*read-eval*`,
 `*reader-resolver*`, `*repl*`, `*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `definline`, `gen-class`,
