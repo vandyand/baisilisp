@@ -17,7 +17,7 @@ from fractions import Fraction
 from typing import Any, Iterable
 
 from basilisp.lang.character import Character, iter_utf16_units
-from basilisp.lang.interfaces import IMapEntry, INamed, ISeq, ISequential
+from basilisp.lang.interfaces import IMapEntry, INamed, IRecord, ISeq, ISequential
 
 _MASK_32 = (1 << 32) - 1
 _MASK_64 = (1 << 64) - 1
@@ -244,6 +244,12 @@ def clojure_hash(value: Any) -> int:
         return _string_hash(value)
     if isinstance(value, INamed):
         return _named_hash(value)
+    if isinstance(value, IRecord):
+        # Records are map-like for lookup and equality, but their generated
+        # ``__hash__`` deliberately follows their positional fields plus the
+        # extension map.  Handle them before the generic Mapping branch so
+        # public ``hash`` agrees with Python's record hash contract.
+        return _int32(hash(value))
     if isinstance(value, IMapEntry):
         return hash_ordered((value.key, value.value))
     if isinstance(value, Mapping):

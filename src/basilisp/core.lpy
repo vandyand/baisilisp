@@ -5242,6 +5242,13 @@
   respect the value."
   sys/stderr)
 
+(def ^:dynamic *verbose-defrecords*
+  "When true, ``print-dup`` renders records with their full map representation.
+
+  When false, ``print-dup`` uses the compact positional record form, matching
+  Clojure's default record-printing behavior."
+  false)
+
 (def ^:dynamic *print-sep* " ")
 
 (def ^:dynamic *flush-on-newline*
@@ -8705,7 +8712,8 @@
            nil
            (dissoc ~map-gs ~@field-kws)))
          (~'_record_lrepr [~this-gs py-kwargs#]
-          (let [{print-meta :print_meta} (py->lisp py-kwargs#)
+          (let [{print-meta :print_meta
+                 print-dup  :print_dup} (py->lisp py-kwargs#)
 
                 ;; Accessing this type name directly as `(.-__qualname__ this)`
                 ;; can fail in cases where the type name is munged and starts
@@ -8713,10 +8721,13 @@
                 ;; the name as it would for any object field prefixed with a
                 ;; dunder.
                 qual-name (.- (python/type ~this-gs) ~'__qualname__)]
-            (cond->> (->> (mapcat identity ~this-gs)
-                          (apply hash-map)
-                          (repr)
-                          (str "#" ~(name *ns*) "." qual-name))
+            (cond->> (if (and print-dup (not *verbose-defrecords*))
+                       (str "#" ~(name *ns*) "." qual-name
+                            (repr (vec (vals ~this-gs))))
+                       (->> (mapcat identity ~this-gs)
+                            (apply hash-map)
+                            (repr)
+                            (str "#" ~(name *ns*) "." qual-name)))
               print-meta (str "^" (repr (meta ~this-gs)) " "))))
 
          ;; IReduceKV

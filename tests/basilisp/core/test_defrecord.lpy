@@ -1,6 +1,7 @@
 (ns tests.basilisp.core.test-defrecord
   (:import abc)
   (:require
+   [basilisp.string :as str]
    [basilisp.test :refer [deftest is testing are]]))
 
 (deftype Square [dim]
@@ -209,6 +210,24 @@
                        "^{:interesting :yes} #tests.basilisp.core.test-defrecord.Point{:z 3, :y 2, :x 1}"}
                      (binding [*print-meta* true]
                        (repr (with-meta p {:interesting :yes}))))))))
+
+(deftest verbose-defrecords-controls-print-dup-test
+  (let [p       (assoc (->Point 1 2 3) :extra 4)
+        compact (binding [*print-dup* true]
+                  (pr-str p))
+        verbose (binding [*print-dup* true
+                          *verbose-defrecords* true]
+                  (pr-str p))]
+    (is (false? *verbose-defrecords*))
+    (is (= "#tests.basilisp.core.test-defrecord.Point[1 2 3 4]"
+           compact))
+    (is (str/includes? verbose "#tests.basilisp.core.test-defrecord.Point{"))
+    (is (str/includes? verbose ":extra 4"))
+    (is (= compact
+           (binding [*print-dup* true]
+             (binding [*verbose-defrecords* true]
+               (pr-str p))
+             (pr-str p))))))
 
 (definterface Shape
   (area []))
