@@ -690,6 +690,18 @@
               (is (= [10 10 15 22] [l1-l l1-el l1-c l1-ec]))
               (is (= [11 12 0 2] [l2-l l2-el l2-c l2-ec]))))))
 
+(deftest reader-eval-test
+  (is (= 42 (read-string "#=(+ 20 22)")))
+  (is (= [3 7] (read-string "[#=(+ 1 2) #=(+ 3 4)]")))
+  (is (= [42 "#=(+ 20 22)"]
+         (read+string (io/StringIO " #=(+ 20 22)"))))
+  (is (thrown? basilisp.lang.reader/SyntaxError
+               (binding [*read-eval* false]
+                 (read-string "#=(+ 20 22)"))))
+  (is (thrown? python/PermissionError
+               (binding [*read-eval* :unknown]
+                 (read-string "1")))))
+
 
 ;;;;;;;;;;
 ;; Load ;;

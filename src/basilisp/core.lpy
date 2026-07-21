@@ -5382,6 +5382,16 @@
   *data-readers*
   {})
 
+(def ^{:doc "Controls evaluation by the #= reader macro for :lpy:fn:`read`,
+             :lpy:fn:`read-string`, and :lpy:fn:`read+string`.
+
+             The default ``true`` matches Clojure and evaluates the following form in
+             the current namespace. Bind this Var to ``false`` when reading untrusted
+             input to reject reader evaluation."
+       :dynamic true}
+  *read-eval*
+  true)
+
 (def
   ^{:doc     "Resolver used for resolving namespace aliases when reading
               forms using read, read-string, etc."
@@ -5396,6 +5406,21 @@
        :dynamic true}
   *default-data-reader-fn*
   nil)
+
+(defn- reader-eval-fn
+  "Return the evaluator used by the #= reader macro in core reader functions."
+  []
+  (cond
+    (= :unknown *read-eval*)
+    (throw (python/PermissionError
+            "*read-eval* is :unknown; bind it to true or false before reading"))
+
+    *read-eval*
+    (fn [form]
+      (let [ctx (basilisp.lang.compiler.CompilerContext. "<Reader Eval Input>")]
+        (basilisp.lang.compiler/compile-and-exec-form form ctx *ns*)))
+
+    :else nil))
 
 (defn read-seq
   "Create an lazy sequence that will contain each form from the
@@ -5432,6 +5457,7 @@
                          (:features opts)
                          (not= :preserve (:read-cond opts))
                          *default-data-reader-fn*
+                         (reader-eval-fn)
                          **
                          :init-line (:init-line opts)
                          :init-column (:init-column opts))))))
@@ -5488,6 +5514,7 @@
                  (:features opts)
                  (not= :preserve (:read-cond opts))
                  *default-data-reader-fn*
+                 (reader-eval-fn)
                  (:init-line opts)
                  (:init-column opts))]
      (when result

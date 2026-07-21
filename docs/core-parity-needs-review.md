@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 53 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (626 shared Vars and 59 Basilisp
+This document classifies the 52 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (627 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -42,6 +42,10 @@ The Python-host compatibility forms `bean`, `enumeration-seq`, `uri?`,
 ``*file*`` is dynamically bound to the active source path during compilation,
 macro expansion, module loading, and cached-bytecode execution. It is ``nil``
 for interactive input; nested ``eval`` preserves its enclosing source binding.
+``*read-eval*`` now controls Clojure-compatible ``#=`` evaluation in the core
+reader APIs. Bind it to ``false`` to reject reader evaluation, or ``:unknown``
+to require an explicit true/false policy before any read.
+``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
 
@@ -55,11 +59,11 @@ deferrals.
 ### Clojure compiler, reader, and Java class-loader state
 
 `*allow-unresolved-vars*`, `*compile-files*`,
-`*compile-path*`, `*fn-loader*`, `*read-eval*`,
+`*compile-path*`, `*fn-loader*`,
 `*reader-resolver*`, `*repl*`, `*source-path*`, `*suppress-read*`,
 `*unchecked-math*`, `*use-context-classloader*`, `*verbose-defrecords*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `definline`, `gen-class`,
-`method-sig`, `with-loading-context`, and `with-local-vars`.
+`method-sig`, and `with-loading-context`.
 
 These names control Clojure compilation, reader evaluation, Java class loading,
 or generated JVM classes. Python has materially different import, compilation,

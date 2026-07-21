@@ -21,9 +21,8 @@ from typing import Any, NoReturn, TypeVar, Union, cast
 import attr
 from typing_extensions import Unpack
 
-from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
-from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -31,6 +30,7 @@ from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import util as langutil
 from basilisp.lang import vector as vec
+from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang.exception import format_exception
 from basilisp.lang.interfaces import (
     ILispObject,
@@ -83,6 +83,7 @@ DataReaders = lmap.PersistentMap[sym.Symbol, DataReaderFn]
 GenSymEnvironment = MutableMapping[str, sym.Symbol]
 Resolver = Callable[[sym.Symbol], sym.Symbol]
 LispReaderFn = Callable[["ReaderContext"], LispForm]
+ReaderEvalFn = Callable[["RawReaderForm"], Any]
 
 
 def _is_ns_name_char(char: str) -> bool:
@@ -392,6 +393,7 @@ class ReaderContext:
         "_process_reader_cond",
         "_process_tagged_literals",
         "_reader",
+        "_reader_eval",
         "_resolve",
         "_in_anon_fn",
         "_syntax_quoted",
@@ -408,6 +410,7 @@ class ReaderContext:
         features: IPersistentSet[kw.Keyword] | None = None,
         process_reader_cond: bool = True,
         default_data_reader_fn: DefaultDataReaderFn | None = None,
+        reader_eval: ReaderEvalFn | None = None,
     ) -> None:
         self._data_readers = lmap.EMPTY if data_readers is None else data_readers
         self._default_data_reader_fn = (
@@ -420,6 +423,7 @@ class ReaderContext:
         )
         self._process_reader_cond = process_reader_cond
         self._reader = reader
+        self._reader_eval = reader_eval
         self._resolve = (lambda x: x) if resolver is None else resolver
         self._process_tagged_literals: collections.deque[bool] = collections.deque([])
         self._in_anon_fn: collections.deque[bool] = collections.deque([])
@@ -450,6 +454,10 @@ class ReaderContext:
     @property
     def reader(self) -> StreamReader:
         return self._reader
+
+    @property
+    def reader_eval(self) -> ReaderEvalFn | None:
+        return self._reader_eval
 
     def resolve(self, sym: sym.Symbol) -> sym.Symbol:
         return self._resolve(sym)
@@ -1815,6 +1823,14 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
         return COMMENT
     elif char == "!":
         return _read_comment(ctx)
+    elif char == "=":
+        ctx.reader.advance()
+        if ctx.reader_eval is None:
+            raise ctx.syntax_error("Reader eval (#=) is disabled")
+        form = _read_next_consuming_comment(ctx)
+        if form is ctx.eof:
+            raise ctx.eof_error("Unexpected EOF after reader eval (#=)")
+        return ctx.reader_eval(form)
     elif char == "?":
         try:
             return _read_reader_conditional(ctx)
@@ -1950,6 +1966,7 @@ def read(  # pylint: disable=too-many-arguments
     features: IPersistentSet[kw.Keyword] | None = None,
     process_reader_cond: bool = True,
     default_data_reader_fn: DefaultDataReaderFn | None = None,
+    reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
 ) -> Iterable[RawReaderForm]:
@@ -1976,6 +1993,10 @@ def read(  # pylint: disable=too-many-arguments
     processed. If none are specified, then the `:default` and `:lpy` features
     are provided.
 
+    ``reader_eval`` is an optional callback for Clojure's ``#=`` reader macro.
+    It receives the parsed form and its return value replaces that form. Without
+    a callback, reader evaluation is rejected rather than evaluated implicitly.
+
     The caller is responsible for closing the input stream."""
     reader = StreamReader(stream, init_line=init_line, init_column=init_column)
     ctx = ReaderContext(
@@ -1986,6 +2007,7 @@ def read(  # pylint: disable=too-many-arguments
         features=features,
         process_reader_cond=process_reader_cond,
         default_data_reader_fn=default_data_reader_fn,
+        reader_eval=reader_eval,
     )
     while True:
         expr = _read_next(ctx)
@@ -2012,6 +2034,7 @@ def read_with_source(  # pylint: disable=too-many-arguments
     features: IPersistentSet[kw.Keyword] | None = None,
     process_reader_cond: bool = True,
     default_data_reader_fn: DefaultDataReaderFn | None = None,
+    reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
 ) -> tuple[RawReaderForm, str] | None:
@@ -2030,6 +2053,7 @@ def read_with_source(  # pylint: disable=too-many-arguments
         features=features,
         process_reader_cond=process_reader_cond,
         default_data_reader_fn=default_data_reader_fn,
+        reader_eval=reader_eval,
     )
     while True:
         expr = _read_next(ctx)
@@ -2061,6 +2085,7 @@ def read_str(  # pylint: disable=too-many-arguments
     features: IPersistentSet[kw.Keyword] | None = None,
     process_reader_cond: bool = True,
     default_data_reader_fn: DefaultDataReaderFn | None = None,
+    reader_eval: ReaderEvalFn | None = None,
     init_line: int | None = None,
     init_column: int | None = None,
 ) -> Iterable[RawReaderForm]:
@@ -2082,6 +2107,7 @@ def read_str(  # pylint: disable=too-many-arguments
             features=features,
             process_reader_cond=process_reader_cond,
             default_data_reader_fn=default_data_reader_fn,
+            reader_eval=reader_eval,
             init_line=init_line,
             init_column=init_column,
         )
@@ -2096,6 +2122,7 @@ def read_file(  # pylint: disable=too-many-arguments
     features: IPersistentSet[kw.Keyword] | None = None,
     process_reader_cond: bool = True,
     default_data_reader_fn: DefaultDataReaderFn | None = None,
+    reader_eval: ReaderEvalFn | None = None,
 ) -> Iterable[RawReaderForm]:
     """Read the contents of a file as a Lisp expression.
 
@@ -2111,4 +2138,5 @@ def read_file(  # pylint: disable=too-many-arguments
             features=features,
             process_reader_cond=process_reader_cond,
             default_data_reader_fn=default_data_reader_fn,
+            reader_eval=reader_eval,
         )

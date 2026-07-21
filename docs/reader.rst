@@ -11,6 +11,22 @@ The Basilisp reader performs a job which is a combination of the traditional lex
 The reader takes a file or string and produces a stream of Basilisp data structures.
 Typically the reader streams its results to the compiler, but end-users may also take advantage of the reader directly from within Basilisp.
 
+Reader Evaluation
+-----------------
+
+As in Clojure, the ``#=`` reader macro evaluates its following form when using
+the core ``read``, ``read-string``, or ``read+string`` functions. Its result
+replaces the reader form::
+
+    basilisp.user=> (read-string "#=(+ 20 22)")
+    42
+
+This is controlled by the dynamic ``*read-eval*`` Var. It defaults to ``true``
+for Clojure compatibility. Do not read untrusted input with that
+default: bind it to ``false`` to reject ``#=`` entirely. Binding it to
+``:unknown`` rejects all reads until the caller selects an explicit true or
+false policy.
+
 .. _reader_numeric_literals:
 
 Numeric Literals
