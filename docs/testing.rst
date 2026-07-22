@@ -135,7 +135,9 @@ normal human-oriented runner output.
 
 The wrapped call still returns the ordinary test summary map. Fixture, uncaught
 test, and ``test-ns-hook`` errors are reported as failing TAP events so the
-plan remains accurate.
+plan remains accurate. Like ``clojure.test.tap``, TAP report events are written
+through ``basilisp.test/*test-out*``; bind that Var to capture TAP output without
+redirecting unrelated ``*out*`` writes.
 
 Custom Assertions and Definition Tests
 --------------------------------------

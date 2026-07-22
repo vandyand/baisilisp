@@ -717,16 +717,21 @@ protocol-based; no third-party package supplies Clojure's fold/reduced contract.
 ``basilisp.test.tap`` now supplies the five Clojure TAP operations (plan, pass,
 fail, diagnostic, and ``with-tap-output``). Its report binding emits
 Clojure-compatible ``ok``/``not ok`` assertion lines, ``#`` diagnostics, and a
-plan to the dynamically bound ``*out*``. The basic diagnostics format requires
-no dependency; YAML diagnostics are an optional later enhancement.
+plan through ``basilisp.test/*test-out*``, matching Clojure's
+``with-test-out`` capture boundary. ``print-diagnostics`` is public and emits
+the same expected/actual lines for passing and failing assertion events. The
+basic diagnostics format requires no dependency; YAML diagnostics are an
+optional later enhancement.
 
 The Basilisp test runner now routes summaries, uncaught test errors, hook
 errors, and fixture failures through the same ``report`` dispatch as
 assertions. The default report handler keeps the human renderer, while the TAP
 handler owns all output during ``with-tap-output`` so no human text contaminates
-the stream and every reported failure is included in the plan. Golden fixtures
-cover assertion, uncaught-test, and fixture-error output; ``tap.py`` and
-``pytest-tap`` remain useful interoperability checks rather than dependencies.
+the stream and every reported failure is included in the plan. Shared
+Clojure/Basilisp fixtures lock the public surface, direct printers,
+``print-diagnostics``, ``tap-report`` output, ``with-tap-output`` binding, and a
+seeded diagnostics corpus; ``tap.py`` and ``pytest-tap`` remain useful
+interoperability checks rather than dependencies.
 
 ``clojure.test.junit`` is intentionally omitted. Its contract is tied to JUnit
 classes and XML/reporting conventions already covered by Python test runners.

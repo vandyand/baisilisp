@@ -25,69 +25,81 @@
   [msg]
   (println "not ok" msg))
 
-(defn- print-diagnostics
+(defn print-diagnostics
   [data]
-  (when (seq (t/testing-contexts-str))
+  (when (seq t/*testing-contexts*)
     (print-tap-diagnostic (t/testing-contexts-str)))
   (when (:message data)
     (print-tap-diagnostic (:message data)))
-  (when (contains? data :expected)
-    (print-tap-diagnostic (str "expected: " (pr-str (:expected data)))))
-  (when (contains? data :actual)
-    (print-tap-diagnostic (str "  actual: " (pr-str (:actual data))))))
+  (print-tap-diagnostic (str "expected:" (pr-str (:expected data))))
+  (print-tap-diagnostic (str "  actual:" (pr-str (:actual data)))))
 
 (defn- test-description
   [data]
-  (t/testing-vars-str data))
+  (str "(" (apply str (interpose " " t/*testing-vars*)) ")"
+       " (" (:file data "") ":" (:line data "") ")"))
 
 (defmulti ^:dynamic tap-report :type)
 
 (defmethod tap-report :pass
   [data]
-  (t/record-report! data)
-  (print-tap-pass (test-description data))
-  (print-diagnostics data))
+  (t/with-test-out
+   (t/record-report! data)
+   (t/inc-report-counter :pass)
+   (print-tap-pass (test-description data))
+   (print-diagnostics data)))
 
 (defmethod tap-report :fail
   [data]
-  (t/record-report! data)
-  (print-tap-fail (test-description data))
-  (print-diagnostics data))
+  (t/with-test-out
+   (t/record-report! data)
+   (t/inc-report-counter :fail)
+   (print-tap-fail (test-description data))
+   (print-diagnostics data)))
 
 (defmethod tap-report :failure
   [data]
-  (t/record-report! data)
-  (print-tap-fail (test-description data))
-  (print-diagnostics data))
+  (t/with-test-out
+   (t/record-report! data)
+   (t/inc-report-counter :fail)
+   (print-tap-fail (test-description data))
+   (print-diagnostics data)))
 
 (defmethod tap-report :error
   [data]
-  (t/record-report! data)
-  (print-tap-fail (test-description data))
-  (print-diagnostics data))
+  (t/with-test-out
+   (t/record-report! data)
+   (t/inc-report-counter :error)
+   (print-tap-fail (test-description data))
+   (print-diagnostics data)))
 
 (defmethod tap-report :fixture-error
   [data]
-  (print-tap-fail "fixture")
-  (print-tap-diagnostic (python/str (:exception data))))
+  (t/with-test-out
+   (print-tap-fail "fixture")
+   (print-tap-diagnostic (python/str (:exception data)))))
 
 (defmethod tap-report :test-error
   [data]
-  (print-tap-fail (str "(" (:test-name data) ")"))
-  (print-tap-diagnostic (python/str (:exception data))))
+  (t/with-test-out
+   (print-tap-fail (str "(" (:test-name data) ")"))
+   (print-tap-diagnostic (python/str (:exception data)))))
 
 (defmethod tap-report :hook-error
   [data]
-  (print-tap-fail "test-ns-hook")
-  (print-tap-diagnostic (python/str (:exception data))))
+  (t/with-test-out
+   (print-tap-fail "test-ns-hook")
+   (print-tap-diagnostic (python/str (:exception data)))))
 
 (defmethod tap-report :summary
   [data]
-  (print-tap-plan (+ (:pass data) (:fail data) (:error data))))
+  (t/with-test-out
+   (print-tap-plan (+ (:pass data) (:fail data) (:error data)))))
 
 (defmethod tap-report :default
   [data]
-  (print-tap-diagnostic (pr-str data)))
+  (t/with-test-out
+   (print-tap-diagnostic (pr-str data))))
 
 (defmacro with-tap-output
   "Evaluate ``body`` with TAP reporting and no human test-runner output."

@@ -4,16 +4,21 @@
    [basilisp.test :as t]
    [basilisp.test.tap :as tap]
    tests.basilisp.tap-cases)
-  (:import os))
+  (:import io
+           os))
 
 (t/deftest tap-output-test
-  (let [output (with-out-str
-                 (tap/with-tap-output
-                  (t/run-tests 'tests.basilisp.tap-cases)))]
+  (let [writer (io/StringIO)
+        output (do
+                 (binding [t/*test-out* writer]
+                   (tap/with-tap-output
+                    (t/run-tests 'tests.basilisp.tap-cases)))
+                 (.getvalue writer))]
     (t/is (str/includes? output "ok (passing-test)"))
     (t/is (str/includes? output "not ok (failing-test)"))
     (t/is (str/includes? output "not ok (throwing-test)"))
     (t/is (str/includes? output "# expected:"))
+    (t/is (str/includes? output "#   actual:"))
     (t/is (str/includes? output "1..3"))
     (t/is (not (str/includes? output "Testing tests.basilisp.tap-cases")))))
 

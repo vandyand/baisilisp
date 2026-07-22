@@ -13,6 +13,7 @@ def test_tap_reports_fixture_errors_and_keeps_tap_output_parseable():
     source = """
     (require '[basilisp.test :as t]
              '[basilisp.test.tap :as tap])
+    (import* io)
 
     (t/use-fixtures :each
       (fn []
@@ -21,9 +22,11 @@ def test_tap_reports_fixture_errors_and_keeps_tap_output_parseable():
     (t/deftest fixture-test
       (t/is true))
 
-    (with-out-str
-      (tap/with-tap-output
-        (t/run-tests 'basilisp.test-tap-fixtures)))
+    (let [writer (io/StringIO)]
+      (binding [t/*test-out* writer]
+        (tap/with-tap-output
+          (t/run-tests 'basilisp.test-tap-fixtures)))
+      (.getvalue writer))
     """
     try:
         with runtime.ns_bindings(ns_name):
