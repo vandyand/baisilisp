@@ -148,6 +148,8 @@ def _write_key(key: Any, key_fn: Callable[[Any], Any]) -> str:
 def _default_key(value: Any) -> str:
     if isinstance(value, (kw.Keyword, Symbol)):
         return value.name
+    if value is None:
+        raise Exception("JSON object properties may not be nil")
     return str(value)
 
 

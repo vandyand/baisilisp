@@ -12,6 +12,20 @@
   JSONValue
   (-write [_ writer _] (.write writer "\"protocol\"")))
 
+(deftest public-surface-and-default-options
+  (is (= #{"->ReaderPBR" "->StringPBR" "-write" "JSONWriter" "codepoint-decoder"
+           "default-read-options" "default-write-options" "invalid-array-exception"
+           "json-str" "on-extra-throw" "on-extra-throw-remaining" "pprint" "pprint-json"
+           "print-json" "read" "read-json" "read-str" "write" "write-json" "write-str"}
+         (set (map name (keys (ns-publics 'basilisp.data.json))))))
+  (is (= #{:bigdec :key-fn :value-fn}
+         (set (keys json/default-read-options))))
+  (is (= #{:default-write-fn :indent :escape-js-separators :indent-depth
+           :sql-date-converter :key-fn :value-fn :date-formatter :escape-slash
+           :escape-unicode}
+         (set (keys json/default-write-options))))
+  (is (instance? python/Exception (json/invalid-array-exception))))
+
 (deftest reads-persistent-json-values
   (is (= {:name "BaisiLisp"
           :flags [true false nil]
@@ -72,7 +86,8 @@
   (is (= "{\n  \"a\": [\n    1,\n    2\n  ]\n}"
          (json/write-str {:a [1 2]} :indent true)))
   (is (thrown? Exception (json/write-str ##Inf)))
-  (is (thrown? Exception (json/write-str ##NaN))))
+  (is (thrown? Exception (json/write-str ##NaN)))
+  (is (thrown? Exception (json/write-str {nil 1}))))
 
 (deftest writer-and-legacy-apis
   (let [writer (io/StringIO)]

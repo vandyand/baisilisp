@@ -318,10 +318,12 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   reader/writer surface, including ``Read-CSV-From`` and ``read-csv-from``.
   It uses Python text streams rather than Java Reader/Writer values.
 * :lpy:ns:`basilisp.data.json` provides the ``clojure.data.json`` read/write
-  surface, including key/value transforms, extra-data hooks, and legacy names.
-  It returns Basilisp persistent maps and vectors and supports ordinary Python
-  text streams; non-seekable streams retain an internal unread suffix between
-  calls instead of requiring a JVM ``PushbackReader``.
+  surface, including public default option maps, key/value transforms,
+  extra-data hooks, and legacy names. It returns Basilisp persistent maps and
+  vectors and supports ordinary Python text streams; non-seekable streams retain
+  an internal unread suffix between calls instead of requiring a JVM
+  ``PushbackReader``. Public pushback-reader constructor names are portable
+  placeholders for source compatibility.
 * :lpy:ns:`basilisp.data.xml` provides the namespace-aware XML tree, QName,
   PRXML, string/writer emit, lazy SAX ``event-seq``, and the two-way
   event/tree transforms from ``clojure.data.xml`` and

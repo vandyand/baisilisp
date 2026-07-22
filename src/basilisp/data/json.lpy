@@ -1,13 +1,53 @@
 (ns basilisp.data.json
   "Portable ``clojure.data.json`` compatibility on Python's JSON codec."
-  (:import [basilisp.data_json :as impl]))
+  (:import [basilisp.data_json :as impl]
+           [io :as py-io]))
 
 (def on-extra-throw impl/on_extra_throw)
 (def on-extra-throw-remaining impl/on_extra_throw_remaining)
 
+(defn invalid-array-exception
+  "Return the standard data.json invalid-array exception."
+  []
+  (python/Exception "JSON error (invalid array)"))
+
+(defn ->ReaderPBR
+  "Portable constructor for a reader-backed pushback-reader placeholder.
+
+  Basilisp's JSON reader uses Python streams directly, so the supplied reader is
+  returned unchanged."
+  [rdr]
+  rdr)
+
+(defn ->StringPBR
+  "Portable constructor for a string-backed reader placeholder."
+  [s pos len]
+  (py-io/StringIO (subs s pos len)))
+
+(def codepoint-decoder
+  "Portable placeholder for data.json's host-specific codepoint decoder table."
+  [])
+
+(def default-read-options
+  {:bigdec false
+   :key-fn nil
+   :value-fn nil})
+
 (defprotocol JSONWriter
   (-write [object out options]
     "Print object to an output stream as JSON."))
+
+(def default-write-options
+  {:default-write-fn -write
+   :indent false
+   :escape-js-separators true
+   :indent-depth 0
+   :sql-date-converter identity
+   :key-fn nil
+   :value-fn nil
+   :date-formatter nil
+   :escape-slash true
+   :escape-unicode true})
 
 (defn- writer-options [options]
   (if (:default-write-fn options)
