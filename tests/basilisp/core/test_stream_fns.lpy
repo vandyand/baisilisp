@@ -1,0 +1,73 @@
+(ns tests.basilisp.core.test-stream-fns
+  "Tests for Clojure 1.12 stream APIs using Python iterator and DB-API hosts."
+  (:import sqlite3)
+  (:require
+   [basilisp.test :refer [deftest is testing]]))
+
+(deftest stream-reduce-and-seq-test
+  (testing "a one-shot Python iterator is consumed exactly through the terminal operation"
+    (let [stream (python/iter [0 1 2 3 4])]
+      (is (= 6
+             (stream-reduce! (fn [acc value]
+                               (if (= value 3)
+                                 (reduced (+ acc value))
+                                 (+ acc value)))
+                             0
+                             stream)))
+      (is (= 4 (python/next stream)))))
+
+  (testing "stream-seq! remains lazy over a one-shot iterator"
+    (let [stream (python/iter [10 20 30])
+          result (stream-seq! stream)]
+      (is (= 10 (first result)))
+      (is (= 20 (python/next stream)))))
+
+  (testing "the no-init reduce arity retains ordinary reduce semantics"
+    (is (= 6 (stream-reduce! + (python/iter [1 2 3]))))
+    (is (= :empty (stream-reduce! (fn [] :empty) (python/iter []))))))
+
+(deftest stream-transduce-and-into-test
+  (testing "transducers complete and stop consuming a one-shot iterator"
+    (let [stream (python/iter [1 2 3 4])]
+      (is (= 9
+             (stream-transduce! (comp (map inc) (take 3)) + 0 stream)))
+      (is (= 4 (python/next stream)))))
+
+  (is (= 5
+         (stream-transduce! (map inc) + (python/iter [1 2]))))
+
+  (testing "stream-into! preserves editable target metadata and supports xforms"
+    (let [target (with-meta [] {:source :stream})
+          result (stream-into! target (python/iter [1 2 3]))]
+      (is (= [1 2 3] result))
+      (is (= {:source :stream} (meta result))))
+    (is (= [2 4 6]
+           (stream-into! [] (map #(* 2 %)) (python/iter [1 2 3]))))
+    (is (= [1 2 3]
+           (vec (stream-into! (sorted-set) (python/iter [3 1 2])))))))
+
+(deftest resultset-seq-test
+  (let [connection (.connect sqlite3 ":memory:")]
+    (try
+      (let [cursor (.cursor connection)]
+        (.execute cursor "create table people (ID integer, Name text)")
+        (.execute cursor "insert into people values (1, 'Ada'), (2, 'Grace')")
+        (.execute cursor "select ID, Name from people order by ID")
+        (is (= [{:id 1 :name "Ada"} {:id 2 :name "Grace"}]
+               (vec (resultset-seq cursor)))))
+
+      (testing "the cursor is advanced lazily"
+        (let [cursor (.cursor connection)]
+          (.execute cursor "select ID, Name from people order by ID")
+          (let [rows (resultset-seq cursor)]
+            (is (= {:id 1 :name "Ada"} (first rows)))
+            (is (= #py (2 "Grace") (.fetchone cursor))))))
+
+      (testing "invalid cursor state and duplicate lower-cased labels fail before rows"
+        (is (thrown? python/ValueError
+                     (resultset-seq (.cursor connection))))
+        (let [cursor (.cursor connection)]
+          (.execute cursor "select 1 as ID, 2 as id")
+          (is (thrown? python/ValueError (resultset-seq cursor)))))
+      (finally
+        (.close connection)))))

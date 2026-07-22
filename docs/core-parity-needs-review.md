@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 18 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (661 shared Vars and 59 Basilisp
+This document classifies the 13 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (666 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -108,6 +108,12 @@ invalidates import caches; it deliberately is not a Java classloader façade.
 emits a warning for host method or field lookup that Basilisp cannot resolve
 from an imported/builtin target. It remains false by default and avoids
 executing descriptors while deciding whether a member is statically known.
+``stream-reduce!``, ``stream-seq!``, ``stream-transduce!``, and ``stream-into!``
+now provide Clojure 1.12's terminal stream operations over Python iterables.
+One-shot iterators are consumed exactly once; reduction stops without reading
+past a direct ``reduced`` result. ``resultset-seq`` likewise projects a Python
+DB-API cursor lazily into fixed keyword-keyed struct maps, lower-cases labels,
+and rejects duplicate labels before it reads a row.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -140,17 +146,6 @@ These expose Clojure's chunked-sequence/vector implementation, Java exception
 and printing classes, proxy generation, primitive vector types, or compiler
 helpers. They are not stable portability APIs and do not have a direct Python
 counterpart.
-
-### Java objects and streams
-
-`resultset-seq`, `stream-into!`, `stream-reduce!`, `stream-seq!`, and
-`stream-transduce!`.
-
-The exact APIs require JDBC result sets or `java.util.stream`. Python-native
-adapters may be worthwhile under a distinct API, but should not silently
-substitute database cursors or streams for those Java types. ``bean``,
-``enumeration-seq``, and ``uri?`` now have explicit Python-host contracts for
-Python objects, iterators, and parsed URIs.
 
 ### Agents and software transactional memory
 `sync` is now available as Clojure-compatible transaction syntax:

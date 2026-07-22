@@ -3756,14 +3756,19 @@
   "Return the first ``n`` elements of ``coll``\\."
   ([n]
    (fn [rf]
-     (let [idx (volatile! (inc n))]
+     (let [idx (volatile! n)]
        (fn
          ([] (rf))
          ([result] (rf result))
          ([result input]
-          (if (pos? (vswap! idx dec))
-            (rf result input)
-            (ensure-reduced result)))))))
+          (let [remaining @idx
+                next-idx (vswap! idx dec)
+                result    (if (pos? remaining)
+                            (rf result input)
+                            result)]
+            (if (not (pos? next-idx))
+              (ensure-reduced result)
+              result)))))))
   ([n coll]
    (lazy-seq
     (when (> n 0)
@@ -9328,6 +9333,91 @@
             (not (instance? basilisp.lang.set/PersistentSortedSet to)))
      (with-meta (persistent! (transduce xform conj! (transient to) from)) (meta to))
      (transduce xform conj to from))))
+
+(defn stream-reduce!
+  "Reduce a Python iterable using ``f`` as a terminal stream operation.
+
+  This is Basilisp's Python-hosted equivalent of Clojure 1.12's
+  :lpy:fn:`clojure.core/stream-reduce!`: a one-shot iterator is consumed as it
+  is reduced, and a ``reduced`` return value stops consumption immediately. A
+  re-iterable Python value is accepted as well, but only its iterator obtained
+  for this invocation is consumed."
+  ([f stream]
+   (basilisp.lang.runtime/iterator-reduce stream f))
+  ([f init stream]
+   (basilisp.lang.runtime/iterator-reduce stream f init)))
+
+(defn stream-seq!
+  "Return a lazy sequence over a Python iterable as a terminal stream operation.
+
+  Python does not have ``java.util.stream.BaseStream``. For portability this
+  function accepts an iterable and retains Clojure's important single-use
+  behavior for iterator and generator inputs: realization advances the input
+  iterator and does not copy it."
+  [stream]
+  (iterator-seq stream))
+
+(defn stream-transduce!
+  "Transduce a Python iterable as a terminal stream operation.
+
+  The arities, completion call, and early termination behavior match
+  :lpy:fn:`transduce`; one-shot Python inputs are consumed only once."
+  ([xform f stream]
+   (stream-transduce! xform f (f) stream))
+  ([xform f init stream]
+   (let [xf  (xform f)
+         ret (stream-reduce! xf init stream)]
+     (xf ret))))
+
+(defn stream-into!
+  "Conjoin the items of a Python iterable into ``to`` as a terminal operation.
+
+  An optional transducer transforms items before they are conjoined. Persistent
+  editable collection targets use transients, preserving the target metadata as
+  :lpy:fn:`into` does."
+  ([to stream]
+   (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+            ;; Keep the same comparator and fixed-basis safeguards as `into`.
+            (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.map/PersistentStructMap to))
+            (not (instance? basilisp.lang.set/PersistentSortedSet to)))
+     (with-meta (persistent! (stream-reduce! conj! (transient to) stream)) (meta to))
+     (stream-reduce! conj to stream)))
+  ([to xform stream]
+   (if (and (instance? basilisp.lang.interfaces/IEvolveableCollection to)
+            (not (instance? basilisp.lang.map/PersistentSortedMap to))
+            (not (instance? basilisp.lang.map/PersistentStructMap to))
+            (not (instance? basilisp.lang.set/PersistentSortedSet to)))
+     (with-meta (persistent! (stream-transduce! xform conj! (transient to) stream))
+                (meta to))
+     (stream-transduce! xform conj to stream))))
+
+(defn resultset-seq
+  "Return a lazy sequence of struct maps for the rows of a Python DB-API cursor.
+
+  This is the Python-hosted equivalent of Clojure's ``java.sql.ResultSet``
+  adapter. ``cursor.description`` supplies column labels and ``fetchone``
+  supplies positional rows. Labels are lower-cased before becoming keywords,
+  and duplicate labels are rejected before any row is consumed."
+  [cursor]
+  (let [description (.-description cursor)]
+    (when (nil? description)
+      (throw (python/ValueError
+              "resultset-seq requires an executed DB-API cursor with description")))
+    (let [keys (map (fn [column]
+                      (keyword (.lower (first column))))
+                    description)]
+      (when-not (apply distinct? keys)
+        (throw (python/ValueError "ResultSet must have unique column labels")))
+      ;; `apply` represents an empty sequence as nil. Construct the basis
+      ;; directly so a valid zero-column DB-API cursor remains an empty struct.
+      (let [row-struct (basilisp.lang.map/struct-definition keys)
+            rows       (fn rows []
+                         (lazy-seq
+                          (when-let [row (.fetchone cursor)]
+                            (cons (apply struct row-struct row)
+                                  (rows)))))]
+        (rows)))))
 
 (defn cat
   "A transducer which concatenates input collections into the reduced result."

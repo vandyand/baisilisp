@@ -1534,6 +1534,37 @@ def concat(*seqs: Iterable[T_concat] | None) -> ISeq[T_concat]:
 T_reduce_init = TypeVar("T_reduce_init")
 
 
+def iterator_reduce(
+    coll: Iterable[T],
+    f: ReduceFunction[T_reduce_init, T],
+    init: T_reduce_init | object = IReduce.REDUCE_SENTINEL,
+) -> T_reduce_init:
+    """Reduce an iterable without creating a sequence or reading ahead.
+
+    Most collection reduction goes through :func:`to_seq`, which is useful for
+    Basilisp's persistent collections but may realize one element to establish a
+    lazy sequence boundary. Terminal stream operations need stricter iterator
+    semantics: when ``f`` returns :class:`Reduced`, the source must not be
+    advanced again. This helper mirrors Clojure's ``iterator-reduce!`` behavior
+    for Python iterators and generators.
+    """
+    iterator = iter(coll)
+    if init is IReduce.REDUCE_SENTINEL:
+        try:
+            res = next(iterator)
+        except StopIteration:
+            return f()
+    else:
+        res = cast(T_reduce_init, init)
+
+    for item in iterator:
+        res = f(res, item)
+        if isinstance(res, Reduced):
+            return res.deref()
+
+    return cast(T_reduce_init, res)
+
+
 @functools.singledispatch
 def internal_reduce(
     coll: Any,

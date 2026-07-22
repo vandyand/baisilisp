@@ -642,8 +642,10 @@ aliases. Add adapters for mappings, sequences, asynchronous iterables, and
 model objects only where conversion direction, copying behavior, and error data
 are documented. For typed binary data, use a separate Python-native
 ``memoryview``/``array`` adapter rather than claiming Java primitive-array
-compatibility. For database cursors and URLs, expose cursor and
-``urllib.parse`` adapters rather than ``resultset-seq`` and ``uri?``.
+compatibility. ``resultset-seq`` is the deliberately narrow exception: it
+adapts only DB-API cursors through their ``description`` and ``fetchone``
+contract, lower-cases labels, and rejects duplicates. ``uri?`` is similarly
+defined against parsed Python URIs rather than Java URL classes.
 
 Remaining Standard Namespace Decisions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

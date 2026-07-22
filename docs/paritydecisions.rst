@@ -463,15 +463,15 @@ adapters only where a stable data contract exists. Do not create Java-named
 facades for different host concepts.
 
 ``bean``, Java primitive arrays, JDBC result sets, Java streams, and Java URI
-objects should remain intentional omissions. Their appropriate Python-native
-counterparts are ``datafy`` adapters for declared models, ``array`` and
-``memoryview`` for binary data, DB-API cursors for rows, iterators/async
-iterators for streams, and the existing ``basilisp.url``/``urllib.parse``
-support for URLs. Future integrations should be separate optional namespaces,
-for example a DB-API row projection that rejects duplicate column names unless
-the caller supplies a policy, or a binary buffer adapter that documents byte
-order and mutability. Neither belongs in ``basilisp.core`` or should be named
-``resultset-seq`` or ``uri?``.
+objects must not become Java façades. The portable collection contracts are an
+intentional exception: ``resultset-seq`` projects an executed DB-API cursor via
+``description`` and ``fetchone`` and rejects duplicate lower-cased labels;
+``stream-reduce!``, ``stream-seq!``, ``stream-transduce!``, and
+``stream-into!`` accept Python iterables while retaining one-shot terminal
+consumption for iterators. ``bean`` remains a documented object projection and
+``uri?`` uses the existing ``basilisp.url``/``urllib.parse`` contract. Future
+binary integrations should still be separate optional namespaces, for example
+a buffer adapter that documents byte order and mutability.
 
 XML now has a bounded immutable-tree adapter for the data-oriented subset.
 Namespace/prefix fidelity, comments, processing instructions, and streaming are

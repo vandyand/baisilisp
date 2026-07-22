@@ -257,6 +257,11 @@ Host interoperability features generally match those of Clojure.
 * The deprecated ``add-classpath`` spelling accepts a local path or ``file:``
   URL, appends it to :external:py:data:`sys.path`, and invalidates Python import
   caches. It does not create or mutate a JVM class loader.
+* ``stream-reduce!``, ``stream-seq!``, ``stream-transduce!``, and
+  ``stream-into!`` accept Python iterables in place of Java streams. One-shot
+  iterators retain terminal consumption semantics. ``resultset-seq`` accepts an
+  executed Python DB-API cursor, using its ``description`` and ``fetchone``
+  protocol in place of ``java.sql.ResultSet``.
 
 .. seealso::
 

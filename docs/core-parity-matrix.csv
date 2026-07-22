@@ -576,7 +576,7 @@ reset-vals!,true,true,shared
 resolve,true,true,shared
 rest,true,true,shared
 restart-agent,true,true,shared
-resultset-seq,true,false,missing-in-basilisp
+resultset-seq,true,true,shared
 reverse,true,true,shared
 reversible?,true,true,shared
 rseq,true,true,shared
@@ -630,10 +630,10 @@ split-at,true,true,shared
 split-with,true,true,shared
 splitv-at,true,true,shared
 str,true,true,shared
-stream-into!,true,false,missing-in-basilisp
-stream-reduce!,true,false,missing-in-basilisp
-stream-seq!,true,false,missing-in-basilisp
-stream-transduce!,true,false,missing-in-basilisp
+stream-into!,true,true,shared
+stream-reduce!,true,true,shared
+stream-seq!,true,true,shared
+stream-transduce!,true,true,shared
 string?,true,true,shared
 struct,true,true,shared
 struct-map,true,true,shared
