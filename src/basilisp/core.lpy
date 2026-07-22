@@ -139,6 +139,25 @@
              ignored; the remaining arguments are a Python sequence, start, and end."
        :arglists '([manager array offset end])}
   ->ArrayChunk basilisp.lang.chunk/array_chunk)
+(def ^{:doc "Construct an immutable 32-way vector node. ``edit`` occupies the
+             portable position corresponding to Clojure's transient edit token;
+             persistent Basilisp vectors retain ``nil`` there."
+       :arglists '([edit array])}
+  ->VecNode basilisp.lang.vector/vec_node)
+(def ^{:doc "The canonical empty immutable 32-way vector root node."
+       :arglists '([])}
+  EMPTY-NODE basilisp.lang.vector/EMPTY_NODE)
+(def ^{:doc "Construct a Basilisp persistent vector from Clojure's internal Vec
+             component shape. The ArrayManager argument is retained for source
+             compatibility and ignored because Python uses ordinary immutable
+             tuples for vector nodes and tails."
+       :arglists '([manager count shift root tail meta])}
+  ->Vec basilisp.lang.vector/vec_from_components)
+(def ^{:doc "Construct a chunked vector sequence from a vector leaf. The
+             ArrayManager argument is retained and ignored; the supplied node is
+             validated against the vector before the sequence is created."
+       :arglists '([manager vector node index offset meta])}
+  ->VecSeq basilisp.lang.vector/vec_seq)
 (def ^:dynamic *compile-files*
   "True while a Basilisp AOT compilation is executing."
   false)

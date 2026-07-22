@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 10 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (669 shared Vars and 59 Basilisp
+This document classifies the 6 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (673 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -125,6 +125,12 @@ three-part reflection shape: its stable name, parameter annotations, and
 return annotation. Missing Python annotations are represented by ``nil``;
 the callable is never invoked, and uninspectable or anonymous callables fail
 explicitly instead of guessing a signature.
+``->Vec``, ``->VecNode``, ``->VecSeq``, and ``EMPTY-NODE`` now expose a real
+immutable 32-way vector tree. Persistent updates path-copy only the affected
+branches, 32-element tails share their unchanged root until promotion, and
+the constructor helpers validate their supplied nodes against that tree. The
+JVM ArrayManager slot is retained and ignored because vector nodes and tails
+are immutable Python tuples.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -150,11 +156,10 @@ compatibility promise would be false.
 
 ### Clojure and JVM implementation internals
 
-`->Vec`, `->VecNode`, `->VecSeq`, `EMPTY-NODE`, and `primitives-classnames`.
+`primitives-classnames`.
 
-These expose Clojure's chunked-sequence/vector implementation and primitive
-vector helpers. They are not stable portability APIs and do not have a direct
-Python counterpart.
+This exposes JVM primitive-vector helper names. It is not a stable portability
+API and does not have a direct Python counterpart.
 
 ### Agents and software transactional memory
 `sync` is now available as Clojure-compatible transaction syntax:

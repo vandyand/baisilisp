@@ -59,9 +59,9 @@ symbol,clojure_core,basilisp_core,status
 ->ArrayChunk,true,true,shared
 ->Eduction,true,true,shared
 ->EductionSeq,false,true,basilisp-extension
-->Vec,true,false,missing-in-basilisp
-->VecNode,true,false,missing-in-basilisp
-->VecSeq,true,false,missing-in-basilisp
+->Vec,true,true,shared
+->VecNode,true,true,shared
+->VecSeq,true,true,shared
 -cache-protocol-fn,true,true,shared
 -collect-keyword-args,false,true,basilisp-extension
 -mangle-py-field,false,true,basilisp-extension
@@ -74,7 +74,7 @@ symbol,clojure_core,basilisp_core,status
 ==,true,true,shared
 >,true,true,shared
 >=,true,true,shared
-EMPTY-NODE,true,false,missing-in-basilisp
+EMPTY-NODE,true,true,shared
 Eduction,false,true,basilisp-extension
 EductionSeq,false,true,basilisp-extension
 Inst,true,true,shared

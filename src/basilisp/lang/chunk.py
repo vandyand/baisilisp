@@ -8,7 +8,7 @@ chunked sequences to expose a batch of elements without changing the ordinary
 from collections.abc import Iterator, Sequence
 from typing import Any, TypeVar
 
-from basilisp.lang.interfaces import IChunkedSeq, IIndexed, ISeq, ISequential
+from basilisp.lang.interfaces import IChunkedSeq, IIndexed, ISeq, ISequential, IWithMeta
 
 T = TypeVar("T")
 
@@ -156,16 +156,17 @@ class ChunkedCons(_ChunkedSeqBase[T]):
             yield from self._rest
 
 
-class ChunkedVectorSeq(_ChunkedSeqBase[T]):
+class ChunkedVectorSeq(_ChunkedSeqBase[T], IWithMeta):
     """A chunked view over an indexed immutable collection such as a vector."""
 
-    __slots__ = ("_chunk_end", "_offset", "_source")
+    __slots__ = ("_chunk_end", "_meta", "_offset", "_source")
 
     def __init__(
         self,
         source: Sequence[T],
         offset: int = 0,
         chunk_end: int | None = None,
+        meta=None,
     ):
         if not 0 <= offset < len(source):
             raise IndexError(offset)
@@ -176,6 +177,7 @@ class ChunkedVectorSeq(_ChunkedSeqBase[T]):
             if chunk_end is None
             else chunk_end
         )
+        self._meta = meta
 
     @property
     def first(self) -> T:
@@ -184,6 +186,13 @@ class ChunkedVectorSeq(_ChunkedSeqBase[T]):
     @property
     def is_empty(self) -> bool:
         return False
+
+    @property
+    def meta(self):
+        return self._meta
+
+    def with_meta(self, meta):
+        return ChunkedVectorSeq(self._source, self._offset, self._chunk_end, meta)
 
     @property
     def rest(self) -> ISeq[T]:

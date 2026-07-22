@@ -296,6 +296,11 @@ Users may still create dynamic classes using Python's ``type`` builtin, just as 
 Binding ``*warn-on-reflection*`` during compilation requests warnings for Python
 host member lookup that must remain dynamic. It is a diagnostic only; unlike the
 JVM switch it does not depend on Java type hints or change generated code.
+Vectors use an immutable 32-way Python tree with 32-element tails, so ordinary
+updates retain structural sharing across persistent values. The internal
+``->Vec``, ``->VecNode``, ``->VecSeq``, and ``EMPTY-NODE`` names are available
+for compatibility tooling; their ArrayManager position is accepted and ignored
+because Python nodes use immutable tuples rather than JVM arrays.
 
 .. seealso::
 
