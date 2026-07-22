@@ -761,6 +761,11 @@ and Python inspection data. ``basilisp.java.process`` is the deliberately narrow
 exception to the alias rule: its Clojure 1.12 process surface maps cleanly to
 ``subprocess.Popen`` and is therefore available through the automatic
 ``clojure.java.process`` alias, with documented Python stream and Future values.
+The alias exports only Clojure's public names; Basilisp-only helpers such as
+``communicate`` remain on ``basilisp.process``. A shared conformance fixture
+locks the public surface, captured stdout, environment replacement/merge,
+``exit-ref`` timeout behavior, ``io-task`` dynamic binding capture, and a seeded
+``exec`` corpus.
 Do not extend that exception to Java classloader changes, JDBC result-set sequences,
 browser/Javadoc wrappers, or Java-bean coercion. Those APIs expose services that
 Python already models differently.

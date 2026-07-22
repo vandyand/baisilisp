@@ -283,7 +283,10 @@
   If the return code is non-zero, throw
   :external:py:exc:`subprocess.CalledProcessError`."
   [& opts+args]
-  (let [process    (apply start opts+args)
+  (let [[opts command] (if (map? (first opts+args))
+                         [(first opts+args) (rest opts+args)]
+                         [{} opts+args])
+        process    (apply start (merge {:err :inherit} opts) command)
         [stdout _] (.communicate process)
         retcode    (.-returncode process)]
     (if (zero? retcode)

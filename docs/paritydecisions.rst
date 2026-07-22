@@ -506,7 +506,11 @@ raw key/value map reduction and transformed map-entry reduction. The
 ``clojure.xml`` accepted subset is also locked by a shared fixture for immutable
 tree parsing, mixed content, built-in entity decoding, malformed input, and
 seeded safe element shapes; DTD and custom entity rejection remain an explicit
-Basilisp safety boundary. The next work is:
+Basilisp safety boundary. The ``clojure.java.process`` alias now exports only
+the Clojure 1.12 public surface, with shared fixtures for stdout capture,
+environment replacement/merge, exit refs, ``io-task`` binding capture, and
+seeded ``exec`` calls; Python-only helpers stay on ``basilisp.process``. The
+next work is:
 
 1. Expand the source-level acceptance corpus only when a candidate adds a new
    public portability pressure point. Keep reader conditionals limited to

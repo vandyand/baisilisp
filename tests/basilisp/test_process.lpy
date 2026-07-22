@@ -78,6 +78,8 @@
   (is (every? (set (map name (keys (ns-publics 'basilisp.java.process))))
               ["to-file" "from-file" "start" "stdin" "stdout" "stderr"
                "exit-ref" "io-task" "exec"]))
+  (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.process))))
+                      "communicate")))
   (is (= (str "alias" os/linesep)
          (clj-process/exec sys/executable "-c" "print('alias')")))
   (let [output (pathlib/Path *tempdir* "append-output.txt")]
@@ -101,10 +103,10 @@
       (let [payload        (str (nth prefixes (mod index (count prefixes)))
                                 "-" (.randint rng 0 1000000000))
             process        (clj-process/start {:clear-env true
-                                                :env {"PAYLOAD" payload}
-                                                :encoding "utf-8"}
+                                               :env {"PAYLOAD" payload}
+                                               :encoding "utf-8"}
                                                sys/executable "-c" command)
-            [stdout stderr] (clj-process/communicate process)]
+            [stdout stderr] (process/communicate process)]
         ;; Python text-mode subprocess streams normalize platform newlines.
         (is (= (str payload "\n") stdout))
         (is (= (str (apply str (reverse payload)) "\n") stderr))

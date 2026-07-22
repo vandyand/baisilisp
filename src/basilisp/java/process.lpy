@@ -14,6 +14,3 @@
 (def exit-ref process/exit-ref)
 (def io-task process/io-task)
 (def exec process/exec)
-
-;; Basilisp extension for safely draining both Popen streams.
-(def communicate process/communicate)
