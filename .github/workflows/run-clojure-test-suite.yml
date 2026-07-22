@@ -29,7 +29,7 @@ jobs:
           pip install -U pip
           python -m venv .venv
           source .venv/bin/activate
-          pip install "baisilisp @ file://$(realpath ../basilisp)" pytest
+          pip install "baisilisp[pytest] @ file://$(realpath ../basilisp)"
       - name: Run tests
         run: |
           cd clojure-test-suite
