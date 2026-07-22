@@ -12,8 +12,8 @@ symbol,clojure_core,basilisp_core,status
 *basilisp-version*,false,true,basilisp-extension
 *clojure-version*,true,true,shared
 *command-line-args*,true,true,shared
-*compile-files*,true,false,missing-in-basilisp
-*compile-path*,true,false,missing-in-basilisp
+*compile-files*,true,true,shared
+*compile-path*,true,true,shared
 *compiler-options*,true,true,shared
 *data-readers*,true,true,shared
 *default-data-reader-fn*,true,true,shared
@@ -190,7 +190,7 @@ comp,true,true,shared
 comparator,true,true,shared
 compare,true,true,shared
 compare-and-set!,true,true,shared
-compile,true,false,missing-in-basilisp
+compile,true,true,shared
 complement,true,true,shared
 completing,true,true,shared
 complex?,false,true,basilisp-extension

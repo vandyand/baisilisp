@@ -6,6 +6,7 @@ import site
 import subprocess
 import sys
 import tempfile
+from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process, get_start_method
 from tempfile import TemporaryDirectory
 from unittest.mock import patch
@@ -728,6 +729,200 @@ class TestImporter:
             exec(code)
             captured = capsys.readouterr()
             assert captured.out == 'package.module\n["1" "2" "3"]\n'
+
+    class TestAOT:
+        @staticmethod
+        def _compile_path_var() -> runtime.Var:
+            core = runtime.Namespace.get(runtime.CORE_NS_SYM)
+            assert core is not None
+            compile_path_var = core.find(sym.symbol("*compile-path*"))
+            assert compile_path_var is not None
+            return compile_path_var
+
+        @staticmethod
+        def _compile_fn():
+            core = runtime.Namespace.get(runtime.CORE_NS_SYM)
+            assert core is not None
+            compile_fn = core.find(sym.symbol("compile"))
+            assert compile_fn is not None
+            return compile_fn.value
+
+        @staticmethod
+        def _unload(ns_name: str) -> None:
+            sys.modules.pop(munge(ns_name), None)
+            runtime.Namespace.remove(sym.symbol(ns_name))
+            importlib.invalidate_caches()
+
+        def test_compile_publishes_and_imports_source_free_artifact(
+            self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+        ):
+            module_name = "aot-standalone"
+            source = tmp_path / "aot_standalone.lpy"
+            output = tmp_path / "classes"
+            source.write_text("""
+                (ns aot-standalone)
+                (def artifact-value :loaded-from-artifact)
+                (def compiled? *compile-files*)
+                (def source-file *file*)
+                """)
+            monkeypatch.syspath_prepend(str(tmp_path))
+
+            try:
+                with runtime.bindings({self._compile_path_var(): str(output)}):
+                    assert self._compile_fn()(sym.symbol(module_name)) == sym.symbol(
+                        module_name
+                    )
+                    artifact = output / "aot_standalone.lpyc"
+                    assert artifact.is_file()
+                    source_ns = runtime.Namespace.get(sym.symbol(module_name))
+                    assert source_ns is not None
+                    assert source_ns.find(sym.symbol("compiled?")).value is True
+
+                    self._unload(module_name)
+                    source.unlink()
+
+                    fresh_process = subprocess.run(
+                        [
+                            sys.executable,
+                            "-c",
+                            "\n".join(
+                                [
+                                    "import importlib",
+                                    "from basilisp.main import init",
+                                    "from basilisp.lang import runtime, symbol",
+                                    "init()",
+                                    "core = runtime.Namespace.get(runtime.CORE_NS_SYM)",
+                                    'path_var = core.find(symbol.symbol("*compile-path*"))',
+                                    f"with runtime.bindings({{path_var: {str(output)!r}}}):",
+                                    f"    module = importlib.import_module({munge(module_name)!r})",
+                                    "    print(module.artifact_value)",
+                                ]
+                            ),
+                        ],
+                        check=True,
+                        capture_output=True,
+                        text=True,
+                        cwd=tmp_path,
+                    )
+                    assert fresh_process.stdout.strip() == ":loaded-from-artifact"
+
+                    loaded = importlib.import_module(munge(module_name))
+                    artifact_ns = runtime.Namespace.get(sym.symbol(module_name))
+                    assert artifact_ns is not None
+                    assert loaded.artifact_value == kw.keyword("loaded-from-artifact")
+                    assert artifact_ns.find(sym.symbol("compiled?")).value is False
+                    assert artifact_ns.find(sym.symbol("source-file")).value == str(
+                        source
+                    )
+            finally:
+                self._unload(module_name)
+
+        def test_source_precedes_stale_aot_artifact(
+            self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+        ):
+            module_name = "aot-precedence"
+            source = tmp_path / "aot_precedence.lpy"
+            output = tmp_path / "classes"
+            source.write_text("(ns aot-precedence) (def value :artifact)")
+            monkeypatch.syspath_prepend(str(tmp_path))
+
+            try:
+                with runtime.bindings({self._compile_path_var(): str(output)}):
+                    self._compile_fn()(sym.symbol(module_name))
+                    self._unload(module_name)
+                    source.write_text(
+                        "(ns aot-precedence) (def value :source-wins-with-new-size)"
+                    )
+
+                    importlib.import_module(munge(module_name))
+                    current_ns = runtime.Namespace.get(sym.symbol(module_name))
+                    assert current_ns is not None
+                    assert current_ns.find(sym.symbol("value")).value == kw.keyword(
+                        "source-wins-with-new-size"
+                    )
+            finally:
+                self._unload(module_name)
+
+        def test_aot_package_loads_its_subsequent_module_search_path(
+            self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+        ):
+            module_name = "aot-package"
+            package = tmp_path / "aot_package"
+            package.mkdir()
+            source = package / "__init__.lpy"
+            output = tmp_path / "classes"
+            source.write_text("(ns aot-package) (def package-value :aot-package)")
+            monkeypatch.syspath_prepend(str(tmp_path))
+
+            try:
+                with runtime.bindings({self._compile_path_var(): str(output)}):
+                    self._compile_fn()(sym.symbol(module_name))
+                    assert (output / "aot_package" / "__init__.lpyc").is_file()
+                    self._unload(module_name)
+                    source.unlink()
+
+                    loaded = importlib.import_module(munge(module_name))
+                    assert loaded.package_value == kw.keyword("aot-package")
+            finally:
+                self._unload(module_name)
+
+        def test_source_free_aot_package_finds_aot_child(
+            self, monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+        ):
+            package_name = "aot-tree"
+            child_name = "aot-tree.child"
+            package = tmp_path / "aot_tree"
+            package.mkdir()
+            package_source = package / "__init__.lpy"
+            child_source = package / "child.lpy"
+            output = tmp_path / "classes"
+            package_source.write_text("(ns aot-tree) (def package-value :package)")
+            child_source.write_text("(ns aot-tree.child) (def child-value :child)")
+            monkeypatch.syspath_prepend(str(tmp_path))
+
+            try:
+                with runtime.bindings({self._compile_path_var(): str(output)}):
+                    self._compile_fn()(sym.symbol(package_name))
+                    self._compile_fn()(sym.symbol(child_name))
+                    self._unload(child_name)
+                    self._unload(package_name)
+                    package_source.unlink()
+                    child_source.unlink()
+
+                    loaded = importlib.import_module(munge(child_name))
+                    assert loaded.child_value == kw.keyword("child")
+            finally:
+                self._unload(child_name)
+                self._unload(package_name)
+
+        @pytest.mark.parametrize("payload", [b"", b"wrong", importer._AOT_MAGIC_NUMBER])
+        def test_invalid_aot_artifacts_are_rejected(self, payload: bytes):
+            with pytest.raises(ImportError, match="AOT"):
+                importer._get_basilisp_aot_bytecode("aot.invalid", payload)
+
+        def test_aot_publication_is_atomic_under_parallel_writers(
+            self, tmp_path: pathlib.Path
+        ):
+            artifact = tmp_path / "classes" / "parallel.lpyc"
+            code = compile("value = 42", "parallel-source.lpy", "exec")
+            payload = importer._basilisp_aot_bytecode("parallel-source.lpy", [code])
+            finder = importer.BasilispImporter()
+
+            with ThreadPoolExecutor(max_workers=16) as executor:
+                list(
+                    executor.map(
+                        lambda _: finder._write_aot_bytecode(str(artifact), payload),
+                        range(256),
+                    )
+                )
+
+            source_filename, bytecode = importer._get_basilisp_aot_bytecode(
+                "parallel", artifact.read_bytes()
+            )
+            assert source_filename == "parallel-source.lpy"
+            namespace: dict[str, object] = {}
+            exec(bytecode[0], namespace)
+            assert namespace["value"] == 42
 
 
 @pytest.fixture

@@ -105,6 +105,31 @@ Often in development, it is not desirable to allow namespace caching since such 
 In such cases, you can tell the Basilisp import mechanism to always ignore the cached copy of a namespace using the ``BASILISP_DO_NOT_CACHE_NAMESPACES`` environment variable or ``--disable-ns-cache`` CLI flag.
 Additionally, it is possible to disable Basilisp's generation of bytecode files using the standard Python ``PYTHONDONTWRITEBYTECODE`` environment variable or :external:py:data:`sys.dont_write_bytecode` value.
 
+.. _ahead_of_time_compilation:
+
+Ahead-of-time Compilation
+-------------------------
+
+``basilisp.core/compile`` provides a portable Basilisp counterpart to Clojure's
+namespace compilation workflow. Given a namespace symbol, it loads and compiles
+that namespace, writes a standalone ``.lpyc`` artifact beneath the directory in
+the dynamic Var ``*compile-path*`` (``"classes"`` by default), and returns the
+given symbol. The directory layout follows the munged Python module path, so
+``my.app`` is written as ``classes/my/app.lpyc`` and a package is written as
+``classes/my/app/__init__.lpyc``.
+
+Unlike the ordinary timestamp-validated cache, this artifact may be imported
+after its source file has been removed. Keep the artifact tree available through
+``*compile-path*`` in the target process. When both source and an artifact are
+available, Basilisp deliberately loads source first so development and reload
+behavior remains predictable. ``*compile-files*`` is false normally and is
+bound true while ``compile`` loads its target namespace.
+
+Artifacts contain Python marshal bytecode and are therefore trusted,
+Python-version-local build outputs, similar to Python ``.pyc`` files. Build
+them with the target Basilisp/Python version and never load artifacts from an
+untrusted party.
+
 .. _direct_linking:
 
 Direct Linking

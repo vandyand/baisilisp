@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 24 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (655 shared Vars and 59 Basilisp
+This document classifies the 21 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (658 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -96,6 +96,10 @@ manager argument but ignores it because Python sequences need no JVM
 ``ArrayManager``. Realized ``map``, ``map-indexed``, ``filter``, ``keep``,
 ``keep-indexed``, and ``concat`` preserve those chunk boundaries, including
 Clojure's one-chunk-ahead realization behavior.
+``*compile-files*``, ``*compile-path*``, and ``compile`` now provide a
+Python-native AOT workflow: compilation writes trusted, Python-version-local
+``.lpyc`` artifacts below the configured output path, those artifacts can load
+without source, and source intentionally wins when both forms are present.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -109,9 +113,9 @@ deferrals.
 
 ### Clojure compiler, reader, and Java class-loader state
 
-`*compile-files*`, `*compile-path*`, `*fn-loader*`,
+`*fn-loader*`,
 `*unchecked-math*`, `*use-context-classloader*`,
-`*warn-on-reflection*`, `add-classpath`, `compile`, `gen-class`,
+`*warn-on-reflection*`, `add-classpath`, `gen-class`,
 `method-sig`, and `with-loading-context`.
 
 These names control Clojure compilation, reader evaluation, Java class loading,

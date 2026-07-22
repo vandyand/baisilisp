@@ -96,6 +96,15 @@
     (is (true? (bound? #'array-map)))
     (is (false? (bound? unbound)))))
 
+(deftest compile-state-vars-test
+  (is (false? *compile-files*))
+  (is (= "classes" *compile-path*))
+  (is (= [true "portable-classes"]
+         (binding [*compile-files* true
+                   *compile-path* "portable-classes"]
+           [*compile-files* *compile-path*])))
+  (is (= [false "classes"] [*compile-files* *compile-path*])))
+
 (deftest num-test
   (are [n] (= n (num n))
     nil

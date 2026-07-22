@@ -1,9 +1,12 @@
+import importlib
 import importlib.util
 import logging
 import marshal
 import os
 import os.path
 import sys
+import tempfile
+import threading
 import types
 from collections.abc import Iterable, Mapping, MutableMapping, Sequence
 from functools import lru_cache
@@ -20,12 +23,14 @@ from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.runtime import BasilispModule
 from basilisp.lang.typing import ReaderForm
-from basilisp.lang.util import demunge
+from basilisp.lang.util import demunge, munge
 from basilisp.util import timed
 
 _NO_CACHE_ENVVAR = "BASILISP_DO_NOT_CACHE_NAMESPACES"
 
 MAGIC_NUMBER = (1149).to_bytes(2, "little") + b"\r\n"
+_AOT_MAGIC_NUMBER = (1150).to_bytes(2, "little") + b"\r\n"
+_COMPILE_PATH_VAR_NAME = "*compile-path*"
 
 logger = logging.getLogger(__name__)
 
@@ -88,12 +93,65 @@ def _get_basilisp_bytecode(
     return marshal.loads(cache_data[12:])  # nosec 6302
 
 
+def _basilisp_aot_bytecode(source_filename: str, code: list[types.CodeType]) -> bytes:
+    """Return a standalone Basilisp ahead-of-time artifact.
+
+    Ordinary ``.lpyc`` cache files are deliberately tied to the source file's
+    timestamp and size. AOT artifacts instead carry the original source path
+    only for diagnostics and can be imported after that source is unavailable.
+    As with Python ``.pyc`` files, artifacts are trusted executable bytecode
+    and are local to a compatible Python/Basilisp installation.
+    """
+    return _AOT_MAGIC_NUMBER + marshal.dumps((source_filename, code))
+
+
+def _get_basilisp_aot_bytecode(
+    fullname: str, cache_data: bytes
+) -> tuple[str, list[types.CodeType]]:
+    """Unmarshal and validate a standalone Basilisp AOT artifact."""
+    if cache_data[:4] != _AOT_MAGIC_NUMBER:
+        raise ImportError(
+            f"Incorrect AOT magic number ({cache_data[:4]!r}) in {fullname}; "
+            f"expected {_AOT_MAGIC_NUMBER!r}",
+            name=fullname,
+        )
+    try:
+        source_filename, code = marshal.loads(cache_data[4:])  # nosec 6302
+    except (EOFError, TypeError, ValueError) as e:
+        raise ImportError(f"Invalid Basilisp AOT artifact for {fullname}") from e
+    if (
+        not isinstance(source_filename, str)
+        or not isinstance(code, list)
+        or not all(isinstance(c, types.CodeType) for c in code)
+    ):
+        raise ImportError(f"Invalid Basilisp AOT artifact for {fullname}")
+    return source_filename, code
+
+
 def _cache_from_source(path: str) -> str:
     """Return the path to the cached file for the given path. The original path
     does not have to exist."""
     cache_path, cache_file = os.path.split(importlib.util.cache_from_source(path))
     filename, _ = os.path.splitext(cache_file)
     return os.path.join(cache_path, filename + ".lpyc")
+
+
+def _aot_from_namespace(compile_path: str, fullname: str, is_package: bool) -> str:
+    """Return the standalone artifact path for a munged Python module name."""
+    components = fullname.split(".")
+    if is_package:
+        return os.path.join(compile_path, *components, "__init__.lpyc")
+    return os.path.join(compile_path, *components) + ".lpyc"
+
+
+def _is_within(path: str, parent: str) -> bool:
+    """Return whether ``path`` is nested under ``parent``, across Windows drives."""
+    try:
+        return os.path.commonpath(
+            (os.path.abspath(path), os.path.abspath(parent))
+        ) == os.path.abspath(parent)
+    except ValueError:
+        return False
 
 
 @lru_cache
@@ -130,6 +188,7 @@ def _is_namespace_package(path: str) -> bool:
 class ImporterCacheEntry(TypedDict, total=False):
     spec: ModuleSpec
     module: BasilispModule
+    bytecode: list[types.CodeType]
 
 
 class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
@@ -140,6 +199,21 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
 
     def __init__(self):
         self._cache: MutableMapping[str, ImporterCacheEntry] = {}
+        self._aot_lock = threading.RLock()
+
+    @staticmethod
+    def _compile_path() -> str | None:
+        """Return the currently bound Basilisp AOT output path, if available."""
+        compile_path_var = runtime.Var.find_in_ns(
+            runtime.CORE_NS_SYM, sym.symbol(_COMPILE_PATH_VAR_NAME)
+        )
+        if compile_path_var is None:
+            return None
+        try:
+            compile_path = os.fspath(compile_path_var.value)
+        except TypeError:
+            return None
+        return compile_path if isinstance(compile_path, str) and compile_path else None
 
     def find_spec(
         self,
@@ -198,6 +272,59 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
                         ), "Package module spec must have submodule_search_locations list"
                         spec.submodule_search_locations.append(root_path)
                     return spec
+
+        # Source always wins over an AOT artifact. This keeps edit/reload cycles
+        # unsurprising while still allowing a deployed artifact tree to be loaded
+        # without source files on sys.path.
+        compile_path = self._compile_path()
+        aot_entries: Sequence[str] = ()
+        if compile_path is not None:
+            if path is sys.path:
+                aot_entries = (compile_path,)
+            else:
+                compile_path_abs = os.path.abspath(compile_path)
+                aot_entries = tuple(
+                    entry for entry in path if _is_within(entry, compile_path_abs)
+                )
+        for entry in aot_entries:
+            root_path = os.path.join(entry, *module_name)
+            filenames = [
+                os.path.join(root_path, "__init__.lpyc"),
+                f"{root_path}.lpyc",
+            ]
+            for aot_filename in filenames:
+                if not os.path.isfile(aot_filename):
+                    continue
+                source_filename, _ = _get_basilisp_aot_bytecode(
+                    fullname, self.get_data(aot_filename)
+                )
+                is_package = aot_filename.endswith("__init__.lpyc")
+                state = {
+                    "fullname": fullname,
+                    "filename": source_filename,
+                    "path": entry,
+                    "target": target,
+                    "aot_filename": aot_filename,
+                }
+                logger.debug(
+                    "Found Basilisp AOT module '%s' in artifact '%s'",
+                    fullname,
+                    aot_filename,
+                )
+                spec = ModuleSpec(
+                    fullname,
+                    self,
+                    origin=aot_filename,
+                    loader_state=state,
+                    is_package=is_package,
+                )
+                if is_package:
+                    assert spec.submodule_search_locations is not None
+                    spec.submodule_search_locations.append(root_path)
+                return spec
+
+        for entry in path:
+            root_path = os.path.join(entry, *module_name)
             if os.path.isdir(root_path):
                 if _is_namespace_package(root_path):
                     return ModuleSpec(fullname, None, is_package=True)
@@ -209,6 +336,27 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
 
     def _cache_bytecode(self, source_path: str, cache_path: str, data: bytes) -> None:
         self.set_data(cache_path, data)
+
+    def _write_aot_bytecode(self, aot_path: str, data: bytes) -> None:
+        """Atomically publish an AOT artifact so concurrent readers see all or none."""
+        # Windows does not permit two simultaneous replacements of one target;
+        # serializing publication also keeps the operation atomic for callers
+        # sharing an importer instance.
+        with self._aot_lock:
+            directory = os.path.dirname(aot_path)
+            os.makedirs(directory, exist_ok=True)
+            temp_name: str | None = None
+            try:
+                with tempfile.NamedTemporaryFile(dir=directory, delete=False) as temp:
+                    temp_name = temp.name
+                    temp.write(data)
+                os.replace(temp_name, aot_path)
+            finally:
+                if temp_name is not None:
+                    try:
+                        os.unlink(temp_name)
+                    except FileNotFoundError:
+                        pass
 
     def path_stats(self, path: str) -> Mapping[str, Any]:
         stat = os.stat(path)
@@ -311,7 +459,7 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
         loader_state: Mapping[str, str],
         path_stats: Mapping[str, int],
         module: BasilispModule,
-    ) -> None:
+    ) -> list[types.CodeType]:
         """Load and execute a cached Basilisp module."""
         filename = loader_state["filename"]
         cache_filename = loader_state["cache_filename"]
@@ -334,6 +482,7 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
                 compiler.PythonASTOptimizer(),
                 module,
             )
+            return cached_code
 
     def _exec_module(
         self,
@@ -341,7 +490,7 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
         loader_state: Mapping[str, str],
         path_stats: Mapping[str, int],
         module: BasilispModule,
-    ) -> None:
+    ) -> list[types.CodeType]:
         """Load and execute a non-cached Basilisp module."""
         filename = loader_state["filename"]
         cache_filename = loader_state["cache_filename"]
@@ -375,13 +524,35 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
 
         if sys.dont_write_bytecode:
             logger.debug(f"Skipping bytecode generation for '{fullname}'")
-            return
+            return all_bytecode
 
         # Cache the bytecode that was collected through the compilation run.
         cache_file_bytes = _basilisp_bytecode(
             path_stats["mtime"], path_stats["size"], all_bytecode
         )
         self._cache_bytecode(filename, cache_filename, cache_file_bytes)
+        return all_bytecode
+
+    def _exec_aot_module(
+        self,
+        fullname: str,
+        loader_state: Mapping[str, str],
+        module: BasilispModule,
+    ) -> list[types.CodeType]:
+        """Load and execute a standalone Basilisp AOT artifact."""
+        aot_filename = loader_state["aot_filename"]
+        source_filename, code = _get_basilisp_aot_bytecode(
+            fullname, self.get_data(aot_filename)
+        )
+        compiler.compile_bytecode(
+            code,
+            compiler.GeneratorContext(
+                filename=source_filename, opts=runtime.get_compiler_opts()
+            ),
+            compiler.PythonASTOptimizer(),
+            module,
+        )
+        return code
 
     def exec_module(self, module: types.ModuleType) -> None:
         """Compile the Basilisp module into Python code.
@@ -401,7 +572,6 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
         cached["module"] = module
         spec = cached["spec"]
         filename = spec.loader_state["filename"]
-        path_stats = self.path_stats(filename)
 
         # During the bootstrapping process, the 'basilisp.core namespace is created with
         # a blank module. If we do not replace the module here with the module we are
@@ -418,18 +588,69 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
             {runtime.Var.find_safe(runtime.IMPORT_MODULE_VAR_SYM): module}
         ):
 
+            if "aot_filename" in spec.loader_state:
+                cached["bytecode"] = self._exec_aot_module(
+                    fullname, spec.loader_state, module
+                )
+                return
+
+            path_stats = self.path_stats(filename)
+
             # Check if a valid, cached version of this Basilisp namespace exists and, if so,
             # load it and bypass the expensive compilation process below.
             if os.getenv(_NO_CACHE_ENVVAR, "").lower() == "true":
-                self._exec_module(fullname, spec.loader_state, path_stats, module)
+                cached["bytecode"] = self._exec_module(
+                    fullname, spec.loader_state, path_stats, module
+                )
             else:
                 try:
-                    self._exec_cached_module(
+                    cached["bytecode"] = self._exec_cached_module(
                         fullname, spec.loader_state, path_stats, module
                     )
                 except (EOFError, ImportError, OSError) as e:
                     logger.debug(f"Failed to load cached Basilisp module: {e}")
-                    self._exec_module(fullname, spec.loader_state, path_stats, module)
+                    cached["bytecode"] = self._exec_module(
+                        fullname, spec.loader_state, path_stats, module
+                    )
+
+    def compile_namespace(self, ns_name: str) -> str:
+        """Compile ``ns_name`` and publish a standalone artifact.
+
+        The namespace is loaded exactly as a normal ``compile`` call would load
+        it, then its collected code objects are atomically written beneath the
+        currently bound ``basilisp.core/*compile-path*``. The returned string is
+        the published artifact path.
+        """
+        fullname = munge(ns_name)
+        compile_path = self._compile_path()
+        if compile_path is None:
+            raise RuntimeError("basilisp.core/*compile-path* must name a directory")
+
+        with self._aot_lock:
+            spec = self.find_spec(fullname, None)
+            if spec is None or "aot_filename" in spec.loader_state:
+                raise ImportError(f"Could not find Basilisp source for '{ns_name}'")
+
+            if fullname in sys.modules:
+                importlib.reload(sys.modules[fullname])
+            else:
+                importlib.import_module(fullname)
+
+            try:
+                code = self._cache[fullname]["bytecode"]
+            except KeyError as e:  # pragma: no cover - importlib invariant guard
+                raise RuntimeError(f"Could not collect bytecode for '{ns_name}'") from e
+
+            is_package = spec.loader_state["filename"].endswith(
+                ("__init__.lpy", "__init__.cljc")
+            )
+            aot_path = _aot_from_namespace(compile_path, fullname, is_package)
+            self._write_aot_bytecode(
+                aot_path,
+                _basilisp_aot_bytecode(spec.loader_state["filename"], code),
+            )
+            importlib.invalidate_caches()
+            return aot_path
 
 
 def hook_imports() -> None:
@@ -441,3 +662,11 @@ def hook_imports() -> None:
     if any(isinstance(o, BasilispImporter) for o in sys.meta_path):
         return
     sys.meta_path.insert(0, BasilispImporter())
+
+
+def compile_namespace(ns_name: str) -> str:
+    """Compile a Basilisp namespace using the installed Basilisp importer."""
+    for finder in sys.meta_path:
+        if isinstance(finder, BasilispImporter):
+            return finder.compile_namespace(ns_name)
+    raise RuntimeError("Basilisp imports have not been initialized")

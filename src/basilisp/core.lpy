@@ -17,6 +17,7 @@
          random
          re
          [basilisp.core_interop :as core-interop]
+         basilisp.importer
          basilisp.lang.character
          basilisp.lang.agent
          basilisp.lang.chunk
@@ -128,6 +129,13 @@
              ignored; the remaining arguments are a Python sequence, start, and end."
        :arglists '([manager array offset end])}
   ->ArrayChunk basilisp.lang.chunk/array_chunk)
+(def ^:dynamic *compile-files*
+  "True while a Basilisp AOT compilation is executing."
+  false)
+(def ^:dynamic *compile-path*
+  "Directory used by :lpy:fn:`compile` for standalone Basilisp ``.lpyc`` artifacts.
+  Source modules take precedence when both source and an artifact are available."
+  "classes")
 (def ^{:doc "Create a fixed-capacity, one-shot chunk buffer."
        :arglists '([capacity])}
   chunk-buffer basilisp.lang.chunk/chunk_buffer)
@@ -5003,6 +5011,15 @@
   Returns the value of ``body``\\."
   [bindings-map & body]
   `(with-bindings* ~bindings-map (fn [] ~@body)))
+
+(defn compile
+  "Compile the namespace named by ``lib`` into a standalone artifact beneath
+  :lpy:var:`*compile-path*`, then return ``lib``. The artifact is Python-version-local
+  trusted bytecode and can be imported when its source is not present."
+  [lib]
+  (binding [*compile-files* true]
+    (basilisp.importer/compile_namespace (str lib)))
+  lib)
 
 (defn bound-fn*
   "Return a function which executes ``f`` with the same thread-local Var bindings as
