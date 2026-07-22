@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 11 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (668 shared Vars and 59 Basilisp
+This document classifies the 10 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (669 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -120,6 +120,11 @@ method or a registered host-type extension without invoking it, and reset
 clears every method-resolution cache in a protocol. Registration already
 invalidates those caches automatically; the public reset hook supports
 Clojure-compatible protocol tooling and explicit host type-graph refreshes.
+``method-sig`` now projects an inspectable Python host method into Clojure's
+three-part reflection shape: its stable name, parameter annotations, and
+return annotation. Missing Python annotations are represented by ``nil``;
+the callable is never invoked, and uninspectable or anonymous callables fail
+explicitly instead of guessing a signature.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -136,7 +141,7 @@ deferrals.
 `*fn-loader*`,
 `*unchecked-math*`, `*use-context-classloader*`,
 `gen-class`,
-`method-sig`, and `with-loading-context`.
+and `with-loading-context`.
 
 These names control Clojure compilation, reader evaluation, Java class loading,
 or generated JVM classes. Python has materially different import, compilation,

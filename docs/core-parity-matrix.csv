@@ -410,7 +410,7 @@ memoize,true,true,shared
 merge,true,true,shared
 merge-with,true,true,shared
 meta,true,true,shared
-method-sig,true,false,missing-in-basilisp
+method-sig,true,true,shared
 methods,true,true,shared
 min,true,true,shared
 min-key,true,true,shared

@@ -279,6 +279,10 @@ Type hints may be applied anywhere they are supported in Clojure (as the ``:tag`
 Tags provided for ``def`` names, function arguments and return values, and :lpy:form:`let` locals will be applied to the resulting Python AST by the compiler wherever possible.
 Particularly in the case of function arguments and return values, these tags maybe introspected from the Python :external:py:mod:`inspect` module.
 There is no need for type hints anywhere in Basilisp right now, however.
+For explicit host-method reflection, ``method-sig`` returns a callable's
+stable name, parameter annotations, and return annotation. Missing annotations
+are ``nil``; these are Python annotations rather than Java ``Class`` objects,
+and the callable is reflected without being invoked.
 
 .. _compilation_differences:
 

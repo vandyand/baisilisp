@@ -2193,6 +2193,43 @@
   [x]
   (python/type x))
 
+(defn method-sig
+  "Return an inspectable Python method's signature as ``[name parameters return]``.
+
+  This is the Python-hosted counterpart to Clojure's Java reflection helper.
+  ``name`` is the callable's ``__name__`` string, ``parameters`` is a sequence
+  of parameter annotations in :external:py:func:`inspect.signature` order, and
+  ``return`` is the return annotation. An absent annotation is ``nil``. A
+  zero-parameter callable has ``nil`` parameters, as Clojure's ``(seq [])``
+  result does. The callable is reflected only; it is never invoked.
+
+  The function requires a callable with a stable ``__name__`` and an
+  introspectable Python signature. Use a bound method when its receiver should
+  not appear in the reflected parameter sequence."
+  [method]
+  (when-not (python/callable method)
+    (throw (python/TypeError "method-sig requires a callable")))
+  (let [name (python/getattr method "__name__" nil)]
+    (when-not (string? name)
+      (throw (python/TypeError
+              "method-sig requires a callable with a string __name__")))
+    (let [signature (try
+                      (inspect/signature method)
+                      (catch python/TypeError e
+                        (throw (python/TypeError
+                                (str "method-sig cannot inspect callable: " e))))
+                      (catch python/ValueError e
+                        (throw (python/TypeError
+                                (str "method-sig cannot inspect callable: " e)))))
+          empty     inspect.Signature/empty
+          annotation (fn [annotation]
+                       (if (operator/is annotation empty) nil annotation))]
+      [name
+       (seq (basilisp.lang.vector/vector
+             (map (fn [parameter] (annotation (.-annotation parameter)))
+                  (.values (.-parameters signature)))))
+       (annotation (.-return-annotation signature))])))
+
 ;;;;;;;;;;;;;;;;;;;
 ;; Type Coercion ;;
 ;;;;;;;;;;;;;;;;;;;
