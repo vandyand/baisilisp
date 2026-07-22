@@ -177,23 +177,23 @@
                                   (with-out-str
                                     (pprint/pprint expr)))))
       "{...}"      0  long-map
-      "{:a 0 ...}" 1  long-map
-      "{:a 0 
- :b 1 
- :c 2 
- :d 3 
- :e 4 
- :f 5 
- :g 6 
- :h 7 
- :i 8 
- :j 9 
- :k 10 
- :l 11 
- :m 12 
- :n 13 
- :o 14 
- ...}"     15 long-map)))
+      "{:a 0, ...}" 1  long-map
+      (str "{:a 0, \n"
+           " :b 1, \n"
+           " :c 2, \n"
+           " :d 3, \n"
+           " :e 4, \n"
+           " :f 5, \n"
+           " :g 6, \n"
+           " :h 7, \n"
+           " :i 8, \n"
+           " :j 9, \n"
+           " :k 10, \n"
+           " :l 11, \n"
+           " :m 12, \n"
+           " :n 13, \n"
+           " :o 14, \n"
+           " ...}")     15 long-map)))
 
 (deftest pprint-base-and-radix-test
   (are [res base expr] (= res (trim-and-replace-newlines
@@ -230,7 +230,7 @@
 (defrecord Point [x y z])
 
 (deftest pprint-record-test
-  (is (= "#Point{:x 1 :y 2 :z 3}"
+  (is (= "#Point{:x 1, :y 2, :z 3}"
          (str/rtrim
           (with-out-str
             (binding [pprint/*print-sort-keys* true]
@@ -517,6 +517,27 @@
       (str/ltrim)
       (str/replace "\n" os/linesep)))
 
+(defn- positional-sorted-map
+  [n]
+  (apply sorted-map
+         (mapcat (fn [i] [(keyword (str "k" i)) i])
+                 (range n))))
+
+(deftest pprint-map-comma-conformance-stress-test
+  (doseq [n (range 0 24)]
+    (let [s (trim-and-replace-newlines
+             (with-out-str
+               (pprint/pprint (positional-sorted-map n))))]
+      (is (= (max 0 (dec n))
+             (count (re-seq #"," s)))
+          (str "unexpected comma count for map size " n ": " s))))
+  (let [s (trim-and-replace-newlines
+           (binding [pprint/*print-sort-keys* true
+                     *print-length*           3]
+             (with-out-str
+               (pprint/pprint (positional-sorted-map 12)))))]
+    (is (not (neg? (.find s ", ...}"))) s)))
+
 (deftest print-table-test
   (is (= "" (with-out-str (pprint/print-table []))))
   (is (= "" (with-out-str (pprint/print-table [:a :b :c] []))))
@@ -524,7 +545,7 @@
   (is (= (trim-newlines-and-dedent
           "
           |     :a |
-          +--------+
+          |--------|
           |      1 |
           |      b |
           | :horse |
@@ -534,7 +555,7 @@
   (is (= (trim-newlines-and-dedent
           "
           |  :a | :b |                 :c |
-          +-----+----+--------------------+
+          |-----+----+--------------------|
           |   1 |  2 |                  3 |
           |   7 |  5 | catdogbirdsquirrel |
           | 432 |  f |                    |
@@ -548,7 +569,7 @@
   (is (= (trim-newlines-and-dedent
           "
           |  :a | :b |                 :c | :d |
-          +-----+----+--------------------+----+
+          |-----+----+--------------------+----|
           |   1 |  2 |                  3 |    |
           |   7 |  5 | catdogbirdsquirrel |    |
           | 432 |  f |                    |    |
@@ -558,3 +579,17 @@
                                [{:a 1 :b 2 :c 3}
                                 {:b 5 :a 7 :c "catdogbirdsquirrel"}
                                 {:a 432 :b "f"}])))))
+
+(deftest print-table-divider-conformance-stress-test
+  (doseq [ks [[:a] [:a :b] [:a :b :long-name]]
+          :let [rows [(zipmap ks (range))
+                      (zipmap ks (map str (range)))]
+                lines (str/split
+                       (with-out-str (pprint/print-table ks rows))
+                       #"\r?\n")
+                divider (second lines)]]
+    (is (= "|" (subs divider 0 1)) divider)
+    (is (= "|" (subs divider (dec (count divider)))) divider)
+    (is (= (dec (count ks))
+           (count (re-seq #"\+" divider)))
+        divider)))

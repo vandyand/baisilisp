@@ -528,6 +528,16 @@ to nested values as well as top-level arguments, while the underlying renderer
 continues to enforce ``*print-length*``, ``*print-level*``, and metadata
 settings for ordinary collections.
 
+The shared differential fixture now covers the portable rendered contract for
+ordinary data printing, sorted maps, ``print-table``, a stable ``code-dispatch``
+definition form, ``cl-format`` numeric/iteration/conditional/plural/newline
+directives, formatter functions, and custom ``:fill`` logical-block dispatch.
+Map entries and record maps use Clojure's comma separators, and ``print-table``
+uses Clojure's vertical outside divider bars. Wider ``code-dispatch``
+indentation differences, such as threading and ``case`` layout, remain a
+separate formatting tranche rather than being hidden inside a broad pprint
+claim.
+
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

@@ -679,7 +679,7 @@
              (binding [*current-length* (dec *current-length*)]
                (write-out v)))
             (when-let [more (seq (rest m))]
-              (.write *out* " ")
+              (.write *out* ", ")
               (pprint-newline :linear)
               (recur more))))))))
 
@@ -1205,7 +1205,7 @@
                       (fmt-row "| " " |" " | ")))]
          (println (row-str (zipmap ks ks)))
          (->> (map #(apply str (repeat (get widths %) "-")) ks)
-              (fmt-row "+-" "-+" "-+-")
+              (fmt-row "|-" "-|" "-+-")
               (println))
          (doseq [row rows]
            (println (row-str row))))))))
@@ -1841,7 +1841,7 @@ Note this should only be used for the last one in the sequence"
         e (if (and (pos? (count e)) (= (nth e 0) \+)) (subs e 1) e)]
     (if (empty? m2)
       ["0" 0]
-      [m2 (- (int e) delta)])))
+      [m2 (- (python/int e) delta)])))
 
 (defn- inc-s
   "Assumption: The input python/str consists of one or more decimal digits,
@@ -2829,7 +2829,7 @@ python/str, or one python/str longer."
     (and (= (count p) 1) (contains? #{\v \V} (nth p 0))) :parameter-from-args
     (and (= (count p) 1) (= \# (nth p 0))) :remaining-arg-count
     (and (= (count p) 2) (= \' (nth p 0))) (nth p 1)
-    true (int p))
+    true (python/int p))
    offset])
 
 (def ^{:private true}

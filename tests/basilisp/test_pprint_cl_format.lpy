@@ -133,6 +133,18 @@
   (is (= "12.5" (pprint/cl-format nil "~D" (decimal/Decimal "12.5"))))
   (is (= "12.50" (pprint/cl-format nil "~,2F" (decimal/Decimal "12.5")))))
 
+(deftest cl-format-float-parameter-coercion-stress-test
+  (doseq [precision (range 0 8)
+          value [-999.999 -12.5 -0.099 0.0 0.099 12.5 999.999]
+          :let [format (str "~," precision "F")
+                rendered (pprint/cl-format nil format value)]]
+    (is (string? rendered) format))
+  (doseq [width (range 1 8)
+          precision (range 0 5)
+          :let [format (str "~" width "," precision "F")
+                rendered (pprint/cl-format nil format 12.5)]]
+    (is (string? rendered) format)))
+
 (deftest cl-format-upstream-parameter-and-reposition-regressions
   (doseq [[format args expected]
           [["~3,'0D" [5] "005"]

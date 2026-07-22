@@ -116,6 +116,9 @@ Near-term deliverable:
   semantics, ``seque``, deterministic Agent/Ref transactions, a seeded
   pseudo-random Ref operation corpus with validator aborts, and
   ``clojure.test`` assertion, reporting, custom-assertion, and fixture effects.
+  It also includes a deliberately string-rendered ``pprint`` fixture for
+  portable pretty-printing contracts where the rendered text is the public
+  behavior.
   New public compatibility names should arrive with a portable fixture or a
   documented host-specific reason why a shared fixture is impossible.
 * use ``scripts/library_acceptance.py`` for a source-level, multi-file library
