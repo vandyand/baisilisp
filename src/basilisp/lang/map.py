@@ -782,5 +782,7 @@ def from_entries(entries: Iterable[MapEntry[K, V]]) -> PersistentMap[K, V]:  # t
 
 
 def hash_map(*pairs) -> PersistentMap:
+    if len(pairs) % 2:
+        raise ValueError(f"No value supplied for key: {pairs[-1]}")
     entries = pymap(lambda v: MapEntry.of(v[0], v[1]), partition(pairs, 2))
     return from_entries(entries)

@@ -590,7 +590,7 @@ send,true,true,shared
 send-off,true,true,shared
 send-via,true,true,shared
 seq,true,true,shared
-seq-to-map-for-destructuring,true,false,missing-in-basilisp
+seq-to-map-for-destructuring,true,true,shared
 seq?,true,true,shared
 seqable?,true,true,shared
 seque,true,true,shared

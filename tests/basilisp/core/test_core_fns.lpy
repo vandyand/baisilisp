@@ -20,6 +20,28 @@
   (is (= {} (array-map)))
   (is (= {:a 2 :b 3} (array-map :a 1 :a 2 :b 3))))
 
+(deftest seq-to-map-for-destructuring-test
+  (testing "empty and singleton sequences retain Clojure's keyword-argument shape"
+    (are [input expected] (= expected (seq-to-map-for-destructuring input))
+      nil    {}
+      []     {}
+      [:key] :key
+      {:a 1} [:a 1]))
+
+  (testing "multiple sequence values become key-value entries"
+    (are [input expected] (= expected (seq-to-map-for-destructuring input))
+      [:a 1]       {:a 1}
+      '(:a 1)      {:a 1}
+      [:a 1 :b 2] {:a 1 :b 2}
+      "ab"        {\a \b})
+    (let [result (seq-to-map-for-destructuring #{1 2})]
+      (is (= 1 (count result)))
+      (is (= #{1 2} (set (concat (keys result) (vals result)))))))
+
+  (testing "malformed trailing keys preserve the underlying map-construction error"
+    (is (thrown? python/ValueError
+                 (seq-to-map-for-destructuring [:a 1 :b])))))
+
 (deftest comparator-test
   (let [cmp (comparator <)]
     (is (= -1 (cmp 1 2)))

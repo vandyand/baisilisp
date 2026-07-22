@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 37 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (642 shared Vars and 59 Basilisp
+This document classifies the 36 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (643 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -75,6 +75,9 @@ writer callback shape, with the explicitly Python-hosted
 source-compatibility target used by the differential corpus. They never claim
 that Basilisp is a Clojure runtime; ``*basilisp-version*`` remains the
 Python-hosted implementation identity.
+``seq-to-map-for-destructuring`` now follows Clojure's 1.11 public
+keyword-argument sequence contract: empty sequences yield an empty map,
+singletons remain unchanged, and longer even sequences become maps.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -104,8 +107,7 @@ compatibility promise would be false.
 `->ArrayChunk`, `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`,
 `-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `chunk`, `chunk-append`, `chunk-buffer`,
 `chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
-`primitives-classnames`, `proxy-call-with-super`, `proxy-name`,
-`seq-to-map-for-destructuring`.
+`primitives-classnames`, `proxy-call-with-super`, and `proxy-name`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception
 and printing classes, proxy generation, primitive vector types, or compiler

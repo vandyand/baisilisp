@@ -266,6 +266,15 @@
   array-map
   hash-map)
 
+(def
+  ^{:doc      "Build a map from a sequence as described by Clojure keyword arguments."
+    :arglists '([s])}
+  seq-to-map-for-destructuring
+  (fn seq-to-map-for-destructuring [s]
+    (if (next s)
+      (apply hash-map s)
+      (if (seq s) (first s) {}))))
+
 (def sorted-map
   (fn sorted-map [& kvs]
     (apply basilisp.lang.map/sorted-map basilisp.lang.runtime/compare kvs)))
