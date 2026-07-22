@@ -76,6 +76,7 @@
   malformed or relative URL strings raise ``ValueError``."
   [f]
   (cond
+    (nil? f)                            nil
     (instance? urllib.parse/ParseResult f) f
     (instance? python/str f)             (let [url (urllib.parse/urlparse f)]
                                            (if (str/blank? (.-scheme url))

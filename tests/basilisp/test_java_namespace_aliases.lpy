@@ -3,6 +3,7 @@
            pathlib
            sys)
   (:require
+   [basilisp.io :as bio]
    [clojure.java.io :as io]
    [clojure.java.shell :as shell]
    [basilisp.test :refer [are deftest is]]))
@@ -11,13 +12,14 @@
   (is (= (pathlib/Path "parent" "child")
          (io/file "parent" "child")))
   (is (= (pathlib/Path "parent" "child")
-         (io/path "parent" "child")))
+         (bio/path "parent" "child")))
   (is (= (pathlib/Path "parent")
          (io/as-file "parent")))
   (is (= (pathlib/Path "parent" "child")
          (io/as-relative-path "parent/child")))
   (is (= "https" (.-scheme (io/as-url "https://example.com/path"))))
   (is (= "file" (.-scheme (io/as-url (pathlib/Path "parent")))))
+  (is (nil? (io/as-url nil)))
   (is (nil? (io/resource "definitely-missing-resource")))
   (is (thrown? python/ValueError (io/as-url "relative/path")))
   (is (thrown? python/ValueError
@@ -26,9 +28,15 @@
     nil
     1
     :resource)
-  (is (every? (set (map name (keys (ns-publics 'basilisp.java.io))))
-              ["file" "path" "as-file" "as-relative-path" "as-url" "resource" "delete-file" "reader" "writer" "input-stream"
-               "output-stream" "copy" "make-parents" "exists?" "touch"])))
+  (is (= #{"Coercions" "IOFactory" "as-file" "as-relative-path" "as-url" "copy" "default-streams-impl"
+           "delete-file" "file" "input-stream" "make-input-stream" "make-output-stream" "make-parents"
+           "make-reader" "make-writer" "output-stream" "reader" "resource" "writer"}
+         (set (map name (keys (ns-publics 'basilisp.java.io))))))
+  (is (every? #(contains? io/default-streams-impl %)
+              [:make-reader :make-writer :make-input-stream :make-output-stream]))
+  (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "path")))
+  (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "exists?")))
+  (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "touch"))))
 
 (deftest clojure-java-shell-import-path-test
   (is (= {:exit 0 :out (str "alias" os/linesep) :err ""}

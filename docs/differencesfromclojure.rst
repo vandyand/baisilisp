@@ -356,6 +356,8 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   map to Python :class:`pathlib.Path` values, ``as-relative-path`` rejects
   absolute paths, ``as-url`` returns a parsed URL, and ``resource`` searches
   Python's import path for file resources rather than using a JVM class loader.
+  Python-only helpers such as ``path``, ``exists?``, and ``touch`` remain on
+  :lpy:ns:`basilisp.io` rather than the ``clojure.java.io`` alias.
 * :lpy:ns:`basilisp.java.process` provides the ``clojure.java.process``
   import path over Python :external:py:class:`subprocess.Popen` objects. Its
   text-mode pipes follow Python newline normalization and ``io-task`` uses the

@@ -1,25 +1,50 @@
 (ns basilisp.java.io
   "Portable ``clojure.java.io`` entry points backed by :lpy:ns:`basilisp.io`.
 
-  The namespace exposes the part of the Clojure API that maps directly to Python
-  paths and streams. ``file`` is an alias for :lpy:fn:`basilisp.io/path`."
+  The namespace exposes Clojure's public ``clojure.java.io`` names where they
+  map to Python paths and streams. ``file`` is an alias for
+  :lpy:fn:`basilisp.io/path`; Python-specific helpers such as
+  :lpy:fn:`basilisp.io/path`, :lpy:fn:`basilisp.io/exists?`, and
+  :lpy:fn:`basilisp.io/touch` remain on :lpy:ns:`basilisp.io` rather than the
+  standard alias."
   (:require [basilisp.io :as bio]))
 
 ;; Define public Vars rather than merely referring them. Qualified calls through
-;; ``clojure.java.io`` and namespace introspection must both expose the portable
-;; standard-library surface.
+;; ``clojure.java.io`` and namespace introspection must both expose the
+;; Clojure-shaped standard-library surface.
+(def Coercions bio/Coercions)
+(def IOFactory bio/IOFactory)
+
 (def file bio/path)
-(def path bio/path)
 (def as-file bio/as-file)
 (def as-relative-path bio/as-relative-path)
 (def as-url bio/as-url)
-(def resource bio/resource)
+
+(defn resource
+  "Return the URL for resource ``name`` found on Python's import path.
+
+  The optional ``loader`` argument is accepted for Clojure arity compatibility
+  and ignored because Basilisp does not use JVM class loaders."
+  ([name]
+   (bio/resource name))
+  ([name _loader]
+   (bio/resource name)))
+
 (def delete-file bio/delete-file)
+(def make-reader bio/make-reader)
+(def make-writer bio/make-writer)
+(def make-input-stream bio/make-input-stream)
+(def make-output-stream bio/make-output-stream)
+
+(def default-streams-impl
+  {:make-reader make-reader
+   :make-writer make-writer
+   :make-input-stream make-input-stream
+   :make-output-stream make-output-stream})
+
 (def reader bio/reader)
 (def writer bio/writer)
 (def input-stream bio/input-stream)
 (def output-stream bio/output-stream)
 (def copy bio/copy)
 (def make-parents bio/make-parents)
-(def exists? bio/exists?)
-(def touch bio/touch)
