@@ -114,6 +114,8 @@ FILE_VAR_NAME = "*file*"
 FILE_VAR_SYM = sym.symbol(FILE_VAR_NAME, ns=CORE_NS)
 SOURCE_PATH_VAR_NAME = "*source-path*"
 SOURCE_PATH_VAR_SYM = sym.symbol(SOURCE_PATH_VAR_NAME, ns=CORE_NS)
+ALLOW_UNRESOLVED_VARS_VAR_NAME = "*allow-unresolved-vars*"
+ALLOW_UNRESOLVED_VARS_VAR_SYM = sym.symbol(ALLOW_UNRESOLVED_VARS_VAR_NAME, ns=CORE_NS)
 NO_SOURCE_FILE = "NO_SOURCE_FILE"
 IMPORT_MODULE_VAR_NAME = "*import-module*"
 IMPORT_MODULE_VAR_SYM = sym.symbol(IMPORT_MODULE_VAR_NAME, ns=CORE_NS)
@@ -2970,6 +2972,18 @@ def bootstrap_core(compiler_opts: CompilerOpts) -> None:
         dynamic=True,
     )
     source_path_var.reset_meta(None)
+
+    # Dynamic compiler switch corresponding to Clojure's private-metadata
+    # ``*allow-unresolved-vars*`` Var.  The analyzer reads its current binding
+    # when a compiler context is created; macroexpansion continues to opt in
+    # explicitly so it remains usable during core bootstrap.
+    allow_unresolved_vars = Var.intern(
+        CORE_NS_SYM,
+        sym.symbol(ALLOW_UNRESOLVED_VARS_VAR_NAME),
+        False,
+        dynamic=True,
+    )
+    allow_unresolved_vars.reset_meta(None)
 
     # Dynamic Var examined by the compiler when importing new Namespaces
     Var.intern(

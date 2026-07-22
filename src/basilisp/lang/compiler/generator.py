@@ -23,8 +23,8 @@ from typing import TYPE_CHECKING, Concatenate, Generic, Optional, TypeVar, Union
 import attr
 from typing_extensions import ParamSpec
 
-from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
+from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -101,6 +101,7 @@ from basilisp.lang.compiler.nodes import (
     T_withmeta,
     Throw,
     Try,
+    UnresolvedVar,
     VarRef,
 )
 from basilisp.lang.compiler.nodes import Vector as VectorNode
@@ -3194,6 +3195,27 @@ def _throw_to_py_ast(ctx: GeneratorContext, node: Throw) -> GeneratedPyAST[ast.e
     )
 
 
+@_with_ast_loc_deps
+def _unresolved_var_to_py_ast(
+    _ctx: GeneratorContext, node: UnresolvedVar
+) -> GeneratedPyAST[ast.expr]:
+    """Emit the evaluation-time failure required by ``*allow-unresolved-vars*``."""
+    assert node.op == NodeOp.UNRESOLVED_VAR
+    return GeneratedPyAST(
+        node=_noop_node(),
+        dependencies=[
+            ast.Raise(
+                exc=ast.Call(
+                    func=_load_attr("basilisp.lang.runtime.RuntimeException"),
+                    args=[ast.Constant(value="UnresolvedVarExpr cannot be evalled")],
+                    keywords=[],
+                ),
+                cause=None,
+            )
+        ],
+    )
+
+
 def __catch_to_py_ast(
     ctx: GeneratorContext, catch: Catch, *, try_expr_name: str
 ) -> ast.ExceptHandler:
@@ -4124,6 +4146,7 @@ _NODE_HANDLERS: Mapping[NodeOp, "PyASTGenerator[Any, Any, ast.expr]"] = {
     NodeOp.SET_BANG: _set_bang_to_py_ast,
     NodeOp.THROW: _throw_to_py_ast,
     NodeOp.TRY: _try_to_py_ast,
+    NodeOp.UNRESOLVED_VAR: _unresolved_var_to_py_ast,
     NodeOp.YIELD: _yield_to_py_ast,
     NodeOp.VAR: _var_sym_to_py_ast,
     NodeOp.VECTOR: _vec_to_py_ast,

@@ -7,7 +7,7 @@ symbol,clojure_core,basilisp_core,status
 *agent*,true,true,shared
 *agent-send-executor*,false,true,basilisp-extension
 *agent-send-off-executor*,false,true,basilisp-extension
-*allow-unresolved-vars*,true,false,missing-in-basilisp
+*allow-unresolved-vars*,true,true,shared
 *assert*,true,true,shared
 *basilisp-version*,false,true,basilisp-extension
 *clojure-version*,true,true,shared

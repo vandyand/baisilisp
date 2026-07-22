@@ -28,8 +28,8 @@ from typing import Any, Literal, Optional, TypeVar, Union, cast
 
 import attr
 
-from basilisp.lang import keyword as kw
 from basilisp.lang import character as char
+from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
@@ -141,6 +141,7 @@ from basilisp.lang.compiler.nodes import (
     SpecialFormNode,
     Throw,
     Try,
+    UnresolvedVar,
     VarRef,
 )
 from basilisp.lang.compiler.nodes import Vector as VectorNode
@@ -344,6 +345,7 @@ class AnalyzerContext:
         "_should_macroexpand",
         "_st",
         "_syntax_pos",
+        "_unresolved_var_errors",
     )
 
     def __init__(
@@ -351,9 +353,24 @@ class AnalyzerContext:
         filename: str | None = None,
         opts: CompilerOpts | None = None,
         should_macroexpand: bool = True,
-        allow_unresolved_symbols: bool = False,
+        allow_unresolved_symbols: bool | None = None,
     ) -> None:
-        self._allow_unresolved_symbols = allow_unresolved_symbols
+        if allow_unresolved_symbols is None:
+            allow_unresolved_var = runtime.Var.find(
+                runtime.ALLOW_UNRESOLVED_VARS_VAR_SYM
+            )
+            self._allow_unresolved_symbols = bool(
+                allow_unresolved_var.value
+                if allow_unresolved_var is not None
+                else False
+            )
+            self._unresolved_var_errors = self._allow_unresolved_symbols
+        else:
+            self._allow_unresolved_symbols = allow_unresolved_symbols
+            # Macroexpansion deliberately treats unresolved symbols as data so
+            # it can return an unexpanded form. Only the public compiler Var
+            # requests Clojure's unresolved-Var evaluation failure.
+            self._unresolved_var_errors = False
         self._compile_time_def_callbacks: collections.deque[Callable[[Def], None]] = (
             collections.deque([])
         )
@@ -435,11 +452,18 @@ class AnalyzerContext:
 
     @property
     def should_allow_unresolved_symbols(self) -> bool:
-        """If True, the analyzer will allow unresolved symbols. This is primarily
-        useful for contexts by the `macroexpand` and `macroexpand-1` core
-        functions. This would not be a good setting to use for normal compiler
-        scenarios."""
+        """If True, the analyzer will allow unresolved symbols.
+
+        An explicit constructor value is used by ``macroexpand`` and
+        ``macroexpand-1``. Ordinary compiler contexts instead inherit the
+        current ``*allow-unresolved-vars*`` binding when they are created.
+        """
         return self._allow_unresolved_symbols
+
+    @property
+    def should_raise_unresolved_var(self) -> bool:
+        """If True, unresolved symbols compile to a runtime unresolved-Var error."""
+        return self._unresolved_var_errors
 
     @property
     def should_macroexpand(self) -> bool:
@@ -3878,7 +3902,7 @@ def __resolve_namespaced_symbol_in_ns(
 
 def __resolve_namespaced_symbol(  # pylint: disable=too-many-branches
     ctx: AnalyzerContext, form: sym.Symbol
-) -> Const | HostField | MaybeClass | MaybeHostForm | VarRef:
+) -> Const | HostField | MaybeClass | MaybeHostForm | UnresolvedVar | VarRef:
     """Resolve a namespaced symbol into a Python name or Basilisp Var."""
     # Support Clojure 1.12 qualified method names
     #
@@ -3947,6 +3971,9 @@ def __resolve_namespaced_symbol(  # pylint: disable=too-many-branches
     if resolved is not None:
         return resolved
 
+    if ctx.should_allow_unresolved_symbols:
+        return _unresolved_symbol_node(form, ctx)
+
     if "." in form.ns:
         try:
             return __resolve_nested_symbol(ctx, form)
@@ -3954,8 +3981,6 @@ def __resolve_namespaced_symbol(  # pylint: disable=too-many-branches
             raise ctx.AnalyzerException(
                 f"unable to resolve symbol '{form}' in this context", form=form
             ) from None
-    elif ctx.should_allow_unresolved_symbols:
-        return _const_node(form, ctx)
 
     # Imports and requires nested in function definitions, method definitions, and
     # `(do ...)` forms are not statically resolvable, since they haven't necessarily
@@ -4011,7 +4036,7 @@ def __resolve_namespaced_symbol(  # pylint: disable=too-many-branches
 
 def __resolve_bare_symbol(
     ctx: AnalyzerContext, form: sym.Symbol
-) -> Const | HostField | MaybeClass | VarRef:
+) -> Const | HostField | MaybeClass | UnresolvedVar | VarRef:
     """Resolve a non-namespaced symbol into a Python name or a local Basilisp Var."""
     assert form.ns is None
 
@@ -4070,7 +4095,7 @@ def __resolve_bare_symbol(
         )
 
     if ctx.should_allow_unresolved_symbols:
-        return _const_node(form, ctx)
+        return _unresolved_symbol_node(form, ctx)
 
     assert munged not in vars(current_ns.module)
     raise ctx.AnalyzerException(
@@ -4078,9 +4103,21 @@ def __resolve_bare_symbol(
     )
 
 
+def _unresolved_symbol_node(
+    form: sym.Symbol, ctx: AnalyzerContext
+) -> Const | UnresolvedVar:
+    """Preserve macroexpansion symbols, or emit Clojure-style unresolved Vars."""
+    if ctx.should_raise_unresolved_var:
+        return UnresolvedVar(
+            form=form,
+            env=ctx.get_node_env(pos=ctx.syntax_position),
+        )
+    return _const_node(form, ctx)
+
+
 def _resolve_sym(
     ctx: AnalyzerContext, form: sym.Symbol
-) -> Const | HostField | MaybeClass | MaybeHostForm | VarRef:
+) -> Const | HostField | MaybeClass | MaybeHostForm | UnresolvedVar | VarRef:
     """Resolve a Basilisp symbol as a Var or Python name."""
     # Support special class-name syntax to instantiate new classes
     #   (Classname. *args)
@@ -4107,7 +4144,7 @@ def _resolve_sym(
 @_with_loc
 def _symbol_node(
     form: sym.Symbol, ctx: AnalyzerContext
-) -> Const | HostField | Local | MaybeClass | MaybeHostForm | VarRef:
+) -> Const | HostField | Local | MaybeClass | MaybeHostForm | UnresolvedVar | VarRef:
     if ctx.is_quoted:
         return _const_node(form, ctx)
 

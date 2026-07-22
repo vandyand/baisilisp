@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 34 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (645 shared Vars and 59 Basilisp
+This document classifies the 33 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (646 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -82,6 +82,11 @@ singletons remain unchanged, and longer even sequences become maps.
 restores it in ``finally``. ``proxy-name`` reports the stable cached Python
 ``module.Qualname`` label for a superclass/interface set, rather than a JVM
 generated-class name.
+``*allow-unresolved-vars*`` now creates a compiler context that accepts an
+otherwise unresolved symbol and, as in Clojure, raises only when that compiled
+unresolved Var expression is evaluated. It remains false by default, is
+thread-bindable, and macroexpansion retains its long-standing ability to return
+unresolved forms as data.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -95,8 +100,7 @@ deferrals.
 
 ### Clojure compiler, reader, and Java class-loader state
 
-`*allow-unresolved-vars*`, `*compile-files*`,
-`*compile-path*`, `*fn-loader*`,
+`*compile-files*`, `*compile-path*`, `*fn-loader*`,
 `*unchecked-math*`, `*use-context-classloader*`,
 `*warn-on-reflection*`, `add-classpath`, `compile`, `gen-class`,
 `method-sig`, and `with-loading-context`.

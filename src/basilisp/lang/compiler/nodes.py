@@ -94,6 +94,7 @@ class NodeOp(Enum):
     SET_BANG = kw.keyword("set!")
     THROW = kw.keyword("throw")
     TRY = kw.keyword("try")
+    UNRESOLVED_VAR = kw.keyword("unresolved-var")
     VAR = kw.keyword("var")
     VECTOR = kw.keyword("vector")
     WITH_META = kw.keyword("with-meta")
@@ -885,6 +886,18 @@ class Throw(Node[SpecialForm]):
     env: NodeEnv = attr.field(hash=False)
     children: Sequence[kw.Keyword] = vec.v(EXCEPTION)
     op: NodeOp = NodeOp.THROW
+    top_level: bool = False
+    raw_forms: IPersistentVector[LispForm] = vec.EMPTY
+
+
+@attr.frozen
+class UnresolvedVar(Node[sym.Symbol]):
+    """A symbol accepted during compilation but forbidden at evaluation time."""
+
+    form: sym.Symbol
+    env: NodeEnv = attr.field(hash=False)
+    children: Sequence[kw.Keyword] = vec.EMPTY
+    op: NodeOp = NodeOp.UNRESOLVED_VAR
     top_level: bool = False
     raw_forms: IPersistentVector[LispForm] = vec.EMPTY
 
