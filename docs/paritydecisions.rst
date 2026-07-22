@@ -491,6 +491,10 @@ operations. The differential corpus now covers portable core collection,
 sequence, transducer, metadata, hierarchy, lazy-realization, macro-expansion,
 exception-data, ``seque``, ``clojure.test`` reporting, and deterministic
 Agent/Ref behavior; ``sync`` is included as compatible transaction syntax.
+The shared-core semantic fixture also covers edge behavior for seq boundaries,
+indexed lookup, metadata-preserving collection updates, destructuring,
+collection invocation, reduced values, threading macros, reader discard, and
+chunked realization over ``range``.
 There is now also a source-level multi-file library acceptance proof with a
 checked-in portability manifest and Clojure/Basilisp test-summary comparison.
 The next work is:

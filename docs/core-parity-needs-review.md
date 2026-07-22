@@ -95,7 +95,10 @@ rather than ordinary sequences. ``->ArrayChunk`` retains Clojure's positional
 manager argument but ignores it because Python sequences need no JVM
 ``ArrayManager``. Realized ``map``, ``map-indexed``, ``filter``, ``keep``,
 ``keep-indexed``, and ``concat`` preserve those chunk boundaries, including
-Clojure's one-chunk-ahead realization behavior.
+Clojure's one-chunk-ahead realization behavior. ``range`` now returns a
+chunked sequence as well, so lazy transforms over ranges share Clojure's
+32-element realization boundary for finite, negative-step, and unbounded
+ranges. Zero-step ranges match Clojure's repeating values but remain unchunked.
 ``*compile-files*``, ``*compile-path*``, and ``compile`` now provide a
 Python-native AOT workflow: compilation writes trusted, Python-version-local
 ``.lpyc`` artifacts below the configured output path, those artifacts can load

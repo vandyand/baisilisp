@@ -112,12 +112,12 @@ Near-term deliverable:
   in Clojure and Basilisp and compares parsed EDN, so map print order and other
   non-semantic formatting cannot hide or create a compatibility difference.
   The corpus covers core collection/sequence/transducer/metadata/hierarchy and
-  lazy-realization behavior, macro expansion, exception data, ``seque``,
-  deterministic Agent/Ref transactions, a seeded pseudo-random Ref operation
-  corpus with validator aborts, and ``clojure.test`` assertion, reporting,
-  custom-assertion, and fixture effects. New public compatibility names should
-  arrive with a portable fixture or a documented host-specific reason why a
-  shared fixture is impossible.
+  lazy-realization behavior, macro expansion, exception data, shared-core edge
+  semantics, ``seque``, deterministic Agent/Ref transactions, a seeded
+  pseudo-random Ref operation corpus with validator aborts, and
+  ``clojure.test`` assertion, reporting, custom-assertion, and fixture effects.
+  New public compatibility names should arrive with a portable fixture or a
+  documented host-specific reason why a shared fixture is impossible.
 * use ``scripts/library_acceptance.py`` for a source-level, multi-file library
   proof. It executes the library-owned ``run.cljc`` test entrypoint in Clojure
   and Basilisp, compares the final EDN summary, and rejects a stale checked-in

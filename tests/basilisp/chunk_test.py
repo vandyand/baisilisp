@@ -4,7 +4,9 @@ import pytest
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
-from basilisp.lang import chunk, runtime
+from basilisp.lang import chunk
+from basilisp.lang import range as lrange
+from basilisp.lang import runtime
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.interfaces import ISeqable
@@ -144,6 +146,42 @@ def test_realizing_one_mapped_vector_item_evaluates_exactly_its_chunk():
     seen: list[int] = []
     mapped = _core_fn("map")(
         lambda value: seen.append(value) or value, vec.vector(range(40))
+    )
+
+    assert runtime.first(mapped) == 0
+    assert list(range(32)) == seen
+
+
+def test_range_sequences_are_chunked_at_clojure_sized_boundaries():
+    seq = lrange.range(0, 70)
+
+    assert chunk.is_chunked_seq(seq)
+    assert list(range(32)) == _items(chunk.chunk_first(seq))
+    assert list(range(1, 32)) == _items(chunk.chunk_first(seq.rest))
+    assert list(range(32, 64)) == _items(chunk.chunk_first(chunk.chunk_next(seq)))
+    assert list(range(64, 70)) == _items(
+        chunk.chunk_first(chunk.chunk_rest(chunk.chunk_next(seq)))
+    )
+    assert list(range(70)) == list(seq)
+
+
+def test_range_chunks_support_negative_and_infinite_ranges():
+    negative = lrange.range(10, 0, -3)
+    zero_step = lrange.range(1, 10, 0)
+    infinite = lrange.range()
+
+    assert [10, 7, 4, 1] == list(negative)
+    assert [10, 7, 4, 1] == _items(chunk.chunk_first(negative))
+    assert [1, 1, 1, 1, 1] == [runtime.nth(zero_step, index) for index in range(5)]
+    assert not chunk.is_chunked_seq(zero_step)
+    assert list(range(32)) == _items(chunk.chunk_first(infinite))
+    assert list(range(1, 32)) == _items(chunk.chunk_first(infinite.rest))
+
+
+def test_realizing_one_mapped_range_item_evaluates_exactly_its_chunk():
+    seen: list[int] = []
+    mapped = _core_fn("map")(
+        lambda value: seen.append(value) or value, lrange.range(40)
     )
 
     assert runtime.first(mapped) == 0
