@@ -280,7 +280,13 @@ def _get_fully_qualified_module_names(file: Path) -> list[str]:
 
             if elems[-1] == "__init__":
                 elems.pop()
-            paths.append(".".join(elems))
+            if elems and elems[0] == "src":
+                module_name = ".".join(elems[1:])
+                if module_name not in paths:
+                    paths.append(module_name)
+            module_name = ".".join(elems)
+            if module_name not in paths:
+                paths.append(module_name)
     return paths
 
 

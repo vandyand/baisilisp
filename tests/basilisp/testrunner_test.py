@@ -143,8 +143,14 @@ class TestTestrunner:
         test_file = src_root / "basilisp" / "test" / "check" / "clojure_test.lpy"
         test_file.parent.mkdir(parents=True)
         test_file.touch()
-        monkeypatch.setattr(sys, "path", [str(tmp_path), str(src_root)])
+        monkeypatch.setattr(sys, "path", [str(tmp_path)])
 
+        assert _get_fully_qualified_module_names(test_file)[:2] == [
+            "basilisp.test.check.clojure_test",
+            "src.basilisp.test.check.clojure_test",
+        ]
+
+        monkeypatch.setattr(sys, "path", [str(tmp_path), str(src_root)])
         assert _get_fully_qualified_module_names(test_file)[:2] == [
             "basilisp.test.check.clojure_test",
             "src.basilisp.test.check.clojure_test",
