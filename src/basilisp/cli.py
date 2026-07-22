@@ -791,7 +791,9 @@ def test(
     if project_config:
         project_paths = (*project_config.source_paths, *project_config.test_paths)
     init_path(args, project_paths=project_paths, default_paths=default_test_paths)
-    basilisp.init(_compiler_opts(args, project_config))
+    compiler_opts = _compiler_opts(args, project_config)
+    basilisp.init(compiler_opts)
+    basilisp.bootstrap("basilisp.test", compiler_opts)
 
     # parse_known_args leaves the `--` separator as the first element if it is present
     # but retaining that causes PyTest to interpret all the arguments as positional

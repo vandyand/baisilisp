@@ -39,6 +39,39 @@ ERR_VAR_NAME = "*err*"
 ERR_VAR_SYM = sym.symbol(ERR_VAR_NAME, ns=CORE_NS)
 TEST_FAILURES_VAR_SYM = sym.symbol("*test-failures*", ns="basilisp.test")
 TEST_PASSES_VAR_SYM = sym.symbol("*test-passes*", ns="basilisp.test")
+TEST_NS = "basilisp.test"
+TEST_NS_SYM = sym.symbol(TEST_NS)
+
+
+def _test_report_vars() -> tuple[runtime.Var | None, runtime.Var | None]:
+    return (
+        runtime.Var.find(TEST_FAILURES_VAR_SYM),
+        runtime.Var.find(TEST_PASSES_VAR_SYM),
+    )
+
+
+def _ensure_test_namespace() -> tuple[runtime.Var, runtime.Var]:
+    failures_var, passes_var = _test_report_vars()
+    if failures_var is not None and passes_var is not None:
+        return failures_var, passes_var
+
+    basilisp.bootstrap(TEST_NS)
+    failures_var, passes_var = _test_report_vars()
+    if failures_var is not None and passes_var is not None:
+        return failures_var, passes_var
+
+    # In installed-wheel CLI runs, Python may have already cached the
+    # ``basilisp.test`` package directory used by child namespaces such as
+    # ``basilisp.test.check`` before Basilisp's ``test.lpy`` namespace loader gets
+    # a chance to run. Evict that stale module/namespace and force the `.lpy`
+    # namespace to load.
+    sys.modules.pop(TEST_NS, None)
+    runtime.Namespace.remove(TEST_NS_SYM)
+    basilisp.bootstrap(TEST_NS)
+    return (
+        runtime.Var.find_safe(TEST_FAILURES_VAR_SYM),
+        runtime.Var.find_safe(TEST_PASSES_VAR_SYM),
+    )
 
 
 def pytest_configure(config):
@@ -59,7 +92,7 @@ def pytest_configure(config):
         runtime.push_thread_bindings(lmap.map(bindings))
         config.basilisp_bindings = bindings
 
-    basilisp.bootstrap("basilisp.test")
+    _ensure_test_namespace()
 
 
 def pytest_unconfigure(config):
@@ -312,8 +345,7 @@ class BasilispFile(pytest.File):
         def _test_num(var: runtime.Var) -> int:
             assert var.meta is not None
             order = var.meta.val_at(_LINE_KW)
-            assert isinstance(order, int)
-            return order
+            return order if isinstance(order, int) else sys.maxsize
 
         return sorted(
             (
@@ -382,8 +414,7 @@ class BasilispFile(pytest.File):
         Clojure's runner supplies report counters while loading such namespaces; bind
         equivalent counters here so collection remains safe and failures are retained.
         """
-        failures_var = runtime.Var.find_safe(TEST_FAILURES_VAR_SYM)
-        passes_var = runtime.Var.find_safe(TEST_PASSES_VAR_SYM)
+        failures_var, passes_var = _ensure_test_namespace()
         failures = volatile.Volatile(vec.EMPTY)
         passes = volatile.Volatile(0)
         return lmap.map({failures_var: failures, passes_var: passes}), failures, passes
