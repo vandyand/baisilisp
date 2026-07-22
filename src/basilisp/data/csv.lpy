@@ -2,5 +2,7 @@
   "Portable ``clojure.data.csv`` entry points backed by :lpy:ns:`basilisp.csv`."
   (:require [basilisp.csv :as csv]))
 
+(def Read-CSV-From csv/Read-CSV-From)
 (def read-csv csv/read-csv)
+(def read-csv-from csv/read-csv-from)
 (def write-csv csv/write-csv)

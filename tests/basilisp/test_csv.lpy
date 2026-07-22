@@ -72,6 +72,12 @@
                  (csv/write-csv (io/StringIO) [["x"]] :quote "")))))
 
 (deftest data-csv-import-and-seeded-round-trip-test
+  (is (= #{"Read-CSV-From" "read-csv" "read-csv-from" "write-csv"}
+         (set (map name (keys (ns-publics 'basilisp.data.csv))))))
+  (is (= [["a" "b"] ["c" "d"]]
+         (vec (data-csv/read-csv-from "a,b\nc,d" (int \,) (int \")))))
+  (is (= [["a" "b"] ["c" "d"]]
+         (vec (data-csv/read-csv-from (io/StringIO "a;b\nc;d") (int \;) (int \")))))
   (let [rng    (random/Random 0x435356)
         values (mapv (fn [_]
                        (str "v" (.randint rng 0 1000000) ",\"\n"))

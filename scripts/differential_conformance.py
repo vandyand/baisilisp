@@ -22,6 +22,7 @@ from basilisp.lang.obj import lrepr
 
 ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FIXTURE_DIRECTORY = ROOT / "tests" / "conformance"
+DEFAULT_CLOJURE_SDEPS = '{:deps {org.clojure/data.csv {:mvn/version \\"1.1.0\\"}}}'
 
 
 def _fixture_paths(fixtures: list[Path] | None) -> list[Path]:
@@ -48,10 +49,10 @@ def _default_clojure_command() -> str:
     if configured := os.environ.get("CLOJURE_COMMAND"):
         return configured
     if shutil.which("clojure"):
-        return "clojure -M"
+        return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
     if os.name == "nt" and shutil.which("wsl"):
-        return "wsl -d Ubuntu-24.04 -- clojure -M"
-    return "clojure -M"
+        return f'wsl -d Ubuntu-24.04 -- clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
+    return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
 
 
 def _run(command_prefix: str, fixture_path: str, *, label: str) -> list[str]:
