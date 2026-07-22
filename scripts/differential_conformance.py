@@ -24,7 +24,8 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_FIXTURE_DIRECTORY = ROOT / "tests" / "conformance"
 DEFAULT_CLOJURE_SDEPS = (
     '{:deps {org.clojure/data.csv {:mvn/version \\"1.1.0\\"} '
-    'org.clojure/data.json {:mvn/version \\"2.5.1\\"}}}'
+    'org.clojure/data.json {:mvn/version \\"2.5.1\\"} '
+    'org.clojure/data.codec {:mvn/version \\"0.1.1\\"}}}'
 )
 
 

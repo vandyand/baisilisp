@@ -4,12 +4,18 @@
   (:require [basilisp.test :refer [are deftest is]]
             [clojure.data.codec.base64 :as base64]))
 
+(defn unsigned-bytes [bs]
+  (vec (map #(bit-and 0xff %) bs)))
+
 (deftest known-vectors-and-lengths
   (is (= 0 (base64/enc-length 0)))
+  (is (= 0 (base64/enc-length -1)))
   (is (= 4 (base64/enc-length 1)))
   (is (= 4 (base64/enc-length 3)))
   (is (= 8 (base64/enc-length 4)))
+  (is (= -3 (base64/dec-length -5 0)))
   (is (= 0 (base64/dec-length 0 0)))
+  (is (= -2 (base64/dec-length 0 2)))
   (is (= 1 (base64/dec-length 4 2)))
   (is (= 2 (base64/dec-length 4 1)))
   (is (= 3 (base64/dec-length 4 0)))
@@ -49,12 +55,23 @@
     (is (= plain (.getvalue decoded-out)))))
 
 (deftest malformed-input-and-buffer-contracts
-  (is (thrown? Exception (base64/decode #b "abc")))
-  (is (thrown? Exception (base64/decode #b "!!!!")))
-  (is (thrown? Exception (base64/decode #b "Zg=a")))
+  (is (= [] (unsigned-bytes (base64/decode #b "abc"))))
+  (is (= [0 0 0] (unsigned-bytes (base64/decode #b "!!!!"))))
+  (is (= [102 0 26] (unsigned-bytes (base64/decode #b "Zg=a"))))
+  (is (= [0] (unsigned-bytes (base64/decode #b "===="))))
+  (is (= [] (unsigned-bytes (base64/decode #b "abcd" 4 0))))
+  (is (= [] (unsigned-bytes (base64/decode #b "abcd" 5 0))))
+  (is (thrown? Exception (base64/decode #b "=")))
+  (is (thrown? Exception (base64/decode #b "A=")))
   (is (thrown? Exception (base64/encode #b "abc" -1 1)))
   (is (thrown? Exception (base64/decode #b "Zm9v" 1 4)))
   (is (thrown? Exception (base64/encode! #b "abc" 0 3 (python/bytearray 3))))
+  (let [out (io/BytesIO)]
+    (base64/encoding-transfer (io/BytesIO #b "abc") out :buffer-size 0)
+    (is (= #b "" (.getvalue out))))
+  (let [out (io/BytesIO)]
+    (base64/decoding-transfer (io/BytesIO #b "AAAA") out :buffer-size 0)
+    (is (= #b "" (.getvalue out))))
   (is (thrown? Exception
                (base64/encoding-transfer (io/BytesIO #b "abc") (io/BytesIO) :buffer-size 2)))
   (is (thrown? Exception
