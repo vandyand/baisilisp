@@ -502,8 +502,11 @@ The batch acceptance gate runs the reference portable library plus the pinned
 ``tools-macro`` upstream contracts through one ``scripts/library_acceptance.py
 --all`` command. A dedicated reducers fixture locks the serial
 ``clojure.core.reducers`` subset, including the Clojure distinction between
-raw key/value map reduction and transformed map-entry reduction. The next work
-is:
+raw key/value map reduction and transformed map-entry reduction. The
+``clojure.xml`` accepted subset is also locked by a shared fixture for immutable
+tree parsing, mixed content, built-in entity decoding, malformed input, and
+seeded safe element shapes; DTD and custom entity rejection remain an explicit
+Basilisp safety boundary. The next work is:
 
 1. Expand the source-level acceptance corpus only when a candidate adds a new
    public portability pressure point. Keep reader conditionals limited to

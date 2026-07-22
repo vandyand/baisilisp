@@ -773,7 +773,10 @@ first boundary is intentionally narrow: only unqualified ASCII XML names are
 accepted; namespace-qualified names, DTDs, and entity declarations are rejected;
 and input is bounded to 4 MiB by default. ElementTree cannot preserve lexical
 prefix choices, so this adapter does not promise namespace, prefix, byte, or
-streaming round trips.
+streaming round trips. A shared Clojure/Basilisp conformance fixture locks the
+accepted parse subset, including attributes, nested elements, mixed text,
+whitespace/comment omission, built-in XML entity decoding, malformed-input
+errors, and a seeded element corpus.
 
 ``basilisp.data.csv`` exposes the small portable ``clojure.data.csv`` contract
 through the normal import-path alias. It retains lazy row reading and Clojure's
