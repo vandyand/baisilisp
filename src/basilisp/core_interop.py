@@ -305,6 +305,16 @@ def _exception_data(exc: BaseException):
     return exc.data if isinstance(exc, IExceptionInfo) else None
 
 
+def _exception_message(exc: BaseException):
+    """Return Clojure's separate message field for an exception.
+
+    ``ExceptionInfo.__str__`` deliberately includes its data map for Python
+    diagnostics, but ``Throwable->map`` must retain Clojure's separate
+    ``:message`` and ``:data`` fields.
+    """
+    return exc.message if isinstance(exc, IExceptionInfo) else str(exc)
+
+
 def _cause(exc: BaseException):
     if exc.__cause__ is not None:
         return exc.__cause__
@@ -335,12 +345,15 @@ def throwable_to_map(exc: BaseException):
 
     def base(error: BaseException):
         entry: dict[Any, Any] = {_TYPE: _exception_type(error)}
-        if message := str(error):
+        if message := _exception_message(error):
             entry[_MESSAGE] = message
         if (data := _exception_data(error)) is not None:
             entry[_DATA] = data
         trace = _trace(error)
-        if trace:
+        # Persistent collections are truthy even when empty, unlike Python lists.
+        # An explicitly supplied cause may be an exception that has never been
+        # raised, and therefore legitimately has no traceback or ``:at`` frame.
+        if len(trace) > 0:
             entry[_AT] = trace[0]
         return lmap.map(entry)
 
@@ -349,7 +362,7 @@ def throwable_to_map(exc: BaseException):
         _VIA: vec.vector(base(error) for error in chain),
         _TRACE: _trace(root),
     }
-    if message := str(root):
+    if message := _exception_message(root):
         result[_CAUSE] = message
     if (data := _exception_data(root)) is not None:
         result[_DATA] = data

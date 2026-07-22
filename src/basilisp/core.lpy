@@ -390,12 +390,15 @@
 
 (def
   ^{:doc      "Returns a ``basilisp.lang.exception/ExceptionInfo`` instance with
-               the given message and data."
-    :arglists '([msg data])
-    :inline   true}
+               the given message and data. An optional cause is preserved in the
+               exception chain."
+    :arglists '([msg data] [msg data cause])}
   ex-info
-  (fn ^:inline ex-info [msg data]
-    (basilisp.lang.exception/ExceptionInfo msg data)))
+  (fn ex-info
+    ([msg data]
+     (basilisp.lang.exception/ExceptionInfo msg data))
+    ([msg data cause]
+     (basilisp.lang.exception/ExceptionInfo msg data cause))))
 
 (def
   ^{:doc      "Associate keys to values in associative data structure ``m``\\. If ``m``
@@ -2757,10 +2760,10 @@
   nil)
 
 (defn ex-cause
-  "Return the cause (another Exception) of ``ex`` if it derives from ``Exception``\\,
+  "Return the cause (another Exception) of ``ex`` if it derives from ``BaseException``\\,
   otherwise it returns ``nil``\\."
   [ex]
-  (when (instance? python/Exception ex)
+  (when (instance? python/BaseException ex)
     (or (.- ex __cause__) (.- ex __context__))))
 
 (defn ex-data
@@ -2772,9 +2775,9 @@
     (.-data ex)))
 
 (defn ex-message
-  "Return the message of ``ex`` if is an Exception, otherwise it returns ``nil``\\."
+  "Return the message of ``ex`` if is a BaseException, otherwise it returns ``nil``\\."
   [ex]
-  (when (instance? python/Exception ex)
+  (when (instance? python/BaseException ex)
     (python/getattr ex "message" (python/str ex))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

@@ -107,7 +107,7 @@ def test_trace_and_throwable_map_match_clojure_shape_for_python_exceptions():
     except RuntimeError as outer:
         mapped = throwable_to_map(outer)
 
-    assert str(mapped[kw.keyword("cause")]) == "inner {:detail 1}"
+    assert str(mapped[kw.keyword("cause")]) == "inner"
     assert dict(mapped[kw.keyword("data")].items()) == {kw.keyword("detail"): 1}
     assert len(mapped[kw.keyword("via")]) == 2
     outer_via, inner_via = mapped[kw.keyword("via")]

@@ -14,6 +14,14 @@ from basilisp.lang.obj import lrepr
 class ExceptionInfo(IExceptionInfo):
     message: str
     data: IPersistentMap
+    # Clojure exposes this through ex-cause, not value equality. Excluding it
+    # also avoids recursively comparing a potentially cyclic Python chain.
+    cause: BaseException | None = attr.field(default=None, eq=False)
+
+    def __attrs_post_init__(self) -> None:
+        """Install Clojure's explicit ex-info cause on Python's exception chain."""
+        if self.cause is not None:
+            self.__cause__ = self.cause
 
     def __repr__(self):
         return (

@@ -262,6 +262,9 @@ Host interoperability features generally match those of Clojure.
   iterators retain terminal consumption semantics. ``resultset-seq`` accepts an
   executed Python DB-API cursor, using its ``description`` and ``fetchone``
   protocol in place of ``java.sql.ResultSet``.
+* The three-argument ``ex-info`` form stores its explicit cause through
+  Python's ``__cause__`` chain. ``ex-cause`` and ``Throwable->map`` preserve
+  that chain, including unraised host exceptions that have no traceback frame.
 
 .. seealso::
 
