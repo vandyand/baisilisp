@@ -895,3 +895,30 @@
     -3/2 -1.5
     3/2  6/4
     -3/2 -6/4))
+
+(deftest chunk-runtime-test
+  (testing "the ArrayChunk factory keeps Clojure's positional manager slot"
+    (let [c (->ArrayChunk nil #py [10 20 30] 1 3)]
+      (is (= 2 (count c)))
+      (is (= [20 30] (mapv #(nth c %) (range (count c)))))
+      (is (= :missing (nth c 2 :missing)))
+      (is (thrown? python/TypeError (seq c)))))
+
+  (testing "buffers freeze once and chunked vector sequences retain chunk boundaries"
+    (let [b (chunk-buffer 2)
+          _ (chunk-append b :a)
+          _ (chunk-append b :b)
+          c (chunk b)
+          s (chunk-cons c (seq [:c]))
+          vs (seq (vec (range 35)))]
+      (is (= [:a :b] (mapv #(nth c %) (range (count c)))))
+      (is (chunked-seq? s))
+      (is (= [:a :b] (mapv #(nth (chunk-first s) %) (range (count (chunk-first s))))))
+      (is (= [:c] (vec (chunk-rest s))))
+      (is (thrown? python/RuntimeError (chunk-append b :again)))
+      (is (chunked-seq? vs))
+      (is (= (vec (range 32))
+             (mapv #(nth (chunk-first vs) %) (range (count (chunk-first vs))))))
+      (is (= [32 33 34]
+             (mapv #(nth (chunk-first (chunk-next vs)) %)
+                   (range (count (chunk-first (chunk-next vs))))))))))

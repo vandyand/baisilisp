@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 33 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (646 shared Vars and 59 Basilisp
+This document classifies the 24 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (655 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -87,6 +87,15 @@ otherwise unresolved symbol and, as in Clojure, raises only when that compiled
 unresolved Var expression is evaluated. It remains false by default, is
 thread-bindable, and macroexpansion retains its long-standing ability to return
 unresolved forms as data.
+``chunk-buffer``, ``chunk-append``, ``chunk``, ``chunk-cons``, ``chunk-first``,
+``chunk-rest``, ``chunk-next``, and ``chunked-seq?`` now share an immutable,
+indexed Python chunk model. Vector sequences use 32-element chunks, buffers are
+bounded and one-shot, and chunks intentionally remain indexed/countable values
+rather than ordinary sequences. ``->ArrayChunk`` retains Clojure's positional
+manager argument but ignores it because Python sequences need no JVM
+``ArrayManager``. Realized ``map``, ``map-indexed``, ``filter``, ``keep``,
+``keep-indexed``, and ``concat`` preserve those chunk boundaries, including
+Clojure's one-chunk-ahead realization behavior.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -112,10 +121,8 @@ compatibility promise would be false.
 
 ### Clojure and JVM implementation internals
 
-`->ArrayChunk`, `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`,
-`-reset-methods`, `EMPTY-NODE`, `PrintWriter-on`, `chunk`, `chunk-append`, `chunk-buffer`,
-`chunk-cons`, `chunk-first`, `chunk-next`, `chunk-rest`, `chunked-seq?`,
-`primitives-classnames`.
+`->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`, `-reset-methods`,
+`EMPTY-NODE`, `PrintWriter-on`, and `primitives-classnames`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception
 and printing classes, proxy generation, primitive vector types, or compiler

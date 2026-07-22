@@ -38,6 +38,7 @@ from basilisp.lang.atom import Atom
 from basilisp.lang.interfaces import (
     IAssociative,
     IBlockingDeref,
+    IChunkedSeq,
     IDeref,
     IIndexed,
     ILookup,
@@ -1490,12 +1491,37 @@ T_concat = TypeVar("T_concat")
 
 
 def concat_from_seq(seqs: Iterable[Iterable[T_concat] | None] | None) -> ISeq[T_concat]:
-    """Given a seq of seqs, return a flat seq."""
+    """Given a seq of seqs, return a lazy flat seq preserving chunks."""
     if seqs is None:
         return lseq.LazySeq(lambda: None)
-    return lseq.iterator_sequence(
-        itertools.chain.from_iterable(filter(None, map(to_seq, seqs)))
-    )
+
+    def concat_iter(
+        colls: Iterator[Iterable[T_concat] | None],
+    ) -> ISeq[T_concat] | None:
+        for coll in colls:
+            current = to_seq(coll)
+            if current is None:
+                continue
+            if isinstance(current, IChunkedSeq):
+                from basilisp.lang.chunk import chunk_cons
+
+                return chunk_cons(
+                    current.chunked_first(),
+                    lseq.LazySeq(
+                        lambda: concat_iter(
+                            itertools.chain((current.chunked_rest(),), colls)
+                        )
+                    ),
+                )
+            return lseq.Cons(
+                current.first,
+                lseq.LazySeq(
+                    lambda: concat_iter(itertools.chain((current.rest,), colls))
+                ),
+            )
+        return None
+
+    return lseq.LazySeq(lambda: concat_iter(iter(seqs)))
 
 
 def concat(*seqs: Iterable[T_concat] | None) -> ISeq[T_concat]:

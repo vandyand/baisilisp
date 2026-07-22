@@ -6,6 +6,7 @@ from pyrsistent import PVector, pvector  # noqa # pylint: disable=unused-import
 from pyrsistent.typing import PVectorEvolver
 from typing_extensions import Unpack
 
+from basilisp.lang.chunk import chunked_vector_seq
 from basilisp.lang.interfaces import (
     IEvolveableCollection,
     IIndexed,
@@ -225,9 +226,7 @@ class PersistentVector(
         return EMPTY.with_meta(self._meta)
 
     def seq(self) -> ISeq[T] | None:  # type: ignore[override]
-        if len(self._inner) == 0:
-            return None
-        return sequence(self)
+        return chunked_vector_seq(self)
 
     def peek(self) -> T | None:
         if len(self) == 0:

@@ -19,6 +19,7 @@
          [basilisp.core_interop :as core-interop]
          basilisp.lang.character
          basilisp.lang.agent
+         basilisp.lang.chunk
          basilisp.lang.numeric_coerce
          basilisp.lang.primitive_array
          basilisp.lang.regex
@@ -121,6 +122,36 @@
 (def uri? core-interop/uri_qmark)
 (def StackTraceElement->vec core-interop/stack_trace_element_to_vec)
 (def Throwable->map core-interop/throwable_to_map)
+
+(def ^{:doc "Python-host factory for an immutable indexed array chunk. The first
+             positional argument corresponds to Clojure's JVM ArrayManager and is
+             ignored; the remaining arguments are a Python sequence, start, and end."
+       :arglists '([manager array offset end])}
+  ->ArrayChunk basilisp.lang.chunk/array_chunk)
+(def ^{:doc "Create a fixed-capacity, one-shot chunk buffer."
+       :arglists '([capacity])}
+  chunk-buffer basilisp.lang.chunk/chunk_buffer)
+(def ^{:doc "Append one value to a chunk buffer and return nil."
+       :arglists '([buffer value])}
+  chunk-append basilisp.lang.chunk/chunk_append)
+(def ^{:doc "Freeze a chunk buffer into an immutable indexed chunk."
+       :arglists '([buffer])}
+  chunk basilisp.lang.chunk/chunk)
+(def ^{:doc "Prepend a non-empty chunk to a sequence."
+       :arglists '([chunk rest])}
+  chunk-cons basilisp.lang.chunk/chunk_cons)
+(def ^{:doc "Return the current chunk of a chunked sequence."
+       :arglists '([seq])}
+  chunk-first basilisp.lang.chunk/chunk_first)
+(def ^{:doc "Return the remaining sequence after a chunked sequence's current chunk."
+       :arglists '([seq])}
+  chunk-rest basilisp.lang.chunk/chunk_rest)
+(def ^{:doc "Return the next chunked sequence after the current chunk, or nil."
+       :arglists '([seq])}
+  chunk-next basilisp.lang.chunk/chunk_next)
+(def ^{:doc "Return true iff value is a chunked Basilisp sequence."
+       :arglists '([value])}
+  chunked-seq? basilisp.lang.chunk/is_chunked_seq)
 
 (def
   ^{:doc      "Return ``true`` if ``obj`` is an instance of ``class``\\."
@@ -3515,7 +3546,16 @@
   ([f coll]
    (lazy-seq
     (when-let [coll (seq coll)]
-      (cons (f (first coll)) (map f (rest coll))))))
+      (if (chunked-seq? coll)
+        (let [c    (chunk-first coll)
+              size (count c)
+              b    (chunk-buffer size)]
+          (loop [i 0]
+            (when (< i size)
+              (chunk-append b (f (nth c i)))
+              (recur (inc i))))
+          (chunk-cons (chunk b) (map f (chunk-rest coll))))
+        (cons (f (first coll)) (map f (rest coll)))))))
   ([f coll & colls]
    (lazy-seq
     (let [step-elems (fn step-elems [colls]
@@ -3548,7 +3588,22 @@
          ([result input]
           (rf result (f (vswap! idx inc) input)))))))
   ([f coll]
-   (map f (range) coll)))
+   (let [mapi (fn mapi [idx coll]
+                (lazy-seq
+                 (when-let [coll (seq coll)]
+                   (if (chunked-seq? coll)
+                     (let [c    (chunk-first coll)
+                           size (count c)
+                           b    (chunk-buffer size)]
+                       (loop [i 0]
+                         (when (< i size)
+                           (chunk-append b (f (+ idx i) (nth c i)))
+                           (recur (inc i))))
+                       (chunk-cons (chunk b)
+                                   (mapi (+ idx size) (chunk-rest coll))))
+                     (cons (f idx (first coll))
+                           (mapi (inc idx) (rest coll)))))))]
+     (mapi 0 coll))))
 
 ;; Declare `cat` now for use in `mapcat`, though it is defined much later so
 ;; it can make use of more advanced transducer functions.
@@ -3578,9 +3633,20 @@
   ([pred coll]
    (lazy-seq
     (when-let [coll (seq coll)]
-      (if (pred (first coll))
-        (cons (first coll) (filter pred (rest coll)))
-        (filter pred (rest coll)))))))
+      (if (chunked-seq? coll)
+        (let [c    (chunk-first coll)
+              size (count c)
+              b    (chunk-buffer size)]
+          (loop [i 0]
+            (when (< i size)
+              (let [elem (nth c i)]
+                (when (pred elem)
+                  (chunk-append b elem)))
+              (recur (inc i))))
+          (chunk-cons (chunk b) (filter pred (chunk-rest coll))))
+        (if (pred (first coll))
+          (cons (first coll) (filter pred (rest coll)))
+          (filter pred (rest coll))))))))
 
 (def ^{:doc "Return a vector of elements from ``coll`` where ``(pred elem)`` returns
              a truthy value."}
@@ -3613,10 +3679,21 @@
   ([f coll]
    (lazy-seq
     (when-let [coll (seq coll)]
-      (let [elem (f (first coll))]
-        (if (nil? elem)
-          (keep f (rest coll))
-          (cons elem (keep f (rest coll)))))))))
+      (if (chunked-seq? coll)
+        (let [c    (chunk-first coll)
+              size (count c)
+              b    (chunk-buffer size)]
+          (loop [i 0]
+            (when (< i size)
+              (let [elem (f (nth c i))]
+                (when (some? elem)
+                  (chunk-append b elem)))
+              (recur (inc i))))
+          (chunk-cons (chunk b) (keep f (chunk-rest coll))))
+        (let [elem (f (first coll))]
+          (if (nil? elem)
+            (keep f (rest coll))
+            (cons elem (keep f (rest coll))))))))))
 
 (defn keep-indexed
   "Return a lazy-sequence of non- ``nil`` results of ``(f index elem)`` for elements
@@ -3636,14 +3713,26 @@
               (rf result v))))))))
   ([f coll]
    (let [keep-idx (fn keep-idx
-                    [rng coll]
+                    [idx coll]
                     (lazy-seq
                      (when-let [coll (seq coll)]
-                       (let [elem (f (first rng) (first coll))]
-                         (if (nil? elem)
-                           (keep-idx (rest rng) (rest coll))
-                           (cons elem (keep-idx (rest rng) (rest coll))))))))]
-     (keep-idx (range) coll))))
+                       (if (chunked-seq? coll)
+                         (let [c    (chunk-first coll)
+                               size (count c)
+                               b    (chunk-buffer size)]
+                           (loop [i 0]
+                             (when (< i size)
+                               (let [elem (f (+ idx i) (nth c i))]
+                                 (when (some? elem)
+                                   (chunk-append b elem)))
+                               (recur (inc i))))
+                           (chunk-cons (chunk b)
+                                       (keep-idx (+ idx size) (chunk-rest coll))))
+                         (let [elem (f idx (first coll))]
+                           (if (nil? elem)
+                             (keep-idx (inc idx) (rest coll))
+                             (cons elem (keep-idx (inc idx) (rest coll)))))))))]
+     (keep-idx 0 coll))))
 
 (defn take
   "Return the first ``n`` elements of ``coll``\\."

@@ -798,6 +798,27 @@ class ISeq(ILispObject, IPersistentCollection[T]):
         return _SeqIterator(self)
 
 
+class IChunkedSeq(ABC, Generic[T]):
+    """Marker and access protocol for sequences backed by an element chunk."""
+
+    __slots__ = ()
+
+    @abstractmethod
+    def chunked_first(self):
+        """Return the current chunk without coercing it to a sequence."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def chunked_rest(self) -> ISeq[T]:
+        """Return the sequence after the current chunk, or an empty sequence."""
+        raise NotImplementedError()
+
+    @abstractmethod
+    def chunked_next(self) -> "ISeq[T] | None":
+        """Return the sequence after the current chunk, or ``None``."""
+        raise NotImplementedError()
+
+
 class IType(ABC):
     """``IType`` is a marker interface for types :lpy:form:`def` 'ed by
     :lpy:fn:`deftype` forms.
