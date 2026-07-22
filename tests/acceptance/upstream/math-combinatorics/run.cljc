@@ -2,6 +2,13 @@
 ;; realizes every lazy public sequence within bounded inputs.
 (load-file "tests/acceptance/upstream/math-combinatorics/port/src/basilisp/math/combinatorics.cljc")
 
+(def partition-fuzz-inputs
+  [[1 1 2]
+   [1 1 2 2]
+   [2 1 2 1]
+   [:a :a :b :c]
+   [3 3 1 2]])
+
 (println
  (pr-str
   {:combinations (mapv vec (basilisp.math.combinatorics/combinations [1 1 2 3] 2))
@@ -21,4 +28,12 @@
    :drop (mapv vec (basilisp.math.combinatorics/drop-permutations [1 1 2] 1))
    :partitions
    (mapv #(mapv vec %)
-         (basilisp.math.combinatorics/partitions [1 1 2 2] :min 2 :max 3))}))
+         (basilisp.math.combinatorics/partitions [1 1 2 2] :min 2 :max 3))
+   :partition-fuzz
+   (mapv (fn [items]
+           {:items items
+            :parts (mapv #(mapv vec %)
+                         (basilisp.math.combinatorics/partitions items
+                                                                  :min 2
+                                                                  :max 3))})
+         partition-fuzz-inputs)}))

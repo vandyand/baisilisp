@@ -24,6 +24,7 @@ from basilisp.lang import reader
 from basilisp.lang.obj import lrepr
 
 ROOT = Path(__file__).resolve().parents[1]
+DEFAULT_ACCEPTANCE_DIRECTORY = ROOT / "tests" / "acceptance"
 DEFAULT_LIBRARY_ROOT = ROOT / "tests" / "acceptance" / "portable_library"
 DEFAULT_MANIFEST = DEFAULT_LIBRARY_ROOT / "portability-manifest.json"
 ACCEPTANCE_CONFIG_NAME = "acceptance.json"
@@ -169,12 +170,70 @@ def verify_manifest(library_root: Path, manifest_path: Path) -> str:
     return actual
 
 
-def main() -> int:
+def acceptance_library_roots(
+    acceptance_directory: Path = DEFAULT_ACCEPTANCE_DIRECTORY,
+) -> list[Path]:
+    """Return checked-in acceptance libraries in stable execution order."""
+
+    if not acceptance_directory.is_dir():
+        raise RuntimeError(
+            f"acceptance directory does not exist: {acceptance_directory}"
+        )
+    return sorted(
+        path.parent
+        for path in acceptance_directory.rglob("run.cljc")
+        if (path.parent / DEFAULT_MANIFEST.name).is_file()
+    )
+
+
+def _accept_library(
+    library_root: Path,
+    manifest_path: Path,
+    *,
+    clojure_command: str,
+    basilisp_command: str,
+    show_output: bool = False,
+    show_manifest: bool = False,
+    write_manifest: bool = False,
+) -> bool:
+    runner = library_root / "run.cljc"
+    if not runner.is_file():
+        raise RuntimeError(f"library runner does not exist: {runner}")
+    if write_manifest:
+        manifest = acceptance_manifest(library_root)
+        manifest_path.write_text(manifest, encoding="utf-8", newline="\n")
+    else:
+        manifest = verify_manifest(library_root, manifest_path)
+    clojure = _run(clojure_command, runner, label="Clojure")
+    basilisp = _run(basilisp_command, runner, label="Basilisp")
+    if clojure != basilisp:
+        print("Portable-library acceptance mismatch", file=sys.stderr)
+        print(f"library: {library_root}", file=sys.stderr)
+        print(f"Clojure:  {clojure!r}", file=sys.stderr)
+        print(f"Basilisp: {basilisp!r}", file=sys.stderr)
+        return False
+    if show_output:
+        print("\n".join(basilisp))
+    if show_manifest:
+        print(manifest, end="")
+    print(
+        f"accepted library={library_root.name} classification=portable "
+        f"summaries={len(basilisp)}"
+    )
+    return True
+
+
+def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         description="Run a source-level portable-library acceptance check."
     )
     parser.add_argument("--library-root", type=Path, default=DEFAULT_LIBRARY_ROOT)
     parser.add_argument("--manifest", type=Path)
+    parser.add_argument(
+        "--all",
+        action="store_true",
+        help="run every checked-in acceptance library under tests/acceptance",
+    )
     parser.add_argument("--clojure-command", default=_default_clojure_command())
     parser.add_argument("--basilisp-command", default="uv run basilisp run")
     parser.add_argument(
@@ -184,7 +243,26 @@ def main() -> int:
     )
     parser.add_argument("--show-output", action="store_true")
     parser.add_argument("--show-manifest", action="store_true")
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
+
+    if args.all:
+        if args.manifest is not None:
+            parser.error("--manifest cannot be combined with --all")
+        roots = acceptance_library_roots()
+        if not roots:
+            parser.error("no acceptance libraries found")
+        for library_root in roots:
+            if not _accept_library(
+                library_root.resolve(),
+                library_root.resolve() / DEFAULT_MANIFEST.name,
+                clojure_command=args.clojure_command,
+                basilisp_command=args.basilisp_command,
+                show_output=args.show_output,
+                show_manifest=args.show_manifest,
+                write_manifest=args.write_manifest,
+            ):
+                return 1
+        return 0
 
     library_root = args.library_root.resolve()
     manifest_path = (
@@ -192,30 +270,19 @@ def main() -> int:
         if args.manifest is not None
         else library_root / DEFAULT_MANIFEST.name
     )
-    runner = library_root / "run.cljc"
-    if not runner.is_file():
-        parser.error(f"library runner does not exist: {runner}")
-    if args.write_manifest:
-        manifest = acceptance_manifest(library_root)
-        manifest_path.write_text(manifest, encoding="utf-8", newline="\n")
-    else:
-        manifest = verify_manifest(library_root, manifest_path)
-    clojure = _run(args.clojure_command, runner, label="Clojure")
-    basilisp = _run(args.basilisp_command, runner, label="Basilisp")
-    if clojure != basilisp:
-        print("Portable-library acceptance mismatch", file=sys.stderr)
-        print(f"Clojure:  {clojure!r}", file=sys.stderr)
-        print(f"Basilisp: {basilisp!r}", file=sys.stderr)
-        return 1
-    if args.show_output:
-        print("\n".join(basilisp))
-    if args.show_manifest:
-        print(manifest, end="")
-    print(
-        f"accepted library={library_root.name} classification=portable "
-        f"summaries={len(basilisp)}"
+    return (
+        0
+        if _accept_library(
+            library_root,
+            manifest_path,
+            clojure_command=args.clojure_command,
+            basilisp_command=args.basilisp_command,
+            show_output=args.show_output,
+            show_manifest=args.show_manifest,
+            write_manifest=args.write_manifest,
+        )
+        else 1
     )
-    return 0
 
 
 if __name__ == "__main__":

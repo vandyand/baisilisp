@@ -1,12 +1,14 @@
 import importlib
 import itertools
 import math
+from collections import Counter
 from functools import cache
 
 from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from basilisp import main
+from basilisp.lang import keyword as kw
 from basilisp.lang import runtime
 from basilisp.lang import symbol as sym
 
@@ -91,3 +93,56 @@ def test_subsets_and_selections_have_their_counted_public_contract(items):
     ]
     assert (len(items) ** 2 if items else 0) == len(selections)
     assert all(len(selection) == 2 for selection in selections)
+
+
+def _partition_tuple(partition):
+    return tuple(tuple(group) for group in partition)
+
+
+def test_partitions_preserve_lexicographic_duplicate_item_order():
+    actual = [
+        _partition_tuple(partition)
+        for partition in _combinatorics_fn("partitions")(
+            [1, 1, 2, 2], kw.keyword("min"), 2, kw.keyword("max"), 3
+        )
+    ]
+
+    assert [
+        ((1, 1, 2), (2,)),
+        ((1, 1), (2, 2)),
+        ((1, 1), (2,), (2,)),
+        ((1, 2, 2), (1,)),
+        ((1, 2), (1, 2)),
+        ((1, 2), (1,), (2,)),
+        ((1,), (1,), (2, 2)),
+    ] == actual
+
+
+@settings(deadline=None, max_examples=100)
+@given(
+    items=st.lists(st.integers(-2, 2), max_size=6),
+    min_parts=st.integers(min_value=0, max_value=6),
+    max_parts=st.integers(min_value=0, max_value=6),
+)
+def test_partitions_fuzz_multiset_contract_and_group_order(items, min_parts, max_parts):
+    lower, upper = sorted((min_parts, max_parts))
+    actual = [
+        _partition_tuple(partition)
+        for partition in _combinatorics_fn("partitions")(
+            items, kw.keyword("min"), lower, kw.keyword("max"), upper
+        )
+    ]
+    distinct_order = {
+        value: index for index, value in enumerate(_unique_in_order(items))
+    }
+
+    assert len(actual) == len(set(actual))
+    for partition in actual:
+        assert lower <= len(partition) <= upper
+        flattened = [value for group in partition for value in group]
+        assert Counter(items) == Counter(flattened)
+        assert all(group for group in partition)
+        assert all(
+            list(group) == sorted(group, key=distinct_order.__getitem__)
+            for group in partition
+        )

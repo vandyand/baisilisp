@@ -121,7 +121,8 @@ Near-term deliverable:
 * use ``scripts/library_acceptance.py`` for a source-level, multi-file library
   proof. It executes the library-owned ``run.cljc`` test entrypoint in Clojure
   and Basilisp, compares the final EDN summary, and rejects a stale checked-in
-  manifest. The initial ``tests/acceptance/portable_library`` fixture exercises
+  manifest. Use ``--all`` to run every checked-in acceptance library in stable
+  order. The initial ``tests/acceptance/portable_library`` fixture exercises
   standard ``string``, ``set``, ``walk``, collection, transducer, exception,
   and ``clojure.test`` behavior using only documented ``:clj``/``:lpy``
   namespace substitutions.
@@ -130,7 +131,9 @@ Near-term deliverable:
   source's public spec contract in both runtimes.
   ``basilisp.tools.cli`` is the first substantial upstream port: it retains a
   pinned ``clojure/tools.cli`` source snapshot, a minimal Python-hosted port,
-  and a shared parsing/defaults/errors/subcommand acceptance contract.
+  and a shared parsing/defaults/errors/subcommand acceptance contract. The
+  checked-in upstream acceptance corpus also covers ``math-combinatorics``,
+  ``medley``, and ``tools-macro``.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -11,7 +11,7 @@
 
 (defn parse-int [value]
   #?(:clj (Integer/parseInt value)
-     :lpy (int value)))
+     :lpy (python/int value)))
 
 (def fuzz-option-specs
   [["-a" "--alpha"]

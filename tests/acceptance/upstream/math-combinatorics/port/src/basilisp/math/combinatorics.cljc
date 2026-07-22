@@ -932,9 +932,10 @@ represented by freqs"
                                                   :let [j (inc i)]]
                                               [j (freqs (ditems i))]))
                     parts (multiset-partitions-M start-multiset to from)]
-                (->> multiset
-                     (mapjoin (fn [[index numtimes]]
-                                (repeat numtimes (ditems (dec index)))))
+                (->> (range 1 (inc M))
+                     (mapjoin (fn [index]
+                                (repeat (get multiset index 0)
+                                        (ditems (dec index)))))
                      vec
                      (for [multiset part])
                      (for [part parts])))))))

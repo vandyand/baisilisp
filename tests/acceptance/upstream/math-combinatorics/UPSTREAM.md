@@ -6,6 +6,8 @@
 - Source scope: `src/main/clojure/clojure/math/combinatorics.cljc`
 
 The port is dependency-free and preserves the upstream algorithms and public
-API. Its only reader adaptations are replacing the obsolete ``#^`` metadata
-spelling, adding ``:lpy`` reader branches for Python integers, and using a
-runtime ``reify-bool`` helper in place of Clojure's private macro.
+API. Its adaptations are replacing the obsolete ``#^`` metadata spelling,
+adding ``:lpy`` reader branches for Python integers, using a runtime
+``reify-bool`` helper in place of Clojure's private macro, and reconstructing
+multiset partitions by explicit item index order rather than host map
+iteration order.

@@ -497,10 +497,13 @@ collection invocation, reduced values, threading macros, reader discard, and
 chunked realization over ``range``.
 There is now also a source-level multi-file library acceptance proof with a
 checked-in portability manifest and Clojure/Basilisp test-summary comparison.
-The next work is:
+The batch acceptance gate runs the reference portable library plus the pinned
+``cognitect-anomalies``, ``math-combinatorics``, ``medley``, ``tools-cli``, and
+``tools-macro`` upstream contracts through one ``scripts/library_acceptance.py
+--all`` command. The next work is:
 
-1. Expand the source-level acceptance corpus from its representative portable
-   library to small upstream candidates. Keep reader conditionals limited to
+1. Expand the source-level acceptance corpus only when a candidate adds a new
+   public portability pressure point. Keep reader conditionals limited to
    documented standard-namespace substitutions; add public compatibility names
    only after a shared fixture and manifest pass. Preserve the tested Ref
    history-control contract; add an adaptive snapshot queue only if a workload

@@ -799,7 +799,10 @@ port or explicit omission before publication.
 proof for a multi-file source tree. It validates the checked-in manifest, runs
 the library's ``run.cljc`` entrypoint under both Clojure and Basilisp, and
 compares the final EDN test summary while allowing test frameworks' preceding
-human-readable output. ``tests/acceptance/portable_library`` is the reference
+human-readable output. Its ``--all`` mode discovers every checked-in
+``run.cljc`` with a portability manifest below ``tests/acceptance`` and runs
+them in stable order, so upstream acceptance additions share one reviewable
+gate. ``tests/acceptance/portable_library`` is the reference
 fixture: its ``:clj``/``:lpy`` conditionals perform only standard namespace
 substitutions, and its portable source exercises strings, sets, walking,
 collections, transducers, exception data, and ``clojure.test``.
