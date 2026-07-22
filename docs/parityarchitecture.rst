@@ -550,11 +550,12 @@ AST and executes in source order at runtime. This applies consistently to
 analyzer helper; cache-loading coverage verifies the same result for compiled
 namespaces.
 
-The ``loop`` closure bug should be addressed independently by inspecting the
-generated binding cells. A function created before ``recur`` must close over
-the old iteration values, while a later iteration receives fresh rebound local
-names. Tests should exercise one and multiple loop locals, nested closures,
-lazy realization after loop exit, and no recursion growth.
+``loop`` closure capture is completed locally and locked by a portable
+differential fixture. A function created before ``recur`` closes over that
+iteration's values, while a later iteration receives fresh rebound local names.
+The fixture covers one and multiple loop locals, let locals derived from loop
+state, nested closures, lazy realization after loop exit, a large loop that
+does not grow the Python stack, and a seeded closure corpus.
 
 ``deftype`` and ``reify`` have enough declared protocol/interface information
 to report method-signature mismatches at analysis time. The check should compare
