@@ -269,8 +269,12 @@ def _get_fully_qualified_module_names(file: Path) -> list[str]:
     This works by traversing up the filesystem looking for the top-most package. From
     there, we derive a Python module name referring to the given module path."""
     paths = []
-    for pth in sys.path:
-        root = Path(pth).resolve()
+    roots = sorted(
+        (Path(pth).resolve() for pth in sys.path),
+        key=lambda pth: len(pth.parts),
+        reverse=True,
+    )
+    for root in roots:
         if file.is_relative_to(root):
             elems = list(file.with_suffix("").relative_to(root).parts)
 

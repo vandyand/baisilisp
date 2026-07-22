@@ -3,9 +3,11 @@ import platform
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 
 import pytest
 
+from basilisp.contrib.pytest.testrunner import _get_fully_qualified_module_names
 from basilisp.lang import keyword as kw
 from basilisp.lang import runtime
 from basilisp.lang import symbol as sym
@@ -133,6 +135,20 @@ class TestTestrunner:
             ],
             consecutive=True,
         )
+
+    def test_module_names_prefer_most_specific_sys_path_root(
+        self, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    ):
+        src_root = tmp_path / "src"
+        test_file = src_root / "basilisp" / "test" / "check" / "clojure_test.lpy"
+        test_file.parent.mkdir(parents=True)
+        test_file.touch()
+        monkeypatch.setattr(sys, "path", [str(tmp_path), str(src_root)])
+
+        assert _get_fully_qualified_module_names(test_file)[:2] == [
+            "basilisp.test.check.clojure_test",
+            "src.basilisp.test.check.clojure_test",
+        ]
 
     @pytest.mark.xfail(
         platform.python_implementation() == "PyPy" and sys.version_info < (3, 10),
