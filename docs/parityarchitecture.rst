@@ -602,7 +602,7 @@ iterables. Each adapter must state conversion direction, metadata policy,
 validation/error representation, and whether it copies or views data. Python
 type hints can enrich generated call boundaries only when they are declarative;
 they must never cause runtime imports or change dynamic dispatch. JVM-only
-facilities such as ``gen-class``, classpath mutation, Java beans, JDBC streams,
+facilities such as ``gen-class``, Java classloader mutation, Java beans, JDBC streams,
 and primitive arrays remain intentional omissions rather than aliases for
 unrelated Python types.
 
@@ -745,7 +745,7 @@ and Python inspection data. ``basilisp.java.process`` is the deliberately narrow
 exception to the alias rule: its Clojure 1.12 process surface maps cleanly to
 ``subprocess.Popen`` and is therefore available through the automatic
 ``clojure.java.process`` alias, with documented Python stream and Future values.
-Do not extend that exception to classpath changes, JDBC result-set sequences,
+Do not extend that exception to Java classloader changes, JDBC result-set sequences,
 browser/Javadoc wrappers, or Java-bean coercion. Those APIs expose services that
 Python already models differently.
 

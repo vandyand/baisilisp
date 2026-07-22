@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 21 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (658 shared Vars and 59 Basilisp
+This document classifies the 19 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (660 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -100,6 +100,10 @@ Clojure's one-chunk-ahead realization behavior.
 Python-native AOT workflow: compilation writes trusted, Python-version-local
 ``.lpyc`` artifacts below the configured output path, those artifacts can load
 without source, and source intentionally wins when both forms are present.
+``PrintWriter-on`` now supplies a buffered callback-backed Python text writer
+with Clojure's flush/close lifecycle. The deprecated ``add-classpath`` spelling
+accepts local paths and ``file:`` URLs, appends them to ``sys.path``, and
+invalidates import caches; it deliberately is not a Java classloader façade.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -115,7 +119,7 @@ deferrals.
 
 `*fn-loader*`,
 `*unchecked-math*`, `*use-context-classloader*`,
-`*warn-on-reflection*`, `add-classpath`, `gen-class`,
+`*warn-on-reflection*`, `gen-class`,
 `method-sig`, and `with-loading-context`.
 
 These names control Clojure compilation, reader evaluation, Java class loading,
@@ -126,7 +130,7 @@ compatibility promise would be false.
 ### Clojure and JVM implementation internals
 
 `->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`, `-reset-methods`,
-`EMPTY-NODE`, `PrintWriter-on`, and `primitives-classnames`.
+`EMPTY-NODE`, and `primitives-classnames`.
 
 These expose Clojure's chunked-sequence/vector implementation, Java exception
 and printing classes, proxy generation, primitive vector types, or compiler

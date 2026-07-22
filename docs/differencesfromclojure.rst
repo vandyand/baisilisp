@@ -251,6 +251,12 @@ Host interoperability features generally match those of Clojure.
 * `Python builtins <https://docs.python.org/3/library/functions.html>`_ are available under the special namespace ``python`` (as ``python/abs``, for instance) without requiring an import.
 * The qualified constructor form ``Classname/new`` introduced in Clojure 1.12 is not supported, because ``new`` is a valid Python method identifier unlike in Java.
 * Qualified methods may be referenced with or without a leading ``.`` character regardless of whether they are static, class, or instance methods.
+* ``PrintWriter-on`` returns a buffered callback-backed Python text writer. Its
+  ``flush`` and ``close`` callbacks follow Clojure's lifecycle, while Python
+  ``write``, ``print``, and ``println`` methods replace ``java.io.PrintWriter``.
+* The deprecated ``add-classpath`` spelling accepts a local path or ``file:``
+  URL, appends it to :external:py:data:`sys.path`, and invalidates Python import
+  caches. It does not create or mutate a JVM class loader.
 
 .. seealso::
 

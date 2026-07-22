@@ -1,14 +1,24 @@
 import dataclasses
+import importlib
+import os
+import pathlib
+import sys
+import threading
 import traceback
 import urllib.parse
+import uuid
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
 from basilisp.core_interop import (
+    PrintWriterOn,
+    add_classpath,
     bean,
     enumeration_seq,
+    print_writer_on,
     stack_trace_element_to_vec,
     throwable_to_map,
     uri_qmark,
@@ -124,3 +134,133 @@ def test_stack_trace_element_conversion_accepts_summary_traceback_and_tuple():
     )
     with pytest.raises(TypeError, match="traceback frame"):
         stack_trace_element_to_vec("not-a-frame")
+
+
+def test_print_writer_on_flush_close_and_autoflush_contract():
+    flushed: list[str] = []
+    closed: list[None] = []
+    writer = print_writer_on(flushed.append, lambda: closed.append(None), True)
+
+    assert isinstance(writer, PrintWriterOn)
+    assert writer.write("ab") is None
+    assert writer.print("c") is None
+    assert writer.println("d") is None
+    assert flushed == [f"abcd{os.linesep}"]
+    assert writer.write(65) is None
+    assert writer.write(["e", "f", "g"], 1, 2) is None
+    assert writer.flush() is None
+    assert flushed == [f"abcd{os.linesep}", "Afg"]
+    assert writer.check_error() is False
+    assert writer.close() is None
+    assert writer.close() is None
+    assert closed == [None]
+    assert writer.closed
+    with pytest.raises(ValueError, match="closed"):
+        writer.write("later")
+
+
+@given(st.lists(st.text(max_size=12), max_size=80))
+def test_print_writer_on_matches_buffering_oracle(parts: list[str]):
+    flushed: list[str] = []
+    writer = print_writer_on(flushed.append)
+    expected = ""
+    for index, part in enumerate(parts):
+        writer.write(part)
+        expected += part
+        if index % 7 == 0:
+            writer.flush()
+            if expected:
+                assert flushed[-1] == expected
+            expected = ""
+    writer.flush()
+    if expected:
+        assert flushed[-1] == expected
+    assert "".join(flushed) == "".join(parts)
+
+
+def test_print_writer_on_retains_buffer_after_failed_flush_and_validates_ranges():
+    attempts = [0]
+    delivered: list[str] = []
+
+    def fail_once(text: str):
+        attempts[0] += 1
+        if attempts[0] == 1:
+            raise RuntimeError("flush failed")
+        delivered.append(text)
+
+    writer = print_writer_on(fail_once)
+    writer.write("retry")
+    with pytest.raises(RuntimeError, match="flush failed"):
+        writer.flush()
+    writer.flush()
+    assert delivered == ["retry"]
+
+    with pytest.raises(TypeError, match="bytes"):
+        writer.write(b"bytes")
+    with pytest.raises(TypeError, match="length requires"):
+        writer.write("text", length=1)
+    with pytest.raises(ValueError, match="outside"):
+        writer.write("text", 2, 9)
+
+
+def test_print_writer_on_is_lossless_under_parallel_writes():
+    flushed: list[str] = []
+    writer = print_writer_on(flushed.append)
+    values = [f"{index}\n" for index in range(256)]
+    barrier = threading.Barrier(16)
+
+    def write_group(group: list[str]):
+        barrier.wait()
+        for value in group:
+            writer.write(value)
+
+    groups = [values[index::16] for index in range(16)]
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        list(executor.map(write_group, groups))
+    writer.flush()
+    assert sorted(flushed[0].splitlines()) == sorted(str(index) for index in range(256))
+
+
+def test_add_classpath_imports_local_modules_deduplicates_and_accepts_file_urls(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    module_name = f"classpath_probe_{uuid.uuid4().hex}"
+    (tmp_path / f"{module_name}.py").write_text("value = 'imported'\n")
+    original_path = list(sys.path)
+    monkeypatch.setattr(sys, "path", original_path)
+    try:
+        assert add_classpath(tmp_path) is None
+        assert add_classpath(tmp_path.as_uri()) is None
+        normalized = os.path.normcase(os.path.normpath(str(tmp_path.resolve())))
+        matches = [
+            entry
+            for entry in sys.path
+            if os.path.normcase(os.path.normpath(os.path.abspath(entry))) == normalized
+        ]
+        assert len(matches) == 1
+        imported = importlib.import_module(module_name)
+        assert imported.value == "imported"
+    finally:
+        sys.modules.pop(module_name, None)
+        importlib.invalidate_caches()
+
+
+def test_add_classpath_rejects_nonlocal_values_and_is_thread_safe(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: pathlib.Path
+):
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    with pytest.raises(ValueError, match="only local file URLs"):
+        add_classpath("https://example.test/package")
+    with pytest.raises(TypeError, match="text path"):
+        add_classpath(b"bytes-path")
+
+    with ThreadPoolExecutor(max_workers=16) as executor:
+        list(executor.map(lambda _: add_classpath(tmp_path), range(256)))
+    normalized = os.path.normcase(os.path.normpath(str(tmp_path.resolve())))
+    assert (
+        sum(
+            os.path.normcase(os.path.normpath(os.path.abspath(entry))) == normalized
+            for entry in sys.path
+        )
+        == 1
+    )

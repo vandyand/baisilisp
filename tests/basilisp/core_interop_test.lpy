@@ -26,3 +26,16 @@
     (is (= "inner {:detail 1}" (:message (second (:via mapped)))))
     (is (vector? (:trace mapped)))
     (is (vector? (:at (first (:via mapped)))))))
+
+(deftest print-writer-on-buffering-contract
+  (let [flushed (atom [])
+        closed  (atom 0)
+        writer  (PrintWriter-on #(swap! flushed conj %) #(swap! closed inc))]
+    (.write writer "first")
+    (is (= [] @flushed))
+    (.flush writer)
+    (.write writer "second")
+    (.close writer)
+    (is (= ["first" "second"] @flushed))
+    (is (= 1 @closed))
+    (is (thrown? python/ValueError (.write writer "closed")))))

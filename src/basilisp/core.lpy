@@ -123,6 +123,16 @@
 (def uri? core-interop/uri_qmark)
 (def StackTraceElement->vec core-interop/stack_trace_element_to_vec)
 (def Throwable->map core-interop/throwable_to_map)
+(def ^{:doc "Create a callback-backed buffered Python text writer. ``flush-fn`` receives
+             text accumulated since the prior flush; ``close-fn`` is optional; and
+             ``autoflush?`` flushes after ``.println``."
+       :arglists '([flush-fn close-fn] [flush-fn close-fn autoflush?])}
+  PrintWriter-on core-interop/print_writer_on)
+(def ^{:doc "DEPRECATED: append a local filesystem path or ``file:`` URL to Python's
+             import search path and invalidate import caches."
+       :arglists '([url])
+       :deprecated "1.1"}
+  add-classpath core-interop/add_classpath)
 
 (def ^{:doc "Python-host factory for an immutable indexed array chunk. The first
              positional argument corresponds to Clojure's JVM ArrayManager and is

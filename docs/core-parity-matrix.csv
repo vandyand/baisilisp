@@ -79,13 +79,13 @@ Eduction,false,true,basilisp-extension
 EductionSeq,false,true,basilisp-extension
 Inst,true,true,shared
 NaN?,true,true,shared
-PrintWriter-on,true,false,missing-in-basilisp
+PrintWriter-on,true,true,shared
 StackTraceElement->vec,true,true,shared
 Throwable->map,true,true,shared
 abs,true,true,shared
 accessor,true,true,shared
 aclone,true,true,shared
-add-classpath,true,false,missing-in-basilisp
+add-classpath,true,true,shared
 add-tap,true,true,shared
 add-watch,true,true,shared
 agent,true,true,shared
