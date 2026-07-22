@@ -11,7 +11,7 @@
       (recur cause)
       e)))
 
-(defn context
+(defn- context
   "Return any context exception to the exception ``exc``.
 
   Context exceptions may be the same as cause exceptions. Typically, when throwing an
@@ -24,6 +24,18 @@
   ([^python/BaseException exc suppress-context?]
    (when-not suppress-context?
      (.-__context__ exc))))
+
+(defn print-trace-element
+  "Print a portable, Clojure-shaped view of one stack trace element.
+
+  Python does not expose JVM ``StackTraceElement`` values, so this function accepts
+  Python traceback frame summaries such as those returned by
+  :external:py:func:`traceback.extract_tb` and prints ``function (file:line)``."
+  [e]
+  (let [filename (python/getattr e "filename" "<unknown>")
+        line     (python/getattr e "lineno" nil)
+        name     (python/getattr e "name" "<unknown>")]
+    (println (str name " (" filename (when line (str ":" line)) ")"))))
 
 (defn print-stack-trace
   "Prints up to ``n`` stack frames from the traceback of the exception ``exc``, not

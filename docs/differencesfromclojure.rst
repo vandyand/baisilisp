@@ -399,7 +399,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   collection, map, key, tuple, regex, and explicit ``with-gen`` descriptors.
   Recursive, ``multi-spec``, and function-value generation still require an
   explicit ``with-gen`` strategy.
-* :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``
+* :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``. It exposes
+  the standard public stacktrace helpers while formatting Python traceback
+  frames rather than JVM ``StackTraceElement`` values.
 * :lpy:ns:`basilisp.string` is a port of ``clojure.string``
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``. It supports the
   standard low-level ``test-var``/``:test`` metadata path, report counters,

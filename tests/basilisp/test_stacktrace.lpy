@@ -1,7 +1,8 @@
 (ns tests.basilisp.test-stacktrace
   (:require [basilisp.stacktrace :as s]
             [basilisp.string :as str]
-            [basilisp.test :refer [deftest are is testing]]))
+            [basilisp.test :refer [deftest are is testing]])
+  (:import traceback))
 
 
 (defn- exception-test []
@@ -34,24 +35,36 @@
       (catch python/ValueError e
         (is (instance? python/ZeroDivisionError (s/root-cause e)))))))
 
-(deftest context-test
+(deftest public-surface-test
+  (is (= #{"e" "print-cause-trace" "print-stack-trace" "print-throwable"
+           "print-trace-element" "root-cause"}
+         (set (map name (keys (ns-publics 'basilisp.stacktrace)))))))
+
+(deftest python-context-does-not-affect-root-cause-test
   (testing "context only exception"
     (try
       (context-exception)
       (catch python/ZeroDivisionError _
         (is false))
       (catch python/ValueError e
-        (is (identical? e (s/root-cause e)))
-        (is (instance? python/ZeroDivisionError (s/context e))))))
+        (is (identical? e (s/root-cause e))))))
 
   (testing "explicit cause exception"
     (try
       (chained-exception)
       (catch python/ValueError e
-        (is (instance? python/ZeroDivisionError (s/root-cause e)))
-        (is (instance? python/ZeroDivisionError (s/context e false)))
-        (is (identical? (s/root-cause e) (s/context e false)))
-        (is (nil? (s/context e)))))))
+        (is (instance? python/ZeroDivisionError (s/root-cause e)))))))
+
+(deftest print-trace-element-test
+  (try
+    (exception-test)
+    (catch python/Exception e
+      (let [trace-element (first (traceback/extract_tb (.-__traceback__ e)))
+            output        (str/trim (with-out-str
+                                      (s/print-trace-element trace-element)))]
+        (is (str/includes? output "("))
+        (is (str/includes? output ")"))
+        (is (str/includes? output ":"))))))
 
 (deftest print-cause-trace-test
   (try
