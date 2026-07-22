@@ -8405,6 +8405,16 @@
                                (assoc cache base-set (proxy-type base-set)))))
         (get base-set))))
 
+(defn proxy-name
+  "Return the Python class label generated for a proxy superclass and interfaces.
+
+  The result is the ``module.Qualname`` of Basilisp's cached Python proxy class,
+  rather than Clojure's JVM generated-class name. Repeated calls with the same
+  superclass and interface set return the same label."
+  [super interfaces]
+  (let [proxy-class (apply get-proxy-class (cons super interfaces))]
+    (str (.-__module__ proxy-class) "." (.-__qualname__ proxy-class))))
+
 (defn proxy-mappings
   "Return the current method map for the given proxy.
 
@@ -8466,6 +8476,20 @@
     (do
       (. proxy (_update-proxy-mappings mappings))
       proxy)))
+
+(defn proxy-call-with-super
+  "Call ``call`` with ``this`` proxy's override for ``meth`` temporarily disabled.
+
+  The original proxy mapping is restored even when ``call`` raises. ``meth`` may
+  be a Basilisp symbol or a Python/Basilisp method-name string."
+  [call this meth]
+  (let [m           (proxy-mappings this)
+        method-name (munge (if (symbol? meth) (name meth) meth))]
+    (update-proxy this (assoc m method-name nil))
+    (try
+      (call)
+      (finally
+        (update-proxy this m)))))
 
 (defmacro proxy
   "Create a new proxy class instance.

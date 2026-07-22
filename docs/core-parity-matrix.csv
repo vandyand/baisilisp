@@ -498,9 +498,9 @@ promise,true,true,shared
 promise?,false,true,basilisp-extension
 protocol?,false,true,basilisp-extension
 proxy,true,true,shared
-proxy-call-with-super,true,false,missing-in-basilisp
+proxy-call-with-super,true,true,shared
 proxy-mappings,true,true,shared
-proxy-name,true,false,missing-in-basilisp
+proxy-name,true,true,shared
 proxy-super,true,true,shared
 push-thread-bindings,true,true,shared
 pvalues,true,true,shared

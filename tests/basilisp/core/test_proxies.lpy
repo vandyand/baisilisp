@@ -45,6 +45,14 @@
   (is (python/issubclass (get-proxy-class DescribableType ConcreteToString)
                          basilisp.lang.interfaces/IProxy)))
 
+(deftest proxy-name-test
+  (let [proxy-class (get-proxy-class DescribableType)
+        name        (proxy-name DescribableType [])]
+    (is (= (str (.-__module__ proxy-class) "." (.-__qualname__ proxy-class))
+           name))
+    (is (= name (proxy-name DescribableType [])))
+    (is (not= name (proxy-name python/object [])))))
+
 (deftest proxy-mappings-test
   (is (= {} (proxy-mappings no-op-proxy)))
   (is (thrown? basilisp.lang.exception/ExceptionInfo
@@ -97,6 +105,21 @@
       (is (= "I'm a type with 1" (.describe-me obj-proxy)))
       (update-proxy obj-proxy {"describe_me" (fn [this] "I'm a proxy again")})
       (is (= "I'm a proxy again" (.describe-me obj-proxy))))))
+
+(deftest proxy-call-with-super-test
+  (let [obj-proxy (proxy [DescribableType] [:original]
+                    (describe-me [] "I'm a proxy"))]
+    (is (= "I'm a proxy" (.describe-me obj-proxy)))
+    (is (= "I'm a type with :original"
+           (proxy-call-with-super #(.describe-me obj-proxy) obj-proxy 'describe-me)))
+    (is (= "I'm a proxy" (.describe-me obj-proxy)))
+    (is (thrown? python/ValueError
+                 (proxy-call-with-super (fn [] (throw (python/ValueError "broken callback")))
+                                        obj-proxy
+                                        "describe-me")))
+    (is (= "I'm a proxy" (.describe-me obj-proxy)))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo
+                 (proxy-call-with-super identity (python/object) "describe-me")))))
 
 (deftest proxy-test
   (testing "disallows duplicate method overrides"
