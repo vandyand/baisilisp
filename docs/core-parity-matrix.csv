@@ -23,7 +23,7 @@ symbol,clojure_core,basilisp_core,status
 *executor-pool*,false,true,basilisp-extension
 *file*,true,true,shared
 *flush-on-newline*,true,true,shared
-*fn-loader*,true,false,missing-in-basilisp
+*fn-loader*,true,true,shared
 *import-module*,false,true,basilisp-extension
 *in*,true,true,shared
 *loaded-libs*,false,true,basilisp-extension
@@ -46,8 +46,8 @@ symbol,clojure_core,basilisp_core,status
 *resolver*,false,true,basilisp-extension
 *source-path*,true,true,shared
 *suppress-read*,true,true,shared
-*unchecked-math*,true,false,missing-in-basilisp
-*use-context-classloader*,true,false,missing-in-basilisp
+*unchecked-math*,true,true,shared
+*use-context-classloader*,true,true,shared
 *verbose-defrecords*,true,true,shared
 *warn-on-reflection*,true,true,shared
 +,true,true,shared
@@ -313,7 +313,7 @@ future-cancel,true,true,shared
 future-cancelled?,true,true,shared
 future-done?,true,true,shared
 future?,true,true,shared
-gen-class,true,false,missing-in-basilisp
+gen-class,true,true,shared
 gen-interface,true,true,shared
 gensym,true,true,shared
 get,true,true,shared
@@ -482,7 +482,7 @@ pr,true,true,shared
 pr-str,true,true,shared
 prefer-method,true,true,shared
 prefers,true,true,shared
-primitives-classnames,true,false,missing-in-basilisp
+primitives-classnames,true,true,shared
 print,true,true,shared
 print-ctor,true,true,shared
 print-dup,true,true,shared
@@ -726,7 +726,7 @@ with-async,false,true,basilisp-extension
 with-bindings,true,true,shared
 with-bindings*,true,true,shared
 with-in-str,true,true,shared
-with-loading-context,true,false,missing-in-basilisp
+with-loading-context,true,true,shared
 with-local-vars,true,true,shared
 with-meta,true,true,shared
 with-open,true,true,shared

@@ -105,6 +105,36 @@
            [*compile-files* *compile-path*])))
   (is (= [false "classes"] [*compile-files* *compile-path*])))
 
+(deftest jvm-loading-compatibility-bindings-test
+  (is (nil? *fn-loader*))
+  (is (false? *unchecked-math*))
+  (is (true? *use-context-classloader*))
+  (is (= '{float   "Float/TYPE"
+           int     "Integer/TYPE"
+           long    "Long/TYPE"
+           boolean "Boolean/TYPE"
+           char    "Character/TYPE"
+           double  "Double/TYPE"
+           byte    "Byte/TYPE"
+           short   "Short/TYPE"}
+         primitives-classnames))
+  (is (= [:loader :warn-on-boxed false]
+         (binding [*fn-loader* :loader
+                   *unchecked-math* :warn-on-boxed
+                   *use-context-classloader* false]
+           [*fn-loader* *unchecked-math* *use-context-classloader*])))
+  (is (= [nil false true]
+         [*fn-loader* *unchecked-math* *use-context-classloader*]))
+  (is (= :body (with-loading-context :body)))
+  (is (nil? (with-loading-context)))
+  (is (nil? (gen-class :name tests.basilisp.Generated)))
+  (let [current-ns *ns*]
+    (try
+      (is (nil? (eval '(ns tests.basilisp.core.gen-class-clause
+                         (:gen-class)))))
+      (finally
+        (in-ns (symbol (str (ns-name current-ns))))))))
+
 (deftest warn-on-reflection-var-test
   (is (false? *warn-on-reflection*))
   (is (true? (binding [*warn-on-reflection* true]

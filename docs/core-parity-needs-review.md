@@ -1,8 +1,8 @@
 # Clojure Core Parity Classification
 
-This document classifies the 6 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (673 shared Vars and 59 Basilisp
-extensions). The matrix is a raw public-var
+This document records the public `clojure.core` parity review trail. The
+refreshed `core_parity_matrix.py` run on 2026-07-22 reports 679 shared Vars, 0
+missing Basilisp Vars, and 59 Basilisp extensions. The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
 
@@ -135,6 +135,12 @@ the constructor helpers validate their supplied nodes against that tree. The
 JVM ArrayManager slot is retained and ignored because vector nodes and tails
 are immutable Python tuples.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
+``*fn-loader*``, ``*unchecked-math*``, ``*use-context-classloader*``,
+``primitives-classnames``, ``with-loading-context``, and ``gen-class`` are now
+available as compatibility boundaries. The dynamic Vars are bindable and retain
+Clojure's defaults; ``primitives-classnames`` exposes Clojure's Java primitive
+name table; ``with-loading-context`` evaluates its body; and ``gen-class`` is a
+documented no-op macro because Basilisp does not generate JVM class files.
 
 ## Portable Implementation Targets
 
@@ -145,24 +151,9 @@ deferrals.
 
 ## Needs Review
 
-### Clojure compiler, reader, and Java class-loader state
-
-`*fn-loader*`,
-`*unchecked-math*`, `*use-context-classloader*`,
-`gen-class`,
-and `with-loading-context`.
-
-These names control Clojure compilation, reader evaluation, Java class loading,
-or generated JVM classes. Python has materially different import, compilation,
-and scope models. Some may gain Basilisp-specific equivalents, but an exact
-compatibility promise would be false.
-
-### Clojure and JVM implementation internals
-
-`primitives-classnames`.
-
-This exposes JVM primitive-vector helper names. It is not a stable portability
-API and does not have a direct Python counterpart.
+No public `clojure.core` names are currently missing from Basilisp. Future
+entries here should be added only when a regenerated matrix or behavioral
+fixture demonstrates a new gap.
 
 ### Agents and software transactional memory
 `sync` is now available as Clojure-compatible transaction syntax:

@@ -166,6 +166,37 @@
   "Directory used by :lpy:fn:`compile` for standalone Basilisp ``.lpyc`` artifacts.
   Source modules take precedence when both source and an artifact are available."
   "classes")
+(def ^:dynamic *fn-loader*
+  "Portable placeholder for Clojure's function loader hook.
+
+  Basilisp loads compiled functions through Python modules and import hooks, so
+  this Var is retained only for source compatibility and dynamic rebinding."
+  nil)
+(def ^:dynamic *unchecked-math*
+  "Portable placeholder for Clojure's unchecked math compiler switch.
+
+  Basilisp's numeric operations use Python-hosted arithmetic and do not expose
+  JVM primitive overflow elision. The Var is retained for source compatibility
+  and dynamic rebinding."
+  false)
+(def ^:dynamic *use-context-classloader*
+  "Portable placeholder for Clojure's context-classloader loading switch.
+
+  Python has no JVM context classloader. The Var is retained for source
+  compatibility and dynamic rebinding."
+  true)
+(def primitives-classnames
+  "Clojure-compatible Java primitive classname table retained for source
+  compatibility. The string values name JVM primitive ``TYPE`` constants and
+  are not used by Basilisp's Python-hosted primitive arrays."
+  '{float   "Float/TYPE"
+    int     "Integer/TYPE"
+    long    "Long/TYPE"
+    boolean "Boolean/TYPE"
+    char    "Character/TYPE"
+    double  "Double/TYPE"
+    byte    "Byte/TYPE"
+    short   "Short/TYPE"})
 (def ^{:doc "Create a fixed-capacity, one-shot chunk buffer."
        :arglists '([capacity])}
   chunk-buffer basilisp.lang.chunk/chunk_buffer)
@@ -5079,6 +5110,23 @@
   Returns the value of ``body``\\."
   [bindings-map & body]
   `(with-bindings* ~bindings-map (fn [] ~@body)))
+
+(defmacro with-loading-context
+  "Execute ``body`` within the current loading context.
+
+  Clojure uses this macro to bind JVM compiler/classloader state while loading
+  generated support code. Basilisp has no JVM classloader, so this compatibility
+  macro preserves source shape and evaluates ``body`` unchanged."
+  [& body]
+  `(do ~@body))
+
+(defmacro gen-class
+  "Portable no-op for Clojure's JVM class-generation macro.
+
+  Basilisp does not generate JVM ``.class`` files. The macro accepts Clojure's
+  option shape for source compatibility and expands to ``nil``."
+  [& _options]
+  nil)
 
 (defn compile
   "Compile the namespace named by ``lib`` into a standalone artifact beneath

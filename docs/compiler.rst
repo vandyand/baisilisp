@@ -139,6 +139,13 @@ Python-version-local build outputs, similar to Python ``.pyc`` files. Build
 them with the target Basilisp/Python version and never load artifacts from an
 untrusted party.
 
+Basilisp also exposes Clojure's public loading/class-generation compatibility
+names ``*fn-loader*``, ``*unchecked-math*``, ``*use-context-classloader*``,
+``primitives-classnames``, ``with-loading-context``, and ``gen-class``. They
+preserve source compatibility for namespaces that mention those names, but they
+do not create JVM bytecode, mutate a JVM classloader, or alter Python numeric
+overflow behavior.
+
 .. _direct_linking:
 
 Direct Linking
