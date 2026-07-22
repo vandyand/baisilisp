@@ -105,6 +105,12 @@
            [*compile-files* *compile-path*])))
   (is (= [false "classes"] [*compile-files* *compile-path*])))
 
+(deftest warn-on-reflection-var-test
+  (is (false? *warn-on-reflection*))
+  (is (true? (binding [*warn-on-reflection* true]
+               *warn-on-reflection*)))
+  (is (false? *warn-on-reflection*)))
+
 (deftest num-test
   (are [n] (= n (num n))
     nil

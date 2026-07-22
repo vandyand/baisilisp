@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 19 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (660 shared Vars and 59 Basilisp
+This document classifies the 18 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (661 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -104,6 +104,10 @@ without source, and source intentionally wins when both forms are present.
 with Clojure's flush/close lifecycle. The deprecated ``add-classpath`` spelling
 accepts local paths and ``file:`` URLs, appends them to ``sys.path``, and
 invalidates import caches; it deliberately is not a Java classloader façade.
+``*warn-on-reflection*`` now captures its binding when compilation begins and
+emits a warning for host method or field lookup that Basilisp cannot resolve
+from an imported/builtin target. It remains false by default and avoids
+executing descriptors while deciding whether a member is statically known.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -119,7 +123,7 @@ deferrals.
 
 `*fn-loader*`,
 `*unchecked-math*`, `*use-context-classloader*`,
-`*warn-on-reflection*`, `gen-class`,
+`gen-class`,
 `method-sig`, and `with-loading-context`.
 
 These names control Clojure compilation, reader evaluation, Java class loading,

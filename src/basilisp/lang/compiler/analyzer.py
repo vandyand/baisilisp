@@ -346,6 +346,7 @@ class AnalyzerContext:
         "_st",
         "_syntax_pos",
         "_unresolved_var_errors",
+        "_warn_on_reflection",
     )
 
     def __init__(
@@ -371,6 +372,12 @@ class AnalyzerContext:
             # it can return an unexpanded form. Only the public compiler Var
             # requests Clojure's unresolved-Var evaluation failure.
             self._unresolved_var_errors = False
+        warn_on_reflection_var = runtime.Var.find(runtime.WARN_ON_REFLECTION_VAR_SYM)
+        self._warn_on_reflection = bool(
+            warn_on_reflection_var.value
+            if warn_on_reflection_var is not None
+            else False
+        )
         self._compile_time_def_callbacks: collections.deque[Callable[[Def], None]] = (
             collections.deque([])
         )
@@ -436,6 +443,11 @@ class AnalyzerContext:
     def warn_on_non_dynamic_set(self) -> bool:
         """If True, warn when attempting to set! a Var not marked as ^:dynamic."""
         return self._opts.val_at(WARN_ON_NON_DYNAMIC_SET, True)
+
+    @property
+    def warn_on_reflection(self) -> bool:
+        """If true, diagnose dynamic Python host method and field lookup."""
+        return self._warn_on_reflection
 
     @property
     def is_quoted(self) -> bool:
@@ -2572,6 +2584,69 @@ def _fn_ast(  # pylint: disable=too-many-locals,too-many-statements
         )
 
 
+def _warn_dynamic_host_access(
+    ctx: AnalyzerContext,
+    target: Node,
+    member: str,
+    kind: Literal["field", "method"],
+) -> None:
+    """Emit a Clojure-shaped warning for host lookup deferred to runtime."""
+    if not ctx.warn_on_reflection:
+        return
+    if isinstance(target, MaybeClass):
+        try:
+            inspect.getattr_static(target.target, munge(member))
+        except AttributeError:
+            pass
+        else:
+            return
+    location = (
+        f"{ctx.filename}:{target.env.line}"
+        if target.env.line is not None
+        else ctx.filename
+    )
+    logger.warning(
+        "reflection warning: dynamic Python %s lookup for '%s' (%s)",
+        kind,
+        member,
+        location,
+    )
+
+
+def _host_call_node(
+    form: ISeq,
+    method: str,
+    target_form: ReaderForm,
+    args: Iterable[Node],
+    kwargs: KeywordArgs,
+    ctx: AnalyzerContext,
+) -> HostCall:
+    target = _analyze_form(target_form, ctx)
+    _warn_dynamic_host_access(ctx, target, method, "method")
+    return HostCall(
+        form=form,
+        method=method,
+        target=target,
+        args=args,
+        kwargs=kwargs,
+        env=ctx.get_node_env(pos=ctx.syntax_position),
+    )
+
+
+def _host_field_node(
+    form: ISeq, field: str, target_form: ReaderForm, ctx: AnalyzerContext
+) -> HostField:
+    target = _analyze_form(target_form, ctx)
+    _warn_dynamic_host_access(ctx, target, field, "field")
+    return HostField(
+        form=form,
+        field=field,
+        target=target,
+        is_assignable=True,
+        env=ctx.get_node_env(pos=ctx.syntax_position),
+    )
+
+
 def _host_call_ast(form: ISeq, ctx: AnalyzerContext) -> HostCall:
     assert isinstance(form.first, sym.Symbol)
 
@@ -2585,13 +2660,8 @@ def _host_call_ast(form: ISeq, ctx: AnalyzerContext) -> HostCall:
         )
 
     args, kwargs = _call_args_ast(runtime.nthrest(form, 2), ctx)
-    return HostCall(
-        form=form,
-        method=method.name[1:],
-        target=_analyze_form(runtime.nth(form, 1), ctx),
-        args=args,
-        kwargs=kwargs,
-        env=ctx.get_node_env(pos=ctx.syntax_position),
+    return _host_call_node(
+        form, method.name[1:], runtime.nth(form, 1), args, kwargs, ctx
     )
 
 
@@ -2624,13 +2694,7 @@ def _host_prop_ast(form: ISeq, ctx: AnalyzerContext) -> HostField:
                 form=form,
             )
 
-        return HostField(
-            form=form,
-            field=field.name,
-            target=_analyze_form(runtime.nth(form, 1), ctx),
-            is_assignable=True,
-            env=ctx.get_node_env(pos=ctx.syntax_position),
-        )
+        return _host_field_node(form, field.name, runtime.nth(form, 1), ctx)
     else:
         if not nelems == 2:
             raise ctx.AnalyzerException(
@@ -2638,13 +2702,7 @@ def _host_prop_ast(form: ISeq, ctx: AnalyzerContext) -> HostField:
                 form=form,
             )
 
-        return HostField(
-            form=form,
-            field=field.name[2:],
-            target=_analyze_form(runtime.nth(form, 1), ctx),
-            is_assignable=True,
-            env=ctx.get_node_env(pos=ctx.syntax_position),
-        )
+        return _host_field_node(form, field.name[2:], runtime.nth(form, 1), ctx)
 
 
 def _host_interop_ast(form: ISeq, ctx: AnalyzerContext) -> HostCall | HostField:
@@ -2664,22 +2722,13 @@ def _host_interop_ast(form: ISeq, ctx: AnalyzerContext) -> HostCall | HostField:
                     "host field accesses must be exactly 3 elements long", form=form
                 )
 
-            return HostField(
-                form=form,
-                field=maybe_m_or_f.name[1:],
-                target=_analyze_form(runtime.nth(form, 1), ctx),
-                is_assignable=True,
-                env=ctx.get_node_env(pos=ctx.syntax_position),
+            return _host_field_node(
+                form, maybe_m_or_f.name[1:], runtime.nth(form, 1), ctx
             )
         else:
             args, kwargs = _call_args_ast(runtime.nthrest(form, 3), ctx)
-            return HostCall(
-                form=form,
-                method=maybe_m_or_f.name,
-                target=_analyze_form(runtime.nth(form, 1), ctx),
-                args=args,
-                kwargs=kwargs,
-                env=ctx.get_node_env(pos=ctx.syntax_position),
+            return _host_call_node(
+                form, maybe_m_or_f.name, runtime.nth(form, 1), args, kwargs, ctx
             )
     elif isinstance(maybe_m_or_f, (llist.PersistentList, ISeq)):
         # Likewise, I emit :host-call for forms like (. target (method arg1 ...)).
@@ -2690,13 +2739,13 @@ def _host_interop_ast(form: ISeq, ctx: AnalyzerContext) -> HostCall | HostField:
             )
 
         args, kwargs = _call_args_ast(maybe_m_or_f.rest, ctx)
-        return HostCall(
-            form=form,
-            method=method.name[1:] if method.name.startswith("-") else method.name,
-            target=_analyze_form(runtime.nth(form, 1), ctx),
-            args=args,
-            kwargs=kwargs,
-            env=ctx.get_node_env(pos=ctx.syntax_position),
+        return _host_call_node(
+            form,
+            method.name[1:] if method.name.startswith("-") else method.name,
+            runtime.nth(form, 1),
+            args,
+            kwargs,
+            ctx,
         )
     else:
         raise ctx.AnalyzerException(

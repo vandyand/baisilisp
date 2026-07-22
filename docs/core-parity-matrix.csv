@@ -49,7 +49,7 @@ symbol,clojure_core,basilisp_core,status
 *unchecked-math*,true,false,missing-in-basilisp
 *use-context-classloader*,true,false,missing-in-basilisp
 *verbose-defrecords*,true,true,shared
-*warn-on-reflection*,true,false,missing-in-basilisp
+*warn-on-reflection*,true,true,shared
 +,true,true,shared
 +',true,true,shared
 -,true,true,shared

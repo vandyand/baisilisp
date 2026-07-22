@@ -117,6 +117,8 @@ SOURCE_PATH_VAR_NAME = "*source-path*"
 SOURCE_PATH_VAR_SYM = sym.symbol(SOURCE_PATH_VAR_NAME, ns=CORE_NS)
 ALLOW_UNRESOLVED_VARS_VAR_NAME = "*allow-unresolved-vars*"
 ALLOW_UNRESOLVED_VARS_VAR_SYM = sym.symbol(ALLOW_UNRESOLVED_VARS_VAR_NAME, ns=CORE_NS)
+WARN_ON_REFLECTION_VAR_NAME = "*warn-on-reflection*"
+WARN_ON_REFLECTION_VAR_SYM = sym.symbol(WARN_ON_REFLECTION_VAR_NAME, ns=CORE_NS)
 NO_SOURCE_FILE = "NO_SOURCE_FILE"
 IMPORT_MODULE_VAR_NAME = "*import-module*"
 IMPORT_MODULE_VAR_SYM = sym.symbol(IMPORT_MODULE_VAR_NAME, ns=CORE_NS)
@@ -3010,6 +3012,16 @@ def bootstrap_core(compiler_opts: CompilerOpts) -> None:
         dynamic=True,
     )
     allow_unresolved_vars.reset_meta(None)
+
+    # Dynamic compiler switch for host attribute accesses whose target cannot
+    # be resolved statically. Python has no JVM reflection boundary, but these
+    # calls still defer member lookup until runtime and benefit from diagnostics.
+    Var.intern(
+        CORE_NS_SYM,
+        sym.symbol(WARN_ON_REFLECTION_VAR_NAME),
+        False,
+        dynamic=True,
+    )
 
     # Dynamic Var examined by the compiler when importing new Namespaces
     Var.intern(

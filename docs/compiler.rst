@@ -28,6 +28,15 @@ Configuration
 The Basilisp compiler includes a few configuration options for emitting warnings and tweaking code generation that may be useful, particularly during development.
 The current Basilisp compiler options may be examined and modified using the dynamic Var :lpy:var:`basilisp.core/*compiler-opts*`.
 
+The dynamic Var :lpy:var:`basilisp.core/*warn-on-reflection*` is a separate
+per-compilation diagnostic switch. When bound to ``true`` before a form or
+namespace is compiled, Basilisp warns for Python host method and field lookups
+whose target cannot be statically resolved from an imported or builtin object.
+It is ``false`` by default. This is the Python-host equivalent of Clojure's
+Java-reflection diagnostic: it reports deferred attribute lookup, never calls
+descriptors merely to decide whether to warn, and does not alter runtime lookup
+behavior.
+
 .. _compiler_warning_configuration:
 
 Warnings

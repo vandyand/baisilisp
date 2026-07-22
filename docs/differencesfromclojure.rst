@@ -281,6 +281,9 @@ Basilisp's compilation is intended to work more like Clojure's than ClojureScrip
 Basilisp compiles namespaces into modules one form at a time, which brings along all of the attendant benefits (macros can be defined and immediately used) and drawbacks (being unable to optimize code across the entire namespace).
 ``gen-class`` is not required or implemented in Basilisp, but :lpy:fn:`gen-interface` is.
 Users may still create dynamic classes using Python's ``type`` builtin, just as they could do in Python code.
+Binding ``*warn-on-reflection*`` during compilation requests warnings for Python
+host member lookup that must remain dynamic. It is a diagnostic only; unlike the
+JVM switch it does not depend on Java type hints or change generated code.
 
 .. seealso::
 
