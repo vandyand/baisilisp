@@ -414,7 +414,7 @@
 
 (deftest pprint-code-dispatch-extended-forms-test
   (testing "case forms"
-    (is (= "(case \n  command \n  :start (start-service \n           command) \n  :stop \n  (stop-service command) \n  (unknown-command \n    command))"
+    (is (= "(case \n  command \n  :start \n  (start-service \n    command) \n  :stop \n  (stop-service command) \n  (unknown-command \n    command))"
            (trim-and-replace-newlines
             (binding [pprint/*print-right-margin* 26]
               (with-out-str
@@ -430,6 +430,70 @@
             (with-out-str
               (pprint/with-pprint-dispatch pprint/code-dispatch
                 (pprint/pprint '(case command :start)))))))
+
+  (testing "threading forms"
+    (are [expected form]
+      (= expected
+         (trim-and-replace-newlines
+          (binding [pprint/*print-right-margin* 24]
+            (with-out-str
+              (pprint/with-pprint-dispatch pprint/code-dispatch
+                (pprint/pprint form))))))
+      "(-> \n value \n (assoc :a 1) \n (update :a inc))"
+      '(-> value
+           (assoc :a 1)
+           (update :a inc))
+
+      "(->> \n  values \n  (filter odd?) \n  (map inc))"
+      '(->> values
+            (filter odd?)
+            (map inc))
+
+      "(some-> \n  value \n  (assoc :a 1) \n  (update :a inc))"
+      '(some-> value
+               (assoc :a 1)
+               (update :a inc))
+
+      "(some->> \n  values \n  (filter odd?) \n  (map inc))"
+      '(some->> values
+                (filter odd?)
+                (map inc))))
+
+  (testing "layout stress"
+    (doseq [branch-count (range 1 8)
+            margin [14 24]
+            :let [clauses (mapcat (fn [i]
+                                    [(keyword (str "k" i))
+                                     (list 'handle i)])
+                                  (range branch-count))
+                  form (apply list 'case 'command
+                              (concat clauses
+                                      (list '(unknown-command command))))
+                  rendered (trim-and-replace-newlines
+                            (binding [pprint/*print-right-margin* margin]
+                              (with-out-str
+                                (pprint/with-pprint-dispatch pprint/code-dispatch
+                                  (pprint/pprint form)))))]]
+      (doseq [i (range branch-count)]
+        (is (not (str/includes? rendered
+                                (str (keyword (str "k" i)) " (")))
+            rendered)))
+    (doseq [[form expected-indent]
+            [['(-> value (assoc :a 1) (update :a inc)) " "]
+             ['(->> values (filter odd?) (map inc)) "  "]
+             ['(some-> value (assoc :a 1) (update :a inc)) "  "]
+             ['(some->> values (filter odd?) (map inc)) "  "]]
+            :let [lines (str/split
+                         (trim-and-replace-newlines
+                          (binding [pprint/*print-right-margin* 16]
+                            (with-out-str
+                              (pprint/with-pprint-dispatch pprint/code-dispatch
+                                (pprint/pprint form)))))
+                         #"\n")]]
+      (doseq [line (filter #(.startswith % (str expected-indent "("))
+                           (rest lines))]
+        (is (.startswith line expected-indent) line)
+        (is (not (.startswith line (str expected-indent " "))) line))))
 
   (testing "try, catch, and finally clauses"
     (is (= "(try \n  (open-resource path) \n  (catch IOError error \n    (log-error error) \n    nil) \n  (finally (close-resource \n             path)))"

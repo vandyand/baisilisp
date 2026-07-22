@@ -37,7 +37,38 @@
                                  (pprint/pprint
                                   '(defn add [x y]
                                      (let [sum (+ x y)]
-                                       sum))))))})
+                                       sum))))))
+            :case (binding [pprint/*print-right-margin* 24]
+                    (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                                 (pprint/pprint
+                                  '(case command
+                                     :start (start-service command)
+                                     :stop (stop-service command)
+                                     (unknown-command command))))))
+            :threading (binding [pprint/*print-right-margin* 24]
+                         (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                                      (pprint/pprint
+                                       '(-> value
+                                            (assoc :a 1)
+                                            (update :a inc))))))
+            :threading-last (binding [pprint/*print-right-margin* 24]
+                              (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                                           (pprint/pprint
+                                            '(->> values
+                                                  (filter odd?)
+                                                  (map inc))))))
+            :threading-some (binding [pprint/*print-right-margin* 24]
+                              (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                                           (pprint/pprint
+                                            '(some-> value
+                                                    (assoc :a 1)
+                                                    (update :a inc))))))
+            :threading-some-last (binding [pprint/*print-right-margin* 24]
+                                   (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                                                (pprint/pprint
+                                                 '(some->> values
+                                                          (filter odd?)
+                                                          (map inc))))))})
 
 (emit-case :print-table
            {:inferred (rendered #(pprint/print-table [(sorted-map :a 1 :b "two")
