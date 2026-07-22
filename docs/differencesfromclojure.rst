@@ -316,7 +316,11 @@ Core Libraries
 
 Basilisp includes ports of some of the standard libraries from Clojure which should generally match the source in functionality.
 
-* :lpy:ns:`basilisp.data` is a port of ``clojure.data``
+* :lpy:ns:`basilisp.data` provides the portable ``clojure.data`` diffing
+  surface, including ``Diff``, ``EqualityPartition``, ``diff``,
+  ``diff-similar``, and ``equality-partition``. ``diff`` also accepts
+  Python-native containers by converting them to Basilisp data before
+  comparison.
 * :lpy:ns:`basilisp.data.csv` provides the portable ``clojure.data.csv``
   reader/writer surface, including ``Read-CSV-From`` and ``read-csv-from``.
   It uses Python text streams rather than Java Reader/Writer values.

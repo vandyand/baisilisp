@@ -2,14 +2,20 @@
   "Utility function for diffing arbitrary data structures.
 
   All builtin Basilisp and Python data structures are supported by default. Support can
-  be added to custom data types by extending protocol :lpy:proto:`IDiffable`."
+  be added to custom data types by extending Clojure's public ``Diff`` and
+  ``EqualityPartition`` protocols."
   (:require
    [basilisp.set :as set]))
 
-(defprotocol IDiffable
-  (diff* [this other]
-    "Diff ``other`` against ``this``, returning a three element vector containing
-    ``[items-in-a items-in-b items-in-both]``."))
+(defprotocol Diff
+  "Implementation detail. Subject to change."
+  (diff-similar [a b]
+    "Implementation detail. Subject to change."))
+
+(defprotocol EqualityPartition
+  "Implementation detail. Subject to change."
+  (equality-partition [x]
+    "Implementation detail. Subject to change."))
 
 (defn diff
   "Diff items ``a`` and ``b``, returning a three element vector containing
@@ -29,14 +35,32 @@
     before diffing.
   - All other types are compared for equality as by :lpy:fn:`basilisp.core/=`."
   [a b]
-  (if (= a b)
-    [nil nil a]
-    (diff* (py->lisp a) (py->lisp b))))
+  (let [a (py->lisp a)
+        b (py->lisp b)]
+    (if (= a b)
+      [nil nil a]
+      (if (= (equality-partition a) (equality-partition b))
+        (diff-similar a b)
+        [a b nil]))))
 
-(extend-protocol IDiffable
+(extend-protocol EqualityPartition
   python/object
-  (diff* [this other]
-    [this other nil]))
+  (equality-partition [_] :atom))
+
+(extend-protocol Diff
+  python/object
+  (diff-similar [a b]
+    [a b nil]))
+
+(defn ^:private left-diff-part?
+  [a b part]
+  (or (some? part)
+      (and (not= a b) (nil? a))))
+
+(defn ^:private both-diff-part?
+  [a b part]
+  (or (some? part)
+      (= a b)))
 
 (defn ^:private diff-map
   [this other]
@@ -48,25 +72,18 @@
            both              nil]
       (if (seq a-items)
         (if (contains? b k)
-          (let [[in-a in-b in-both] (diff (get a k) (get b k))]
+          (let [a-value             (get a k)
+                b-value             (get b k)
+                [in-a in-b in-both] (diff a-value b-value)]
             (recur (rest a-items)
-                   (cond-> (dissoc a k) in-a (assoc k in-a))
-                   (cond-> (dissoc b k) in-b (assoc k in-b))
-                   (cond-> both in-both (assoc k in-both))))
+                   (cond-> (dissoc a k)
+                     (left-diff-part? a-value b-value in-a) (assoc k in-a))
+                   (cond-> (dissoc b k)
+                     (left-diff-part? b-value a-value in-b) (assoc k in-b))
+                   (cond-> both
+                     (both-diff-part? a-value b-value in-both) (assoc k in-both))))
           (recur (rest a-items) a b both))
-        [a b both]))))
-
-(defn ^:private collect-rest
-  "Collect the rest of the elements in seq ``source`` into the vector ``target`` (if
-  there are any). If every element in the resulting vector is ``nil``, return ``nil``.
-  Otherwise, return the vector."
-  [target source]
-  (let [res (if (seq source)
-              (apply conj target source)
-              target)]
-    (if (every? nil? res)
-      nil
-      res)))
+        (map not-empty [a b both])))))
 
 (defn ^:private include-seq-elem?
   "Return true if an element should be included in the final diff vector.
@@ -83,23 +100,39 @@
            b       (seq other)
            in-a    []
            in-b    []
-           in-both []]
+           in-both []
+           any-a?  false
+           any-b?  false
+           any-both? false]
       (if (and a b)
         (let [[a-head & a-rest]         a
               [b-head & b-rest]         b
-              [a-part b-part both-part] (diff a-head b-head)]
+              [a-part b-part both-part] (diff a-head b-head)
+              a-part?                   (left-diff-part? a-head b-head a-part)
+              b-part?                   (left-diff-part? b-head a-head b-part)
+              both-part?                (both-diff-part? a-head b-head both-part)]
           (recur (seq a-rest)
                  (seq b-rest)
-                 (cond-> in-a (include-seq-elem? (seq a-rest) a-part) (conj a-part))
-                 (cond-> in-b (include-seq-elem? (seq b-rest) b-part) (conj b-part))
+                 (cond-> in-a
+                   (or a-part? (include-seq-elem? (seq a-rest) a-part))
+                   (conj a-part))
+                 (cond-> in-b
+                   (or b-part? (include-seq-elem? (seq b-rest) b-part))
+                   (conj b-part))
                  (cond-> in-both
-                   (include-seq-elem? (and (seq a-rest) (seq b-rest)) both-part)
-                   (conj both-part))))
-        [(collect-rest in-a a)
-         (collect-rest in-b b)
-         (if (every? nil? in-both)
-           nil
-           in-both)]))))
+                   (or both-part?
+                       (include-seq-elem? (and (seq a-rest) (seq b-rest)) both-part))
+                   (conj both-part))
+                 (or any-a? a-part?)
+                 (or any-b? b-part?)
+                 (or any-both? both-part?)))
+        (let [a-rest? (seq a)
+              b-rest? (seq b)
+              in-a    (if a-rest? (apply conj in-a a) in-a)
+              in-b    (if b-rest? (apply conj in-b b) in-b)]
+          [(when (or any-a? a-rest?) in-a)
+           (when (or any-b? b-rest?) in-b)
+           (when any-both? in-both)])))))
 
 (defn ^:private diff-set
   [this other]
@@ -112,8 +145,24 @@
          shared]
         [this other nil]))))
 
-(extend basilisp.lang.interfaces/IPersistentMap    IDiffable {:diff* diff-map})
-(extend basilisp.lang.interfaces/IPersistentSet    IDiffable {:diff* diff-set})
-(extend basilisp.lang.interfaces/IPersistentVector IDiffable {:diff* diff-seq})
-(extend basilisp.lang.interfaces/IPersistentList   IDiffable {:diff* diff-seq})
-(extend basilisp.lang.interfaces/ISeq              IDiffable {:diff* diff-seq})
+(extend basilisp.lang.interfaces/IPersistentMap
+        EqualityPartition
+        {:equality-partition (fn [_] :map)})
+(extend basilisp.lang.interfaces/IPersistentSet
+        EqualityPartition
+        {:equality-partition (fn [_] :set)})
+(extend basilisp.lang.interfaces/IPersistentVector
+        EqualityPartition
+        {:equality-partition (fn [_] :sequential)})
+(extend basilisp.lang.interfaces/IPersistentList
+        EqualityPartition
+        {:equality-partition (fn [_] :sequential)})
+(extend basilisp.lang.interfaces/ISeq
+        EqualityPartition
+        {:equality-partition (fn [_] :sequential)})
+
+(extend basilisp.lang.interfaces/IPersistentMap    Diff {:diff-similar diff-map})
+(extend basilisp.lang.interfaces/IPersistentSet    Diff {:diff-similar diff-set})
+(extend basilisp.lang.interfaces/IPersistentVector Diff {:diff-similar diff-seq})
+(extend basilisp.lang.interfaces/IPersistentList   Diff {:diff-similar diff-seq})
+(extend basilisp.lang.interfaces/ISeq              Diff {:diff-similar diff-seq})

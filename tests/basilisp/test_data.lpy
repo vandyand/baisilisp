@@ -1,8 +1,43 @@
 (ns tests.basilisp.test-data
   (:import datetime)
   (:require
-   [basilisp.data :refer [diff]]
+   [basilisp.data :as data :refer [diff]]
    [basilisp.test :refer [deftest are testing]]))
+
+(deftest public-surface-and-protocol-methods-test
+  (let [publics (set (map name (keys (ns-publics 'basilisp.data))))]
+    (are [public-name] (contains? publics public-name)
+      "Diff"
+      "EqualityPartition"
+      "diff"
+      "diff-similar"
+      "equality-partition"))
+  (are [value partition] (= partition (data/equality-partition value))
+    nil    :atom
+    1      :atom
+    "ab"   :atom
+    [1 2]  :sequential
+    '(1 2) :sequential
+    {:a 1} :map
+    #{1}   :set)
+  (are [a b expected] (= expected (data/diff-similar a b))
+    1     2     [1 2 nil]
+    [1 2] [1 3] [[nil 2] [nil 3] [1]]
+    #{1 2} #{2 3} [#{1} #{3} #{2}])
+  (are [a b expected] (= expected (data/diff a b))
+    {:a nil} {:a 1}        '({:a nil} {:a 1} nil)
+    {:a 1}   {:a nil}      '({:a 1} {:a nil} nil)
+    {:a nil} {:a nil :b 1} '(nil {:b 1} {:a nil})
+    [nil 1]  [nil 2]       [[nil 1] [nil 2] [nil]]
+    [1 nil]  [2 nil]       [[1] [2] [nil nil]]
+    []       [nil]         [nil [nil] nil]
+    [nil]    []            [[nil] nil nil])
+  (testing "map diff-similar keeps Clojure's seq result shape"
+    (let [result (data/diff-similar {:a 1} {:a 2})]
+      (are [expected] (= expected result)
+        '({:a 1} {:a 2} nil))
+      (are [predicate] (predicate result)
+        seq?))))
 
 (deftest diff-test
   (testing "scalar types"
