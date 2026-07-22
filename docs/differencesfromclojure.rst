@@ -362,7 +362,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   Basilisp Future executor rather than JVM daemon threads.
 * :lpy:ns:`basilisp.math` is a port of ``clojure.math``. Python's arbitrary-
   precision integers mean its ``*-exact`` functions do not overflow, and its
-  ``round`` function does not have JVM ``long`` saturation behavior.
+  ``round`` function does not have JVM ``long`` saturation behavior. Ordinary
+  floating-point domains, signed zeros, exponent helpers, and next-value helpers
+  are covered by shared Clojure/Basilisp fixtures.
 * :lpy:ns:`basilisp.math.combinatorics` ports the dependency-free public
   ``clojure.math.combinatorics`` API through the standard import path. Its
   lazy sequence, multiset, direct-count, direct-index, and partition contracts

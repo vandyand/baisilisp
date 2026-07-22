@@ -35,10 +35,10 @@
 
 (defn- pow-overflow
   [x y]
-  (if (and (neg? x)
+  (if (and (< x 0.0)
            (math/isfinite y)
-           (= y (math/floor y))
-           (even? (python/int y)))
+           (= y (python/float (math/floor y)))
+           (= 0 (pyoperator/mod (python/int y) 2)))
     (pos-inf)
     (signed-inf x)))
 
@@ -47,13 +47,13 @@
   (cond
     (math/isnan x) x
     (math/isinf x) x
-    (zero? x) x
-    :else (let [magnitude (if (neg? x) (- x) x)
+    (= x 0.0) x
+    :else (let [magnitude (if (< x 0.0) (- x) x)
                 guess (math/pow magnitude (/ 1.0 3.0))
                 result (/ (+ (* 2.0 guess)
                              (/ magnitude (* guess guess)))
                           3.0)]
-            (if (neg? x) (- result) result))))
+            (if (< x 0.0) (- result) result))))
 
 (defn sin "Return the sine of ``x``." [x] (math/sin x))
 (defn cos "Return the cosine of ``x``." [x] (math/cos x))
@@ -73,12 +73,12 @@
 
 (defn log "Return the natural logarithm of ``x``." [x]
   (cond
-    (zero? x) (neg-inf)
+    (= x 0.0) (neg-inf)
     :else (nan-on-value-error math/log x)))
 
 (defn log10 "Return the base-10 logarithm of ``x``." [x]
   (cond
-    (zero? x) (neg-inf)
+    (= x 0.0) (neg-inf)
     :else (nan-on-value-error math/log10 x)))
 
 (defn sqrt "Return the positive square root of ``x``." [x]
@@ -95,22 +95,22 @@
   (nan-on-value-error math/remainder dividend divisor))
 
 (defn ceil "Return the smallest floating-point integer greater than or equal to ``x``." [x]
-  (if (or (zero? x) (not (math/isfinite x)))
+  (if (or (= x 0.0) (not (math/isfinite x)))
     x
     (let [result (python/float (math/ceil x))]
-      (if (zero? result)
+      (if (= result 0.0)
         (math/copysign result x)
         result))))
 
 (defn floor "Return the largest floating-point integer less than or equal to ``x``." [x]
-  (if (or (zero? x) (not (math/isfinite x)))
+  (if (or (= x 0.0) (not (math/isfinite x)))
     x
     (python/float (math/floor x))))
 
 (defn rint
   "Return the nearest floating-point integer, choosing the even value at ties."
   [x]
-  (if (or (zero? x) (not (math/isfinite x)))
+  (if (or (= x 0.0) (not (math/isfinite x)))
     x
     (python/float (python/round x))))
 
@@ -158,7 +158,7 @@
 (defn signum "Return -1.0, 0.0, or 1.0 according to the sign of ``x``." [x]
   (cond
     (math/isnan x) x
-    (zero? x) x
+    (= x 0.0) x
     :else (math/copysign 1.0 x)))
 
 (defn sinh "Return the hyperbolic sine of ``x``." [x]
@@ -182,7 +182,7 @@
 
 (defn log1p "Return log(1 + ``x``)." [x]
   (cond
-    (= x -1) (neg-inf)
+    (= x -1.0) (neg-inf)
     :else (nan-on-value-error math/log1p x)))
 
 (defn copy-sign "Return the magnitude of ``magnitude`` with the sign of ``sign``." [magnitude sign]

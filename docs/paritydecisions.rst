@@ -512,7 +512,10 @@ environment replacement/merge, exit refs, ``io-task`` binding capture, and
 seeded ``exec`` calls; Python-only helpers stay on ``basilisp.process``.
 ``clojure.test.tap`` is now locked by shared fixtures for public surface,
 printer output, expected/actual diagnostics, ``tap-report`` strings,
-``with-tap-output`` binding, and seeded diagnostic maps. The next work is:
+``with-tap-output`` binding, and seeded diagnostic maps. ``clojure.math`` is
+locked by category/identity fixtures for public surface, domain NaN/infinity
+handling, signed zero, rounding, exponent/navigation helpers, ordinary exact
+integer operations, and seeded algebraic identities. The next work is:
 
 1. Expand the source-level acceptance corpus only when a candidate adds a new
    public portability pressure point. Keep reader conditionals limited to

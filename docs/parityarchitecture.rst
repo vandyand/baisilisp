@@ -795,6 +795,14 @@ Python text streams and the standard CSV parser. Java Reader/Writer object
 compatibility and arbitrary dialect options remain host-specific rather than
 part of the advertised surface.
 
+``basilisp.math`` exposes the ``clojure.math`` public surface through a
+Python-hosted implementation that preserves Clojure's floating-point domain
+categories, signed zero behavior, rounding, exponent, next-value, and ordinary
+exact-integer results. A shared conformance fixture uses category and identity
+checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
+precision integers still mean ``*-exact`` overflow behavior remains documented
+as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 
