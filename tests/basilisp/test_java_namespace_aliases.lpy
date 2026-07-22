@@ -33,4 +33,15 @@
 (deftest clojure-java-shell-import-path-test
   (is (= {:exit 0 :out (str "alias" os/linesep) :err ""}
          (shell/sh sys/executable "-c" "print('alias')")))
-  (is (contains? (set (map name (keys (ns-publics 'basilisp.java.shell)))) "sh")))
+  (is (= #{"*sh-dir*" "*sh-env*" "sh" "with-sh-dir" "with-sh-env"}
+         (set (map name (keys (ns-publics 'basilisp.java.shell))))))
+  (is (= {:exit 0 :out "alias-env" :err ""}
+         (shell/with-sh-env {"BASILISP_SHELL_ALIAS" "alias-env"}
+           (shell/sh sys/executable
+                     "-c"
+                     "import os; print(os.environ['BASILISP_SHELL_ALIAS'], end='')"))))
+  (is (= {:exit 0 :out "tests" :err ""}
+         (shell/with-sh-dir "tests"
+           (shell/sh sys/executable
+                     "-c"
+                     "import pathlib; print(pathlib.Path.cwd().name, end='')")))))

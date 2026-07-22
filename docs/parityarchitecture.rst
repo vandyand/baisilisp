@@ -762,8 +762,12 @@ Existing ``basilisp.io``, ``shell``, ``process``, ``reflect``, and ``url``
 namespaces are Python-native ports where their data contract is useful. Further
 work should extend those namespaces with standard-library values such as
 ``pathlib.Path``, ``subprocess.CompletedProcess``, ``urllib.parse`` results,
-and Python inspection data. ``basilisp.java.process`` is the deliberately narrow
-exception to the alias rule: its Clojure 1.12 process surface maps cleanly to
+and Python inspection data. ``basilisp.java.shell`` exposes the full
+``clojure.java.shell`` public surface, including ``*sh-dir*``, ``*sh-env*``,
+``with-sh-dir``, and ``with-sh-env``; its shared fixture locks result maps,
+stdin, environment override/binding, directory binding, byte output, and seeded
+commands. ``basilisp.java.process`` is the deliberately narrow exception to the
+alias rule: its Clojure 1.12 process surface maps cleanly to
 ``subprocess.Popen`` and is therefore available through the automatic
 ``clojure.java.process`` alias, with documented Python stream and Future values.
 The alias exports only Clojure's public names; Basilisp-only helpers such as

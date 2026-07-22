@@ -379,7 +379,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   boundary, but it does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell`` and is
-  available through that standard import path.
+  available through that standard import path. Its public alias surface,
+  result maps, stdin, environment and directory bindings, byte output, and
+  repeated command behavior are covered by shared Clojure/Basilisp fixtures.
 * :lpy:ns:`basilisp.spec.alpha` provides portable validation, conforming,
   first-class ``spec``/``conformer``/``nonconforming`` descriptors, map
   merging, ``every``/``every-kv``, sequence specs, and ``fspec``/``fdef``

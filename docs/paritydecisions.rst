@@ -515,7 +515,10 @@ printer output, expected/actual diagnostics, ``tap-report`` strings,
 ``with-tap-output`` binding, and seeded diagnostic maps. ``clojure.math`` is
 locked by category/identity fixtures for public surface, domain NaN/infinity
 handling, signed zero, rounding, exponent/navigation helpers, ordinary exact
-integer operations, and seeded algebraic identities. The next work is:
+integer operations, and seeded algebraic identities. ``clojure.java.shell`` is
+locked by shared fixtures for its full public surface, result maps, stdin,
+environment override/binding, directory binding, byte output, and seeded
+commands. The next work is:
 
 1. Expand the source-level acceptance corpus only when a candidate adds a new
    public portability pressure point. Keep reader conditionals limited to
