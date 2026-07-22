@@ -15,20 +15,36 @@
   (is (= [1 2] (into [] (r/take-while #(< % 3) [1 2 3 4]))))
   (is (= [2 3 4] (into [] ((r/map inc) [1 2 3])))))
 
-(deftest reducers-preserve-keyed-map-reduction-test
-  (is (= {:a 2 :b 3}
-         (r/reduce (fn [acc [key value]]
+(deftest reducers-map-reduction-test
+  (is (= {:a 1 :b 2}
+         (r/reduce (fn [acc key value]
                      (assoc acc key value))
                    {}
-                   (r/map (fn [k value]
-                            [k (inc value)])
-                          {:a 1 :b 2}))))
-  (is (= {:b 2}
+                   {:a 1 :b 2})))
+  (is (= [[:a 1] [:b 2]]
+         (r/reduce (fn [acc entry]
+                     (conj acc [(key entry) (val entry)]))
+                   []
+                   (r/map identity (sorted-map :a 1 :b 2)))))
+  (is (= [[:b 2]]
+         (r/reduce (fn [acc entry]
+                     (conj acc [(key entry) (val entry)]))
+                   []
+                   (r/filter #(= :b (key %))
+                             (sorted-map :a 1 :b 2)))))
+  (is (= {:a 1 :b 2}
          (r/reduce (fn [acc k value]
                      (assoc acc k value))
                    {}
-                   (r/filter (fn [k _value] (= :b k))
-                             {:a 1 :b 2})))))
+                   {:a 1 :b 2})))
+  (is (= {:a 1 :b 2}
+         (r/fold (fn
+                   ([] {})
+                   ([left right] (merge left right)))
+                 (fn
+                   ([] {})
+                   ([acc key value] (assoc acc key value)))
+                 {:a 1 :b 2}))))
 
 (deftest reducers-stop-early-test
   (let [calls (volatile! 0)

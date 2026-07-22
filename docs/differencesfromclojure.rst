@@ -373,7 +373,8 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.pprint` is a port of ``clojure.pprint``, including
   ``cl-format`` and Basilisp's first-class character values.
 * :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
-  of ``clojure.core.reducers``. It does not create a global parallel worker pool.
+  of ``clojure.core.reducers``. It preserves Clojure's map-reduction arity
+  boundary, but it does not create a global parallel worker pool.
 * :lpy:ns:`basilisp.set` is a port of ``clojure.set``
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell`` and is
   available through that standard import path.

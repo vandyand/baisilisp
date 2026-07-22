@@ -696,8 +696,11 @@ reduction protocols. ``basilisp.reducers`` now supplies the missing foldable
 abstraction without becoming a second general collection API: deterministic
 ``reducer``/``folder`` and ``fold``, plus ``map``, ``filter``, ``remove``,
 ``take``, ``drop``, ``mapcat``, ``flatten``, and ``cat``. It preserves
-``reduced`` short-circuiting, map key/value reduction, and the supplied
-combining function's zero-argument identity.
+``reduced`` short-circuiting, raw map key/value reduction, and the supplied
+combining function's zero-argument identity. The Clojure-compatible boundary is
+intentional: bare ``r/reduce`` and ``r/fold`` over maps use key/value reducing
+arity, while reducer/folder transformations consumed by serial reduction see
+ordinary map entries.
 
 Parallel folding is a separate, opt-in execution policy. Threads do not make
 CPU-bound Python reduction parallel under the GIL; process pools impose

@@ -204,9 +204,9 @@
 
 (defn- reducer-coll-reduce
   ([this f]
-   (reduce ((.-xf this) f) (f) (.-coll this)))
+   (core-protocols/coll-reduce (.-coll this) ((.-xf this) f) (f)))
   ([this f init]
-   (reduce ((.-xf this) f) init (.-coll this))))
+   (core-protocols/coll-reduce (.-coll this) ((.-xf this) f) init)))
 
 (defn- folder-coll-fold
   [this n combinef reducef]
