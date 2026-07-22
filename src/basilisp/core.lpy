@@ -8026,6 +8026,38 @@
   [x]
   (boolean (and (map? x) (:interface x))))
 
+(defn -cache-protocol-fn
+  "Return the cached implementation of a protocol dispatch method for ``x``.
+
+  This Python-hosted counterpart to Clojure's protocol cache helper accepts a
+  ``ProtocolDispatch`` method, its generated interface type, and the direct
+  interface implementation. It returns the direct implementation for protocol
+  implementors or the registered implementation for a dynamically extended
+  host type."
+  [pf x c interf]
+  (when-not (instance? basilisp.lang.runtime/ProtocolDispatch pf)
+    (throw (python/TypeError "-cache-protocol-fn requires a ProtocolDispatch method")))
+  (let [implementation (.resolve-cached pf x c interf)]
+    (if implementation
+      implementation
+      (throw (python/TypeError
+              (str "No implementation of protocol method found for type " (python/type x)))))))
+
+(defn -reset-methods
+  "Clear the cached dispatch resolutions for every method in ``protocol``.
+
+  Python's ``singledispatch`` invalidates this cache automatically after
+  registration, but this operation is available for Clojure-compatible
+  protocol-runtime tooling and explicit host type-graph refreshes."
+  [protocol]
+  (when-not (protocol? protocol)
+    (throw (python/TypeError "-reset-methods requires a protocol")))
+  (doseq [[_ dispatch] (:methods protocol)]
+    (when-not (instance? basilisp.lang.runtime/ProtocolDispatch dispatch)
+      (throw (python/TypeError "protocol has an invalid dispatch method")))
+    (.clear-cache dispatch))
+  nil)
+
 (defn extend
   "Extend a type dynamically with one or Protocol implementations. This is useful for
   types which were defined outside your control or which were not otherwise defined

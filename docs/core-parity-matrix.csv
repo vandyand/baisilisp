@@ -62,10 +62,10 @@ symbol,clojure_core,basilisp_core,status
 ->Vec,true,false,missing-in-basilisp
 ->VecNode,true,false,missing-in-basilisp
 ->VecSeq,true,false,missing-in-basilisp
--cache-protocol-fn,true,false,missing-in-basilisp
+-cache-protocol-fn,true,true,shared
 -collect-keyword-args,false,true,basilisp-extension
 -mangle-py-field,false,true,basilisp-extension
--reset-methods,true,false,missing-in-basilisp
+-reset-methods,true,true,shared
 ..,true,true,shared
 /,true,true,shared
 <,true,true,shared

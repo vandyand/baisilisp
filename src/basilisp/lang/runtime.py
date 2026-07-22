@@ -73,7 +73,7 @@ class ProtocolDispatch:
     which in turn take precedence over extensions registered for an external type.
     """
 
-    __slots__ = ("_dispatch", "_interface", "_metadata_key")
+    __slots__ = ("_dispatch", "_default", "_interface", "_metadata_key")
 
     def __init__(
         self,
@@ -81,6 +81,7 @@ class ProtocolDispatch:
         interface: type,
         metadata_key: sym.Symbol | None = None,
     ):
+        self._default = default
         self._dispatch = functools.singledispatch(default)
         self._interface = interface
         self._metadata_key = metadata_key
@@ -103,6 +104,35 @@ class ProtocolDispatch:
 
     def register(self, cls: type, func: Callable | None = None):
         return self._dispatch.register(cls, func)
+
+    def clear_cache(self) -> None:
+        """Discard cached type-to-method resolutions.
+
+        ``singledispatch`` already clears this cache when registering an
+        implementation. This explicit operation mirrors Clojure's protocol
+        method reset hook for callers that rebuild or mutate host type graphs.
+        """
+        self._dispatch._clear_cache()  # type: ignore[attr-defined]  # pylint: disable=protected-access
+
+    def resolve_cached(
+        self, obj: Any, interface: type, direct: Callable
+    ) -> Callable | None:
+        """Resolve the cached method for ``obj`` without invoking it.
+
+        This is the Python-hosted counterpart to Clojure's internal protocol
+        cache lookup. Direct implementors use ``direct``; dynamically extended
+        host types use ``singledispatch``'s cached resolution. ``None`` denotes
+        that no implementation was registered.
+        """
+        if not isinstance(interface, type):
+            raise TypeError("protocol interface must be a type")
+        if not callable(direct):
+            raise TypeError("direct protocol implementation must be callable")
+        if isinstance(obj, interface):
+            return direct
+
+        method = self._dispatch.dispatch(type(obj))
+        return None if method is self._default else method
 
 
 # Public constants

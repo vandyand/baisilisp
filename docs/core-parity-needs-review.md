@@ -1,7 +1,7 @@
 # Clojure Core Parity Classification
 
-This document classifies the 13 symbols reported missing by the refreshed
-`core_parity_matrix.py` run on 2026-07-21 (666 shared Vars and 59 Basilisp
+This document classifies the 11 symbols reported missing by the refreshed
+`core_parity_matrix.py` run on 2026-07-21 (668 shared Vars and 59 Basilisp
 extensions). The matrix is a raw public-var
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
@@ -114,6 +114,12 @@ One-shot iterators are consumed exactly once; reduction stops without reading
 past a direct ``reduced`` result. ``resultset-seq`` likewise projects a Python
 DB-API cursor lazily into fixed keyword-keyed struct maps, lower-cases labels,
 and rejects duplicate labels before it reads a row.
+``-cache-protocol-fn`` and ``-reset-methods`` now use Basilisp's real
+``singledispatch`` protocol backend: cache lookup selects the direct interface
+method or a registered host-type extension without invoking it, and reset
+clears every method-resolution cache in a protocol. Registration already
+invalidates those caches automatically; the public reset hook supports
+Clojure-compatible protocol tooling and explicit host type-graph refreshes.
 ``with-local-vars`` is also available with thread-local Var-cell semantics.
 
 ## Portable Implementation Targets
@@ -139,13 +145,11 @@ compatibility promise would be false.
 
 ### Clojure and JVM implementation internals
 
-`->Vec`, `->VecNode`, `->VecSeq`, `-cache-protocol-fn`, `-reset-methods`,
-`EMPTY-NODE`, and `primitives-classnames`.
+`->Vec`, `->VecNode`, `->VecSeq`, `EMPTY-NODE`, and `primitives-classnames`.
 
-These expose Clojure's chunked-sequence/vector implementation, Java exception
-and printing classes, proxy generation, primitive vector types, or compiler
-helpers. They are not stable portability APIs and do not have a direct Python
-counterpart.
+These expose Clojure's chunked-sequence/vector implementation and primitive
+vector helpers. They are not stable portability APIs and do not have a direct
+Python counterpart.
 
 ### Agents and software transactional memory
 `sync` is now available as Clojure-compatible transaction syntax:
