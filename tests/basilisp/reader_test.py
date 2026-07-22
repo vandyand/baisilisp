@@ -2281,9 +2281,72 @@ class TestDataReaders:
             )
         )
 
+    @pytest.mark.parametrize(
+        "code,expected",
+        [
+            (
+                '#inst "2024"',
+                datetime.datetime(2024, 1, 1, tzinfo=datetime.timezone.utc),
+            ),
+            (
+                '#inst "2024-02"',
+                datetime.datetime(2024, 2, 1, tzinfo=datetime.timezone.utc),
+            ),
+            (
+                '#inst "2024-02-03"',
+                datetime.datetime(2024, 2, 3, tzinfo=datetime.timezone.utc),
+            ),
+            (
+                '#inst "2024-02-03T04"',
+                datetime.datetime(2024, 2, 3, 4, tzinfo=datetime.timezone.utc),
+            ),
+            (
+                '#inst "2024-02-03T04:05"',
+                datetime.datetime(2024, 2, 3, 4, 5, tzinfo=datetime.timezone.utc),
+            ),
+            (
+                '#inst "2024-02-03T04:05:06.123456789123Z"',
+                datetime.datetime(
+                    2024,
+                    2,
+                    3,
+                    4,
+                    5,
+                    6,
+                    123456,
+                    tzinfo=datetime.timezone.utc,
+                ),
+            ),
+            (
+                '#inst "2024-02-03T04:05:06.7-07:30"',
+                datetime.datetime(
+                    2024,
+                    2,
+                    3,
+                    11,
+                    35,
+                    6,
+                    700000,
+                    tzinfo=datetime.timezone.utc,
+                ),
+            ),
+        ],
+    )
+    def test_inst_reader_accepts_clojure_partial_timestamp_grammar(
+        self, code: str, expected: datetime.datetime
+    ):
+        assert read_str_first(code) == expected
+
     def test_invalid_inst_reader_literal(self):
-        with pytest.raises(reader.SyntaxError):
-            read_str_first('#inst "I am a little teapot short and stout"')
+        for code in [
+            '#inst "I am a little teapot short and stout"',
+            '#inst "2024-99"',
+            '#inst "2023-02-29"',
+            '#inst "2024-01-01T00:00:60Z"',
+            '#inst "2024-01-01T00:59:60Z"',
+        ]:
+            with pytest.raises(reader.SyntaxError):
+                read_str_first(code)
 
     @pytest.mark.parametrize(
         "code,v",

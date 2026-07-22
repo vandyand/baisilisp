@@ -502,7 +502,7 @@ User-specified data reader symbols must include a namespace, but builtin data re
 
 Basilisp supports a few builtin data readers:
 
-* ``#inst "2018-09-14T15:11:20.253-00:00"`` yields a Python :external:py:class:`datetime.datetime` object.
+* ``#inst "2018-09-14T15:11:20.253-00:00"`` yields a Python :external:py:class:`datetime.datetime` object. The builtin reader accepts Clojure's partial timestamp grammar, so values such as ``#inst "2024"`` and ``#inst "2024-02-03T04:05"`` default omitted fields and normalize to UTC. Fractions finer than Python's microsecond precision are truncated; leap seconds are rejected.
 * ``#uuid "c3598794-20b4-48db-b76e-242f4405743f"`` yields a Python :external:py:class`uuid.UUID` object.
 
 One of the benefits of choosing Basilisp is convenient built-in Python language interop.

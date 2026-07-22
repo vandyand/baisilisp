@@ -70,6 +70,35 @@ def test_parse_timestamp_accepts_utc_and_truncates_long_fractions():
     )
 
 
+def test_parse_timestamp_is_grammar_only_for_calendar_fields():
+    assert instant.parse_timestamp(lambda *components: components, "2024-99") == (
+        2024,
+        99,
+        1,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+    )
+    assert instant.parse_timestamp(
+        lambda *components: components, "2024-01-01T00:59:60Z"
+    ) == (
+        2024,
+        1,
+        1,
+        0,
+        59,
+        60,
+        0,
+        0,
+        0,
+        0,
+    )
+
+
 @pytest.mark.parametrize(
     "value",
     ["", "2024-1", "2024-01-01T", "2024-01-01+01"],
@@ -89,3 +118,5 @@ def test_validated_rejects_invalid_calendar_values_and_read_instant_normalizes_u
     ) == datetime.datetime(2024, 2, 28, 22, 32, 3, 123456, tzinfo=datetime.timezone.utc)
     with pytest.raises(ValueError, match="second"):
         instant.read_instant("2024-01-01T00:00:60Z")
+    with pytest.raises(ValueError, match="second"):
+        instant.read_instant("2024-01-01T00:59:60Z")

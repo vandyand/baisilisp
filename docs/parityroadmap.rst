@@ -115,7 +115,8 @@ Near-term deliverable:
   lazy-realization behavior, macro expansion, exception data, shared-core edge
   semantics, ``seque``, deterministic Agent/Ref transactions, a seeded
   pseudo-random Ref operation corpus with validator aborts, loop closure
-  capture across ``recur`` iterations and lazy realization after loop exit, and
+  capture across ``recur`` iterations and lazy realization after loop exit,
+  ``instant`` timestamp parsing and ``#inst`` reader behavior, and
   ``clojure.test`` assertion, reporting, custom-assertion, and fixture effects.
   It also includes a deliberately string-rendered ``pprint`` fixture for
   portable pretty-printing contracts where the rendered text is the public

@@ -347,7 +347,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
 * :lpy:ns:`basilisp.instant` provides the portable timestamp parser from
   ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`
-  values rather than Java date, calendar, or timestamp classes.
+  values rather than Java date, calendar, or timestamp classes. The ``#inst``
+  reader accepts Clojure's partial timestamp grammar and normalizes offsets to
+  UTC, but rejects leap seconds because Python has no native leap-second
+  datetime value.
 * :lpy:ns:`basilisp.io` is a port of ``clojure.java.io`` and is available
   through that standard import path. Its ``file`` and ``as-file`` entry points
   map to Python :class:`pathlib.Path` values, ``as-relative-path`` rejects

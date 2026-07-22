@@ -668,20 +668,21 @@ implementation would contain.
 ``instant``
 ~~~~~~~~~~~
 
-Add a Python-native ``basilisp.instant`` namespace, rather than aliases for
-``java.util.Date``, ``Calendar``, or ``java.sql.Timestamp``. Its core should be
-``parse-timestamp`` with Clojure's documented partial-timestamp grammar: a year
-is required, trailing date/time components are optional, and a missing offset
-means UTC. The parser must pass the ten integer components (year through offset
-minutes) to a caller-supplied constructor, making the grammar independently
-testable. ``read-instant`` should construct an aware Python
+``basilisp.instant`` is a Python-native namespace, not an alias for
+``java.util.Date``, ``Calendar``, or ``java.sql.Timestamp``. Its core
+``parse-timestamp`` implements Clojure's documented partial-timestamp grammar:
+a year is required, trailing date/time components are optional, and a missing
+offset means UTC. The parser passes the ten integer components (year through
+offset minutes) to a caller-supplied constructor, making the grammar
+independently testable. ``read-instant`` constructs an aware Python
 ``datetime.datetime`` normalized to UTC.
 
-The public contract must state Python's microsecond precision and reject leap
-seconds rather than silently rounding them. The ``#inst`` reader is a separate
-compatibility choice: changing its current ``datetime.fromisoformat`` behavior
-could break existing source, so it should move to the shared parser only after
-fixtures cover both accepted inputs and error translation. ``read-instant-date``,
+The ``#inst`` reader now uses the same parser, so partial timestamps, offsets,
+and long fractional seconds follow the shared Clojure/Basilisp fixture. Python
+datetimes retain microsecond precision, so fractions finer than six decimal
+places are truncated after parsing nanosecond components. Leap seconds remain
+rejected rather than silently normalized because Python has no representable
+leap-second ``datetime`` value. ``read-instant-date``,
 ``read-instant-calendar``, and ``read-instant-timestamp`` remain JVM-only
 names. ``datetime``, ``zoneinfo``, and the standard library are sufficient;
 ``python-dateutil`` would broaden parsing behavior beyond Clojure's grammar and

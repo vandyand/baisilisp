@@ -22,6 +22,7 @@ import attr
 from typing_extensions import Unpack
 
 from basilisp.lang import character as char
+from basilisp.lang import instant as langinstant
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
@@ -360,7 +361,7 @@ def _py_list_from_vec(form: vec.PersistentVector) -> list:
 
 def _inst_from_str(inst_str: str) -> datetime:
     try:
-        return langutil.inst_from_str(inst_str)
+        return langinstant.read_instant(inst_str)
     except (ValueError, OverflowError) as e:
         raise SyntaxError(f"Unrecognized date/time syntax: {inst_str}") from e
 
