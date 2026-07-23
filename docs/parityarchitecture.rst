@@ -739,6 +739,15 @@ and Log4j factory selectors return ``nil``. The only remaining root-surface
 delta is an upstream generated proxy class Var, which is a JVM implementation
 artifact rather than a portable logging API.
 
+The standard namespace surface audit is now executable rather than prose-only.
+``scripts/standard_namespace_surface_matrix.py`` runs each configured
+Clojure/Basilisp namespace pair in one process per runtime, emits a CSV matrix,
+and fails when a Clojure public Var is missing from Basilisp without an explicit
+classification. The audit intentionally reports Basilisp extensions separately
+instead of treating them as parity failures, because many are documented
+Python-hosted additions. Its current classified missing item is the generated
+``clojure.tools.logging`` proxy class Var.
+
 ``datafy``
 ~~~~~~~~~~
 
@@ -993,6 +1002,15 @@ Clojure. Exact ``mexpand-all`` output for macros such as ``for`` remains a
 compiler-host boundary: Clojure prints JVM lazy-seq internals and generated
 symbols, while Basilisp may preserve source-shaped forms to avoid recursively
 rewriting compiler-generated ``recur`` state machines outside analyzer scope.
+
+Namespace loading must also remain order independent. Python assigns an
+imported submodule to its parent module attribute, so importing
+``basilisp.core.memoize`` can otherwise overwrite the parent module's
+``memoize`` global used for direct linking to ``basilisp.core/memoize``. The
+runtime require path restores an existing parent namespace Var or refer after a
+child namespace import; the child module remains importable by its full
+``sys.modules`` name, but direct-linked parent Vars keep their Clojure
+namespace meaning.
 
 Library Portability
 ^^^^^^^^^^^^^^^^^^^

@@ -301,6 +301,13 @@ Near-term deliverable:
   corpora, auxiliary rose-tree helpers, ``big-ratio`` and
   ``lazy-random-states``, and the portable ``clojure-test`` option/reporting
   surface.
+* **Completed locally:** lock the broader standard namespace public-surface
+  audit across already-ported namespaces. ``scripts/standard_namespace_surface_matrix.py``
+  compares each configured Clojure/Basilisp namespace pair in one process per
+  runtime, includes the contrib dependencies needed for the audited surface,
+  and fails on any unclassified missing Basilisp public Var. The only classified
+  missing symbol is ``clojure.tools.logging``'s generated JVM proxy class Var;
+  Basilisp extensions remain reported but non-failing.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -326,6 +333,10 @@ Completed locally:
 * clojure-test-suite residual classification guardrails: every excluded external
   core test file is assigned to an explicit stale-expectation cluster and backed
   by a local conformance fixture before CI can ignore it
+* namespace import-order stability: requiring a child namespace such as
+  ``basilisp.core.memoize`` no longer lets Python's parent-module submodule
+  assignment overwrite an existing parent namespace Var such as
+  ``basilisp.core/memoize`` used by direct-linked code
 
 Near-term deliverable:
 

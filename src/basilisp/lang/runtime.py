@@ -610,6 +610,27 @@ VarMap = lmap.PersistentMap[sym.Symbol, Var]
 _PRIVATE_NAME_PATTERN = re.compile(r"(_\w*|__\w+__)")
 
 
+def _restore_parent_namespace_member(ns_name: str) -> None:
+    """Restore a parent namespace Var hidden by Python submodule assignment.
+
+    Python import semantics assign ``parent.child`` to the imported child module
+    after a successful ``import parent.child``. Basilisp namespace modules also
+    use module globals for direct-linked Vars, so importing ``basilisp.core.foo``
+    must not replace an existing ``basilisp.core/foo`` global with the child
+    module object.
+    """
+
+    if "." not in ns_name:
+        return
+    parent_name, child_name = ns_name.rsplit(".", 1)
+    parent_ns = Namespace.get(sym.symbol(parent_name))
+    if parent_ns is None:
+        return
+    existing_var = parent_ns.find(sym.symbol(child_name))
+    if existing_var is not None:
+        setattr(parent_ns.module, munge(child_name), existing_var.value)
+
+
 class Namespace(ReferenceBase):
     """Namespaces serve as organizational units in Basilisp code, just as they do in
     Clojure code.
@@ -846,6 +867,8 @@ class Namespace(ReferenceBase):
                 raise ImportError(
                     f"Basilisp namespace '{ns_name}' not found",
                 ) from e
+        else:
+            _restore_parent_namespace_member(ns_name)
 
         assert isinstance(ns_module, BasilispModule)
         ns_sym = sym.symbol(ns_name)
