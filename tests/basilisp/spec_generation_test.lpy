@@ -9,11 +9,23 @@
 (def age-key :tests.spec-generation/age)
 (def name-key :tests.spec-generation/name)
 (def person-key :tests.spec-generation/person)
+(def tree-key :tests.spec-generation/tree)
+(def mutual-a-key :tests.spec-generation/mutual-a)
+(def mutual-b-key :tests.spec-generation/mutual-b)
 
 (s/def age-key
        (s/with-gen (s/and int? #(<= 0 % 130)) #(sgen/choose 0 130)))
 (s/def name-key string?)
 (s/def person-key (s/keys :req [age-key name-key]))
+(s/def tree-key (s/or :leaf int?
+                      :node (s/coll-of tree-key
+                                       :kind vector?
+                                       :max-count 3)))
+(s/def mutual-a-key (s/or :leaf int?
+                          :node mutual-b-key))
+(s/def mutual-b-key (s/coll-of mutual-a-key
+                               :kind vector?
+                               :max-count 2))
 
 (defn add-two [x y] (+ x y))
 (s/fdef add-two :args (s/cat :x int? :y int?) :ret int?)
@@ -99,3 +111,23 @@
                            [uri? uri?]]]
     (let [values (map #(sgen/generate (s/gen spec) 12 %) (range 90))]
       (is (every? predicate values)))))
+
+(defn tree-depth [x]
+  (if (vector? x)
+    (inc (reduce max 0 (map tree-depth x)))
+    0))
+
+(deftest recursive-keyword-specs-generate-bounded-valid-values
+  (let [tree-values (sgen/sample (s/gen tree-key) 120)
+        mutual-values (sgen/sample (s/gen mutual-a-key) 120)]
+    (is (every? #(s/valid? tree-key %) tree-values))
+    (is (every? #(s/valid? mutual-a-key %) mutual-values))
+    (is (some vector? tree-values))
+    (is (some vector? mutual-values))
+    (is (<= (reduce max 0 (map tree-depth tree-values)) 12))
+    (is (<= (reduce max 0 (map tree-depth mutual-values)) 12))))
+
+(deftest recursive-specs-without-base-branch-fail-clearly
+  (let [loop-key :tests.spec-generation/no-base-loop]
+    (s/def loop-key (s/coll-of loop-key :kind vector? :min-count 1 :max-count 2))
+    (is (thrown? Exception (sgen/generate (s/gen loop-key) 1 99)))))

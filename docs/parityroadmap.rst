@@ -192,13 +192,18 @@ Near-term deliverable:
   surface gaps. Shared fixtures now cover protocol/helper names, registry and
   explain-data entrypoints, regex implementation helpers, and portable
   ``spec.test.alpha`` summary/symbol helpers. Remaining spec work is semantic
-  depth for recursive generators, function-value generation, and explicit
-  Python model adapters, not missing public names.
+  depth for generation edge cases, function-value generation, richer
+  ``multi-spec`` generation, and explicit Python model adapters, not missing
+  public names.
 * **Completed locally:** deepen ``clojure.spec.alpha/keys`` semantics for
   ``:req-un``/``:opt-un`` and implement ``keys*`` as an alternating
   keyword/value regex spec. Shared fixtures now lock unqualified-key
   conformance, explain paths, forms/descriptions, generation shape, unforming,
   and ``keys*`` inside ``cat``.
+* **Completed locally:** support bounded generation for recursively-defined
+  keyword specs with a nonrecursive base branch. Shared fixtures now lock
+  self-recursive and mutually-recursive generation as terminating, conforming,
+  branch-producing, bounded-depth behavior.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

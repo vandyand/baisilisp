@@ -615,9 +615,12 @@ as ``Spec``, ``Specize``, ``conform*``, ``explain-data*``, ``specize*``,
 ``registry``, and the ``*-impl`` constructors are available as compatibility
 entrypoints backed by the descriptor engine. ``spec.test.alpha`` exposes
 ``->sym``, namespace enumeration, summary, and instrumentability helper names
-without claiming JVM classpath-wide instrumentation. Deeper semantic parity for
-recursive generators, arbitrary function values, and Python model adapters
-remains a design task rather than a surface-name task.
+without claiming JVM classpath-wide instrumentation. The generator now handles
+recursively-defined keyword specs when a nonrecursive base branch is available,
+using size-bounded recursion and falling back to base branches at small sizes.
+Recursive specs with no base branch, arbitrary function values, richer
+``multi-spec`` generation, and Python model adapters remain design tasks rather
+than surface-name tasks.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for

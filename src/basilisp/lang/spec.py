@@ -811,6 +811,237 @@ def _resolve_test_check_generator(source: Any) -> Any:
     return generator
 
 
+def _recursive_reference_generator(
+    spec: kw.Keyword,
+    resolved: Any,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+
+    def build(size: int) -> Any:
+        if size <= 1:
+            return _base_generator_for_value(resolved, overrides, path, frozenset({spec}))
+        return impl.resize(
+            max(0, size // 2), _generator_for_value(resolved, overrides, path, seen)
+        )
+
+    return impl.sized(build)
+
+
+def _base_generator_for_value(
+    spec: Any,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    blocked: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    overridden = _generator_override(spec, overrides, path)
+    if overridden is not None:
+        return overridden
+    if isinstance(spec, _WithGen):
+        return _resolve_test_check_generator(spec.generator)
+    if isinstance(spec, _PredicateSpec):
+        return _base_generator_for_value(spec.predicate, overrides, path, blocked)
+    if isinstance(spec, _Nonconforming):
+        return _base_generator_for_value(spec.spec, overrides, path, blocked)
+    if isinstance(spec, _Conformer):
+        raise TypeError("cannot generate values for conformer; wrap it with with-gen")
+    if isinstance(spec, kw.Keyword):
+        if spec in blocked:
+            raise TypeError(
+                "cannot generate recursively-defined specs without a nonrecursive branch"
+            )
+        resolved = get_spec(spec)
+        if resolved is None:
+            raise TypeError(f"cannot generate values for undefined spec {spec}")
+        return _base_generator_for_value(
+            resolved, overrides, (*path, spec), blocked | {spec}
+        )
+    if isinstance(spec, _And):
+        for child in spec.specs:
+            try:
+                candidate = _base_generator_for_value(child, overrides, path, blocked)
+                return impl.such_that(
+                    lambda value: valid(spec, value), candidate, {"max-tries": 100}
+                )
+            except TypeError:
+                continue
+        raise TypeError(
+            "cannot generate values for s/and without a generatable child"
+        )
+    if isinstance(spec, _Or):
+        generators = []
+        for tag, child in spec.branches:
+            try:
+                generators.append(
+                    _base_generator_for_value(child, overrides, (*path, tag), blocked)
+                )
+            except TypeError:
+                continue
+        if generators:
+            return impl.one_of(generators)
+        raise TypeError(
+            "cannot generate recursively-defined specs without a nonrecursive branch"
+        )
+    if isinstance(spec, _Nilable):
+        try:
+            child = _base_generator_for_value(spec.spec, overrides, path, blocked)
+        except TypeError:
+            return impl.return_(None)
+        return impl.one_of((impl.return_(None), child))
+    if isinstance(spec, _CollOf):
+        try:
+            child = _base_generator_for_value(spec.spec, overrides, path, blocked)
+        except TypeError:
+            if spec.count not in (None, 0) or (
+                spec.min_count is not None and spec.min_count > 0
+            ):
+                raise
+            return _collection_generator_for_kind(impl.return_(vec.EMPTY), spec.kind)
+        lower = spec.count if spec.count is not None else spec.min_count
+        upper = spec.count if spec.count is not None else min(spec.max_count or 0, 0)
+        return _collection_generator_for_kind(impl.vector(child, lower, upper), spec.kind)
+    if isinstance(spec, _MapOf):
+        return impl.map_gen(
+            _base_generator_for_value(spec.key_spec, overrides, path, blocked),
+            _base_generator_for_value(spec.value_spec, overrides, path, blocked),
+        )
+    if isinstance(spec, _Keys):
+        return _base_keys_generator(spec, overrides, path, blocked)
+    if isinstance(spec, _KeysStar):
+        return impl.fmap(
+            _map_to_key_value_vector,
+            _base_keys_generator(spec.map_spec, overrides, path, blocked),
+        )
+    if isinstance(spec, _Tuple):
+        return impl.tuple_gen(
+            *(
+                _base_generator_for_value(child, overrides, (*path, index), blocked)
+                for index, child in enumerate(spec.specs)
+            )
+        )
+    if isinstance(spec, _Regex):
+        return _base_regex_generator(spec, overrides, path, blocked)
+    if isinstance(spec, _FSpec):
+        raise TypeError("cannot generate function values for fspec; use with-gen")
+    if isinstance(spec, _MultiSpec):
+        raise TypeError(
+            "cannot generate multi-spec values without an explicit with-gen"
+        )
+    return _generator_for_predicate(spec)
+
+
+def _base_keys_generator(
+    spec: _Keys,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    blocked: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    required = tuple(
+        (
+            data_key,
+            _base_generator_for_value(spec_key, overrides, (*path, data_key), blocked),
+        )
+        for data_key, spec_key in spec.required
+    )
+    optional = []
+    for data_key, spec_key in spec.optional:
+        try:
+            optional.append(
+                (
+                    data_key,
+                    _base_generator_for_value(
+                        spec_key, overrides, (*path, data_key), blocked
+                    ),
+                )
+            )
+        except TypeError:
+            continue
+    parts = [generator for _key, generator in required]
+    parts.extend(
+        impl.tuple_gen(impl.boolean, generator) for _key, generator in optional
+    )
+    if not parts:
+        return impl.return_(lmap.map({}))
+
+    def build(values: Sequence[Any]) -> IPersistentMap:
+        result = {
+            key: values[index] for index, (key, _generator) in enumerate(required)
+        }
+        offset = len(required)
+        for index, (key, _generator) in enumerate(optional):
+            present, value = values[offset + index]
+            if present:
+                result[key] = value
+        return lmap.map(result)
+
+    return impl.fmap(build, impl.tuple_gen(*parts))
+
+
+def _base_regex_generator(
+    spec: Any,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    blocked: frozenset[kw.Keyword],
+) -> Any:
+    impl = _test_check_impl()
+    if isinstance(spec, _WithGen):
+        return _resolve_test_check_generator(spec.generator)
+    if isinstance(spec, kw.Keyword):
+        return _base_generator_for_value(spec, overrides, path, blocked)
+    if isinstance(spec, _Cat):
+        return impl.fmap(
+            lambda values: vec.v(*_flatten_generated_values(values)),
+            impl.tuple_gen(
+                *(
+                    _base_regex_generator(child, overrides, (*path, tag), blocked)
+                    for tag, child in spec.branches
+                )
+            ),
+        )
+    if isinstance(spec, _Alt):
+        generators = []
+        for tag, child in spec.branches:
+            try:
+                generators.append(
+                    _base_regex_generator(child, overrides, (*path, tag), blocked)
+                )
+            except TypeError:
+                continue
+        if generators:
+            return impl.one_of(generators)
+        raise TypeError(
+            "cannot generate recursively-defined regex specs without a nonrecursive branch"
+        )
+    if isinstance(spec, _Repeat):
+        if spec.minimum == 0:
+            return impl.return_(vec.EMPTY)
+        generated = _base_regex_generator(spec.spec, overrides, path, blocked)
+        return impl.fmap(
+            lambda values: vec.v(*_flatten_generated_values(values)),
+            impl.vector(generated, spec.minimum, spec.minimum),
+        )
+    if isinstance(spec, _Maybe):
+        return impl.return_(vec.EMPTY)
+    if isinstance(spec, _KeysStar):
+        return impl.fmap(
+            _map_to_key_value_vector,
+            _base_keys_generator(spec.map_spec, overrides, path, blocked),
+        )
+    if isinstance(spec, _Amp):
+        generated = _base_regex_generator(spec.spec, overrides, path, blocked)
+        return impl.such_that(
+            lambda value: valid(spec, value), generated, {"max-tries": 100}
+        )
+    return impl.fmap(
+        lambda value: vec.v(value),
+        _base_generator_for_value(spec, overrides, path, blocked),
+    )
+
+
 def _generator_for_value(
     spec: Any,
     overrides: Mapping[Any, Any],
@@ -840,13 +1071,13 @@ def _generator_for_value(
     if isinstance(spec, _Conformer):
         raise TypeError("cannot generate values for conformer; wrap it with with-gen")
     if isinstance(spec, kw.Keyword):
-        if spec in seen:
-            raise TypeError(
-                "cannot generate recursively-defined specs without an explicit with-gen"
-            )
         resolved = get_spec(spec)
         if resolved is None:
             raise TypeError(f"cannot generate values for undefined spec {spec}")
+        if spec in seen:
+            return _recursive_reference_generator(
+                spec, resolved, overrides, (*path, spec), seen
+            )
         return _generator_for_value(resolved, overrides, (*path, spec), seen | {spec})
     if isinstance(spec, _And):
         errors: list[TypeError] = []

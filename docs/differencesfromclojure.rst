@@ -427,8 +427,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   primitive constructors and built-in predicate generators. ``s/gen``,
   ``s/exercise``, and ``s/exercise-fn`` generate portable predicate,
   collection, map, key, tuple, regex, and explicit ``with-gen`` descriptors.
-  Recursive, ``multi-spec``, and function-value generation still require an
-  explicit ``with-gen`` strategy.
+  Recursively-defined keyword specs with a nonrecursive base branch generate
+  bounded recursive values. Recursive specs without a base branch,
+  ``multi-spec``, and function-value generation still require an explicit
+  ``with-gen`` strategy.
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``. It exposes
   the standard public stacktrace helpers while formatting Python traceback
   frames rather than JVM ``StackTraceElement`` values.
