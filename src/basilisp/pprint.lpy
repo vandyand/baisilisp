@@ -1506,19 +1506,21 @@ http://www.lispworks.com/documentation/HyperSpec/Body/22_c.htm
   "Return val as a python/str in the given base"
   [base val]
   (let [val (if (decimal? val) (int val) val)]
-    (if (zero? val)
-    "0"
-    (let [xlated-val (cond
-                       (float? val) (bigdec val)
-                       (ratio? val) (let [^fractions/Fraction r val]
-                                      (/ (numerator r) (denominator r)))
-                       :else val)]
-      (apply str
-             (map
-              #(python/chr (if (< % 10)
-                             (+ (python/ord "0") %)
-                             (+ (python/ord "a") (- % 10))))
-              (remainders base val)))))))
+    (cond
+      (zero? val) "0"
+      (neg? val) (str "-" (base-str base (- val)))
+      :else
+      (let [xlated-val (cond
+                         (float? val) (bigdec val)
+                         (ratio? val) (let [^fractions/Fraction r val]
+                                        (/ (numerator r) (denominator r)))
+                         :else val)]
+        (apply str
+               (map
+                #(python/chr (if (< % 10)
+                               (+ (python/ord "0") %)
+                               (+ (python/ord "a") (- % 10))))
+                (remainders base val)))))))
 
 (def ^{:private true}
      java-base-formats {8 "%o", 10 "%d", 16 "%x"})
@@ -1957,7 +1959,6 @@ python/str, or one python/str longer."
     x))
 
 ;; the function to render ~F directives
-;; TODO: support rationals. Back off to ~D/~A is the appropriate cases
 (defn- fixed-float [params navigator offsets]
   (let [w (:w params)
         d (:d params)
@@ -2004,7 +2005,6 @@ python/str, or one python/str longer."
 
 
 ;; the function to render ~E directives
-;; TODO: support rationals. Back off to ~D/~A is the appropriate cases
 ;; TODO: define ~E representation for Infinity
 (defn- exponential-float [params navigator offsets]
   (let [[arg navigator] (next-arg navigator)
@@ -2078,7 +2078,6 @@ python/str, or one python/str longer."
 ;; the function to render ~G directives
 ;; This just figures out whether to pass the request off to ~F or ~E based
 ;; on the algorithm in CLtL.
-;; TODO: support rationals. Back off to ~D/~A is the appropriate cases
 ;; TODO: refactor so that float-parts isn't called twice
 (defn- general-float [params navigator offsets]
   (let [[arg _] (next-arg navigator)
@@ -2102,10 +2101,9 @@ python/str, or one python/str longer."
       (exponential-float params navigator offsets))))
 
 ;; the function to render ~$ directives
-;; TODO: support rationals. Back off to ~D/~A is the appropriate cases
 (defn- dollar-float [params navigator offsets]
   (let [[arg navigator] (next-arg navigator)
-        [mantissa exp] (float-parts (abs arg))
+        [mantissa exp] (float-parts (convert-ratio (abs arg)))
         d (:d params) ; digits after the decimal
         n (:n params) ; minimum digits before the decimal
         w (:w params) ; minimum field width

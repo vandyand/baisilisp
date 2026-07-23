@@ -87,6 +87,19 @@
             :plural (pprint/cl-format nil "~D file~:P copied" 2)
             :fresh-line (normalize-newlines (pprint/cl-format nil "a~&b~%c"))})
 
+(emit-case :cl-format-ratio-numeric-directives
+           (let [formats ["~D" "~10D"
+                          "~,2F" "~10,2F"
+                          "~,3E" "~12,3E"
+                          "~,3G" "~12,3G"
+                          "~$" "~10,2$"]
+                 values [1/2 -3/2 22/7 1/10]]
+             (mapv (fn [fmt]
+                     (mapv (fn [value]
+                             [fmt value (pprint/cl-format nil fmt value)])
+                           values))
+                   formats)))
+
 (emit-case :formatter-functions
            (let [to-string (pprint/formatter "x=~D")
                  to-out (pprint/formatter-out "y=~A")]

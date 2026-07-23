@@ -133,6 +133,22 @@
   (is (= "12.5" (pprint/cl-format nil "~D" (decimal/Decimal "12.5"))))
   (is (= "12.50" (pprint/cl-format nil "~,2F" (decimal/Decimal "12.5")))))
 
+(deftest cl-format-ratio-numeric-directive-test
+  (doseq [[format argument expected]
+          [["~D" 1/2 "1/2"]
+           ["~D" -3/2 "-3/2"]
+           ["~10D" -3/2 "      -3/2"]
+           ["~,2F" 22/7 "3.14"]
+           ["~10,2F" -3/2 "     -1.50"]
+           ["~,3E" 1/10 "1.000E-1"]
+           ["~12,3E" 22/7 "    3.143E+0"]
+           ["~,3G" 1/2 "0.500    "]
+           ["~12,3G" -3/2 "   -1.50    "]
+           ["~$" 1/2 "0.50"]
+           ["~$" -3/2 "-1.50"]
+           ["~10,2$" 22/7 "03.1428571429"]]]
+    (is (= expected (pprint/cl-format nil format argument)) format)))
+
 (deftest cl-format-float-parameter-coercion-stress-test
   (doseq [precision (range 0 8)
           value [-999.999 -12.5 -0.099 0.0 0.099 12.5 999.999]
