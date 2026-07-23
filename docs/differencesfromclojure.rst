@@ -414,7 +414,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   public ``clojure.spec.alpha`` surface is available, including the documented
   dynamic Vars, protocol/helper names, implementation-constructor helpers, and
   registry/explain printer entrypoints; those helpers delegate to Basilisp's
-  portable descriptor engine rather than JVM spec internals. Its opt-in
+  portable descriptor engine rather than JVM spec internals. ``s/keys`` supports
+  Clojure's qualified and unqualified key modes (``:req``, ``:opt``,
+  ``:req-un``, and ``:opt-un``), and ``s/keys*`` validates alternating
+  keyword/value regex sequences before conforming them to maps. Its opt-in
   :lpy:ns:`basilisp.spec.test.alpha` public surface now matches
   ``clojure.spec.test.alpha``. Instrumentation validates calls through Basilisp
   Vars only and offers Hypothesis-backed checking for known portable descriptor

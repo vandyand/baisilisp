@@ -130,8 +130,13 @@ class _MapOf(_Spec):
 
 @dataclass(frozen=True)
 class _Keys(_Spec):
-    required: tuple[kw.Keyword, ...]
-    optional: tuple[kw.Keyword, ...]
+    required: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+    optional: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+
+
+@dataclass(frozen=True)
+class _KeysStar(_Regex):
+    map_spec: _Keys
 
 
 @dataclass(frozen=True)
@@ -611,8 +616,14 @@ def _strategy_for_value(spec: Any) -> Any:
             max_size=8,
         )
     if isinstance(spec, _Keys):
-        required = {key: _strategy_for_registered_keyword(key) for key in spec.required}
-        optional = {key: _strategy_for_registered_keyword(key) for key in spec.optional}
+        required = {
+            data_key: _strategy_for_registered_keyword(spec_key)
+            for data_key, spec_key in spec.required
+        }
+        optional = {
+            data_key: _strategy_for_registered_keyword(spec_key)
+            for data_key, spec_key in spec.optional
+        }
         return strategies.fixed_dictionaries(required, optional=optional)
     if isinstance(spec, IPersistentSet) or isinstance(spec, (set, frozenset)):
         values = tuple(spec)
@@ -674,6 +685,40 @@ def _merge_maps(values: Iterable[Any]) -> IPersistentMap:
             raise TypeError("merge specs must conform to maps")
         result.update(value)
     return lmap.map(result)
+
+
+def _qualified_pairs(
+    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+) -> tuple[kw.Keyword, ...]:
+    return tuple(spec_key for data_key, spec_key in pairs if data_key == spec_key)
+
+
+def _unqualified_pairs(
+    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+) -> tuple[kw.Keyword, ...]:
+    return tuple(spec_key for data_key, spec_key in pairs if data_key != spec_key)
+
+
+def _keys_form(spec_: _Keys, *, qualified: bool) -> Any:
+    name = (
+        sym.symbol("keys", ns="clojure.spec.alpha")
+        if qualified
+        else sym.symbol("keys")
+    )
+    parts: list[Any] = [name]
+    req = _qualified_pairs(spec_.required)
+    req_un = _unqualified_pairs(spec_.required)
+    opt = _qualified_pairs(spec_.optional)
+    opt_un = _unqualified_pairs(spec_.optional)
+    if req:
+        parts.extend((kw.keyword("req"), vec.v(*req)))
+    if req_un:
+        parts.extend((kw.keyword("req-un"), vec.v(*req_un)))
+    if opt:
+        parts.extend((kw.keyword("opt"), vec.v(*opt)))
+    if opt_un:
+        parts.extend((kw.keyword("opt-un"), vec.v(*opt_un)))
+    return llist.l(*parts)
 
 
 # ``s/gen`` uses Basilisp's portable test.check implementation, rather than
@@ -846,6 +891,11 @@ def _generator_for_value(
         )
     if isinstance(spec, _Keys):
         return _keys_generator(spec, overrides, path, seen)
+    if isinstance(spec, _KeysStar):
+        return impl.fmap(
+            _map_to_key_value_vector,
+            _keys_generator(spec.map_spec, overrides, path, seen),
+        )
     if isinstance(spec, _Tuple):
         return impl.tuple_gen(
             *(
@@ -883,12 +933,18 @@ def _keys_generator(
 ) -> Any:
     impl = _test_check_impl()
     required = tuple(
-        (key, _generator_for_value(key, overrides, (*path, key), seen))
-        for key in spec.required
+        (
+            data_key,
+            _generator_for_value(spec_key, overrides, (*path, data_key), seen),
+        )
+        for data_key, spec_key in spec.required
     )
     optional = tuple(
-        (key, _generator_for_value(key, overrides, (*path, key), seen))
-        for key in spec.optional
+        (
+            data_key,
+            _generator_for_value(spec_key, overrides, (*path, data_key), seen),
+        )
+        for data_key, spec_key in spec.optional
     )
     parts = [generator for _key, generator in required]
     parts.extend(
@@ -909,6 +965,13 @@ def _keys_generator(
         return lmap.map(result)
 
     return impl.fmap(build, impl.tuple_gen(*parts))
+
+
+def _map_to_key_value_vector(value: Mapping[Any, Any]) -> vec.PersistentVector:
+    items: list[Any] = []
+    for key, item in value.items():
+        items.extend((key, item))
+    return vec.v(*items)
 
 
 def _regex_generator(
@@ -956,6 +1019,11 @@ def _regex_generator(
                 impl.return_(vec.EMPTY),
                 _regex_generator(spec.spec, overrides, path, seen),
             )
+        )
+    if isinstance(spec, _KeysStar):
+        return impl.fmap(
+            _map_to_key_value_vector,
+            _keys_generator(spec.map_spec, overrides, path, seen),
         )
     if isinstance(spec, _Amp):
         generated = _regex_generator(spec.spec, overrides, path, seen)
@@ -1296,7 +1364,7 @@ def form(spec_: Any) -> Any:
             sym.symbol("map-of"), form(spec_.key_spec), form(spec_.value_spec)
         )
     if isinstance(spec_, _Keys):
-        return llist.l(sym.symbol("keys"))
+        return _keys_form(spec_, qualified=True)
     if isinstance(spec_, _Tuple):
         return llist.l(sym.symbol("tuple"), *(form(child) for child in spec_.specs))
     return spec_
@@ -1304,6 +1372,8 @@ def form(spec_: Any) -> Any:
 
 def describe(spec_: Any) -> Any:
     """Return a compact data description of a portable spec descriptor."""
+    if isinstance(spec_, _Keys):
+        return _keys_form(spec_, qualified=False)
     return form(spec_)
 
 
@@ -1385,10 +1455,54 @@ def map_of(key_spec: Any, value_spec: Any) -> _MapOf:
     return _MapOf(key_spec, value_spec)
 
 
+def _as_keyword(value: Any, label: str) -> kw.Keyword:
+    if not isinstance(value, kw.Keyword):
+        raise TypeError(f"{label} entries must be keywords")
+    return value
+
+
+def _unqualified_key(value: kw.Keyword) -> kw.Keyword:
+    return kw.keyword(value.name)
+
+
+def _key_specs(
+    values: Iterable[kw.Keyword], *, unqualified: bool = False
+) -> tuple[tuple[kw.Keyword, kw.Keyword], ...]:
+    pairs: list[tuple[kw.Keyword, kw.Keyword]] = []
+    for value in values:
+        spec_key = _as_keyword(value, "keys")
+        data_key = _unqualified_key(spec_key) if unqualified else spec_key
+        pairs.append((data_key, spec_key))
+    return tuple(pairs)
+
+
 def keys(
-    required: Iterable[kw.Keyword] = (), optional: Iterable[kw.Keyword] = ()
+    required: Iterable[kw.Keyword] = (),
+    optional: Iterable[kw.Keyword] = (),
+    required_unqualified: Iterable[kw.Keyword] = (),
+    optional_unqualified: Iterable[kw.Keyword] = (),
 ) -> _Keys:
-    return _Keys(tuple(required), tuple(optional))
+    return _Keys(
+        (
+            *_key_specs(required),
+            *_key_specs(required_unqualified, unqualified=True),
+        ),
+        (
+            *_key_specs(optional),
+            *_key_specs(optional_unqualified, unqualified=True),
+        ),
+    )
+
+
+def keys_star(
+    required: Iterable[kw.Keyword] = (),
+    optional: Iterable[kw.Keyword] = (),
+    required_unqualified: Iterable[kw.Keyword] = (),
+    optional_unqualified: Iterable[kw.Keyword] = (),
+) -> _KeysStar:
+    return _KeysStar(
+        keys(required, optional, required_unqualified, optional_unqualified)
+    )
 
 
 def tuple_(*specs: Any) -> _Tuple:
@@ -1583,13 +1697,20 @@ def _conform_map_of(spec, value, path, via, location, problems):
 def _conform_keys(spec, value, path, via, location, problems):
     if not _mapping(value):
         return _invalid("map?", value, path, via, location, problems)
-    for key in spec.required:
-        if key not in value:
-            return _invalid(key, value, path, via, location, problems)
-    for key in (*spec.required, *spec.optional):
+    for data_key, _spec_key in spec.required:
+        if data_key not in value:
+            return _invalid(data_key, value, path, via, location, problems)
+    for data_key, spec_key in (*spec.required, *spec.optional):
         if (
-            key in value
-            and _conform(key, value[key], path, via, (*location, key), problems)
+            data_key in value
+            and _conform(
+                spec_key,
+                value[data_key],
+                (*path, data_key),
+                via,
+                (*location, data_key),
+                problems,
+            )
             is INVALID
         ):
             return INVALID
@@ -1612,39 +1733,40 @@ def _conform_regex(spec, value, path, via, location, problems):
     if not _regex_sequence(value):
         return _invalid(spec, value, path, via, location, problems)
     values = tuple(value)
-    matched = _match_regex(spec, values, 0, path, via, location, problems)
-    if matched is None:
-        return INVALID
-    conformed, position = matched
-    if position != len(values):
-        return _invalid(spec, value, path, via, (*location, position), problems)
-    return conformed
+    for conformed, position in _match_regex_all(
+        spec, values, 0, path, via, location, problems
+    ):
+        if position == len(values):
+            return conformed
+    return _invalid(spec, value, path, via, location, problems)
 
 
 def _match_regex(spec, values, position, path, via, location, problems):
+    for matched in _match_regex_all(spec, values, position, path, via, location, problems):
+        return matched
+    return None
+
+
+def _match_regex_all(spec, values, position, path, via, location, problems):
     if isinstance(spec, _Cat):
-        result: dict[kw.Keyword, Any] = {}
-        for tag, child in spec.branches:
-            matched = _match_regex(
-                child, values, position, path, via, location, problems
-            )
-            if matched is None:
-                return None
-            conformed, position = matched
-            result[tag] = conformed
-        return lmap.map(result), position
+        yield from _match_cat(spec, values, position, path, via, location, problems)
+        return
+    if isinstance(spec, _KeysStar):
+        yield from _match_keys_star(spec, values, position, path, via, location, problems)
+        return
     if isinstance(spec, _Alt):
         for tag, child in spec.branches:
             matched = _match_regex(child, values, position, path, via, location, None)
             if matched is not None:
                 conformed, next_position = matched
-                return vec.v(tag, conformed), next_position
+                yield vec.v(tag, conformed), next_position
+                return
         if problems is not None:
             for _tag, child in spec.branches:
                 _match_regex(child, values, position, path, via, location, problems)
         if position >= len(values):
             _invalid(spec, None, path, via, (*location, position), problems)
-        return None
+        return
     if isinstance(spec, _Repeat):
         matches = []
         while True:
@@ -1661,34 +1783,88 @@ def _match_regex(spec, values, position, path, via, location, problems):
         if len(matches) < spec.minimum:
             if problems is not None:
                 _match_regex(spec.spec, values, position, path, via, location, problems)
-            return None
-        return vec.v(*matches), position
+            return
+        yield vec.v(*matches), position
+        return
     if isinstance(spec, _Maybe):
         matched = _match_regex(spec.spec, values, position, path, via, location, None)
-        return (None, position) if matched is None else matched
+        yield (None, position) if matched is None else matched
+        return
     if isinstance(spec, _Amp):
         matched = _match_regex(
             spec.spec, values, position, path, via, location, problems
         )
         if matched is None:
-            return None
+            return
         conformed, next_position = matched
         for predicate in spec.predicates:
             conformed = _conform(
                 predicate, conformed, path, via, (*location, position), problems
             )
             if conformed is INVALID:
-                return None
-        return conformed, next_position
+                return
+        yield conformed, next_position
+        return
     if position >= len(values):
         _invalid(spec, None, path, via, (*location, position), problems)
-        return None
+        return
     conformed = _conform(
         spec, values[position], path, via, (*location, position), problems
     )
     if conformed is INVALID:
-        return None
-    return conformed, position + 1
+        return
+    yield conformed, position + 1
+
+
+def _match_cat(spec, values, position, path, via, location, problems):
+    branches = spec.branches
+
+    def step(index, current_position, result):
+        if index == len(branches):
+            yield lmap.map(result), current_position
+            return
+        tag, child = branches[index]
+        for conformed, next_position in _match_regex_all(
+            child, values, current_position, path, via, location, problems
+        ):
+            yield from step(index + 1, next_position, {**result, tag: conformed})
+
+    yield from step(0, position, {})
+
+
+def _match_keys_star(spec, values, position, path, via, location, problems):
+    for end in range(position, len(values) + 1, 2):
+        if (end - position) % 2:
+            continue
+        mapped: dict[Any, Any] = {}
+        valid_pairs = True
+        for index in range(position, end, 2):
+            key = values[index]
+            if not isinstance(key, kw.Keyword):
+                valid_pairs = False
+                if problems is not None:
+                    _invalid(
+                        "keyword?",
+                        key,
+                        (*path, kw.keyword("k", ns="clojure.spec.alpha")),
+                        via,
+                        (*location, index),
+                        problems,
+                    )
+                break
+            mapped[key] = values[index + 1]
+        if not valid_pairs:
+            continue
+        conformed = _conform_keys(
+            spec.map_spec,
+            lmap.map(mapped),
+            path,
+            via,
+            location,
+            problems,
+        )
+        if conformed is not INVALID:
+            yield conformed, end
 
 
 def _tagged_specs(
@@ -1747,6 +1923,13 @@ def _unform_regex(spec, value):
         return [] if value is None else _unform_regex(spec.spec, value)
     if isinstance(spec, _Amp):
         return _unform_regex(spec.spec, value)
+    if isinstance(spec, _KeysStar):
+        if not _mapping(value):
+            return [value]
+        unformed = []
+        for key, item in value.items():
+            unformed.extend((key, item))
+        return unformed
     return [unform(spec, value)]
 
 

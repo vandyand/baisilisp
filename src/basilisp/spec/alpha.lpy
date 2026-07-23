@@ -167,8 +167,11 @@
 (defn coll-of [spec & {:keys [kind count min-count max-count distinct]}]
   (basilisp.lang.spec/coll-of spec ** :kind kind :count count :min-count min-count :max-count max-count :distinct (boolean distinct)))
 (defn map-of [key-spec value-spec] (basilisp.lang.spec/map-of key-spec value-spec))
-(defn keys [& {:keys [req opt]}]
-  (basilisp.lang.spec/keys (if req req []) (if opt opt [])))
+(defn keys [& {:keys [req opt req-un opt-un]}]
+  (basilisp.lang.spec/keys (if req req [])
+                           (if opt opt [])
+                           (if req-un req-un [])
+                           (if opt-un opt-un [])))
 (defn tuple [& specs] (apply basilisp.lang.spec/tuple_ specs))
 (defn multi-spec [dispatch] (basilisp.lang.spec/multi-spec dispatch))
 (defn cat [& tagged-specs] (apply basilisp.lang.spec/cat tagged-specs))
@@ -206,15 +209,23 @@
   ([form pred opts gfn]
    (attach-gen (every-impl form pred opts) gfn)))
 (defn map-spec-impl [argm]
-  (keys :req (or (:req argm) [])
-        :opt (or (:opt argm) [])))
+  (keys :req (:req argm [])
+        :opt (:opt argm [])
+        :req-un (:req-un argm [])
+        :opt-un (:opt-un argm [])))
+(defn- keys-star-impl [req opt req-un opt-un]
+  (basilisp.lang.spec/keys-star req opt req-un opt-un))
 (defn tuple-impl
   ([_forms preds]
    (apply tuple preds))
   ([_forms preds gfn]
    (attach-gen (apply tuple preds) gfn)))
 (defmacro keys* [& kspecs]
-  `(keys ~@kspecs))
+  (let [options (apply hash-map kspecs)]
+    `(#'keys-star-impl ~(:req options [])
+                       ~(:opt options [])
+                       ~(:req-un options [])
+                       ~(:opt-un options []))))
 (defn regex-spec-impl [re gfn]
   (attach-gen re gfn))
 (defn cat-impl [ks ps _forms]

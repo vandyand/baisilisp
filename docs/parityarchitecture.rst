@@ -594,7 +594,10 @@ Spec And Python Interoperability
 explain-data for ``s/def``, ``valid?``, ``conform``, ``unform``, ``and``,
 ``or``, ``nilable``, ``coll-of``, ``map-of``, ``keys``, ``tuple``, and
 ``multi-spec``. Its portable sequence grammar now includes ``cat``, ``alt``,
-``*``, ``+``, ``?``, and ``&`` with full-input conformance and unforming.
+``*``, ``+``, ``?``, ``&``, and ``keys*`` with full-input conformance and
+unforming. ``s/keys`` records the data key separately from the registered spec
+key, so ``:req-un`` and ``:opt-un`` require unqualified map keys while
+validating values through their qualified specs.
 Explain data is a stable Basilisp data structure before human-readable
 explanation is added. ``fspec``/``fdef`` descriptors and Var-only
 instrumentation validate ``:args``, ``:ret``, and ``:fn`` at an explicit call

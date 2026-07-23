@@ -1,13 +1,16 @@
 (ns tests.basilisp.test-spec-alpha
   (:require
    [basilisp.spec.alpha :as s]
+   [clojure.spec.gen.alpha :as sgen]
    [basilisp.test :refer [deftest is]]))
 
 (def name-key :tests.spec/name)
 (def age-key :tests.spec/age)
+(def email-key :tests.spec/email)
 
 (s/def name-key string?)
-(s/def age-key #(and (int? %) (<= 0 %)))
+(s/def age-key (s/with-gen (s/and int? #(<= 0 %)) #(sgen/choose 0 200)))
+(s/def email-key string?)
 
 (deftest named-predicate-and-explain-data-test
   (is (s/valid? name-key "Ada"))
@@ -45,6 +48,54 @@
     (is (not (s/valid? person {name-key "Ada"})))
     (is (= [1 2] (s/conform point [1 2])))
     (is (= s/invalid (s/conform point [1 "two"])))))
+
+(deftest unqualified-key-specs-use-qualified-specs-for-values
+  (let [person (s/keys :req-un [name-key]
+                       :opt-un [age-key email-key])
+        mixed  (s/keys :req [name-key]
+                       :req-un [age-key])]
+    (is (s/valid? person {:name "Ada"}))
+    (is (not (s/valid? person {name-key "Ada"})))
+    (is (s/valid? person {:name "Ada" :age 42 :email "ada@example.test"}))
+    (is (= {:name "Ada" :age 42}
+           (s/conform person {:name "Ada" :age 42})))
+    (is (s/valid? mixed {name-key "Ada" :age 42}))
+    (is (not (s/valid? mixed {:name "Ada" age-key 42})))
+    (let [problem (first (:basilisp.spec.alpha/problems
+                          (s/explain-data person {:name -1})))]
+      (is (= [:name] (:path problem)))
+      (is (= [:name] (:in problem)))
+      (is (= [name-key] (:via problem)))))
+  (let [generated (map #(sgen/generate
+                         (s/gen (s/keys :req-un [name-key]
+                                        :opt-un [age-key]))
+                         12
+                         %)
+                       (range 80))]
+    (is (every? #(contains? % :name) generated))
+    (is (every? #(not (contains? % name-key)) generated))
+    (is (every? #(s/valid? (s/keys :req-un [name-key]
+                                   :opt-un [age-key])
+                           %)
+                generated))))
+
+(deftest keys-star-conforms-alternating-key-value-sequences
+  (let [opts (s/keys* :req-un [name-key]
+                      :opt-un [age-key])]
+    (is (s/regex? opts))
+    (is (s/valid? opts [:name "Ada"]))
+    (is (not (s/valid? opts [{:name "Ada"}])))
+    (is (= {:name "Ada" :age 42}
+           (s/conform opts [:name "Ada" :age 42])))
+    (is (= [:name "Ada"] (vec (s/unform opts {:name "Ada"}))))
+    (is (= {:opts {:name "Ada"} :tail "done"}
+           (s/conform (s/cat :opts opts :tail string?)
+                      [:name "Ada" "done"]))))
+  (let [opts (s/keys* :req-un [name-key])
+        generated (map #(sgen/generate (s/gen opts) 12 %) (range 60))]
+    (is (every? #(even? (count %)) generated))
+    (is (every? #(contains? (apply hash-map %) :name) generated))
+    (is (every? #(s/valid? opts %) generated))))
 
 (deftest multi-spec-test
   (let [cat-key :tests.spec/cat
