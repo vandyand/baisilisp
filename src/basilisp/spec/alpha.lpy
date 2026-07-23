@@ -173,7 +173,9 @@
                            (if req-un req-un [])
                            (if opt-un opt-un [])))
 (defn tuple [& specs] (apply basilisp.lang.spec/tuple_ specs))
-(defn multi-spec [dispatch] (basilisp.lang.spec/multi-spec dispatch))
+(defn multi-spec
+  ([dispatch] (basilisp.lang.spec/multi-spec dispatch))
+  ([mm retag] (basilisp.lang.spec/multi-spec mm retag)))
 (defn cat [& tagged-specs] (apply basilisp.lang.spec/cat tagged-specs))
 (defn alt [& tagged-specs] (apply basilisp.lang.spec/alt tagged-specs))
 (defn * [spec] (basilisp.lang.spec/star spec))
@@ -241,8 +243,7 @@
   (attach-gen (apply merge preds) gfn))
 (defn multi-spec-impl
   ([_form mmvar retag]
-   (multi-spec (fn [x]
-                 (retag (mmvar x)))))
+   (multi-spec mmvar retag))
   ([_form mmvar retag gfn]
    (attach-gen (multi-spec-impl _form mmvar retag) gfn)))
 (defn fspec-impl [_argspec aform _retspec rform _fnspec fform gfn]

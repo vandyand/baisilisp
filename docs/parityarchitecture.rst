@@ -618,9 +618,11 @@ entrypoints backed by the descriptor engine. ``spec.test.alpha`` exposes
 without claiming JVM classpath-wide instrumentation. The generator now handles
 recursively-defined keyword specs when a nonrecursive base branch is available,
 using size-bounded recursion and falling back to base branches at small sizes.
-Recursive specs with no base branch, arbitrary function values, richer
-``multi-spec`` generation, and Python model adapters remain design tasks rather
-than surface-name tasks.
+It also generates Clojure-style ``multi-spec`` values by enumerating a
+multimethod's registered methods and applying keyword or function retagging to
+the generated branch value. Recursive specs with no base branch, arbitrary
+function values, and Python model adapters remain design tasks rather than
+surface-name tasks.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for

@@ -146,7 +146,8 @@ class _Tuple(_Spec):
 
 @dataclass(frozen=True)
 class _MultiSpec(_Spec):
-    dispatch: Callable[[Any], kw.Keyword]
+    dispatch: Callable[[Any], Any]
+    retag: Any | None = None
 
 
 @dataclass(frozen=True)
@@ -688,22 +689,20 @@ def _merge_maps(values: Iterable[Any]) -> IPersistentMap:
 
 
 def _qualified_pairs(
-    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...],
 ) -> tuple[kw.Keyword, ...]:
     return tuple(spec_key for data_key, spec_key in pairs if data_key == spec_key)
 
 
 def _unqualified_pairs(
-    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...]
+    pairs: tuple[tuple[kw.Keyword, kw.Keyword], ...],
 ) -> tuple[kw.Keyword, ...]:
     return tuple(spec_key for data_key, spec_key in pairs if data_key != spec_key)
 
 
 def _keys_form(spec_: _Keys, *, qualified: bool) -> Any:
     name = (
-        sym.symbol("keys", ns="clojure.spec.alpha")
-        if qualified
-        else sym.symbol("keys")
+        sym.symbol("keys", ns="clojure.spec.alpha") if qualified else sym.symbol("keys")
     )
     parts: list[Any] = [name]
     req = _qualified_pairs(spec_.required)
@@ -822,12 +821,104 @@ def _recursive_reference_generator(
 
     def build(size: int) -> Any:
         if size <= 1:
-            return _base_generator_for_value(resolved, overrides, path, frozenset({spec}))
+            return _base_generator_for_value(
+                resolved, overrides, path, frozenset({spec})
+            )
         return impl.resize(
             max(0, size // 2), _generator_for_value(resolved, overrides, path, seen)
         )
 
     return impl.sized(build)
+
+
+def _maybe_deref(value: Any) -> Any:
+    return value.deref() if isinstance(value, Var) else value
+
+
+def _multispec_dispatch_value(spec: _MultiSpec, value: Any) -> Any:
+    target = _maybe_deref(spec.dispatch)
+    dispatch = getattr(target, "dispatch", None)
+    if callable(dispatch):
+        return dispatch(value)
+    return target(value)
+
+
+def _multispec_spec_for_value(spec: _MultiSpec, value: Any) -> tuple[Any, Any | None]:
+    if spec.retag is None:
+        selected = spec.dispatch(value)
+        if not isinstance(selected, kw.Keyword):
+            raise TypeError("multi-spec dispatch must return a keyword spec name")
+        return selected, None
+
+    target = _maybe_deref(spec.dispatch)
+    dispatch_value = _multispec_dispatch_value(spec, value)
+    selected_method = getattr(target, "get_method", lambda _key: None)(dispatch_value)
+    if selected_method is None:
+        raise TypeError("multi-spec multimethod has no method for dispatch value")
+    return selected_method(value), dispatch_value
+
+
+def _retag_multispec_value(retag: Any, value: Any, dispatch_value: Any) -> Any:
+    if isinstance(retag, kw.Keyword):
+        if value is None:
+            return lmap.map({retag: dispatch_value})
+        if hasattr(value, "assoc"):
+            return value.assoc(retag, dispatch_value)
+        if isinstance(value, Mapping):
+            return lmap.map({**value, retag: dispatch_value})
+        raise TypeError("multi-spec keyword retag requires an associative value")
+    if callable(retag):
+        return retag(value, dispatch_value)
+    raise TypeError("multi-spec retag must be a keyword or callable")
+
+
+def _multispec_method_generators(
+    spec: _MultiSpec,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+    *,
+    base: bool,
+) -> tuple[Any, ...]:
+    if spec.retag is None:
+        raise TypeError(
+            "cannot generate multi-spec values without an explicit multimethod retag"
+        )
+    target = _maybe_deref(spec.dispatch)
+    methods = getattr(target, "methods", None)
+    if methods is None:
+        raise TypeError(
+            "cannot generate multi-spec values without an enumerable multimethod"
+        )
+
+    generators = []
+    for dispatch_value, method in methods.items():
+        if invalid_q(dispatch_value):
+            continue
+        branch_spec = method(None)
+        try:
+            branch_generator = (
+                _base_generator_for_value(
+                    branch_spec, overrides, (*path, dispatch_value), seen
+                )
+                if base
+                else _generator_for_value(
+                    branch_spec, overrides, (*path, dispatch_value), seen
+                )
+            )
+        except TypeError:
+            continue
+        generators.append(
+            _test_check_impl().fmap(
+                functools.partial(
+                    _retag_multispec_value, spec.retag, dispatch_value=dispatch_value
+                ),
+                branch_generator,
+            )
+        )
+    if not generators:
+        raise TypeError("cannot generate multi-spec values with no generatable methods")
+    return tuple(generators)
 
 
 def _base_generator_for_value(
@@ -868,9 +959,7 @@ def _base_generator_for_value(
                 )
             except TypeError:
                 continue
-        raise TypeError(
-            "cannot generate values for s/and without a generatable child"
-        )
+        raise TypeError("cannot generate values for s/and without a generatable child")
     if isinstance(spec, _Or):
         generators = []
         for tag, child in spec.branches:
@@ -902,7 +991,9 @@ def _base_generator_for_value(
             return _collection_generator_for_kind(impl.return_(vec.EMPTY), spec.kind)
         lower = spec.count if spec.count is not None else spec.min_count
         upper = spec.count if spec.count is not None else min(spec.max_count or 0, 0)
-        return _collection_generator_for_kind(impl.vector(child, lower, upper), spec.kind)
+        return _collection_generator_for_kind(
+            impl.vector(child, lower, upper), spec.kind
+        )
     if isinstance(spec, _MapOf):
         return impl.map_gen(
             _base_generator_for_value(spec.key_spec, overrides, path, blocked),
@@ -927,8 +1018,8 @@ def _base_generator_for_value(
     if isinstance(spec, _FSpec):
         raise TypeError("cannot generate function values for fspec; use with-gen")
     if isinstance(spec, _MultiSpec):
-        raise TypeError(
-            "cannot generate multi-spec values without an explicit with-gen"
+        return impl.one_of(
+            _multispec_method_generators(spec, overrides, path, blocked, base=True)
         )
     return _generator_for_predicate(spec)
 
@@ -1139,8 +1230,8 @@ def _generator_for_value(
     if isinstance(spec, _FSpec):
         raise TypeError("cannot generate function values for fspec; use with-gen")
     if isinstance(spec, _MultiSpec):
-        raise TypeError(
-            "cannot generate multi-spec values without an explicit with-gen"
+        return impl.one_of(
+            _multispec_method_generators(spec, overrides, path, seen, base=False)
         )
     return _generator_for_predicate(spec)
 
@@ -1740,8 +1831,8 @@ def tuple_(*specs: Any) -> _Tuple:
     return _Tuple(specs)
 
 
-def multi_spec(dispatch: Callable[[Any], kw.Keyword]) -> _MultiSpec:
-    return _MultiSpec(dispatch)
+def multi_spec(dispatch: Callable[[Any], Any], retag: Any | None = None) -> _MultiSpec:
+    return _MultiSpec(dispatch, retag)
 
 
 def cat(*tagged_specs: Any) -> _Cat:
@@ -1852,12 +1943,11 @@ def _conform(
         return _conform_tuple(spec, value, path, via, location, problems)
     if isinstance(spec, _MultiSpec):
         try:
-            selected = spec.dispatch(value)
+            selected, dispatch_value = _multispec_spec_for_value(spec, value)
         except BaseException:
-            selected = None
-        if not isinstance(selected, kw.Keyword):
             return _invalid(spec.dispatch, value, path, via, location, problems)
-        return _conform(selected, value, path, via, location, problems)
+        child_path = path if dispatch_value is None else (*path, dispatch_value)
+        return _conform(selected, value, child_path, via, location, problems)
     if isinstance(spec, type):
         return (
             value
@@ -1973,7 +2063,9 @@ def _conform_regex(spec, value, path, via, location, problems):
 
 
 def _match_regex(spec, values, position, path, via, location, problems):
-    for matched in _match_regex_all(spec, values, position, path, via, location, problems):
+    for matched in _match_regex_all(
+        spec, values, position, path, via, location, problems
+    ):
         return matched
     return None
 
@@ -1983,7 +2075,9 @@ def _match_regex_all(spec, values, position, path, via, location, problems):
         yield from _match_cat(spec, values, position, path, via, location, problems)
         return
     if isinstance(spec, _KeysStar):
-        yield from _match_keys_star(spec, values, position, path, via, location, problems)
+        yield from _match_keys_star(
+            spec, values, position, path, via, location, problems
+        )
         return
     if isinstance(spec, _Alt):
         for tag, child in spec.branches:

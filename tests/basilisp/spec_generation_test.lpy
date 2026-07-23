@@ -12,6 +12,13 @@
 (def tree-key :tests.spec-generation/tree)
 (def mutual-a-key :tests.spec-generation/mutual-a)
 (def mutual-b-key :tests.spec-generation/mutual-b)
+(def event-kind-key :tests.spec-generation.event/kind)
+(def event-create-key :tests.spec-generation.event/create)
+(def event-delete-key :tests.spec-generation.event/delete)
+(def event-tree-key :tests.spec-generation.event/tree)
+(def event-name-key :tests.spec-generation.event/name)
+(def event-id-key :tests.spec-generation.event/id)
+(def generated-kind-key :tests.spec-generation.event/generated-kind)
 
 (s/def age-key
        (s/with-gen (s/and int? #(<= 0 % 130)) #(sgen/choose 0 130)))
@@ -26,6 +33,8 @@
 (s/def mutual-b-key (s/coll-of mutual-a-key
                                :kind vector?
                                :max-count 2))
+(s/def event-name-key string?)
+(s/def event-id-key int?)
 
 (defn add-two [x y] (+ x y))
 (s/fdef add-two :args (s/cat :x int? :y int?) :ret int?)
@@ -131,3 +140,55 @@
   (let [loop-key :tests.spec-generation/no-base-loop]
     (s/def loop-key (s/coll-of loop-key :kind vector? :min-count 1 :max-count 2))
     (is (thrown? Exception (sgen/generate (s/gen loop-key) 1 99)))))
+
+(defmulti generated-event-spec event-kind-key)
+(defmethod generated-event-spec event-create-key [_]
+  (s/keys :req-un [event-name-key]))
+(defmethod generated-event-spec event-delete-key [_]
+  (s/keys :req-un [event-id-key]))
+(defmethod generated-event-spec event-tree-key [_]
+  (s/keys :req-un [tree-key]))
+
+(defn generated-event-retag [value dispatch-value]
+  (assoc value generated-kind-key dispatch-value))
+
+(defmulti generated-event-spec-with-fn-retag generated-kind-key)
+(defmethod generated-event-spec-with-fn-retag event-create-key [_]
+  (s/keys :req-un [event-name-key]))
+(defmethod generated-event-spec-with-fn-retag event-delete-key [_]
+  (s/keys :req-un [event-id-key]))
+
+(defmulti empty-event-spec event-kind-key)
+
+(deftest multi-spec-generates-retagged-values-from-multimethod-methods
+  (let [spec (s/multi-spec generated-event-spec event-kind-key)
+        values (map #(sgen/generate (s/gen spec) 28 %) (range 320))
+        observed-tags (set (map event-kind-key values))
+        tree-values (filter #(= event-tree-key (event-kind-key %)) values)]
+    (is (every? #(s/valid? spec %) values))
+    (is (= #{event-create-key event-delete-key event-tree-key} observed-tags))
+    (is (every? #(contains? % event-kind-key) values))
+    (is (every? #(not (contains? % generated-kind-key)) values))
+    (is (every? #(<= (tree-depth (:tree %)) 12) tree-values))
+    (is (not (s/valid? spec {event-kind-key event-create-key
+                             :id 1})))
+    (is (not (s/valid? spec {event-kind-key :tests.spec-generation.event/missing
+                             :name "Ada"})))))
+
+(deftest multi-spec-supports-function-retag-and-preserves-legacy-errors
+  (let [spec (s/multi-spec generated-event-spec-with-fn-retag generated-event-retag)
+        values (map #(sgen/generate (s/gen spec) 20 %) (range 160))
+        observed-tags (set (map generated-kind-key values))]
+    (is (every? #(s/valid? spec %) values))
+    (is (= #{event-create-key event-delete-key} observed-tags))
+    (is (every? #(not (contains? % event-kind-key)) values)))
+  (let [legacy (s/multi-spec event-kind-key)]
+    (is (s/valid? legacy {event-kind-key person-key
+                          age-key 42
+                          name-key "Ada"}))
+    (is (thrown? Exception
+                 (sgen/generate (s/gen legacy) 10 5))))
+  (is (thrown? Exception
+               (sgen/generate (s/gen (s/multi-spec empty-event-spec event-kind-key))
+                              10
+                              8))))

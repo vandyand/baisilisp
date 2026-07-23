@@ -191,5 +191,9 @@ class MultiFunction(Generic[T, P]):
         return self._default
 
     @property
+    def dispatch(self) -> DispatchFunction[T, P]:
+        return self._dispatch
+
+    @property
     def methods(self) -> IPersistentMap[T, Method[T, P]]:
         return self._methods
