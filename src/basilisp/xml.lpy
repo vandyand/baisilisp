@@ -2,10 +2,32 @@
   "Safe XML reading and writing using immutable Basilisp element maps."
   (:require [basilisp.io :as bio])
   (:import xml.etree.ElementTree
+           xml.sax
+           xml.sax.handler
            xml.sax.saxutils
            re))
 
 (def ^:private default-max-chars 4194304)
+(def ^:dynamic ^:private *max-chars* default-max-chars)
+
+(defstruct element :tag :attrs :content)
+
+(def tag (accessor element :tag))
+(def attrs (accessor element :attrs))
+(def content (accessor element :content))
+
+(def ^:dynamic *stack* nil)
+(def ^:dynamic *current* nil)
+(def ^:dynamic *state* :between)
+(def ^:dynamic *sb* nil)
+
+(def content-handler
+  "Python-host placeholder for Clojure's SAX ContentHandler.
+
+  Basilisp parses via a safe, bounded ElementTree adapter rather than exposing
+  mutable SAX callbacks as application state. ``startparse-sax`` and
+  ``startparse-sax-safe`` accept this value for API compatibility."
+  ::content-handler)
 
 (defn- text-content? [s]
   (and s (not (.isspace s))))
@@ -17,16 +39,17 @@
             "XML namespaces and non-ASCII XML names are not supported")))
   (keyword tag))
 
-(defn- parse-element [element]
-  (let [attrs   (into {} (map (fn [[k v]] [(element-name k) v]) (.items (.-attrib element))))
-        content (vec (concat (when (text-content? (.-text element)) [(.-text element)])
+(defn- parse-element [el]
+  (let [attrs   (into {} (map (fn [[k v]] [(element-name k) v]) (.items (.-attrib el))))
+        content (vec (concat (when (text-content? (.-text el)) [(.-text el)])
                              (mapcat (fn [child]
                                        (concat [(parse-element child)]
                                                (when (text-content? (.-tail child)) [(.-tail child)])))
-                                     (.findall element "*"))))]
-    (cond-> {:tag (element-name (.-tag element))}
-      (seq attrs) (assoc :attrs attrs)
-      (seq content) (assoc :content content))))
+                                     (.findall el "*"))))]
+    (struct-map element
+                :tag (element-name (.-tag el))
+                :attrs (when (seq attrs) attrs)
+                :content (when (seq content) content))))
 
 (defn- reject-unsafe-declarations [source]
   (let [upper-source (.upper source)]
@@ -51,6 +74,50 @@
     :else (with-open [reader (bio/reader source)]
             (read-text reader max-chars))))
 
+(defn- parse-source
+  [source max-chars]
+  (when-not (and (integer? max-chars) (pos? max-chars))
+    (throw (python/ValueError ":max-chars must be a positive integer")))
+  (let [source (source-text source max-chars)
+        _      (reject-unsafe-declarations source)
+        root   (xml.etree.ElementTree/fromstring source)]
+    (parse-element root)))
+
+(defn sax-parser
+  "Create a Python SAX parser object."
+  []
+  (xml.sax/make_parser))
+
+(defn disable-external-entities
+  "Disable external entity resolution on a Python SAX parser when supported."
+  [parser]
+  (doseq [feature [xml.sax.handler/feature_external_ges
+                   xml.sax.handler/feature_external_pes]]
+    (try
+      (.setFeature parser feature false)
+      (catch python/Exception _)))
+  parser)
+
+(defn startparse-sax
+  "A startparse function suitable for use with ``clojure.xml/parse``.
+
+  Unlike Clojure's historical SAX path, Basilisp still rejects DTD and entity
+  declarations to preserve its safe XML boundary."
+  [source _content-handler]
+  (parse-source source *max-chars*))
+
+(defn startparse-sax-safe
+  "A safe startparse function suitable for use with ``clojure.xml/parse``."
+  [source content-handler]
+  (disable-external-entities (sax-parser))
+  (startparse-sax source content-handler))
+
+(defn- parse-args
+  [args]
+  (if (and (seq args) (not (keyword? (first args))))
+    [(first args) (rest args)]
+    [startparse-sax-safe args]))
+
 (defn parse
   "Parse XML into an immutable ``{:tag :attrs :content}`` tree.
 
@@ -60,13 +127,17 @@
   (4 MiB by default). Whitespace-only text nodes are omitted, matching
   ``clojure.xml``'s SAX contract. Namespace-qualified and non-ASCII names are
   rejected because ElementTree cannot retain their lexical prefix information."
-  [source & {:keys [max-chars] :or {max-chars default-max-chars}}]
-  (when-not (and (integer? max-chars) (pos? max-chars))
-    (throw (python/ValueError ":max-chars must be a positive integer")))
-  (let [source (source-text source max-chars)
-        _      (reject-unsafe-declarations source)
-        root   (xml.etree.ElementTree/fromstring source)]
-    (parse-element root)))
+  [source & args]
+  (let [[startparse opts] (parse-args args)
+        {:keys [max-chars] :or {max-chars default-max-chars}} opts]
+    (when-not (and (integer? max-chars) (pos? max-chars))
+      (throw (python/ValueError ":max-chars must be a positive integer")))
+    (binding [*stack* nil
+              *current* (struct-map element)
+              *state* :between
+              *sb* nil
+              *max-chars* max-chars]
+      (startparse source content-handler))))
 
 (defn- xml-name [x]
   (when (namespace x)

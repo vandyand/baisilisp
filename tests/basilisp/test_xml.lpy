@@ -7,10 +7,14 @@
            random
            tempfile))
 
+(defn xml-el
+  [tag attrs content]
+  (struct-map xml/element :tag tag :attrs attrs :content content))
+
 (deftest parse-and-emit-tree-test
   (let [tree (xml/parse "<root b='2' a='1'> before <child>text</child> after </root>")]
-    (is (= {:tag :root :attrs {:a "1" :b "2"}
-            :content [" before " {:tag :child :content ["text"]} " after "]}
+    (is (= (xml-el :root {:a "1" :b "2"}
+                   [" before " (xml-el :child nil ["text"]) " after "])
            tree))
     (let [out (io/StringIO)]
       (binding [*out* out] (xml/emit tree))
@@ -19,7 +23,26 @@
              (.getvalue out))))))
 
 (deftest clojure-xml-import-path-test
-  (is (= {:tag :x} (clj-xml/parse "<x/>"))))
+  (is (= (struct-map clj-xml/element :tag :x :attrs nil :content nil)
+         (clj-xml/parse "<x/>"))))
+
+(deftest clojure-xml-public-surface-and-startparse-test
+  (doseq [sym '[*current* *sb* *stack* *state*
+                attrs content content-handler disable-external-entities
+                element emit emit-element parse sax-parser startparse-sax
+                startparse-sax-safe tag]]
+    (is (contains? (ns-publics 'basilisp.xml) sym)))
+  (let [tree (xml/parse "<root><child/></root>" xml/startparse-sax-safe)]
+    (is (= :root (xml/tag tree)))
+    (is (nil? (xml/attrs tree)))
+    (is (= [(xml-el :child nil nil)] (xml/content tree))))
+  (is (= (xml-el :root nil nil)
+         (xml/parse "<root/>" xml/startparse-sax)))
+  (let [parser (xml/sax-parser)]
+    (is (identical? parser (xml/disable-external-entities parser))))
+  (is (thrown? python/ValueError
+               (xml/parse "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>"
+                          xml/startparse-sax))))
 
 (deftest xml-rejects-unsafe-and-malformed-input-test
   (is (thrown? python/ValueError (xml/parse "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>")))
@@ -33,13 +56,13 @@
   (is (thrown? python/Exception (xml/parse "<x>"))))
 
 (deftest xml-stream-whitespace-and-escaping-test
-  (is (= {:tag :root :content [{:tag :child}]}
+  (is (= (xml-el :root nil [(xml-el :child nil nil)])
          (xml/parse (io/StringIO "<root> \n<!-- comment -->\t<child/> </root>"))))
   (let [[fd filename] (tempfile/mkstemp)]
     (try
       (with-open [f (python/open filename "w")]
         (.write f "<from-file/>"))
-      (is (= {:tag :from-file} (xml/parse filename)))
+      (is (= (xml-el :from-file nil nil) (xml/parse filename)))
       (finally
         (os/close fd)
         (os/unlink filename))))
@@ -60,4 +83,4 @@
                       (future (xml/parse (str "<x a='" value "'><y>" value "</y></x>"))))
                     values)]
     (doseq [[value task] (map vector values tasks)]
-      (is (= {:tag :x :attrs {:a value} :content [{:tag :y :content [value]}]} @task)))))
+      (is (= (xml-el :x {:a value} [(xml-el :y nil [value])]) @task)))))

@@ -14,6 +14,10 @@
   #?(:clj (xml/parse (ByteArrayInputStream. (.getBytes source "UTF-8")))
      :lpy (xml/parse source)))
 
+(defn parse-xml-text-with [source startparse]
+  #?(:clj (xml/parse (ByteArrayInputStream. (.getBytes source "UTF-8")) startparse)
+     :lpy (xml/parse source startparse)))
+
 (defn normalize-element [element]
   {:tag (:tag element)
    :attrs (or (:attrs element) {})
@@ -31,6 +35,41 @@
     (f)
     false
     (catch Exception _ true)))
+
+(emit-case :public-surface
+           (every? #(contains? (ns-publics #?(:clj 'clojure.xml
+                                              :lpy 'basilisp.xml))
+                               %)
+                   '[*current*
+                     *sb*
+                     *stack*
+                     *state*
+                     attrs
+                     content
+                     content-handler
+                     disable-external-entities
+                     element
+                     emit
+                     emit-element
+                     parse
+                     sax-parser
+                     startparse-sax
+                     startparse-sax-safe
+                     tag]))
+
+(emit-case :element-struct-accessors
+           (let [element (struct-map xml/element
+                                     :tag :root
+                                     :attrs {:id "1"}
+                                     :content ["body"])]
+             {:tag (xml/tag element)
+              :attrs (xml/attrs element)
+              :content (xml/content element)}))
+
+(emit-case :parse-startparse-safe
+           (normalize-element
+            (parse-xml-text-with "<root><child id=\"1\"/></root>"
+                                 xml/startparse-sax-safe)))
 
 (emit-case :simple-and-attrs
            [(parsed "<root/>")

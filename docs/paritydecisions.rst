@@ -257,14 +257,16 @@ prefix choices, namespace scope, mixed content, and useful error data. ``lxml``
 would add a native dependency and still requires a representation decision; it
 does not solve that API mismatch.
 
-``basilisp.xml`` now uses the portable, data-oriented subset directly:
+``basilisp.xml`` now uses the portable, data-oriented subset directly as
+``xml/element`` struct maps:
 ``{:tag keyword :attrs {keyword string} :content [string-or-element ...]}``.
 Child order and non-whitespace mixed content are retained, while whitespace-only
 text nodes are omitted as in ``clojure.xml``. Parsing rejects DTDs and entity
 declarations before ElementTree sees them, limits all text inputs to 4 MiB by
 default (configurable with ``:max-chars``), and reports malformed XML through
-the host parser exception. It accepts document strings, paths/URLs, and readable
-text streams.
+the host parser exception. It accepts document strings, paths/URLs, readable
+text streams, and the standard second ``startparse`` argument for Python-host
+adapted ``startparse-sax``/``startparse-sax-safe`` entrypoints.
 
 The adapter rejects qualified and non-ASCII names on both parse and emit rather
 than silently losing ElementTree's ``{uri}local`` normalization or fabricating

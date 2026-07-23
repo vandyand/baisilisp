@@ -167,8 +167,7 @@ Near-term deliverable:
 * **Completed locally:** close the small portable public-surface gaps in
   ``clojure.string`` and ``clojure.data.priority-map``. ``trim-newline``,
   ``->PersistentPriorityMap``, and ``apply-keyfn`` are now covered by shared
-  differential fixtures. Remaining audited misses are SAX-hosted
-  ``clojure.xml`` internals, not ordinary portable namespace gaps.
+  differential fixtures.
 * **Completed locally:** close portable constructor/protocol gaps in
   ``clojure.core.cache``, ``clojure.core.memoize``, and
   ``clojure.core.protocols``, and add the standard ``clojure.core.reducers``
@@ -222,6 +221,12 @@ Near-term deliverable:
   ``thread-stopper``, and ``stack-element-str``. Shared fixtures now lock the
   public surface and stack-element string shape while local tests cover signal
   handler installation/restoration and interrupt behavior.
+* **Completed locally:** close the ``clojure.xml`` public surface with
+  ``xml/element`` struct maps, ``tag``/``attrs``/``content`` accessors, dynamic
+  SAX-state Vars, and Python-host adaptations of ``sax-parser``,
+  ``disable-external-entities``, ``startparse-sax``, and
+  ``startparse-sax-safe``. Shared fixtures now lock public names, accessor
+  behavior, second-arity parse behavior, and the existing seeded XML corpus.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

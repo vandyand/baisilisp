@@ -693,10 +693,12 @@ A public-surface audit on 2026-07-23 closed the remaining small portable gaps
 in already-ported standard namespaces: ``clojure.string`` now has no missing
 Clojure public vars, and ``clojure.data.priority-map`` exactly matches the
 upstream public names, including ``trim-newline``,
-``->PersistentPriorityMap``, and ``apply-keyfn``. The remaining audited public
-misses are no longer small portable work items: ``clojure.xml`` differs around
-SAX parser state and handler internals. Those belong in the host-boundary queue
-below unless a new fixture proves a portable behavioral contract.
+``->PersistentPriorityMap``, and ``apply-keyfn``. The follow-up host-boundary
+audit closed the ``clojure.repl`` and ``clojure.xml`` public-surface deltas with
+Python-native adaptations instead of JVM object emulation. Remaining standard
+namespace work should now be chosen from semantic-depth failures, missing
+third-party-library facades, and explicitly Java-hosted namespaces rather than
+simple public-name gaps in the audited set.
 
 The same audit also closed the portable constructor/protocol layer for
 ``clojure.core.cache``, ``clojure.core.memoize``,
@@ -842,16 +844,21 @@ Python already models differently.
 
 ``basilisp.xml`` is a deliberately small data-oriented XML adapter and is
 available through the usual ``clojure.xml`` import-path alias. It translates
-documents to immutable ``{:tag :attrs :content}`` maps, preserves mixed content,
-omits whitespace-only text nodes, and emits deterministic attribute order. Its
-first boundary is intentionally narrow: only unqualified ASCII XML names are
-accepted; namespace-qualified names, DTDs, and entity declarations are rejected;
-and input is bounded to 4 MiB by default. ElementTree cannot preserve lexical
-prefix choices, so this adapter does not promise namespace, prefix, byte, or
-streaming round trips. A shared Clojure/Basilisp conformance fixture locks the
-accepted parse subset, including attributes, nested elements, mixed text,
-whitespace/comment omission, built-in XML entity decoding, malformed-input
-errors, and a seeded element corpus.
+documents to immutable ``xml/element`` struct maps, preserves mixed content,
+omits whitespace-only text nodes, and emits deterministic attribute order.
+``tag``, ``attrs``, and ``content`` are real struct accessors, and the remaining
+``clojure.xml`` SAX public names are present as Python-host boundary adapters:
+``sax-parser`` creates a Python SAX parser, ``disable-external-entities`` applies
+supported SAX safety flags, and ``startparse-sax``/``startparse-sax-safe`` feed
+the same bounded immutable-tree parser used by ``parse``. Its first boundary is
+intentionally narrow: only unqualified ASCII XML names are accepted;
+namespace-qualified names, DTDs, and entity declarations are rejected; and input
+is bounded to 4 MiB by default. ElementTree cannot preserve lexical prefix
+choices, so this adapter does not promise namespace, prefix, byte, or streaming
+round trips. A shared Clojure/Basilisp conformance fixture locks the public
+surface, struct accessors, second-arity parse path, accepted parse subset,
+attributes, nested elements, mixed text, whitespace/comment omission, built-in
+XML entity decoding, malformed-input errors, and a seeded element corpus.
 
 ``basilisp.data.csv`` exposes the small portable ``clojure.data.csv`` contract
 through the normal import-path alias. It retains lazy row reading and Clojure's
