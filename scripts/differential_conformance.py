@@ -26,6 +26,12 @@ DEFAULT_CLOJURE_SDEPS = (
     '{:deps {org.clojure/data.csv {:mvn/version \\"1.1.0\\"} '
     'org.clojure/data.json {:mvn/version \\"2.5.1\\"} '
     'org.clojure/data.codec {:mvn/version \\"0.1.1\\"} '
+    'org.clojure/data.priority-map {:mvn/version \\"1.2.0\\"} '
+    'org.clojure/core.cache {:mvn/version \\"1.1.234\\"} '
+    'org.clojure/core.memoize {:mvn/version \\"1.1.266\\"} '
+    'org.clojure/tools.namespace {:mvn/version \\"1.5.0\\"} '
+    'org.clojure/tools.logging {:mvn/version \\"1.3.0\\"} '
+    'org.clojure/tools.reader {:mvn/version \\"1.5.2\\"} '
     'org.clojure/test.check {:mvn/version \\"1.1.1\\"}}}'
 )
 

@@ -355,7 +355,13 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   The public surface includes the upstream positional constructor and
   ``apply-keyfn`` macro for source compatibility; invalid hand-built internal
   field combinations are not a supported interchange format.
-* :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
+* :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``. It uses the
+  Clojure provenance metadata keys ``:clojure.datafy/obj`` and
+  ``:clojure.datafy/class`` when a custom ``datafy`` implementation returns a
+  distinct metadata-capable value. The class metadata value is a Basilisp class
+  symbol rather than a JVM ``Class`` object, and ``nav`` rejects ``nil`` as the
+  collection context while defaulting to the supplied value for ordinary
+  non-``nil`` values.
 * :lpy:ns:`basilisp.core.rrb-vector` provides the public
   ``clojure.core.rrb-vector`` constructors, concatenation, and non-view
   slicing operations over ordinary persistent Basilisp vectors. It does not

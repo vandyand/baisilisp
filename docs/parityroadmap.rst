@@ -275,6 +275,11 @@ Near-term deliverable:
   namespaced maps, reader constants, custom/default tagged readers, stream
   reads, rejection boundaries, and a generated nested EDN corpus. Basilisp-only
   EDN writer support is covered by local generated read/write round trips.
+* **Completed locally:** lock ``clojure.datafy`` parity with a shared fixture
+  covering the required public names, default ``datafy`` identity behavior,
+  provenance metadata keys, unchanged identity results, ``nav`` delegation,
+  ordinary collection navigation defaults, Clojure-compatible ``nil`` ``nav``
+  rejection, and a generated object-to-data corpus.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

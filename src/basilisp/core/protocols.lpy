@@ -84,6 +84,11 @@
     index ``k``."))
 
 (extend-protocol Navigable
+  nil
+  (nav [_ _ _]
+    (throw (python/NotImplementedError
+            "No implementation of method :nav of protocol: Navigable found for nil")))
+
   python/object
   (nav [_ _ v]
     v))

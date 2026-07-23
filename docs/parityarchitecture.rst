@@ -738,6 +738,23 @@ and Log4j factory selectors return ``nil``. The only remaining root-surface
 delta is an upstream generated proxy class Var, which is a JVM implementation
 artifact rather than a portable logging API.
 
+``datafy``
+~~~~~~~~~~
+
+``basilisp.datafy`` exposes the portable ``clojure.datafy`` surface over
+``basilisp.core.protocols/Datafiable`` and ``Navigable``. Custom
+``datafy`` implementations that return a distinct metadata-capable value keep
+their existing metadata and gain the Clojure keys
+``:clojure.datafy/obj`` and ``:clojure.datafy/class``. The object value is the
+original Basilisp/Python-hosted object and the class value is a stable
+Basilisp class symbol rather than a JVM ``Class`` object, so portable fixtures
+compare presence and identity rather than host-specific rendering.
+
+``nav`` delegates through ``Navigable`` for custom values and otherwise
+returns the supplied value for ordinary non-``nil`` collections. ``nil`` is an
+explicit rejection boundary, matching Clojure's lack of a ``nil`` Navigable
+implementation.
+
 ``edn``
 ~~~~~~~
 

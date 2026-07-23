@@ -17,16 +17,16 @@
 
   Delegates to :lpy:proto:`basilisp.core.protocols/Datafiable`. If an
   implementation returns a distinct value which supports metadata, the returned
-  value retains its metadata and gains ``:basilisp.datafy/obj`` containing ``o``
-  and ``:basilisp.datafy/class`` containing the original object's class symbol."
+  value retains its metadata and gains ``:clojure.datafy/obj`` containing ``o``
+  and ``:clojure.datafy/class`` containing the original object's class symbol."
   [o]
   (let [data (protocols/datafy o)]
     (if (and (not (identical? data o))
              (instance? basilisp.lang.interfaces/IWithMeta data))
       (with-meta data
         (assoc (meta data)
-               :basilisp.datafy/obj o
-               :basilisp.datafy/class (class-symbol o)))
+               :clojure.datafy/obj o
+               :clojure.datafy/class (class-symbol o)))
       data)))
 
 (defn nav

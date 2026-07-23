@@ -49,8 +49,8 @@
                                     (.-__qualname__ (python/type source))))]
     (is (= {:value 42} result))
     (is (= true (:existing (meta result))))
-    (is (identical? source (:basilisp.datafy/obj (meta result))))
-    (is (= expected-class (:basilisp.datafy/class (meta result))))))
+    (is (identical? source (:clojure.datafy/obj (meta result))))
+    (is (= expected-class (:clojure.datafy/class (meta result))))))
 
 (deftest datafy-does-not-require-metadata-support-test
   (let [source (->PlainDatafied 42)
@@ -62,7 +62,7 @@
   (let [source (->VectorDatafied 42)
         result (datafy/datafy source)]
     (is (= [42] result))
-    (is (identical? source (:basilisp.datafy/obj (meta result))))))
+    (is (identical? source (:clojure.datafy/obj (meta result))))))
 
 (deftest datafy-does-not-add-provenance-when-value-is-unchanged-test
   (let [source (->IdentityDatafied 42)
@@ -76,13 +76,14 @@
                                {:name (:name value) :source :metadata})})
         result (datafy/datafy source)]
     (is (= {:name "metadata" :source :metadata} result))
-    (is (identical? source (:basilisp.datafy/obj (meta result))))))
+    (is (identical? source (:clojure.datafy/obj (meta result))))))
 
 (deftest nav-defaults-to-value-test
   (let [value {:nested :value}]
     (is (identical? value (datafy/nav {:value value} :value value)))
     (is (identical? value (protocols/nav {:value value} :value value)))
-    (is (identical? value (datafy/nav nil nil value)))))
+    (is (thrown? Exception (datafy/nav nil nil value)))
+    (is (thrown? Exception (protocols/nav nil nil value)))))
 
 (deftest nav-delegates-to-navigable-implementation-test
   (let [coll (->NavigableCollection "inventory")]
