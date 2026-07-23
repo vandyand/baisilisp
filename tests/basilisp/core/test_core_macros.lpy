@@ -421,6 +421,21 @@
                             :default)))
   (is (= 0 (case 1 0)))
   (is (= :found (case-with-seq)))
+  (letfn [(throws? [form]
+            (try
+              (eval form)
+              false
+              (catch Exception _
+                true)))]
+    (are [form] (throws? form)
+      '(case 1 1 :int 1N :bigint :default)
+      '(case 1 1 :int 1/1 :ratio :default)
+      '(case :a (:a :b) :group :a :single :default))
+    (are [form] (not (throws? form))
+      '(case 1 1 :int 1.0 :double :default)
+      '(case 1 1 :int 1.0M :decimal :default)
+      '(case \a \a :char-a (a b) :symbol-group :default)
+      '(case ##NaN ##NaN :first ##NaN :second :default)))
   (let [out* (atom [])]
     (is (= 2 (case :2
                :1 (do (swap! out* conj 1) 1)

@@ -4598,6 +4598,26 @@
   [& ^:no-warn-when-unused forms]
   nil)
 
+(defn ^:private case-test-constants
+  [clauses]
+  (mapcat (fn [pair]
+            (let [binding (first pair)]
+              (if (seq? binding)
+                binding
+                [binding])))
+          (partition 2 clauses)))
+
+(defn ^:private assert-distinct-case-test-constants
+  [clauses]
+  (loop [seen []
+         tests (case-test-constants clauses)]
+    (when (seq tests)
+      (let [test (first tests)]
+        (when (some #(= test %) seen)
+          (throw (python/ValueError
+                  (str "Duplicate case test constant: " test))))
+        (recur (conj seen test) (rest tests))))))
+
 (defmacro case
   "Switch on ``expr`` to return a matching clause from the set of input clauses.
 
@@ -4612,6 +4632,10 @@
   (let [default (if (odd? (count clauses))
                   (last clauses)
                   :basilisp.core.case/no-default)
+        case-clauses (if (= default :basilisp.core.case/no-default)
+                       clauses
+                       (drop-last clauses))
+        _       (assert-distinct-case-test-constants case-clauses)
         pairs   (mapcat identity
                         (mapcat (fn [pair]
                                   (let [binding (first pair)
@@ -4620,9 +4644,7 @@
                                       (map #(vector (list 'quote %) expr) binding)
                                       [[(list 'quote binding) expr]])))
                                 (partition 2
-                                           (if (= default :basilisp.core.case/no-default)
-                                             clauses
-                                             (drop-last clauses)))))
+                                           case-clauses)))
         expr-gs (gensym "expr")]
     `(let [~expr-gs ~expr
            m#       ~(apply hash-map pairs)]
