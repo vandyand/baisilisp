@@ -212,6 +212,12 @@ Near-term deliverable:
   invokability, generated return conformance, invalid argument and arity
   rejection, conformed ``:fn`` relation inputs, and the Clojure-compatible
   failure boundary for ``fspec`` generation without ``:args``.
+* **Completed locally:** close the portable ``clojure.instant`` public surface
+  by adding ``read-instant-date``, ``read-instant-calendar``, and
+  ``read-instant-timestamp`` equivalents. Shared fixtures now lock public names,
+  UTC Date/Timestamp epoch behavior, offset-preserving calendar fields,
+  timestamp nanosecond retention, malformed input rejection, and seeded reader
+  corpus behavior.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

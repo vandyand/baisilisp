@@ -1,5 +1,6 @@
 (ns tests.basilisp.test-instant
   (:require
+   [clojure.instant :as clj-instant]
    [basilisp.instant :as instant]
    [basilisp.test :refer [deftest is]]))
 
@@ -7,4 +8,23 @@
   (is (= [2024 1 1 0 0 0 0 0 0 0]
          (instant/parse-timestamp vector "2024")))
   (is (= #inst "2024-02-28T22:32:03.123456+00:00"
-         (instant/read-instant "2024-02-29T01:02:03.123456789+02:30"))))
+         (instant/read-instant "2024-02-29T01:02:03.123456789+02:30")))
+  (doseq [sym '[parse-timestamp
+                read-instant
+                read-instant-calendar
+                read-instant-date
+                read-instant-timestamp
+                validated]]
+    (is (contains? (ns-publics 'basilisp.instant) sym)))
+  (is (= (inst-ms (instant/read-instant "2024-02-29T01:02:03.123456789+02:30"))
+         (inst-ms (instant/read-instant-date "2024-02-29T01:02:03.123456789+02:30"))))
+  (let [timestamp (instant/read-instant-timestamp "2024-02-03T04:05:06.123456789123-07:30")
+        calendar (instant/read-instant-calendar "2024-02-03T04:05:06.700000123-07:30")]
+    (is (= 123456789 (.-nanoseconds timestamp)))
+    (is (= 2024 (.-year calendar)))
+    (is (= 2 (.-month calendar)))
+    (is (= 3 (.-day calendar)))
+    (is (= 4 (.-hour calendar)))
+    (is (= -450 (.-offset-minutes calendar))))
+  (is (= (inst-ms (instant/read-instant-timestamp "2024-02-03T04:05:06.7-07:30"))
+         (inst-ms (clj-instant/read-instant-timestamp "2024-02-03T04:05:06.7-07:30")))))

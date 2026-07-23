@@ -731,18 +731,20 @@ a year is required, trailing date/time components are optional, and a missing
 offset means UTC. The parser passes the ten integer components (year through
 offset minutes) to a caller-supplied constructor, making the grammar
 independently testable. ``read-instant`` constructs an aware Python
-``datetime.datetime`` normalized to UTC.
+``datetime.datetime`` normalized to UTC. ``read-instant-date`` returns the same
+UTC-normalized Date-like value, ``read-instant-timestamp`` returns a UTC
+``datetime`` subclass which carries the parsed nanosecond field, and
+``read-instant-calendar`` returns a small immutable calendar value preserving
+the original offset and local calendar fields.
 
 The ``#inst`` reader now uses the same parser, so partial timestamps, offsets,
 and long fractional seconds follow the shared Clojure/Basilisp fixture. Python
 datetimes retain microsecond precision, so fractions finer than six decimal
 places are truncated after parsing nanosecond components. Leap seconds remain
 rejected rather than silently normalized because Python has no representable
-leap-second ``datetime`` value. ``read-instant-date``,
-``read-instant-calendar``, and ``read-instant-timestamp`` remain JVM-only
-names. ``datetime``, ``zoneinfo``, and the standard library are sufficient;
-``python-dateutil`` would broaden parsing behavior beyond Clojure's grammar and
-must not become a required dependency.
+leap-second ``datetime`` value. ``datetime`` and the standard library are
+sufficient; ``python-dateutil`` would broaden parsing behavior beyond
+Clojure's grammar and must not become a required dependency.
 
 ``core.reducers``
 ~~~~~~~~~~~~~~~~~

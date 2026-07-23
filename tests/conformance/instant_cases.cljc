@@ -18,6 +18,30 @@
     false
     (catch Exception _ true)))
 
+(defn timestamp-nanos [value]
+  #?(:clj (.getNanos value)
+     :lpy (.-nanoseconds value)))
+
+(defn calendar-summary [value]
+  #?(:clj {:year (.get value java.util.Calendar/YEAR)
+           :month (inc (.get value java.util.Calendar/MONTH))
+           :day (.get value java.util.Calendar/DAY_OF_MONTH)
+           :hour (.get value java.util.Calendar/HOUR_OF_DAY)
+           :minute (.get value java.util.Calendar/MINUTE)
+           :second (.get value java.util.Calendar/SECOND)
+           :millisecond (.get value java.util.Calendar/MILLISECOND)
+           :offset-minutes (quot (+ (.get value java.util.Calendar/ZONE_OFFSET)
+                                    (.get value java.util.Calendar/DST_OFFSET))
+                                 60000)}
+     :lpy {:year (.-year value)
+           :month (.-month value)
+           :day (.-day value)
+           :hour (.-hour value)
+           :minute (.-minute value)
+           :second (.-second value)
+           :millisecond (.-millisecond value)
+           :offset-minutes (.-offset-minutes value)}))
+
 (def timestamp-inputs
   ["2024"
    "2024-02"
@@ -34,6 +58,16 @@
 
 (emit-case :parse-timestamp-components
            (mapv #(instant/parse-timestamp vector %) timestamp-inputs))
+
+(emit-case :public-surface
+           (every? #(contains? (ns-publics #?(:clj 'clojure.instant
+                                              :lpy 'basilisp.instant))
+                               %)
+                   '[parse-timestamp
+                     read-instant-calendar
+                     read-instant-date
+                     read-instant-timestamp
+                     validated]))
 
 (emit-case :parse-timestamp-malformed
            (mapv #(errors? (fn [] (instant/parse-timestamp vector %)))
@@ -58,6 +92,27 @@
 
 (emit-case :reader-inst-ms
            (mapv #(inst-ms (read-string %)) reader-inputs))
+
+(emit-case :read-instant-date-ms
+           (mapv #(inst-ms (instant/read-instant-date %))
+                 ["2024"
+                  "2024-02-03T04:05:06.123456789123Z"
+                  "2024-02-03T04:05:06.7-07:30"]))
+
+(emit-case :read-instant-calendar-components
+           (mapv #(calendar-summary (instant/read-instant-calendar %))
+                 ["2024"
+                  "2024-02-03T04:05:06.123456789123Z"
+                  "2024-02-03T04:05:06.7-07:30"]))
+
+(emit-case :read-instant-timestamp
+           (mapv (fn [source]
+                   (let [value (instant/read-instant-timestamp source)]
+                     {:inst-ms (inst-ms value)
+                      :nanos (timestamp-nanos value)}))
+                 ["2024"
+                  "2024-02-03T04:05:06.123456789123Z"
+                  "2024-02-03T04:05:06.7-07:30"]))
 
 (emit-case :reader-invalid-calendar
            (mapv #(errors? (fn [] (read-string %)))

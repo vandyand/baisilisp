@@ -134,6 +134,39 @@ def test_read_instant_exposes_exact_timestamp_seconds():
     assert value.timestamp() * 1000 == 1262311321001
 
 
+def test_read_instant_date_matches_read_instant_utc_datetime():
+    assert instant.read_instant_date(
+        "2024-02-03T04:05:06.123456789123-07:30"
+    ) == instant.read_instant("2024-02-03T04:05:06.123456789123-07:30")
+
+
+def test_read_instant_calendar_preserves_local_offset_components():
+    value = instant.read_instant_calendar("2024-02-03T04:05:06.700000123-07:30")
+
+    assert isinstance(value, instant.InstantCalendar)
+    assert value.year == 2024
+    assert value.month == 2
+    assert value.day == 3
+    assert value.hour == 4
+    assert value.minute == 5
+    assert value.second == 6
+    assert value.millisecond == 700
+    assert value.nanoseconds == 700_000_123
+    assert value.offset_minutes == -450
+    assert value.timestamp() * 1000 == Fraction(1706960106700, 1)
+
+
+def test_read_instant_timestamp_normalizes_utc_and_preserves_nanoseconds():
+    value = instant.read_instant_timestamp("2024-02-03T04:05:06.123456789123-07:30")
+
+    assert isinstance(value, instant.InstantTimestamp)
+    assert value == datetime.datetime(
+        2024, 2, 3, 11, 35, 6, 123456, tzinfo=datetime.timezone.utc
+    )
+    assert value.nanoseconds == 123_456_789
+    assert instant.epoch_millis(value) == 1706960106123
+
+
 def test_epoch_millis_uses_exact_integer_arithmetic():
     assert (
         instant.epoch_millis(

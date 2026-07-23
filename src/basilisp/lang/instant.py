@@ -5,6 +5,7 @@ from __future__ import annotations
 import datetime
 import re
 from collections.abc import Callable
+from dataclasses import dataclass
 from fractions import Fraction
 from typing import TypeVar
 
@@ -125,6 +126,85 @@ class InstantDateTime(datetime.datetime):
         return timestamp_seconds(self)
 
 
+class InstantTimestamp(InstantDateTime):
+    """Datetime subclass carrying Clojure timestamp nanosecond precision."""
+
+    __slots__ = ("_nanoseconds",)
+
+    def __new__(
+        cls,
+        year: int,
+        month: int,
+        day: int,
+        hour: int = 0,
+        minute: int = 0,
+        second: int = 0,
+        microsecond: int = 0,
+        tzinfo: datetime.tzinfo | None = None,
+        *,
+        fold: int = 0,
+        nanoseconds: int = 0,
+    ) -> "InstantTimestamp":
+        self = super().__new__(
+            cls,
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            microsecond,
+            tzinfo=tzinfo,
+            fold=fold,
+        )
+        self._nanoseconds = nanoseconds
+        return self
+
+    @property
+    def nanoseconds(self) -> int:
+        return self._nanoseconds
+
+
+@dataclass(frozen=True)
+class InstantCalendar:
+    """Offset-preserving portable counterpart to ``java.util.Calendar``."""
+
+    datetime: datetime.datetime
+    nanoseconds: int
+    offset_minutes: int
+
+    @property
+    def year(self) -> int:
+        return self.datetime.year
+
+    @property
+    def month(self) -> int:
+        return self.datetime.month
+
+    @property
+    def day(self) -> int:
+        return self.datetime.day
+
+    @property
+    def hour(self) -> int:
+        return self.datetime.hour
+
+    @property
+    def minute(self) -> int:
+        return self.datetime.minute
+
+    @property
+    def second(self) -> int:
+        return self.datetime.second
+
+    @property
+    def millisecond(self) -> int:
+        return self.datetime.microsecond // 1_000
+
+    def timestamp(self) -> Fraction:
+        return timestamp_seconds(self.datetime)
+
+
 def timestamp_seconds(value: datetime.datetime) -> Fraction:
     """Return exact seconds between ``value`` and the Unix epoch."""
 
@@ -143,6 +223,24 @@ def epoch_millis(value: datetime.datetime) -> int:
         (delta.days * 24 * 60 * 60) + delta.seconds
     ) * 1_000_000 + delta.microseconds
     return micros // 1_000
+
+
+def read_instant_date(cs: str) -> datetime.datetime:
+    """Read ``cs`` as a Date-like aware Python datetime normalized to UTC."""
+
+    return parse_timestamp(validated(_construct_datetime), cs)
+
+
+def read_instant_calendar(cs: str) -> InstantCalendar:
+    """Read ``cs`` as an offset-preserving portable calendar value."""
+
+    return parse_timestamp(validated(_construct_calendar), cs)
+
+
+def read_instant_timestamp(cs: str) -> InstantTimestamp:
+    """Read ``cs`` as a UTC timestamp value preserving parsed nanoseconds."""
+
+    return parse_timestamp(validated(_construct_timestamp), cs)
 
 
 def _days_in_month(year: int, month: int) -> int:
@@ -187,4 +285,83 @@ def _construct_datetime(
         normalized.microsecond,
         tzinfo=normalized.tzinfo,
         fold=normalized.fold,
+    )
+
+
+def _offset_timezone(
+    offset_sign: int, offset_hours: int, offset_minutes: int
+) -> tuple[datetime.timezone, int]:
+    total_offset_minutes = offset_sign * ((offset_hours * 60) + offset_minutes)
+    return (
+        datetime.timezone(datetime.timedelta(minutes=total_offset_minutes)),
+        total_offset_minutes,
+    )
+
+
+def _construct_calendar(
+    years: int,
+    months: int,
+    days: int,
+    hours: int,
+    minutes: int,
+    seconds: int,
+    nanoseconds: int,
+    offset_sign: int,
+    offset_hours: int,
+    offset_minutes: int,
+) -> InstantCalendar:
+    timezone, total_offset_minutes = _offset_timezone(
+        offset_sign, offset_hours, offset_minutes
+    )
+    return InstantCalendar(
+        datetime=datetime.datetime(
+            years,
+            months,
+            days,
+            hours,
+            minutes,
+            seconds,
+            nanoseconds // 1_000,
+            tzinfo=timezone,
+        ),
+        nanoseconds=nanoseconds,
+        offset_minutes=total_offset_minutes,
+    )
+
+
+def _construct_timestamp(
+    years: int,
+    months: int,
+    days: int,
+    hours: int,
+    minutes: int,
+    seconds: int,
+    nanoseconds: int,
+    offset_sign: int,
+    offset_hours: int,
+    offset_minutes: int,
+) -> InstantTimestamp:
+    normalized = _construct_datetime(
+        years,
+        months,
+        days,
+        hours,
+        minutes,
+        seconds,
+        nanoseconds,
+        offset_sign,
+        offset_hours,
+        offset_minutes,
+    )
+    return InstantTimestamp(
+        normalized.year,
+        normalized.month,
+        normalized.day,
+        normalized.hour,
+        normalized.minute,
+        normalized.second,
+        normalized.microsecond,
+        tzinfo=normalized.tzinfo,
+        fold=normalized.fold,
+        nanoseconds=nanoseconds,
     )

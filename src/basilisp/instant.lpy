@@ -16,3 +16,18 @@
   "Read ``cs`` as a timezone-aware Python datetime normalized to UTC."
   [cs]
   (basilisp.lang.instant/read_instant cs))
+
+(defn read-instant-date
+  "Read ``cs`` as a Date-like timezone-aware Python datetime normalized to UTC."
+  [cs]
+  (basilisp.lang.instant/read_instant_date cs))
+
+(defn read-instant-calendar
+  "Read ``cs`` as an offset-preserving portable calendar value."
+  [cs]
+  (basilisp.lang.instant/read_instant_calendar cs))
+
+(defn read-instant-timestamp
+  "Read ``cs`` as a UTC timestamp value preserving parsed nanoseconds."
+  [cs]
+  (basilisp.lang.instant/read_instant_timestamp cs))
