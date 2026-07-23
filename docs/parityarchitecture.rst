@@ -665,6 +665,17 @@ JVM-hosted contracts. They should not all be treated as equally valuable
 "missing namespaces." The following decisions define what a credible next
 implementation would contain.
 
+A public-surface audit on 2026-07-23 closed the remaining small portable gaps
+in already-ported standard namespaces: ``clojure.string`` now has no missing
+Clojure public vars, and ``clojure.data.priority-map`` exactly matches the
+upstream public names, including ``trim-newline``,
+``->PersistentPriorityMap``, and ``apply-keyfn``. The remaining audited public
+misses are no longer small portable work items: ``clojure.repl`` differs around
+thread stopping, debugger break handlers, and Java stack-frame rendering, while
+``clojure.xml`` differs around SAX parser state and handler internals. Those
+belong in the host-boundary queue below unless a new fixture proves a portable
+behavioral contract.
+
 ``instant``
 ~~~~~~~~~~~
 

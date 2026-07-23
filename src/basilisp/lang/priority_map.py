@@ -202,6 +202,35 @@ def priority_map_keyfn_by(
     return PersistentPriorityMap(comparator=comparator, keyfn=keyfn).assoc(*keyvals)
 
 
+def persistent_priority_map_from_parts(
+    priority_to_items: Any,
+    item_to_priority: Mapping[Any, Any] | Iterable[Any],
+    meta: IPersistentMap | None,
+    keyfn: Callable[[Any], Any] | None,
+) -> PersistentPriorityMap:
+    """Create a priority map from the public positional constructor fields.
+
+    ``clojure.data.priority-map`` exposes a generated
+    ``->PersistentPriorityMap`` factory. The first argument carries priority
+    ordering, so reuse its comparator when it is available; the second argument
+    is the public item-to-priority mapping observed by map operations.
+    """
+
+    comparator = getattr(priority_to_items, "comparator", _default_comparator)
+    if isinstance(item_to_priority, PersistentPriorityMap):
+        inner = item_to_priority._inner
+    elif isinstance(item_to_priority, PersistentMap):
+        inner = _Map(item_to_priority.items())
+    elif isinstance(item_to_priority, Mapping):
+        inner = _Map(item_to_priority.items())
+    else:
+        inner = _Map(
+            (entry.key, entry.value)
+            for entry in (MapEntry.from_vec(entry) for entry in item_to_priority)
+        )
+    return PersistentPriorityMap(inner, comparator=comparator, keyfn=keyfn, meta=meta)
+
+
 def priority_to_set_of_items(priority_map: PersistentPriorityMap):
     return priority_map.priority_to_set_of_items()
 

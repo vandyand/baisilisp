@@ -286,3 +286,11 @@
   "Trim trailing newline and return characters from ``s``."
   [s]
   (.rstrip s "\r\n"))
+
+(defn trim-newline
+  "Trim trailing newline and return characters from ``s``.
+
+  This is the Clojure-compatible singular spelling. It removes only trailing
+  ``\n`` and ``\r`` characters and preserves other trailing whitespace."
+  [s]
+  (trim-newlines s))

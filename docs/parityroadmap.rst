@@ -164,6 +164,12 @@ Near-term deliverable:
 
 * prioritize namespaces with small, testable API surfaces before larger
   runtime-level features
+* **Completed locally:** close the small portable public-surface gaps in
+  ``clojure.string`` and ``clojure.data.priority-map``. ``trim-newline``,
+  ``->PersistentPriorityMap``, and ``apply-keyfn`` are now covered by shared
+  differential fixtures. Remaining audited misses are JVM/SAX-hosted
+  ``clojure.repl`` and ``clojure.xml`` internals, not ordinary portable
+  namespace gaps.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

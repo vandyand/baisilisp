@@ -36,6 +36,32 @@
     (is (= {1 #{:b} 2 #{:a :c}}
            (pm/priority->set-of-items (pm/priority-map :a 2 :b 1 :c 2))))))
 
+(deftest public-constructor-and-apply-keyfn-contract
+  (let [ascending (pm/->PersistentPriorityMap
+                    (sorted-map 1 #{:b} 2 #{:c} 3 #{:a})
+                    {:a [3 :apple] :b [1 :banana] :c [2 :carrot]}
+                    {:origin :ctor}
+                    first)
+        descending (pm/->PersistentPriorityMap
+                     (sorted-map-by > 1 #{:a} 3 #{:b} 2 #{:c})
+                     {:a 1 :b 3 :c 2}
+                     nil
+                     nil)
+        keyfn first]
+    (is (contains? (ns-publics 'basilisp.data.priority-map) '->PersistentPriorityMap))
+    (is (contains? (ns-publics 'basilisp.data.priority-map) 'apply-keyfn))
+    (is (= [[:b [1 :banana]] [:c [2 :carrot]] [:a [3 :apple]]]
+           (vec ascending)))
+    (is (= [:b [1 :banana]] (peek ascending)))
+    (is (= {:origin :ctor} (meta ascending)))
+    (is (= [[:d [0 :date]] [:b [1 :banana]] [:c [2 :carrot]] [:a [3 :apple]]]
+           (vec (assoc ascending :d [0 :date]))))
+    (is (= [[:b 3] [:c 2] [:a 1]] (vec descending)))
+    (is (= [:b 3] (peek descending)))
+    (is (= 7 (pm/apply-keyfn [7 :seven])))
+    (is (= [7 :seven] (let [keyfn nil]
+                        (pm/apply-keyfn [7 :seven]))))))
+
 (deftest priority-map-rejects-invalid-construction-and-empty-pop
   (is (thrown? Exception (pm/priority-map :a 1 :b)))
   (is (thrown? Exception (pop (pm/priority-map)))))

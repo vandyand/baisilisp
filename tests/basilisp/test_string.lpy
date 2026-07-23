@@ -266,4 +266,12 @@
   (are [x y] (= y (str/trim-newlines x))
     ""                ""
     "Chris Crink\t "  "Chris Crink\t "
+    "Chris Crink\n\r" "Chris Crink")
+
+  (are [x y] (= y (str/trim-newline x))
+    ""                ""
+    "\r\n"            ""
+    "Chris Crink\t "  "Chris Crink\t "
+    "Chris Crink\n"   "Chris Crink"
+    "Chris Crink\r\n" "Chris Crink"
     "Chris Crink\n\r" "Chris Crink"))

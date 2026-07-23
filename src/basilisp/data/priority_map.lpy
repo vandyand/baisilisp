@@ -8,6 +8,28 @@
 (def priority-map-keyfn-by impl/priority_map_keyfn_by)
 (def priority->set-of-items impl/priority_to_set_of_items)
 
+(defmacro apply-keyfn
+  "Apply the local ``keyfn`` binding to ``x`` when it is non-nil.
+
+  This public macro mirrors ``clojure.data.priority-map/apply-keyfn``. It is
+  primarily used by the priority-map implementation, but the upstream library
+  exposes it, so portable callers can depend on the same expansion contract."
+  [x]
+  `(if ~'keyfn (~'keyfn ~x) ~x))
+
+(defn ->PersistentPriorityMap
+  "Positional factory for a persistent priority map.
+
+  The accepted argument shape matches ``clojure.data.priority-map``:
+  ``priority->set-of-items``, ``item->priority``, metadata, and optional key
+  function. Basilisp stores the observable item-to-priority map directly and
+  preserves the comparator from ``priority->set-of-items`` when present."
+  [priority->set-of-items item->priority _meta keyfn]
+  (impl/persistent_priority_map_from_parts priority->set-of-items
+                                           item->priority
+                                           _meta
+                                           keyfn))
+
 (defn subseq
   ([priority-map test key]
    (impl/subseq priority-map test key))

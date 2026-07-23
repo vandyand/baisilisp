@@ -19,3 +19,28 @@
   (emit-case :bounds {:subseq (vec (pm/subseq p < 3))
                       :rsubseq (vec (pm/rsubseq p >= 2))
                       :groups (pm/priority->set-of-items (assoc p :d 2))}))
+
+(emit-case :public-constructor-and-apply-keyfn
+           (let [ascending (pm/->PersistentPriorityMap
+                             (sorted-map 1 #{:b} 2 #{:c} 3 #{:a})
+                             {:a [3 :apple] :b [1 :banana] :c [2 :carrot]}
+                             {:origin :ctor}
+                             first)
+                 descending (pm/->PersistentPriorityMap
+                              (sorted-map-by > 1 #{:a} 3 #{:b} 2 #{:c})
+                              {:a 1 :b 3 :c 2}
+                              nil
+                              nil)
+                 keyfn first]
+             {:surface (sort (map name (keys (ns-publics #?(:clj 'clojure.data.priority-map
+                                                             :lpy 'basilisp.data.priority-map)))))
+              :ascending {:entries (vec ascending)
+                          :peek (peek ascending)
+                          :meta (meta ascending)
+                          :assoc (vec (assoc ascending :d [0 :date]))
+                          :groups (pm/priority->set-of-items ascending)}
+              :descending {:entries (vec descending)
+                           :peek (peek descending)}
+              :apply-keyfn [(pm/apply-keyfn [7 :seven])
+                            (let [keyfn nil]
+                              (pm/apply-keyfn [7 :seven]))]}))

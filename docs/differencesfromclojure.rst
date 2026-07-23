@@ -345,6 +345,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.data.priority-map` provides the persistent
   ``clojure.data.priority-map`` map/priority-queue contract. Its implementation
   orders entries on demand rather than exposing a JVM sorted-map representation.
+  The public surface includes the upstream positional constructor and
+  ``apply-keyfn`` macro for source compatibility; invalid hand-built internal
+  field combinations are not a supported interchange format.
 * :lpy:ns:`basilisp.datafy` is a port of ``clojure.datafy``
 * :lpy:ns:`basilisp.core.rrb-vector` provides the public
   ``clojure.core.rrb-vector`` constructors, concatenation, and non-view
@@ -413,7 +416,9 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.stacktrace` is a port of ``clojure.stacktrace``. It exposes
   the standard public stacktrace helpers while formatting Python traceback
   frames rather than JVM ``StackTraceElement`` values.
-* :lpy:ns:`basilisp.string` is a port of ``clojure.string``
+* :lpy:ns:`basilisp.string` is a port of ``clojure.string``. It also includes
+  Python-native helpers such as ``lpad``/``rpad`` and the historical
+  ``trim-newlines`` spelling; ``trim-newline`` is the standard Clojure spelling.
 * :lpy:ns:`basilisp.test` is a port of ``clojure.test``. It supports the
   standard low-level ``test-var``/``:test`` metadata path, report counters,
   output rebinding, and assertion-extension helpers alongside Basilisp's
