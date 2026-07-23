@@ -3,7 +3,8 @@
             [basilisp.string :as str]
             [basilisp.test :refer [deftest is testing]])
   (:import random
-           re))
+           re
+           signal))
 
 (defn repl-tranche-alpha
   "A unique documentation needle for REPL inspection parity."
@@ -86,6 +87,37 @@
       (catch python/ValueError e
         (is (instance? python/ZeroDivisionError (repl/root-cause e)))
         (is (str/includes? (with-out-str (repl/pst e 1)) "ZeroDivisionError"))))))
+
+(deftest repl-host-boundary-compatibility-test
+  (testing "clojure.repl host-specific public names exist under the standard alias"
+    (doseq [sym '[set-break-handler! stack-element-str thread-stopper]]
+      (is (contains? (ns-publics 'basilisp.repl) sym))))
+
+  (testing "stack-element-str formats traceback summaries without printing"
+    (try
+      (throw (python/RuntimeError "stack-element-str fixture"))
+      (catch python/RuntimeError e
+        (let [summary (.-__traceback__ e)
+              rendered (repl/stack-element-str summary)]
+          (is (str/includes? rendered "test_repl"))
+          (is (str/includes? rendered "("))
+          (is (str/includes? rendered ")"))))))
+
+  (testing "thread-stopper returns a one-argument Python interrupt handler"
+    (let [stopper (repl/thread-stopper)]
+      (is (ifn? stopper))
+      (is (thrown? python/KeyboardInterrupt (stopper :SIGINT)))))
+
+  (testing "set-break-handler! installs a one-argument SIGINT adapter and returns the previous handler"
+    (let [previous (signal/getsignal signal/SIGINT)
+          seen (atom nil)
+          installed-previous (repl/set-break-handler! #(reset! seen %))]
+      (try
+        (is (= previous installed-previous))
+        ((signal/getsignal signal/SIGINT) 2 nil)
+        (is (= 2 @seen))
+        (finally
+          (signal/signal signal/SIGINT previous))))))
 
 (deftest repl-inspection-seeded-fuzz-and-concurrency-stress-test
   (let [all-results (vec (repl/apropos ".*"))

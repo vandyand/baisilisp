@@ -135,9 +135,11 @@ inspection helpers, including ``apropos``, ``dir``, ``dir-fn``, ``find-doc``,
 ``doc``, ``source``, ``source-fn``, ``root-cause``, and ``pst``. Python source
 inspection can legitimately be unavailable for builtins and dynamically
 created objects; ``source-fn`` returns ``nil`` in those cases. JVM-specific
-``clojure.repl`` hooks for thread stopping, debugger break handlers, and Java
-stack-frame rendering are intentionally omitted in favor of Python's native
-debugger and traceback facilities.
+``clojure.repl`` names such as ``set-break-handler!``, ``thread-stopper``, and
+``stack-element-str`` are available as Python-host boundary wrappers: signal
+handlers raise ``KeyboardInterrupt`` in Python's signal-delivery thread, and
+stack elements render Python traceback/frame values rather than JVM
+``StackTraceElement`` instances.
 
 .. _evaluation_differences:
 

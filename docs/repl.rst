@@ -85,9 +85,10 @@ The result order of ``apropos`` and ``dir-fn`` is deterministic, which makes
 their output suitable for editor adapters and transcript tests.
 
 ``basilisp.repl`` implements the portable, interactive portion of
-``clojure.repl``. JVM-specific thread interruption and stack-frame formatting
-hooks are intentionally not provided; Python's debugger and traceback objects
-remain the appropriate host interfaces for those concerns.
+``clojure.repl``. Host-boundary names such as ``set-break-handler!``,
+``thread-stopper``, and ``stack-element-str`` are present, but follow Python's
+signal and traceback model rather than pretending Java ``Thread`` and
+``StackTraceElement`` objects exist.
 
 .. lpy:currentns:: basilisp.core
 

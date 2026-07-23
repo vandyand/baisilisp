@@ -5,6 +5,7 @@
   (:import inspect
            linecache
            re
+           signal
            [basilisp.lang.util :as util]
            [basilisp.lang.source :as source-utils]))
 
@@ -176,6 +177,11 @@
   [exc]
   (stacktrace/root-cause exc))
 
+(defn- attr
+  [o name]
+  (when o
+    (python/getattr o name nil)))
+
 (defn pst
   "Print the root-cause traceback for the most recent or supplied exception.
 
@@ -189,3 +195,50 @@
    (stacktrace/print-stack-trace (root-cause exc)))
   ([exc n]
    (stacktrace/print-stack-trace (root-cause exc) n)))
+
+(defn stack-element-str
+  "Return a portable string representation of one Python traceback frame.
+
+  Python does not expose JVM ``StackTraceElement`` values. This function accepts
+  traceback frame summaries, traceback frames, or any object with ``filename``,
+  ``lineno``, and ``name`` attributes and formats ``name (file:line)``."
+  [el]
+  (let [frame    (or (attr el "tb_frame") el)
+        code     (or (attr frame "f_code") el)
+        filename (or (attr el "filename")
+                     (attr code "co_filename")
+                     "<unknown>")
+        line     (or (attr el "lineno")
+                     (attr el "tb_lineno")
+                     (attr frame "f_lineno"))
+        name     (or (attr el "name")
+                     (attr code "co_name")
+                     "<unknown>")]
+    (str (demunge name) " (" filename (when line (str ":" line)) ")")))
+
+(defn thread-stopper
+  "Return a one-argument handler which raises ``KeyboardInterrupt``.
+
+  Clojure uses this helper to stop a JVM thread from a signal handler. Python
+  cannot safely stop an arbitrary thread asynchronously, so the optional
+  ``thread`` argument is accepted for API compatibility and the returned handler
+  raises in the calling thread, which matches Python's SIGINT delivery model."
+  ([]
+   (thread-stopper nil))
+  ([_thread]
+   (fn [sig]
+     (throw (python/KeyboardInterrupt (str sig))))))
+
+(defn set-break-handler!
+  "Install a Python SIGINT handler and return the previous handler.
+
+  The supplied function receives one argument, the signal number. With no
+  argument, installs ``thread-stopper``. Python only allows signal handlers to
+  be installed from the main interpreter thread; host ``ValueError`` is allowed
+  to surface in other threads."
+  ([]
+   (set-break-handler! (thread-stopper)))
+  ([f]
+   (signal/signal signal/SIGINT
+                  (fn [sig _frame]
+                    (f sig)))))

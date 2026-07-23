@@ -167,9 +167,8 @@ Near-term deliverable:
 * **Completed locally:** close the small portable public-surface gaps in
   ``clojure.string`` and ``clojure.data.priority-map``. ``trim-newline``,
   ``->PersistentPriorityMap``, and ``apply-keyfn`` are now covered by shared
-  differential fixtures. Remaining audited misses are JVM/SAX-hosted
-  ``clojure.repl`` and ``clojure.xml`` internals, not ordinary portable
-  namespace gaps.
+  differential fixtures. Remaining audited misses are SAX-hosted
+  ``clojure.xml`` internals, not ordinary portable namespace gaps.
 * **Completed locally:** close portable constructor/protocol gaps in
   ``clojure.core.cache``, ``clojure.core.memoize``, and
   ``clojure.core.protocols``, and add the standard ``clojure.core.reducers``
@@ -218,6 +217,11 @@ Near-term deliverable:
   UTC Date/Timestamp epoch behavior, offset-preserving calendar fields,
   timestamp nanosecond retention, malformed input rejection, and seeded reader
   corpus behavior.
+* **Completed locally:** close the remaining ``clojure.repl`` public names with
+  Python-host boundary implementations for ``set-break-handler!``,
+  ``thread-stopper``, and ``stack-element-str``. Shared fixtures now lock the
+  public surface and stack-element string shape while local tests cover signal
+  handler installation/restoration and interrupt behavior.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -416,12 +416,15 @@ entries without importing modules or mutating interpreter state.
 
 Interactive REPL inspection now uses the same portable policy. ``basilisp.repl``
 provides deterministic ``apropos``/``dir`` discovery, documentation and source
-lookup, identifier ``demunge``, and root-cause traceback display from the live
-namespace registry. It does not claim JVM debugger, thread-stopping, or Java
-stack-frame compatibility: those behavior families are host services, not
-portable Clojure contracts. Namespace scans are read-only and source lookup is
-safe for Python builtins and dynamically-created objects that lack recoverable
-source text.
+lookup, identifier ``demunge``, root-cause traceback display, and the remaining
+``clojure.repl`` public host-boundary helpers from the live namespace registry.
+``set-break-handler!`` adapts Python SIGINT handlers, ``thread-stopper``
+returns a handler that raises ``KeyboardInterrupt`` in the calling thread, and
+``stack-element-str`` renders Python traceback/frame values. It does not claim
+JVM debugger, arbitrary thread-stopping, or Java ``StackTraceElement``
+compatibility: those behavior families are host services, not portable Clojure
+contracts. Namespace scans are read-only and source lookup is safe for Python
+builtins and dynamically-created objects that lack recoverable source text.
 
 The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
@@ -691,11 +694,9 @@ in already-ported standard namespaces: ``clojure.string`` now has no missing
 Clojure public vars, and ``clojure.data.priority-map`` exactly matches the
 upstream public names, including ``trim-newline``,
 ``->PersistentPriorityMap``, and ``apply-keyfn``. The remaining audited public
-misses are no longer small portable work items: ``clojure.repl`` differs around
-thread stopping, debugger break handlers, and Java stack-frame rendering, while
-``clojure.xml`` differs around SAX parser state and handler internals. Those
-belong in the host-boundary queue below unless a new fixture proves a portable
-behavioral contract.
+misses are no longer small portable work items: ``clojure.xml`` differs around
+SAX parser state and handler internals. Those belong in the host-boundary queue
+below unless a new fixture proves a portable behavioral contract.
 
 The same audit also closed the portable constructor/protocol layer for
 ``clojure.core.cache``, ``clojure.core.memoize``,
