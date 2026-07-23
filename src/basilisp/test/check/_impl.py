@@ -634,7 +634,7 @@ def pass_q(result: Any) -> bool:
 
 def result_data(result: Any):
     if isinstance(result, ErrorResult):
-        return lmap.map({_k("error", "basilisp.test.check.properties"): result.error})
+        return lmap.map({_k("error", "clojure.test.check.properties"): result.error})
     return None
 
 
@@ -738,6 +738,11 @@ boolean = elements((False, True))
 nat = sized(lambda size: choose(0, size))
 small_integer = sized(lambda size: choose(-size, size))
 integer = small_integer
+size_bounded_bigint = sized(
+    lambda size: choose(
+        -max(0, (1 << max(0, size)) - 1), max(0, (1 << max(0, size)) - 1)
+    )
+)
 pos_int = nat
 neg_int = fmap(lambda value: -value, nat)
 s_pos_int = fmap(lambda value: value + 1, nat)
@@ -745,6 +750,7 @@ s_neg_int = fmap(lambda value: value - 1, neg_int)
 large_integer = large_integer_star()
 double = double_star()
 char = _char(0, 255)
+byte = choose(-128, 127)
 char_ascii = _char(32, 126)
 char_alphanumeric = one_of((_char(48, 57), _char(65, 90), _char(97, 122)))
 char_alpha = one_of((_char(65, 90), _char(97, 122)))

@@ -3,6 +3,7 @@
   (:import [basilisp.test.check._impl :as impl]))
 
 (def RoseTree impl/RoseTree)
+(defn ->RoseTree [root children] (impl/RoseTree root children))
 (def root impl/root)
 (def children impl/children)
 (def make-rose impl/make_rose)

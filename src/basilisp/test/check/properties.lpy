@@ -3,6 +3,8 @@
   (:import [basilisp.test.check._impl :as impl]))
 
 (def ErrorResult impl/ErrorResult)
+(def ->ErrorResult impl/ErrorResult)
+(defn map->ErrorResult [m] (impl/ErrorResult (:error m)))
 (def for-all* impl/for_all_star)
 
 (defmacro for-all

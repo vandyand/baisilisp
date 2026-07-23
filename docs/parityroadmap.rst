@@ -290,6 +290,12 @@ Near-term deliverable:
   lexical binding protection, global symbol macros, templates,
   ``name-with-attributes``, qualified-name rejection, and a generated
   symbol-macro expansion corpus.
+* **Completed locally:** lock the portable ``clojure.test.check`` contract with
+  a shared fixture covering root/generator/property/result/rose-tree public
+  names, primitive and collection generator invariants, combinator behavior,
+  constructor helpers, Clojure namespace result-data keys, quick-check passing
+  and failing result shapes, exception counterexamples, and generated property
+  corpora.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

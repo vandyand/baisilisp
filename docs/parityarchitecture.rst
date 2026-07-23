@@ -949,6 +949,16 @@ argument groups and drops incomplete trailing groups, matching Clojure's
 ``partition``-based behavior. The Clojure zero-binding case is pathological and
 is not a compatibility target.
 
+``basilisp.test.check`` provides a portable property-testing subset across the
+root, ``generators``, ``properties``, ``results``, and ``rose-tree``
+namespaces. The compatibility contract is generator domain shape, combinator
+behavior, ``quick-check`` result maps, failure shrinking, result-data keys under
+``:clojure.test.check.properties/error``, and constructor helpers such as
+``->Generator``/``map->Generator`` and ``->ErrorResult``/``map->ErrorResult``.
+Exact generated values are not a cross-runtime promise: Basilisp's RNG is a
+Python-hosted deterministic splitter, so seeds are reproducible within Basilisp
+but not byte-for-byte aligned with Java test.check.
+
 ``basilisp.walk`` is a direct port of ``clojure.walk``'s recursive traversal
 contract. Lists, sequences, vectors, map entries, maps, sets, records, and
 scalars keep the same traversal points as Clojure, while Basilisp exposes the

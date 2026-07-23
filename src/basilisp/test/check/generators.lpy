@@ -1,9 +1,11 @@
 (ns basilisp.test.check.generators
-  (:refer-clojure :exclude [int vector list hash-map map keyword char boolean
+  (:refer-clojure :exclude [byte int vector list hash-map map keyword char boolean
                             shuffle not-empty symbol set sorted-set double let])
   (:import [basilisp.test.check._impl :as impl]))
 
 (def Generator impl/Generator)
+(def ->Generator impl/Generator)
+(defn map->Generator [m] (impl/Generator (:gen m)))
 (def generator? impl/generator_q)
 (def call-gen impl/call_gen)
 (def gen-pure impl/gen_pure)
@@ -48,6 +50,8 @@
 (def nat impl/nat)
 (def small-integer impl/small_integer)
 (def int impl/integer)
+(def byte impl/byte)
+(def size-bounded-bigint impl/size_bounded_bigint)
 (def pos-int impl/pos_int)
 (def neg-int impl/neg_int)
 (def s-pos-int impl/s_pos_int)

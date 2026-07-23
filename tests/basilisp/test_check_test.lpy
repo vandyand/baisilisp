@@ -3,7 +3,9 @@
             [basilisp.test.check :as tc]
             [basilisp.test.check.clojure-test :refer [defspec]]
             [basilisp.test.check.generators :as gen]
-            [basilisp.test.check.properties :as prop]))
+            [basilisp.test.check.properties :as prop]
+            [basilisp.test.check.results :as results]
+            [basilisp.test.check.rose-tree :as rose]))
 
 (defspec defspec-runs-through-basilisp-test 75
   (prop/for-all [x (gen/choose -100 100)] (= x x)))
@@ -30,6 +32,10 @@
     (is (= :complete (last @events)))))
 
 (deftest generated-values-respect-generator-invariants
+  (let [values (gen/sample gen/byte 200)]
+    (is (every? #(<= -128 % 127) values)))
+  (let [values (gen/sample gen/size-bounded-bigint 200)]
+    (is (every? integer? values)))
   (let [values (gen/sample (gen/vector (gen/choose -50 50) 3 9) 400)]
     (is (= 400 (count values)))
     (is (every? #(<= 3 (count %) 9) values))
@@ -77,7 +83,7 @@
                                :seed 5)]
     (is (not (:pass? result)))
     (is (instance? Exception
-                   (get-in result [:result-data :basilisp.test.check.properties/error])))))
+                   (get-in result [:result-data :clojure.test.check.properties/error])))))
 
 (deftest generator-let-composes-dependent-values
   (let [generator (gen/let [n (gen/choose 1 30)
@@ -85,6 +91,27 @@
                     {:n n :xs xs})]
     (is (every? (fn [{:keys [n xs]}] (= n (count xs)))
                 (gen/sample generator 300)))))
+
+(deftest public-constructor-helpers-have-standard-shapes
+  (let [generator (gen/->Generator (fn [_ size]
+                                     (rose/pure [:size size])))
+        map-generator (gen/map->Generator
+                       {:gen (fn [_ size]
+                               (rose/pure [:map-size size]))})
+        error (prop/->ErrorResult :boom)
+        map-error (prop/map->ErrorResult {:error :boom})
+        tree (rose/->RoseTree :root [(rose/pure :child)])]
+    (is (gen/generator? generator))
+    (is (= [:size 7] (gen/generate generator 7 1)))
+    (is (= [:map-size 8] (gen/generate map-generator 8 1)))
+    (is (not (results/pass? error)))
+    (is (not (results/pass? map-error)))
+    (is (contains? (results/result-data error)
+                   :clojure.test.check.properties/error))
+    (is (not (contains? (results/result-data error)
+                        :basilisp.test.check.properties/error)))
+    (is (= :root (rose/root tree)))
+    (is (= 1 (count (rose/children tree))))))
 
 (deftest fixed-arity-properties-handle-wide-integer-shrink-trees
   ;; This specifically exercises the tuple generator used by for-all*.  Wide

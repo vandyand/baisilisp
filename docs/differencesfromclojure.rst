@@ -475,9 +475,12 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   and ordinary Python text writers replace JVM ``PrintWriter`` values.
 * :lpy:ns:`basilisp.test.check` supplies the portable ``clojure.test.check``
   property-testing boundary: deterministic seeded generation, composable
-  generators, shrinking, ``for-all``, ``quick-check``, and ``defspec``. Its
-  random implementation is Python-hosted, so a seed is reproducible within
-  Basilisp but does not promise Java ``SplittableRandom`` byte-for-byte output.
+  generators, shrinking, ``for-all``, ``quick-check``, ``defspec``, result
+  data, rose trees, and common generated-constructor helpers. Shared fixtures
+  cover public contract shape, generator invariants, result-data namespace
+  keys, failure shrinking, and generated property corpora. Its random
+  implementation is Python-hosted, so a seed is reproducible within Basilisp
+  but does not promise Java ``SplittableRandom`` byte-for-byte output.
 * :lpy:ns:`basilisp.test.tap` is a port of ``clojure.test.tap`` for REPL test
   runners. ``clojure.test.junit`` remains JVM-specific and is not provided.
 * :lpy:ns:`basilisp.template` is a port of ``clojure.template``. Shared
