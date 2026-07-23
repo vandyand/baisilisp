@@ -233,6 +233,13 @@ Near-term deliverable:
   are rejected while vector-like pairs remain accepted. A shared fixture locks
   ordinary map merge, permissive first-argument reduction, map-entry rejection
   boundaries, and a seeded merge corpus.
+* **Completed locally:** deepen ``clojure.pprint/code-dispatch`` parity by
+  adding the portable Clojure formatter-table families for hold-first forms,
+  ``if``/``when`` variants, ``condp``, ``with-local-vars``, ``locking``,
+  ``struct``/``struct-map``, member access forms, and readable ``fn*``
+  anonymous-function expansions. The shared ``pprint`` fixture now includes
+  direct formatter-family cases plus a deterministic generated corpus across
+  stable margins.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

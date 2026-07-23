@@ -20,6 +20,11 @@
 (defn rendered [f]
   (normalize-newlines (with-out-str (f))))
 
+(defn rendered-code [margin form]
+  (binding [pprint/*print-right-margin* margin]
+    (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
+                 (pprint/pprint form)))))
+
 (emit-case :basic-rendering
            {:vector (rendered #(pprint/pprint [1 2 (sorted-map :a [3 4] :b [:x :y])]))
             :map-sorted (binding [pprint/*print-right-margin* 18
@@ -69,6 +74,80 @@
                                                  '(some->> values
                                                           (filter odd?)
                                                           (map inc))))))})
+
+(let [cases [[24 '(def very-long-name (+ 1 2 3))]
+             [24 '(defonce cached-value (delay (expensive-call input)))]
+             [24 '(if-not (very-long-predicate alpha beta)
+                    (then-branch alpha)
+                    (else-branch beta))]
+             [24 '(when-not (ready? system)
+                    (start! system)
+                    (await-ready))]
+             [24 '(condp = command
+                    :start :started
+                    :stop :stopped
+                    :restart :restarted
+                    :unknown)]
+             [24 '(with-local-vars [x 1 y (+ x 2)]
+                    (+ @x @y))]
+             [24 '(. target method arg1 arg2)]
+             [24 '(.. target (first-call alpha) (second-call beta))]
+             [24 '(locking lock
+                    (mutate! state)
+                    (snapshot state))]
+             [24 '(struct-map basis :a 1 :b 2)]
+             [24 '(fn* [x] (+ x 1))]
+             [24 '(fn* [x y] (+ x y))]
+             [18 '(if (small? x) :small :large)]
+             [18 '(when ready? (run-one) (run-two))]
+             [40 '(def short-name value)]]]
+  (emit-case :code-dispatch-table-families
+             (mapv (fn [[margin form]]
+                     [margin (rendered-code margin form)])
+                   cases)))
+
+(defn generated-code-form [i]
+  (case (mod i 10)
+    0 (list 'def (symbol (str "generated-value-" i)) (list '+ i (inc i)))
+    1 (list 'defonce (symbol (str "generated-delay-" i)) (list '+ i 1))
+    2 (list 'if (list 'pred? (symbol (str "x" i)))
+            (list 'then-branch i)
+            (list 'else-branch (inc i)))
+    3 (list 'if-not (list 'pred? (symbol (str "x" i)))
+            (list 'fallback i)
+            (list 'success (inc i)))
+    4 (list 'when (list 'ready? i)
+            :step-one
+            :step-two)
+    5 (list 'when-not (list 'ready? i)
+            :recover
+            :retry)
+    6 (list 'condp '= (symbol (str "command" i))
+            :a :alpha
+            :b :beta
+            :default)
+    7 (list 'locking (symbol (str "lock" i))
+            (list 'mutate! i)
+            (list 'snapshot i))
+    8 (list '. (symbol (str "target" i))
+            (symbol (str "method" i))
+            (symbol (str "arg" i))
+            (inc i))
+    9 (list 'with-local-vars
+            (vector 'x i 'y (inc i))
+            (list '+ 'x 'y))))
+
+(emit-case :code-dispatch-generated-corpus
+           (mapv (fn [i]
+                   (let [kind (mod i 10)
+                         margin (case kind
+                                  5 24
+                                  7 24
+                                  8 16
+                                  (+ 16 (* 8 (mod i 4))))
+                         form (generated-code-form i)]
+                     [margin (rendered-code margin form)]))
+                 (range 40)))
 
 (emit-case :print-table
            {:inferred (rendered #(pprint/print-table [(sorted-map :a 1 :b "two")

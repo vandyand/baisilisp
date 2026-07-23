@@ -803,6 +803,19 @@
           (pprint-newline :linear)
           (recur more))))))
 
+(defn ^:private print-code-hold-first
+  "Pretty print forms whose operator stays visually attached to the first arg."
+  [forms]
+  (pprint-logical-block :prefix "(" :suffix ")"
+    (pprint-indent :block 0)
+    (print-length-loop [remaining (seq forms)]
+      (when remaining
+        (write-out (first remaining))
+        (when-let [more (next remaining)]
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (recur more))))))
+
 (defn ^:private print-code-binding-form
   "Pretty print bindings as condition/value pairs."
   [bindings]
@@ -895,6 +908,35 @@
             (pprint-newline :linear)
             (recur more)))))))
 
+(defn ^:private print-code-condp
+  "Pretty print ``condp`` with predicate, expression, and test/result pairs."
+  [forms]
+  (if (> (count forms) 3)
+    (pprint-logical-block :prefix "(" :suffix ")"
+      (pprint-indent :block 1)
+      (write-out (first forms))
+      (.write *out* " ")
+      (pprint-newline :linear)
+      (write-out (second forms))
+      (.write *out* " ")
+      (pprint-newline :linear)
+      (write-out (first (next (next forms))))
+      (.write *out* " ")
+      (pprint-newline :linear)
+      (print-length-loop [pairs (next (next (next forms)))]
+        (when pairs
+          (pprint-logical-block
+           (write-out (first pairs))
+           (when-let [result (next pairs)]
+             (.write *out* " ")
+             (pprint-newline :miser)
+             (write-out (first result))))
+          (when-let [more (next (next pairs))]
+            (.write *out* " ")
+            (pprint-newline :linear)
+            (recur more)))))
+    (print-simple-code-list forms)))
+
 (defn ^:private print-code-case
   "Pretty print a ``case`` test followed by condition/result pairs."
   [forms]
@@ -944,6 +986,31 @@
         (when-let [more (next remaining)]
           (recur more))))))
 
+(def ^:private ^:dynamic *code-symbols* {})
+
+(defn ^:private print-code-anon-func
+  "Pretty print ``fn*`` reader expansions as anonymous function literals."
+  [forms]
+  (let [args (second forms)
+        body (first (next (next forms)))]
+    (if (vector? args)
+      (binding [*code-symbols* (if (= 1 (count args))
+                                 {(first args) "%"}
+                                 (into {}
+                                       (map vector
+                                            args
+                                            (map #(str "%" %)
+                                                 (range 1 (inc (count args)))))))]
+        (pprint-logical-block :prefix "#(" :suffix ")"
+          (print-length-loop [remaining (seq body)]
+            (when remaining
+              (write-out (first remaining))
+              (when-let [more (next remaining)]
+                (.write *out* " ")
+                (pprint-newline :linear)
+                (recur more))))))
+      (print-simple-code-list forms))))
+
 (defn ^:private print-code-catch
   "Pretty print a ``catch`` clause with its exception binding kept together."
   [forms]
@@ -986,31 +1053,45 @@
     (print-simple-code-list forms)))
 
 (def ^:private code-formatters
-  {"defn"      print-code-defn
-   "defn-"     print-code-defn
-   "defmacro"  print-code-defn
-   "defasync"  print-code-defn
-   "fn"        print-code-defn
-   "let"       print-code-let
-   "loop"      print-code-let
-   "binding"   print-code-let
-   "with-open" print-code-let
-   "when-let"  print-code-let
-   "if-let"    print-code-let
-   "doseq"     print-code-let
-   "dotimes"   print-code-let
-   "when-first" print-code-let
-   "->"         print-code-threading
-   "->>"        print-code-threading
-   "some->"     print-code-threading
-   "some->>"    print-code-threading
-   "cond"      print-code-cond
-   "case"      print-code-case
-   "try"       print-code-clauses
-   "finally"   print-code-clauses
-   "catch"     print-code-catch
-   "ns"        print-code-ns
-   "require"   print-code-clauses})
+  {"."               print-code-hold-first
+   ".."              print-code-hold-first
+   "->"              print-code-threading
+   "->>"             print-code-threading
+   "binding"         print-code-let
+   "case"            print-code-case
+   "catch"           print-code-catch
+   "cond"            print-code-cond
+   "condp"           print-code-condp
+   "def"             print-code-hold-first
+   "defasync"        print-code-defn
+   "defmacro"        print-code-defn
+   "defn"            print-code-defn
+   "defn-"           print-code-defn
+   "defonce"         print-code-hold-first
+   "doseq"           print-code-let
+   "dotimes"         print-code-let
+   "finally"         print-code-clauses
+   "fn"              print-code-defn
+   "fn*"             print-code-anon-func
+   "if"              print-simple-code-list
+   "if-let"          print-code-let
+   "if-not"          print-simple-code-list
+   "let"             print-code-let
+   "locking"         print-code-hold-first
+   "loop"            print-code-let
+   "ns"              print-code-ns
+   "require"         print-code-clauses
+   "some->"          print-code-threading
+   "some->>"         print-code-threading
+   "struct"          print-code-hold-first
+   "struct-map"      print-code-hold-first
+   "try"             print-code-clauses
+   "when"            print-simple-code-list
+   "when-first"      print-code-let
+   "when-let"        print-code-let
+   "when-not"        print-simple-code-list
+   "with-local-vars" print-code-let
+   "with-open"       print-code-let})
 
 (defn ^:private code-formatter
   [form]
@@ -1029,8 +1110,6 @@
     (if-let [formatter (code-formatter (first forms))]
       (formatter forms)
       (print-simple-code-list forms))))
-
-(def ^:private ^:dynamic *code-symbols* {})
 
 (defn ^:private print-code-symbol
   [sym]

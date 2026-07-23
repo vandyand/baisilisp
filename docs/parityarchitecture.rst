@@ -517,8 +517,12 @@ margins, nested blocks, reader macros, and default data-printing behavior.
 ``code-dispatch`` is a separate multimethod layered over the same writer. It
 handles generic code lists and symbols, reader macros, definition and binding
 forms, ``cond``/``case`` pairs, ``try``/``catch``/``finally`` clauses, and
-``ns``/``require`` declarations. It falls back to ordinary list printing for
-incomplete or unrecognized forms; golden tests cover the structured forms.
+``ns``/``require`` declarations. The dispatch table also covers Clojure's
+portable hold-first and binding families, including ``def``/``defonce``, member
+access forms, ``if``/``if-not``, ``when``/``when-not``, ``condp``,
+``with-local-vars``, ``locking``, ``struct``/``struct-map``, and readable
+``fn*`` anonymous-function expansions. It falls back to ordinary list printing
+for incomplete or unrecognized forms; golden tests cover the structured forms.
 
 ``cl-format`` is implemented as a source-derived portability layer rather
 than a wrapper around Python's unrelated ``format`` mini-language. It retains
@@ -533,12 +537,14 @@ settings for ordinary collections.
 
 The shared differential fixture now covers the portable rendered contract for
 ordinary data printing, sorted maps, ``print-table``, stable ``code-dispatch``
-definition, ``case``, and threading forms, ``cl-format``
+definition, ``case``, threading forms, the added formatter-table families, a
+deterministic generated code-dispatch corpus across margins, ``cl-format``
 numeric/iteration/conditional/plural/newline directives, formatter functions,
 and custom ``:fill`` logical-block dispatch. Map entries and record maps use
 Clojure's comma separators, and ``print-table`` uses Clojure's vertical outside
-divider bars. Additional ``code-dispatch`` forms and margin interactions should
-continue to enter the fixture as concrete Clojure/Basilisp mismatches are found.
+divider bars. Exact XP width-decision heuristics around deeply nested
+``condp``/body forms remain a follow-up and should enter the fixture only as
+concrete Clojure/Basilisp mismatches with stable margins.
 
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
