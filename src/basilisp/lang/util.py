@@ -10,6 +10,7 @@ from fractions import Fraction
 from re import Match, Pattern
 
 from basilisp.lang import atom as atom
+from basilisp.lang import instant as instant
 
 _DOUBLE_DOT = ".."
 _DOUBLE_DOT_REPLACEMENT = "__DOT_DOT__"
@@ -258,10 +259,8 @@ def fraction(numerator: int, denominator: int) -> Fraction:
 
 
 def inst_from_str(inst_str: str) -> datetime.datetime:
-    """Create a datetime instance from an RFC 3339 formatted date string."""
-    if len(inst_str) == 10:
-        return datetime.datetime.fromisoformat(f"{inst_str}T00:00:00+00:00")
-    return datetime.datetime.fromisoformat(inst_str)
+    """Create a UTC datetime instance from a Clojure-style instant string."""
+    return instant.read_instant(inst_str)
 
 
 def regex_from_str(regex_str: str) -> Pattern:

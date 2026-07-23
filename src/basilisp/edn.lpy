@@ -31,6 +31,10 @@
                (throw
                 (ex-info (str "Unrecognized date/time syntax: " v)
                          {:error :tag-reader-error})))
+             (catch python/TypeError _
+               (throw
+                (ex-info (str "Unrecognized date/time syntax: " v)
+                         {:error :tag-reader-error})))
              (catch python/ValueError _
                (throw
                 (ex-info (str "Unrecognized date/time syntax: " v)

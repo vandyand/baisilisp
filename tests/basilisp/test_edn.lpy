@@ -215,9 +215,16 @@
   (is (= {:foo/bar 1 :foo/baz {:buzz 2}}
          (edn/read-string "#:foo{:bar 1 :baz {:buzz 2}}")))
 
+  (is (= 1262311321001
+         (inst-ms (edn/read-string "#inst \"2010-01-01T01:01:01.001-01:01\""))))
+  (is (= 1770076800000
+         (inst-ms (edn/read-string "#inst \"2026-02-03\""))))
+
   (are [s] (thrown? basilisp.lang.exception/ExceptionInfo
                     (edn/read-string s))
     "#inst \"not an instant\""
+    "#inst \"2010-01-01T24:00:00.000Z\""
+    "#inst 1"
     "#uuid \"not a uuid\""
 
     "#nonexistent-builtin-tag []"

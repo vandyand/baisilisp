@@ -2344,6 +2344,7 @@ class TestDataReaders:
             '#inst "2023-02-29"',
             '#inst "2024-01-01T00:00:60Z"',
             '#inst "2024-01-01T00:59:60Z"',
+            '#inst "2010-01-01T24:00:00.000Z"',
         ]:
             with pytest.raises(reader.SyntaxError):
                 read_str_first(code)

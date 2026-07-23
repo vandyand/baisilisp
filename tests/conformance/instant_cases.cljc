@@ -2,8 +2,12 @@
 ;; cases. Reader comparisons use inst-ms because Clojure returns java.util.Date
 ;; while Basilisp returns Python datetime.datetime.
 
-#?(:clj (require '[clojure.instant :as instant])
-   :lpy (require '[basilisp.instant :as instant]))
+#?(:clj (do
+          (require '[clojure.edn :as edn])
+          (require '[clojure.instant :as instant]))
+   :lpy (do
+          (require '[basilisp.edn :as edn])
+          (require '[basilisp.instant :as instant])))
 
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
@@ -60,6 +64,25 @@
                  ["#inst \"2024-99\""
                   "#inst \"2023-02-29\""
                   "#inst \"2024-01-01T00:00:60Z\""
+                  "#inst \"2010-01-01T24:00:00.000Z\""
+                  "#inst \"not an instant\""]))
+
+(emit-case :edn-reader-inst-ms
+           (mapv #(inst-ms (edn/read-string %))
+                 ["#inst \"2010-01-01T01:01:01.001-01:01\""
+                  "#inst \"2010-09-09T09:09:09.009-09:09\""
+                  "#inst \"2010-10-10T10:10:10.010-10:10\""
+                  "#inst \"2010-12-31T23:59:59.999-23:59\""
+                  "#inst \"2010-11-12T18:14:15.666Z\""
+                  "#inst \"2010-11-12T13:14:15.666-05:00\""
+                  "#inst \"2026-02-03\""]))
+
+(emit-case :edn-reader-invalid-calendar
+           (mapv #(errors? (fn [] (edn/read-string %)))
+                 ["#inst \"2024-99\""
+                  "#inst \"2023-02-29\""
+                  "#inst \"2024-01-01T00:00:60Z\""
+                  "#inst \"2010-01-01T24:00:00.000Z\""
                   "#inst \"not an instant\""]))
 
 (defn next-seed [seed]

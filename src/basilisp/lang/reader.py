@@ -362,7 +362,7 @@ def _py_list_from_vec(form: vec.PersistentVector) -> list:
 def _inst_from_str(inst_str: str) -> datetime:
     try:
         return langinstant.read_instant(inst_str)
-    except (ValueError, OverflowError) as e:
+    except (ValueError, OverflowError, TypeError) as e:
         raise SyntaxError(f"Unrecognized date/time syntax: {inst_str}") from e
 
 
