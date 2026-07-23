@@ -368,8 +368,10 @@ Its initial event model is the Clojure pREPL contract:
 * explicitly unsupported values represented through a safe printed form rather
   than arbitrary Python object serialization.
 
-``prepl`` operates over supplied readers and callbacks for deterministic tests.
-``io-prepl`` writes one EDN map per line, using ``pr-str`` for return values.
+``prepl`` operates over supplied readers and callbacks for deterministic tests
+and starts in the conventional ``user`` namespace unless an explicit namespace
+is supplied. ``io-prepl`` writes one EDN map per line, using ``pr-str`` for
+return values.
 ``server-make`` now adds a loopback-default socket server, one isolated
 namespace per connection, newline-delimited EDN framing, bounded incremental
 input buffering, and clean shutdown. ``remote-prepl`` is the matching client

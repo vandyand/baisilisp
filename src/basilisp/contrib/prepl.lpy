@@ -21,7 +21,7 @@
 
   ``stdin`` may be supplied as a keyword argument to control the value bound to
   :lpy:var:`basilisp.core/*in*` while forms are evaluated."
-  [in-reader out-fn & {:keys [stdin namespace] :or {namespace 'basilisp.user}}]
+  [in-reader out-fn & {:keys [stdin namespace] :or {namespace 'user}}]
   (let [session (basilisp.contrib.repl_session.ReplSession/create namespace)
         ctx     (basilisp.lang.compiler.CompilerContext. "<pREPL Input>")
         emit    (fn [tag value]
@@ -109,6 +109,12 @@
         (throw (python/ValueError (str "cannot resolve pREPL function: " f))))
     f))
 
+(defn- remote-port
+  [port]
+  (if (string? port)
+    (python/int port)
+    (int port)))
+
 (defn remote-prepl
   "Forward forms and structured events to a remote ``io-prepl`` endpoint.
 
@@ -142,7 +148,7 @@
                                       :exception true)))
                            event))))]
     (basilisp.contrib.prepl_server/forward-remote-prepl
-     host (int port) in-reader emit max-event-chars connect-timeout)))
+     host (remote-port port) in-reader emit max-event-chars connect-timeout)))
 
 (defn- on-connect [handler max-input-chars]
   (let [reader    (basilisp.contrib.prepl_server/SeekableTextReader
@@ -174,6 +180,10 @@
         handler (python/type (name (gensym "pREPLTCPHandler"))
                              #py (socketserver/StreamRequestHandler)
                              #py {"handle" #(on-connect % max-input-chars)})
-        server  (socketserver/ThreadingTCPServer (python/tuple [host port]) handler)]
+        server-class (python/type (name (gensym "pREPLTCPServer"))
+                                  #py (socketserver/ThreadingTCPServer)
+                                  #py {"allow_reuse_address" true
+                                       "request_queue_size" 128})
+        server  (server-class (python/tuple [host port]) handler)]
     (set! (.-daemon-threads server) true)
     server))

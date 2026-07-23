@@ -240,6 +240,12 @@ Near-term deliverable:
   anonymous-function expansions. The shared ``pprint`` fixture now includes
   direct formatter-family cases plus a deterministic generated corpus across
   stable margins.
+* **Completed locally:** align direct ``clojure.core.server/prepl`` and
+  ``io-prepl`` with Clojure's conventional ``user`` default namespace, preserve
+  namespace transitions and ``:repl/quit`` behavior through a shared fixture,
+  retain generated isolated namespaces for loopback socket connections, accept
+  string ports in ``remote-prepl`` like Clojure, and raise the pREPL socket
+  backlog for concurrent-client stress.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

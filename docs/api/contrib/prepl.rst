@@ -11,7 +11,8 @@ callback. Successful forms produce one ``:ret`` event with the evaluated value,
 namespace, elapsed milliseconds, and original source text. Output produces one
 or more ``:out`` or ``:err`` events; reader and evaluation failures are
 represented by ``:ret`` events with ``:exception true`` and structured error
-data.
+data. Direct ``prepl`` evaluation starts in the conventional ``user`` namespace
+unless a namespace is supplied explicitly.
 
 ``io-prepl`` is the stream-oriented variant. It consumes ``*in*`` and writes
 one readable EDN event per line to ``*out*``. Return and tap values are printed
@@ -19,9 +20,9 @@ with ``pr-str`` by default so Python objects are not serialized across a
 transport boundary.
 
 ``server-make`` creates a loopback-only TCP server with newline-delimited EDN
-events. Each connection gets an isolated namespace and ends when its client
-closes the write side of the socket. Input is incrementally buffered so source
-text remains available to ``prepl`` and is bounded to 1 MiB by default; pass
+events. Each connection gets an isolated generated namespace and ends when its
+client closes the write side of the socket. Input is incrementally buffered so
+source text remains available to ``prepl`` and is bounded to 1 MiB by default; pass
 ``:max-input-chars`` in the options map to change that limit. The listener is
 fixed to ``127.0.0.1``; unauthenticated pREPL evaluation is not exposed to a
 network interface.

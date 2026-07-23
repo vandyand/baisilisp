@@ -15,8 +15,8 @@
                 #(swap! events conj %))
     (is (= [{:tag :out :val "hello"}
             {:tag :out :val os/linesep}
-            {:tag :ret :val nil :ns "basilisp.user" :form "(println \"hello\")"}
-            {:tag :ret :val 3 :ns "basilisp.user" :form "(+ 1 2)"}]
+            {:tag :ret :val nil :ns "user" :form "(println \"hello\")"}
+            {:tag :ret :val 3 :ns "user" :form "(+ 1 2)"}]
            (mapv #(dissoc % :ms) @events)))))
 
 (deftest prepl-error-output-events-test
@@ -24,7 +24,7 @@
     (prepl/prepl (io/StringIO "(.write *err* \"warning\")")
                 #(swap! events conj %))
     (is (= [{:tag :err :val "warning"}
-            {:tag :ret :val 7 :ns "basilisp.user" :form "(.write *err* \"warning\")"}]
+            {:tag :ret :val 7 :ns "user" :form "(.write *err* \"warning\")"}]
            (mapv #(dissoc % :ms) @events)))))
 
 (deftest prepl-reader-error-test
@@ -73,7 +73,7 @@
         out (io/StringIO)]
     (binding [*in* in *out* out]
       (prepl/io-prepl))
-    (is (= {:tag :ret :val "3" :ns "basilisp.user" :form "(+ 1 2)"}
+    (is (= {:tag :ret :val "3" :ns "user" :form "(+ 1 2)"}
            (dissoc (read-string (.getvalue out)) :ms)))))
 
 (deftest remote-prepl-server-test
