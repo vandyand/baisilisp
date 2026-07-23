@@ -620,9 +620,11 @@ recursively-defined keyword specs when a nonrecursive base branch is available,
 using size-bounded recursion and falling back to base branches at small sizes.
 It also generates Clojure-style ``multi-spec`` values by enumerating a
 multimethod's registered methods and applying keyword or function retagging to
-the generated branch value. Recursive specs with no base branch, arbitrary
-function values, and Python model adapters remain design tasks rather than
-surface-name tasks.
+the generated branch value. ``fspec`` generation now produces invokable values
+for descriptors with an ``:args`` spec, validates generated-function calls
+against those args, and emits conforming return values from ``:ret`` when
+present. Recursive specs with no base branch and Python model adapters remain
+design tasks rather than surface-name tasks.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for

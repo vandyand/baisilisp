@@ -192,8 +192,8 @@ Near-term deliverable:
   surface gaps. Shared fixtures now cover protocol/helper names, registry and
   explain-data entrypoints, regex implementation helpers, and portable
   ``spec.test.alpha`` summary/symbol helpers. Remaining spec work is semantic
-  depth for generation edge cases, function-value generation, and explicit
-  Python model adapters, not missing public names.
+  depth for generation edge cases and explicit Python model adapters, not
+  missing public names.
 * **Completed locally:** deepen ``clojure.spec.alpha/keys`` semantics for
   ``:req-un``/``:opt-un`` and implement ``keys*`` as an alternating
   keyword/value regex spec. Shared fixtures now lock unqualified-key
@@ -207,6 +207,11 @@ Near-term deliverable:
   multimethod-backed specs. Shared fixtures now lock keyword retagging,
   function retagging, branch enumeration, generated-value conformance, wrong
   branch rejection, and missing-method rejection.
+* **Completed locally:** support portable ``fspec`` function-value generation
+  for descriptors with ``:args`` specs. Shared fixtures now lock generated
+  invokability, generated return conformance, invalid argument and arity
+  rejection, conformed ``:fn`` relation inputs, and the Clojure-compatible
+  failure boundary for ``fspec`` generation without ``:args``.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -97,6 +97,69 @@ class _Instrumented:
     wrapper: Callable[..., Any]
 
 
+class _GeneratedFSpecFunction:
+    __slots__ = (
+        "_args_spec",
+        "_ret_spec",
+        "_fn_spec",
+        "_ret_generator",
+        "_lock",
+        "_calls",
+    )
+
+    def __init__(
+        self,
+        args_spec: Any,
+        ret_spec: Any | None,
+        fn_spec: Any | None,
+        ret_generator: Any,
+    ) -> None:
+        self._args_spec = args_spec
+        self._ret_spec = ret_spec
+        self._fn_spec = fn_spec
+        self._ret_generator = ret_generator
+        self._lock = threading.Lock()
+        self._calls = 0
+
+    def _next_seed(self) -> int:
+        with self._lock:
+            self._calls += 1
+            return 0xF5FEC ^ self._calls
+
+    def __call__(self, *args: Any, **kwargs: Any) -> Any:
+        if kwargs:
+            raise AssertionError("generated fspec functions do not accept kwargs")
+        call_args = vec.v(*args)
+        conformed_args = _conform(self._args_spec, call_args, (), (), (), None)
+        if conformed_args is INVALID:
+            raise AssertionError(explain_str(self._args_spec, call_args))
+
+        impl = _test_check_impl()
+        ret_generator = self._ret_generator
+        if self._fn_spec is not None:
+            ret_generator = impl.such_that(
+                lambda value: valid(
+                    self._fn_spec,
+                    lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: value}),
+                ),
+                ret_generator,
+                {"max-tries": 100},
+            )
+        ret = impl.generate(ret_generator, 30, self._next_seed())
+        if self._ret_spec is not None and not valid(self._ret_spec, ret):
+            raise AssertionError(explain_str(self._ret_spec, ret))
+        if self._fn_spec is not None and not valid(
+            self._fn_spec, lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: ret})
+        ):
+            raise AssertionError(
+                explain_str(
+                    self._fn_spec,
+                    lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: ret}),
+                )
+            )
+        return ret
+
+
 @dataclass(frozen=True)
 class _And(_Spec):
     specs: tuple[Any, ...]
@@ -491,6 +554,9 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
         database=None, deadline=None, derandomize=seed is None, max_examples=num_tests
     )
     def check_one(call_args: vec.PersistentVector) -> None:
+        conformed_args = conform(function_spec.args, call_args)
+        if conformed_args is INVALID:
+            raise AssertionError(explain_str(function_spec.args, call_args))
         result = callable_target(*call_args)
         if function_spec.ret is not None:
             _validate_function_value(target, ":ret", function_spec.ret, result)
@@ -499,7 +565,7 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
                 target,
                 ":fn",
                 function_spec.fn,
-                lmap.map({_CALL_ARGS: call_args, _CALL_RET: result}),
+                lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: result}),
             )
 
     if seed is not None:
@@ -921,6 +987,33 @@ def _multispec_method_generators(
     return tuple(generators)
 
 
+def _fspec_generator(
+    spec: _FSpec,
+    overrides: Mapping[Any, Any],
+    path: tuple[Any, ...],
+    seen: frozenset[kw.Keyword],
+    *,
+    base: bool,
+) -> Any:
+    if spec.args is None:
+        raise TypeError("cannot generate function values for fspec without :args")
+    impl = _test_check_impl()
+    if spec.ret is None:
+        ret_generator = impl.simple_type_printable
+    else:
+        ret_generator = (
+            _base_generator_for_value(spec.ret, overrides, (*path, _CALL_RET), seen)
+            if base
+            else _generator_for_value(spec.ret, overrides, (*path, _CALL_RET), seen)
+        )
+        ret_generator = impl.such_that(
+            lambda value: valid(spec.ret, value), ret_generator, {"max-tries": 100}
+        )
+    return impl.return_(
+        _GeneratedFSpecFunction(spec.args, spec.ret, spec.fn, ret_generator)
+    )
+
+
 def _base_generator_for_value(
     spec: Any,
     overrides: Mapping[Any, Any],
@@ -1016,7 +1109,7 @@ def _base_generator_for_value(
     if isinstance(spec, _Regex):
         return _base_regex_generator(spec, overrides, path, blocked)
     if isinstance(spec, _FSpec):
-        raise TypeError("cannot generate function values for fspec; use with-gen")
+        return _fspec_generator(spec, overrides, path, blocked, base=True)
     if isinstance(spec, _MultiSpec):
         return impl.one_of(
             _multispec_method_generators(spec, overrides, path, blocked, base=True)
@@ -1228,7 +1321,7 @@ def _generator_for_value(
     if isinstance(spec, _Regex):
         return _regex_generator(spec, overrides, path, seen)
     if isinstance(spec, _FSpec):
-        raise TypeError("cannot generate function values for fspec; use with-gen")
+        return _fspec_generator(spec, overrides, path, seen, base=False)
     if isinstance(spec, _MultiSpec):
         return impl.one_of(
             _multispec_method_generators(spec, overrides, path, seen, base=False)
@@ -1575,6 +1668,7 @@ def _validate_call(
         return original(*args, **kwargs)
 
     call_args = vec.v(*args)
+    conformed_args = call_args
     if function_spec.args is not None:
         if kwargs:
             raise ExceptionInfo(
@@ -1587,7 +1681,9 @@ def _validate_call(
                     }
                 ),
             )
-        _validate_function_value(target, ":args", function_spec.args, call_args)
+        conformed_args = _validate_function_value(
+            target, ":args", function_spec.args, call_args
+        )
 
     result = original(*args, **kwargs)
     if function_spec.ret is not None:
@@ -1597,15 +1693,17 @@ def _validate_call(
             target,
             ":fn",
             function_spec.fn,
-            lmap.map({_CALL_ARGS: call_args, _CALL_RET: result}),
+            lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: result}),
         )
     return result
 
 
-def _validate_function_value(target: Var, role: str, contract: Any, value: Any) -> None:
+def _validate_function_value(target: Var, role: str, contract: Any, value: Any) -> Any:
+    conformed = conform(contract, value)
+    if conformed is not INVALID:
+        return conformed
     details = explain_data(contract, value)
-    if details is None:
-        return
+    assert details is not None
     raise ExceptionInfo(
         f"Call to {_var_symbol(target)} did not conform to its {role} spec",
         details.assoc(_CALL_TARGET, _var_symbol(target)),

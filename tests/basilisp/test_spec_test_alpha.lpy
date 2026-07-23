@@ -16,7 +16,7 @@
 (s/fdef increment
         :args (s/cat :value int?)
         :ret int?
-        :fn (fn [{:keys [args ret]}] (= (+ (first args) 1) ret)))
+        :fn (fn [{:keys [args ret]}] (= (+ (:value args) 1) ret)))
 
 (deftest instruments-direct-and-var-calls
   (st/instrument (var typed-identity))
