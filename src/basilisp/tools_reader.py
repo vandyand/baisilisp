@@ -12,6 +12,7 @@ import io
 import re
 from typing import Any
 
+from basilisp.lang import character
 from basilisp.lang import reader as lreader
 
 
@@ -26,6 +27,8 @@ class PushbackReader:
         pushback_depth: int = 5,
         file_name: str | None = None,
         source_logging: bool = False,
+        init_line: int | None = None,
+        init_column: int | None = None,
     ) -> None:
         if isinstance(stream, str):
             stream = io.StringIO(stream)
@@ -35,7 +38,10 @@ class PushbackReader:
         # Basilisp's parser itself needs more than one pushback character for
         # some reader macros, so retain at least its normal lookahead depth.
         self.reader = lreader.StreamReader(
-            stream, pushback_depth=max(5, pushback_depth)
+            stream,
+            pushback_depth=max(5, pushback_depth),
+            init_line=init_line,
+            init_column=init_column,
         )
         self.source_logging = source_logging
         self.file_name = file_name if file_name is not None else self.reader.name
@@ -127,6 +133,12 @@ def string_reader(source: str) -> io.StringIO:
     return io.StringIO(source)
 
 
+def string_reader_from_parts(source: str, _source_len: int, source_pos: int):
+    reader = io.StringIO(source)
+    reader.seek(source_pos)
+    return reader
+
+
 def string_push_back_reader(source: str, buffer_length: int = 1) -> PushbackReader:
     return PushbackReader(source, pushback_depth=buffer_length)
 
@@ -149,6 +161,22 @@ def indexing_push_back_reader(
     return PushbackReader(reader, pushback_depth=buffer_length, file_name=file_name)
 
 
+def indexing_push_back_reader_from_parts(
+    reader: Any,
+    line: int | None,
+    column: int | None,
+    file_name: str | None,
+    buffer_length: int = 1,
+) -> PushbackReader:
+    return PushbackReader(
+        reader,
+        pushback_depth=buffer_length,
+        file_name=file_name,
+        init_line=line,
+        init_column=None if column is None else max(0, column - 1),
+    )
+
+
 def source_logging_push_back_reader(
     reader: Any, buffer_length: int = 1, file_name: str | None = None
 ) -> PushbackReader:
@@ -160,12 +188,31 @@ def source_logging_push_back_reader(
     )
 
 
+def source_logging_push_back_reader_from_parts(
+    reader: Any,
+    line: int | None,
+    column: int | None,
+    file_name: str | None,
+    buffer_length: int = 1,
+) -> PushbackReader:
+    return PushbackReader(
+        reader,
+        pushback_depth=buffer_length,
+        file_name=file_name,
+        source_logging=True,
+        init_line=line,
+        init_column=None if column is None else max(0, column - 1),
+    )
+
+
 def read_char(reader: Any) -> str | None:
-    return _as_pushback_reader(reader).read_char()
+    char = _as_pushback_reader(reader).read_char()
+    return None if char is None else character.character(char)
 
 
 def peek_char(reader: Any) -> str | None:
-    return _as_pushback_reader(reader).peek_char()
+    char = _as_pushback_reader(reader).peek_char()
+    return None if char is None else character.character(char)
 
 
 def unread(reader: Any, char: Any = None) -> None:

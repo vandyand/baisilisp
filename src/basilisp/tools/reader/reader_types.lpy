@@ -2,14 +2,29 @@
   "Portable `clojure.tools.reader.reader-types` compatibility API."
   (:import [basilisp.tools_reader :as backend]))
 
+(def Reader backend/PushbackReader)
+(def IndexingReader backend/PushbackReader)
+(def IPushbackReader backend/PushbackReader)
+(def ReaderCoercer backend/PushbackReader)
+(def PushbackReaderCoercer backend/PushbackReader)
+
 (defn string-reader [s] (backend/string_reader s))
+(defn ->StringReader [s s-len s-pos]
+  (backend/string_reader_from_parts s s-len s-pos))
+
 (defn push-back-reader
   ([reader] (backend/push_back_reader reader))
   ([reader buffer-length] (backend/push_back_reader reader buffer-length)))
+(defn ->PushbackReader [rdr _buf buf-len _buf-pos]
+  (backend/push_back_reader rdr buf-len))
+
 (defn string-push-back-reader
   ([s] (backend/string_push_back_reader s))
   ([s buffer-length] (backend/string_push_back_reader s buffer-length)))
 (defn input-stream-reader [stream] (backend/input_stream_reader stream))
+(defn ->InputStreamReader [is buf]
+  (backend/input_stream_reader is))
+
 (defn input-stream-push-back-reader
   ([stream] (backend/input_stream_push_back_reader stream))
   ([stream buffer-length] (backend/input_stream_push_back_reader stream buffer-length)))
@@ -18,11 +33,16 @@
   ([reader buffer-length] (backend/indexing_push_back_reader reader buffer-length))
   ([reader buffer-length file-name]
    (backend/indexing_push_back_reader reader buffer-length file-name)))
+(defn ->IndexingPushbackReader [rdr line column _line-start? _prev _prev-column file-name _normalize?]
+  (backend/indexing_push_back_reader_from_parts rdr line column file-name))
+
 (defn source-logging-push-back-reader
   ([reader] (backend/source_logging_push_back_reader reader))
   ([reader buffer-length] (backend/source_logging_push_back_reader reader buffer-length))
   ([reader buffer-length file-name]
    (backend/source_logging_push_back_reader reader buffer-length file-name)))
+(defn ->SourceLoggingPushbackReader [rdr line column _line-start? _prev _prev-column file-name _source-log-frames _normalize?]
+  (backend/source_logging_push_back_reader_from_parts rdr line column file-name))
 
 (defn read-char [reader] (backend/read_char reader))
 (defn peek-char [reader] (backend/peek_char reader))
@@ -34,6 +54,22 @@
 (defn get-file-name [reader] (backend/get_file_name reader))
 (defn line-start? [reader] (backend/line_start reader))
 (defn read-line [reader] (backend/read_line reader))
+
+(defn merge-meta [obj m]
+  (with-meta obj (merge m (dissoc (meta obj) :source))))
+
+(defn to-rdr [rdr]
+  (if (string? rdr)
+    (string-reader rdr)
+    rdr))
+
+(defn to-pbr [rdr buf-len]
+  (if (instance? backend/PushbackReader rdr)
+    rdr
+    (push-back-reader rdr buf-len)))
+
+(defn log-source* [_reader f]
+  (f))
 
 (defmacro log-source [_reader & body]
   `(do ~@body))

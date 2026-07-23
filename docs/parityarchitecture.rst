@@ -685,6 +685,14 @@ standard ``clojure.core.reducers`` require path works, with an exact public
 surface. JVM-specific cache soft references and reducers ForkJoin hooks resolve
 as documented unsupported boundaries rather than silently changing semantics.
 
+The tools.reader follow-up closed the remaining portable public surface for
+``clojure.tools.reader`` and ``clojure.tools.reader.reader-types``. Reader-type
+constructors and coercers create Basilisp's Python-backed stateful readers,
+while public character APIs return Basilisp ``Character`` values rather than
+one-character strings. Raw positional constructor fields that only affect JVM
+implementation details are accepted only to the extent they map to source
+position and file metadata.
+
 ``instant``
 ~~~~~~~~~~~
 

@@ -446,9 +446,12 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   than SLF4J/JUL discovery.
 * :lpy:ns:`basilisp.tools.reader` provides the portable
   ``clojure.tools.reader`` single-form reader and its stateful
-  ``reader-types`` constructors. It preserves stream lookahead across repeated
-  reads and supports source logging, reader-condition options, and tagged
-  reader bindings. JVM reader evaluation and Java class construction remain
+  ``reader-types`` constructors. Its public surface now matches upstream
+  ``tools.reader`` and ``reader-types`` for the portable names, including
+  constructor/coercer helpers. It preserves stream lookahead across repeated
+  reads, returns Basilisp ``Character`` values from ``read-char``/``peek-char``,
+  and supports source logging, reader-condition options, and tagged reader
+  bindings. JVM reader evaluation and Java class construction remain
   intentionally unavailable.
 * :lpy:ns:`basilisp.tools.namespace` provides the portable source discovery,
   dependency tracking, and REPL refresh workflow from

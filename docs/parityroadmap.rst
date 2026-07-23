@@ -179,6 +179,10 @@ Near-term deliverable:
 * **Completed locally:** close the remaining deprecated
   ``clojure.tools.namespace`` root facade names by mapping classpath discovery
   to Basilisp's Python import path, including directories and ZIP/JAR archives.
+* **Completed locally:** close ``clojure.tools.reader`` and
+  ``clojure.tools.reader.reader-types`` public surface parity. Shared fixtures
+  now cover dynamic Vars, ``map-func``, reader-type constructors/coercers,
+  metadata merging, and character-returning ``read-char`` behavior.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

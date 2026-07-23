@@ -58,15 +58,37 @@
     (is (= 1 (rt/get-line-number r)))
     (is (= 1 (rt/get-column-number r)))
     (is (= "sample.lpy" (rt/get-file-name r)))
-    (is (= "a" (rt/peek-char r)))
-    (is (= "a" (rt/read-char r)))
+    (is (= \a (rt/peek-char r)))
+    (is (= \a (rt/read-char r)))
     (is (= 2 (rt/get-column-number r)))
     (rt/unread r "a")
-    (is (= "a" (rt/read-char r)))
-    (is (= "b" (rt/read-char r)))
+    (is (= \a (rt/read-char r)))
+    (is (= \b (rt/read-char r)))
     (is (= "" (rt/read-line r)))
     (is (= 2 (rt/get-line-number r)))
     (is (rt/line-start? r))))
+
+(deftest public-reader-type-constructors-and-coercers
+  (is (contains? (ns-publics 'basilisp.tools.reader) '*alias-map*))
+  (is (contains? (ns-publics 'basilisp.tools.reader) '*read-delim*))
+  (is (= 'clojure.core/array-map (tr/map-func (range 15))))
+  (is (= 'clojure.core/hash-map (tr/map-func (range 16))))
+  (is (= \b (rt/read-char (rt/->StringReader "abc" 3 1))))
+  (is (= \a (rt/read-char (rt/->PushbackReader (rt/string-reader "ab") nil 2 2))))
+  (let [indexed (rt/->IndexingPushbackReader (rt/string-reader "xy")
+                                             5 7 true \x 6 "sample.cljc" false)
+        logging (rt/->SourceLoggingPushbackReader (rt/string-reader "xy")
+                                                  2 3 true \x 2 "source.cljc" [] false)]
+    (is (rt/indexing-reader? indexed))
+    (is (= 5 (rt/get-line-number indexed)))
+    (is (= 7 (rt/get-column-number indexed)))
+    (is (= "sample.cljc" (rt/get-file-name indexed)))
+    (is (rt/source-logging-reader? logging))
+    (is (= "source.cljc" (rt/get-file-name logging))))
+  (is (= \x (rt/read-char (rt/to-pbr (rt/to-rdr "xy") 2))))
+  (is (= {:a 1 :b 2}
+         (meta (rt/merge-meta (with-meta 'value {:source :old :a 1})
+                              {:b 2})))))
 
 (deftest repeated-reads-survive-parser-lookahead-under-fuzzing
   ;; This catches the subtle regression where a fresh parser is wrapped around

@@ -10,8 +10,19 @@
 (def ^:dynamic *data-readers* {})
 (def ^:dynamic *default-data-reader-fn* nil)
 (def ^:dynamic *suppress-read* false)
+(def ^:dynamic *alias-map* nil)
+(def ^:dynamic *read-delim* nil)
 (def ^:dynamic resolve-symbol runtime/resolve-alias)
 (def default-data-readers basilisp.lang.reader.ReaderContext/_DATA_READERS)
+
+(declare read-symbol)
+
+(defn map-func
+  "Decide which map constructor symbol to use for ``coll``."
+  [coll]
+  (if (>= (count coll) 16)
+    'clojure.core/hash-map
+    'clojure.core/array-map))
 
 (defn- read* [opts stream]
   (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
