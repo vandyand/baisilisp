@@ -250,7 +250,13 @@
     2.0M  decimal/Decimal  -10   3.0M
     -2.0M decimal/Decimal  10.0M -3
     1/3   fractions/Fraction 3   4/3
-    -1/3  fractions/Fraction -3  -4/3)
+    -1/3  fractions/Fraction -3  -4/3
+    0     python/int 3 1/2
+    0     python/int 3 -1/2
+    -1    python/int 3 -4/3
+    0     python/int -3 1/2
+    1     python/int -3 4/3
+    0     python/int -3 -1/2)
 
   (is (NaN? (mod 1 ##Inf)))
   (is (NaN? (mod 1 ##-Inf)))

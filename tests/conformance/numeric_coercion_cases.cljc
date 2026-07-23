@@ -103,7 +103,13 @@
            {:integer [(integer? (quot 10 3))
                       (integer? (quot 3 1/2))
                       (integer? (rem 10 3))
-                      (integer? (mod 10 3))]
+                      (integer? (mod 10 3))
+                      (integer? (mod 3 1/2))
+                      (integer? (mod 3 -1/2))
+                      (integer? (mod 3 -4/3))
+                      (integer? (mod -3 1/2))
+                      (integer? (mod -3 4/3))
+                      (integer? (mod -3 -1/2))]
             :floating [(double? (quot 10 3.0))
                        (double? (rem 10 3.0))
                        (double? (mod 10 3.0))
@@ -128,7 +134,12 @@
                      (mod 10 3.0M)
                      (mod -10 3.0M)
                      (rem 3 4/3)
-                     (mod -3 4/3)]
+                     (mod -3 4/3)
+                     (mod 3 1/2)
+                     (mod 3 -1/2)
+                     (mod 3 -4/3)
+                     (mod -3 1/2)
+                     (mod -3 -1/2)]
             :nonfinite [(NaN? (rem 1 ##Inf))
                         (NaN? (mod 1 ##Inf))
                         (NaN? (rem 1 ##-Inf))

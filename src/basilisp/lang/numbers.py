@@ -190,6 +190,7 @@ def remainder(x: LispNumber, y: LispNumber) -> LispNumber:
     return subtract(x, multiply(y, quotient(x, y)))
 
 
+@_normalize_fraction_result
 def modulus(x: LispNumber, y: LispNumber) -> LispNumber:
     """Return Clojure ``mod`` semantics using floored remainder."""
 
