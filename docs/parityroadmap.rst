@@ -294,8 +294,10 @@ Near-term deliverable:
   a shared fixture covering root/generator/property/result/rose-tree public
   names, primitive and collection generator invariants, combinator behavior,
   constructor helpers, Clojure namespace result-data keys, quick-check passing
-  and failing result shapes, exception counterexamples, and generated property
-  corpora.
+  and failing result shapes, exception counterexamples, generated property
+  corpora, auxiliary rose-tree helpers, ``big-ratio`` and
+  ``lazy-random-states``, and the portable ``clojure-test`` option/reporting
+  surface.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

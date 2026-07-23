@@ -1,9 +1,10 @@
 (ns tests.basilisp.test-check-test
   (:require [basilisp.test :refer [deftest is testing]]
             [basilisp.test.check :as tc]
-            [basilisp.test.check.clojure-test :refer [defspec]]
+            [basilisp.test.check.clojure-test :as ct :refer [defspec]]
             [basilisp.test.check.generators :as gen]
             [basilisp.test.check.properties :as prop]
+            [basilisp.test.check.random :as rnd]
             [basilisp.test.check.results :as results]
             [basilisp.test.check.rose-tree :as rose]))
 
@@ -112,6 +113,66 @@
                         :basilisp.test.check.properties/error)))
     (is (= :root (rose/root tree)))
     (is (= 1 (count (rose/children tree))))))
+
+(deftest auxiliary-rose-tree-helpers-match-test-check-contract
+  (let [t1 (rose/make-rose 1 [(rose/pure 10) (rose/pure 11)])
+        t2 (rose/make-rose 2 [(rose/pure 20)])
+        t3 (rose/make-rose 3 [])
+        roses [t1 t2 t3]
+        tree (rose/make-rose :root
+                             [(rose/make-rose :a [(rose/pure :aa)])
+                              (rose/pure :b)])
+        collapsed (rose/collapse tree)
+        zipped (rose/zip vector roses)
+        shrunk (rose/shrink vector roses)
+        shrinkv (rose/shrink-vector vector roses)]
+    (is (= [:root :a :aa :b] (vec (rose/seq tree))))
+    (is (= :root (rose/root collapsed)))
+    (is (= [:a :b :aa] (mapv rose/root (rose/children collapsed))))
+    (is (= [[10 2 3] [11 2 3] [1 20 3]]
+           (mapv #(mapv rose/root %) (rose/permutations roses))))
+    (is (= [[2 3] [1 3] [1 2] [10 2 3] [11 2 3] [1 20 3]]
+           (mapv #(mapv rose/root %) (rose/remove roses))))
+    (is (= [1 2 3] (rose/root zipped)))
+    (is (= [[10 2 3] [11 2 3] [1 20 3]]
+           (mapv rose/root (rose/children zipped))))
+    (is (= [1 2 3] (rose/root shrunk)))
+    (is (= [[2 3] [1 3] [1 2] [10 2 3] [11 2 3] [1 20 3]]
+           (mapv rose/root (rose/children shrunk))))
+    (is (= [1 2 3] (rose/root shrinkv)))
+    (is (= [[] [2 3] [1 3] [1 2] [10 2 3] [11 2 3] [1 20 3]]
+           (mapv rose/root (rose/children shrinkv)))))
+  (let [wide (mapv rose/pure (range 32))
+        shrinkv (rose/shrink-vector vector wide)]
+    (is (= (vec (range 32)) (rose/root shrinkv)))
+    (is (= 35 (count (rose/children shrinkv))))))
+
+(deftest auxiliary-generators-are-stable-and-shrinkable
+  (let [ratios (gen/sample gen/big-ratio 250)]
+    (is (every? number? ratios))
+    (is (some ratio? ratios))
+    (is (every? number? (gen/sample gen/ratio 250))))
+  (let [rng (rnd/make-random 1)
+        states (take 20 (gen/lazy-random-states rng))
+        longs (map rnd/rand-long states)]
+    (is (= 20 (count states)))
+    (is (= 20 (count (set longs)))))
+  (is (= [0 1 2 0 1 2 0 1 2 0]
+         (vec (take 10 (gen/make-size-range-seq 3)))))
+  (is (= 25 (count (take 25 (gen/sample-seq gen/nat 3))))))
+
+(deftest clojure-test-helper-surface-is-callable
+  (let [options (ct/process-options {:num-tests 3 :seed 11})]
+    (is (= 3 (:num-tests options)))
+    (is (= 11 (:seed options)))
+    (is (contains? options :reporter-fn)))
+  (is (= 7 (:num-tests (ct/process-options 7))))
+  (is (= 100 (:num-tests (ct/process-options nil))))
+  (is (= false ct/*report-trials*))
+  (is (= false ct/*report-shrinking*))
+  (is (= true ct/*report-completion*))
+  (is (= 10000 ct/*trial-report-period*))
+  (is (:pass? (defspec-runs-through-basilisp-test 5 :seed 123))))
 
 (deftest fixed-arity-properties-handle-wide-integer-shrink-trees
   ;; This specifically exercises the tuple generator used by for-all*.  Wide

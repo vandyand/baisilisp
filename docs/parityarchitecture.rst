@@ -950,11 +950,15 @@ argument groups and drops incomplete trailing groups, matching Clojure's
 is not a compatibility target.
 
 ``basilisp.test.check`` provides a portable property-testing subset across the
-root, ``generators``, ``properties``, ``results``, and ``rose-tree``
-namespaces. The compatibility contract is generator domain shape, combinator
-behavior, ``quick-check`` result maps, failure shrinking, result-data keys under
-``:clojure.test.check.properties/error``, and constructor helpers such as
-``->Generator``/``map->Generator`` and ``->ErrorResult``/``map->ErrorResult``.
+root, ``generators``, ``properties``, ``results``, ``rose-tree``, and
+``clojure-test`` namespaces. The compatibility contract is generator domain
+shape, combinator behavior, ``quick-check`` result maps, failure shrinking,
+result-data keys under ``:clojure.test.check.properties/error``, constructor
+helpers such as ``->Generator``/``map->Generator`` and
+``->ErrorResult``/``map->ErrorResult``, rose-tree helper behavior for
+``collapse``/``seq``/``remove``/``shrink``/``shrink-vector``/``zip``, lazy RNG
+state splitting, ratio-producing ``big-ratio`` generation, and portable
+``clojure-test`` option/reporting helpers.
 Exact generated values are not a cross-runtime promise: Basilisp's RNG is a
 Python-hosted deterministic splitter, so seeds are reproducible within Basilisp
 but not byte-for-byte aligned with Java test.check.

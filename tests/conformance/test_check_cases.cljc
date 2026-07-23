@@ -5,29 +5,35 @@
 ;; fixture locks public contract shape, generator invariants, property result
 ;; maps, shrinking behavior, and result-data namespace keys.
 
-#?(:clj
-   (require '[clojure.test.check :as tc]
-            '[clojure.test.check.generators :as gen]
-            '[clojure.test.check.properties :as prop]
-            '[clojure.test.check.results :as results]
-            '[clojure.test.check.rose-tree :as rose])
-   :lpy
-   (require '[basilisp.test.check :as tc]
-            '[basilisp.test.check.generators :as gen]
-            '[basilisp.test.check.properties :as prop]
-            '[basilisp.test.check.results :as results]
-            '[basilisp.test.check.rose-tree :as rose]))
+(ns tests.conformance.test-check-cases
+  #?(:clj
+     (:require [clojure.test.check :as tc]
+               [clojure.test.check.clojure-test :as ct]
+               [clojure.test.check.generators :as gen]
+               [clojure.test.check.properties :as prop]
+               [clojure.test.check.random :as rnd]
+               [clojure.test.check.results :as results]
+               [clojure.test.check.rose-tree :as rose])
+     :lpy
+     (:require [basilisp.test.check :as tc]
+               [basilisp.test.check.clojure-test :as ct]
+               [basilisp.test.check.generators :as gen]
+               [basilisp.test.check.properties :as prop]
+               [basilisp.test.check.random :as rnd]
+               [basilisp.test.check.results :as results]
+               [basilisp.test.check.rose-tree :as rose])))
 
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
 
 (def portable-generator-names
   '[->Generator any any-equatable any-printable
-    any-printable-equatable bind boolean byte bytes call-gen char char-alpha
-    char-alpha-numeric char-alphanumeric char-ascii choose container-type
+    any-printable-equatable big-ratio bind boolean byte bytes call-gen char
+    char-alpha char-alpha-numeric char-alphanumeric char-ascii choose container-type
     double double* elements fmap frequency gen-bind gen-fmap gen-pure generate
     generator? hash-map int keyword keyword-ns large-integer large-integer*
-    let list list-distinct list-distinct-by make-size-range-seq map
+    lazy-random-states let list list-distinct list-distinct-by
+    make-size-range-seq map
     map->Generator nat neg-int no-shrink not-empty one-of pos-int ratio
     recursive-gen resize return s-neg-int s-pos-int sample sample-seq scale set
     shrink-2 shuffle simple-type simple-type-equatable simple-type-printable
@@ -74,13 +80,24 @@
                                    '[pass? result-data])
             :rose-tree (has-publics? #?(:clj 'clojure.test.check.rose-tree
                                         :lpy 'basilisp.test.check.rose-tree)
-                                     '[->RoseTree bind children filter
-                                       fmap join make-rose pure root])})
+                                     '[->RoseTree bind children collapse filter
+                                       fmap join make-rose permutations pure
+                                       remove root seq shrink shrink-vector zip])
+            :clojure-test (has-publics? #?(:clj 'clojure.test.check.clojure-test
+                                           :lpy 'basilisp.test.check.clojure-test)
+                                        '[*default-opts* *default-test-count*
+                                          *report-completion* *report-shrinking*
+                                          *report-trials* *trial-report-period*
+                                          assert-check default-reporter-fn
+                                          defspec process-options trial-report-dots
+                                          trial-report-periodic with-test-out*])})
 
 (emit-case :primitive-generator-invariants
            {:byte (sample-ok? #(<= -128 % 127) gen/byte 80)
             :small-integer (sample-ok? integer? gen/small-integer 80)
             :size-bounded (sample-ok? integer? gen/size-bounded-bigint 80)
+            :big-ratio (sample-ok? number? gen/big-ratio 80)
+            :ratio (sample-ok? number? gen/ratio 80)
             :char-ascii (sample-ok? #(contains? ascii-printable-strings (str %))
                                     gen/char-ascii
                                     80)
@@ -153,6 +170,52 @@
               :rose-root (rose/root tree)
               :rose-child-count (count (rose/children tree))
               :rose-fmap-root (rose/root mapped)}))
+
+(emit-case :auxiliary-rose-tree-helpers
+           (let [t1 (rose/make-rose 1 [(rose/pure 10) (rose/pure 11)])
+                 t2 (rose/make-rose 2 [(rose/pure 20)])
+                 t3 (rose/make-rose 3 [])
+                 roses [t1 t2 t3]
+                 tree (rose/make-rose :root
+                                      [(rose/make-rose :a [(rose/pure :aa)])
+                                       (rose/pure :b)])
+                 collapsed (rose/collapse tree)
+                 zipped (rose/zip vector roses)
+                 shrunk (rose/shrink vector roses)
+                 shrinkv (rose/shrink-vector vector roses)]
+             {:seq-values (vec (rose/seq tree))
+              :collapse-root (rose/root collapsed)
+              :collapse-child-roots (mapv rose/root (rose/children collapsed))
+              :permutation-roots (mapv #(mapv rose/root %) (rose/permutations roses))
+              :remove-roots (mapv #(mapv rose/root %) (rose/remove roses))
+              :zip-root (rose/root zipped)
+              :zip-child-roots (mapv rose/root (rose/children zipped))
+              :shrink-root (rose/root shrunk)
+              :shrink-child-roots (mapv rose/root (rose/children shrunk))
+              :shrink-vector-root (rose/root shrinkv)
+              :shrink-vector-child-roots (mapv rose/root (rose/children shrinkv))}))
+
+(emit-case :auxiliary-generator-and-clojure-test-helpers
+           (let [rng (rnd/make-random 1)
+                 states (take 5 (gen/lazy-random-states rng))
+                 nil-options (ct/process-options nil)
+                 numeric-options (ct/process-options 7)
+                 map-options (ct/process-options {:num-tests 3 :seed 11})]
+             {:lazy-random-state-count (count states)
+              :lazy-random-state-rand-longs? (every? number? (map rnd/rand-long states))
+              :size-range-3 (vec (take 10 (gen/make-size-range-seq 3)))
+              :sample-seq-count (count (take 5 (gen/sample-seq gen/nat 3)))
+              :sample-seq-numbers? (every? number? (take 5 (gen/sample-seq gen/nat 3)))
+              :process-nil-num-tests (:num-tests nil-options)
+              :process-nil-reporter? (contains? nil-options :reporter-fn)
+              :process-num (:num-tests numeric-options)
+              :process-num-reporter? (contains? numeric-options :reporter-fn)
+              :process-map-num-tests (:num-tests map-options)
+              :process-map-seed (:seed map-options)
+              :report-trials ct/*report-trials*
+              :report-shrinking ct/*report-shrinking*
+              :report-completion ct/*report-completion*
+              :trial-report-period ct/*trial-report-period*}))
 
 (emit-case :quick-check-shapes
            {:passing (result-summary

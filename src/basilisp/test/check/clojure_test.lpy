@@ -1,26 +1,143 @@
 (ns basilisp.test.check.clojure-test
+  (:import time)
   (:require [basilisp.test :as test]
             [basilisp.test.check :as tc]))
 
 (def ^:dynamic *default-test-count* 100)
-(def ^:dynamic *default-opts* {})
+
+(defn with-test-out*
+  [f]
+  (test/with-test-out
+    (f)))
+
+(defn assert-check
+  [{:keys [result result-data] :as m}]
+  (if-let [error (:clojure.test.check.properties/error result-data)]
+    (throw error)
+    (test/is (:pass? m))))
+
+(defn default-reporter-fn
+  [{:keys [type] :as args}]
+  (case type
+    :complete
+    (test/report {:type :clojure.test.check.clojure-test/complete
+                  :clojure.test.check.clojure-test/property (:property args)
+                  :clojure.test.check.clojure-test/complete
+                  (select-keys args [:result :num-tests :seed :time-elapsed-ms])})
+
+    :trial
+    (test/report {:type :clojure.test.check.clojure-test/trial
+                  :clojure.test.check.clojure-test/property (:property args)
+                  :clojure.test.check.clojure-test/trial
+                  [(:num-tests args) (:num-tests-total args)]})
+
+    :failure
+    (test/report {:type :clojure.test.check.clojure-test/shrinking
+                  :clojure.test.check.clojure-test/property (:property args)
+                  :clojure.test.check.clojure-test/params (vec (:fail args))})
+
+    :shrunk
+    (test/report {:type :clojure.test.check.clojure-test/shrunk
+                  :clojure.test.check.clojure-test/property (:property args)
+                  :clojure.test.check.clojure-test/params
+                  (vec (get-in args [:shrunk :smallest]))})
+    nil))
+
+(def ^:dynamic *default-opts*
+  {:reporter-fn default-reporter-fn})
+
+(def ^:dynamic *report-trials* false)
+(def ^:dynamic *report-shrinking* false)
+(def ^:dynamic *trial-report-period* 10000)
+(def ^:dynamic *report-completion* true)
+
+(def ^:private last-trial-report (atom 0))
 
 (defn process-options
   [options]
   (cond
-    (nil? options) {:num-tests *default-test-count*}
-    (number? options) {:num-tests options}
-    (map? options) (merge {:num-tests *default-test-count*} options)
+    (nil? options) (merge {:num-tests *default-test-count*} *default-opts*)
+    (number? options) (assoc *default-opts* :num-tests options)
+    (map? options) (merge {:num-tests *default-test-count*}
+                          *default-opts*
+                          options)
     :else (throw (ex-info (str "Invalid defspec options: " (pr-str options))
                           {:bad-options options}))))
+
+(defn- report-trial-pair
+  [m]
+  (or (:clojure.test.check.clojure-test/trial m)
+      [(:num-tests m) (:num-tests-total m)]))
+
+(defn trial-report-dots
+  [m]
+  (let [[so-far total] (report-trial-pair m)]
+    (when (pos? so-far)
+      (when (zero? (mod so-far 1000))
+        (print ".")
+        (flush))
+      (when (== so-far total)
+        (println)))))
+
+(defn trial-report-periodic
+  [m]
+  (let [now (quot (time/time_ns) 1000000)
+        [so-far total] (report-trial-pair m)]
+    (when (> (- now *trial-report-period*) @last-trial-report)
+      (with-test-out*
+        (fn []
+          (println "Passing trial" so-far "/" total "for"
+                   (or (:clojure.test.check.clojure-test/property m)
+                       (:property m)))))
+      (reset! last-trial-report now))))
+
+(defmethod test/report :clojure.test.check.clojure-test/trial
+  [m]
+  (when-let [trial-report-fn (and *report-trials*
+                                  (if (true? *report-trials*)
+                                    trial-report-dots
+                                    *report-trials*))]
+    (trial-report-fn m)))
+
+(defmethod test/report :clojure.test.check.clojure-test/shrinking
+  [m]
+  (when *report-shrinking*
+    (with-test-out*
+      (fn []
+        (println "Shrinking"
+                 (:clojure.test.check.clojure-test/property m)
+                 "starting with parameters"
+                 (pr-str (:clojure.test.check.clojure-test/params m)))))))
+
+(defmethod test/report :clojure.test.check.clojure-test/complete
+  [m]
+  (when *report-completion*
+    (prn (:clojure.test.check.clojure-test/complete m))))
+
+(defmethod test/report :clojure.test.check.clojure-test/shrunk
+  [m]
+  (when *report-completion*
+    (with-test-out*
+      (fn [] (prn m)))))
 
 (defmacro defspec
   "Define a Basilisp test backed by a test.check property."
   ([name property]
    `(defspec ~name nil ~property))
   ([name options property]
-   `(test/deftest ~name
-      (let [options# (process-options ~options)
-            check# (apply tc/quick-check (:num-tests options#) ~property
-                          (apply concat (dissoc options# :num-tests)))]
-        (test/is (:pass? check#))))))
+   `(let [v# (defn ~name
+               {:arglists '([] ~'[num-tests & {:keys [seed max-size reporter-fn]}])}
+               ([] (let [options# (process-options ~options)]
+                     (apply ~name (:num-tests options#) (apply concat options#))))
+               ([times# & {:as quick-check-opts#}]
+                (let [options# (merge (process-options ~options) quick-check-opts#)]
+                  (apply tc/quick-check
+                         times#
+                         ~property
+                         (apply concat options#)))))]
+      (alter-meta! v# assoc
+                   :basilisp.test/test true
+                   :test (fn []
+                           (assert-check
+                            (assoc (~name) :test-var (str '~name)))))
+      v#)))

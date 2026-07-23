@@ -8,15 +8,18 @@ persistent collections.
 
 from __future__ import annotations
 
+import builtins
 import math
 import time
 import uuid as _uuid
 from dataclasses import dataclass
+from fractions import Fraction
 from typing import Any, Callable, Iterable, Mapping, Sequence
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
+from basilisp.lang import seq as lseq
 from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as lvec
@@ -147,6 +150,123 @@ def rose_filter(pred: Callable[[Any], bool], tree: RoseTree) -> RoseTree:
     )
 
 
+def rose_permutations(roses: Sequence[RoseTree]):
+    """Return vectors where one rose has been replaced by each child in turn."""
+    roses = tuple(roses)
+    result = []
+    for index, rose in enumerate(roses):
+        for child in rose.children:
+            copy = list(roses)
+            copy[index] = child
+            result.append(lvec.vector(copy))
+    return lvec.vector(result)
+
+
+def rose_zip(f: Callable[..., Any], roses: Sequence[RoseTree]) -> RoseTree:
+    roses = tuple(roses)
+    return RoseTree(
+        f(*(rose.root for rose in roses)),
+        tuple(
+            rose_zip(f, permutation) for permutation in _rose_permutation_tuples(roses)
+        ),
+    )
+
+
+def rose_remove(roses: Sequence[RoseTree]):
+    """Return the immediate collection shrink frontier for a sequence of roses."""
+    roses = tuple(roses)
+    result = []
+    for index in range(len(roses)):
+        result.append(lvec.vector(roses[:index] + roses[index + 1 :]))
+    result.extend(
+        lvec.vector(permutation) for permutation in _rose_permutation_tuples(roses)
+    )
+    return lvec.vector(result)
+
+
+def rose_shrink(f: Callable[..., Any], roses: Sequence[RoseTree]) -> RoseTree:
+    roses = tuple(roses)
+    if not roses:
+        return RoseTree(f())
+    # Clojure stores this child sequence lazily.  Basilisp rose children are
+    # eager Python values, so keep the same immediate shrink frontier without
+    # recursively materializing the full combinatorial tree up front.
+    return RoseTree(
+        f(*(rose.root for rose in roses)),
+        tuple(
+            RoseTree(f(*(rose.root for rose in shrink))) for shrink in rose_remove(roses)
+        ),
+    )
+
+
+def _rose_permutation_tuples(
+    roses: Sequence[RoseTree],
+) -> tuple[tuple[RoseTree, ...], ...]:
+    result = []
+    for index, rose in enumerate(roses):
+        for child in rose.children:
+            copy = list(roses)
+            copy[index] = child
+            result.append(tuple(copy))
+    return tuple(result)
+
+
+def _rose_shrink_vector_star(f: Callable[..., Any], roses: tuple[RoseTree, ...]):
+    thing = rose_shrink(f, roses)
+    children: list[RoseTree] = []
+    if len(roses) >= 4:
+        half = len(roses) // 2
+        children.append(_rose_shrink_vector_star(f, roses[:half]))
+        children.append(_rose_shrink_vector_star(f, roses[half:]))
+    children.extend(thing.children)
+    return RoseTree(thing.root, tuple(children))
+
+
+def rose_shrink_vector(f: Callable[..., Any], roses: Sequence[RoseTree]) -> RoseTree:
+    roses = tuple(roses)
+    rose = _rose_shrink_vector_star(f, roses)
+    if not roses:
+        return rose
+    return RoseTree(rose.root, (RoseTree(f()),) + rose.children)
+
+
+def rose_collapse(tree: RoseTree) -> RoseTree:
+    children = tuple(rose_collapse(child) for child in tree.children)
+    grandchildren = tuple(
+        rose_collapse(grandchild)
+        for child in tree.children
+        for grandchild in child.children
+    )
+    return RoseTree(tree.root, children + grandchildren)
+
+
+def rose_seq(tree: RoseTree):
+    """Yield unique rose-tree root values in Clojure test.check traversal order."""
+    seen: list[Any] = []
+    stack: list[tuple[RoseTree, ...]] = []
+    current: RoseTree | None = tree
+
+    while current is not None:
+        node = current.root
+        children = current.children
+        already_seen = builtins.any(node == item for item in seen)
+        if not already_seen:
+            yield node
+            seen.append(node)
+            if children:
+                if len(children) > 1:
+                    stack.insert(0, tuple(children[1:]))
+                current = children[0]
+                continue
+        current = None
+        while stack:
+            first, *rest = stack.pop(0)
+            if rest:
+                stack.insert(0, tuple(rest))
+            current = first
+            break
+
+
 def _collection_shrinks(
     values: Sequence[RoseTree], factory: Callable[[Iterable[Any]], Any]
 ):
@@ -237,7 +357,6 @@ def bind(generator: Generator, f: Callable[[Any], Generator]) -> Generator:
         inner = f(outer.root)
         if not generator_q(inner):
             raise TypeError("Function passed to bind must return a generator")
-        value = call_gen(inner, rng.split()[1], size)
         return rose_join(
             rose_fmap(lambda item: call_gen(f(item), rng.split()[1], size), outer)
         )
@@ -247,15 +366,34 @@ def bind(generator: Generator, f: Callable[[Any], Generator]) -> Generator:
 
 def make_size_range_seq(max_size: int):
     max_size = max(1, int(max_size))
-    while True:
-        yield from range(max_size)
+
+    def values():
+        while True:
+            yield from range(max_size)
+
+    return lseq.iterator_sequence(values())
+
+
+def lazy_random_states(rng: RNG):
+    def values():
+        nonlocal rng
+        while True:
+            left, rng = rng.split()
+            yield left
+
+    return lseq.iterator_sequence(values())
 
 
 def sample_seq(generator: Generator, max_size: int = 200):
     rng = make_random(0xC10C10)
-    for size in make_size_range_seq(max_size):
-        left, rng = rng.split()
-        yield call_gen(generator, left, size).root
+
+    def values():
+        nonlocal rng
+        for size in make_size_range_seq(max_size):
+            left, rng = rng.split()
+            yield call_gen(generator, left, size).root
+
+    return lseq.iterator_sequence(values())
 
 
 def sample(generator: Generator, num_samples: int = 10):
@@ -772,7 +910,14 @@ symbol_ns = fmap(
     tuple_gen(string_alphanumeric, string_alphanumeric),
 )
 ratio = fmap(
-    lambda pair: pair[0] / pair[1], tuple_gen(small_integer, fmap(lambda x: x + 1, nat))
+    lambda pair: Fraction(pair[0], pair[1]),
+    tuple_gen(small_integer, fmap(lambda x: x + 1, nat)),
+)
+big_ratio = fmap(
+    lambda pair: Fraction(pair[0], pair[1]),
+    tuple_gen(
+        size_bounded_bigint, such_that(lambda value: value != 0, size_bounded_bigint)
+    ),
 )
 uuid = no_shrink(
     fmap(lambda value: _uuid.UUID(int=value & ((1 << 128) - 1)), large_integer)
