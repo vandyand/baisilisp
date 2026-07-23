@@ -889,6 +889,16 @@ checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
 precision integers still mean ``*-exact`` overflow behavior remains documented
 as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
 
+``basilisp.walk`` is a direct port of ``clojure.walk``'s recursive traversal
+contract. Lists, sequences, vectors, map entries, maps, sets, records, and
+scalars keep the same traversal points as Clojure, while Basilisp exposes the
+``IWalkable`` extension protocol as an implementation hook. Map and set
+reconstruction follows Clojure's ``empty``/``into`` shape, so walking a sorted
+map or sorted set preserves sorted behavior and metadata rather than degrading
+to hash collections. Shared fixtures compare replacement helpers, key
+transforms, traversal order, macro expansion, metadata, sorted collections, and
+a generated nested-data corpus against JVM Clojure.
+
 ``basilisp.zip`` is a direct functional-zipper port rather than a Python tree
 adapter. Locations remain immutable vectors carrying path metadata, and the
 public behavior is the Clojure navigation/editing contract: depth-first

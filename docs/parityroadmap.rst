@@ -251,6 +251,13 @@ Near-term deliverable:
   edits, removals, generated traversal/edit/removal corpora, and the Clojure
   singleton ``seq-zip`` removal error boundary. Basilisp now normalizes zipper
   right-sibling state and no longer turns that boundary into a silent ``nil``.
+* **Completed locally:** lock ``clojure.walk`` semantic parity with a shared
+  fixture covering the required public names, replacement helpers, key
+  transforms, traversal order, ``macroexpand-all``, metadata, sorted map/set
+  preservation, and a deterministic generated nested-data corpus. Basilisp now
+  reconstructs maps and sets through ``empty``/``into`` so walking preserves
+  sorted collection behavior instead of coercing those values to hash
+  collections.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

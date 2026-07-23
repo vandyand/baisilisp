@@ -28,11 +28,11 @@
 
   basilisp.lang.interfaces/IPersistentMap
   (walk* [this inner outer]
-    (outer (with-meta (apply hash-map (mapcat inner this)) (meta this))))
+    (outer (into (empty this) (map inner this))))
 
   basilisp.lang.interfaces/IPersistentSet
   (walk* [this inner outer]
-    (outer (with-meta (apply hash-set (map inner this)) (meta this))))
+    (outer (into (empty this) (map inner this))))
 
   basilisp.lang.interfaces/IRecord
   (walk* [this inner outer]

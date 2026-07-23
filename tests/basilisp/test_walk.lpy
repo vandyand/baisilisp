@@ -91,6 +91,54 @@
     (is (= [{"a" 1 "c" 3 4 :d "nested" {"e" 5 'b 6}}]
            (walk/stringify-keys [{"a" 1 :c 3 4 :d "nested" {:e 5 'b 6}}])))))
 
+(deftest sorted-collection-preservation-test
+  (let [form   {:outer [(with-meta (sorted-map :b 2 :a 1) {:kind :sorted-map})
+                        (with-meta (sorted-set 3 1 2) {:kind :sorted-set})]}
+        walked (walk/postwalk identity form)
+        sm     (get-in walked [:outer 0])
+        ss     (get-in walked [:outer 1])]
+    (is (sorted? sm))
+    (is (= [:a :b] (mapv key sm)))
+    (is (= {:kind :sorted-map} (meta sm)))
+    (is (sorted? ss))
+    (is (= [1 2 3] (vec ss)))
+    (is (= {:kind :sorted-set} (meta ss)))))
+
+(defn generated-walk-form [depth seed]
+  (if (zero? depth)
+    (case (mod seed 6)
+      0 :leaf
+      1 (str "k" seed)
+      2 seed
+      3 nil
+      4 (symbol (str "sym" seed))
+      true)
+    (case (mod (+ depth seed) 5)
+      0 [(generated-walk-form (dec depth) (+ seed 1))
+         (generated-walk-form (dec depth) (+ seed 2))]
+      1 (list (generated-walk-form (dec depth) (+ seed 1))
+              (generated-walk-form (dec depth) (+ seed 2)))
+      2 {(str "k" seed) (generated-walk-form (dec depth) (+ seed 1))
+         (keyword (str "kw" seed)) (generated-walk-form (dec depth) (+ seed 2))}
+      3 #{(generated-walk-form (dec depth) (+ seed 1))
+          (generated-walk-form (dec depth) (+ seed 2))}
+      (sorted-map (keyword (str "a" seed)) (generated-walk-form (dec depth) (+ seed 1))
+                  (keyword (str "b" seed)) (generated-walk-form (dec depth) (+ seed 2))))))
+
+(deftest generated-walk-corpus-test
+  (doseq [seed (range 96)]
+    (let [form        (generated-walk-form 5 seed)
+          sorted-form (with-meta (sorted-map :form form :seed seed) {:seed seed})
+          sorted-set  (with-meta (apply sorted-set (range (mod seed 13))) {:seed seed})
+          walked-map  (walk/postwalk identity sorted-form)
+          walked-set  (walk/prewalk identity sorted-set)]
+      (is (= sorted-form walked-map))
+      (is (sorted? walked-map))
+      (is (= {:seed seed} (meta walked-map)))
+      (is (= sorted-set walked-set))
+      (is (sorted? walked-set))
+      (is (= {:seed seed} (meta walked-set))))))
+
 (defmacro plus [n1 n2]
   `(+ ~n1 ~n2))
 
