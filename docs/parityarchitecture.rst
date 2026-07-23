@@ -969,6 +969,16 @@ Clojure. ``seq-zip`` preserves Clojure's edge behavior when removing the only
 child of a sequence root: rebuilding with nil children is an error boundary, not
 a silent nil root.
 
+``basilisp.tools.macro`` provides the portable ``clojure.tools.macro`` API for
+``macrolet``, symbol macros, templates, recursive macro expansion, and
+``name-with-attributes``. Shared fixtures compare deterministic expansions,
+lexical binding protection, global symbol macro evaluation, template results,
+qualified local-name rejection, and generated symbol-macro forms against JVM
+Clojure. Exact ``mexpand-all`` output for macros such as ``for`` remains a
+compiler-host boundary: Clojure prints JVM lazy-seq internals and generated
+symbols, while Basilisp may preserve source-shaped forms to avoid recursively
+rewriting compiler-generated ``recur`` state machines outside analyzer scope.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 

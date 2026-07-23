@@ -493,6 +493,13 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   available, with Java backend selectors returning ``nil``. An upstream
   generated proxy-class Var may appear in JVM ``ns-publics`` and is intentionally
   not exposed.
+* :lpy:ns:`basilisp.tools.macro` provides the portable
+  ``clojure.tools.macro`` surface for local macros, symbol macros, templates,
+  recursive expansion, and ``name-with-attributes``. Shared fixtures cover
+  deterministic expansion behavior and rejection boundaries. Exact
+  ``mexpand-all`` output for compiler-lowered macros such as ``for`` is
+  host-shaped and not advertised as byte-for-byte identical to JVM Clojure's
+  generated lazy-seq internals.
 * :lpy:ns:`basilisp.tools.reader` provides the portable
   ``clojure.tools.reader`` single-form reader and its stateful
   ``reader-types`` constructors. Its public surface now matches upstream

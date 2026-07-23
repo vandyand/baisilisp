@@ -285,6 +285,11 @@ Near-term deliverable:
   ``subvec`` rejection boundaries, metadata preservation/drop boundaries for
   empty and non-empty concatenation, source metadata preservation for slicing,
   and generated concatenation/slicing corpora.
+* **Completed locally:** lock the portable ``clojure.tools.macro`` surface with
+  a shared fixture covering local macro expansion, symbol macro expansion,
+  lexical binding protection, global symbol macros, templates,
+  ``name-with-attributes``, qualified-name rejection, and a generated
+  symbol-macro expansion corpus.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
