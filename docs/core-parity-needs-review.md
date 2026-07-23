@@ -149,6 +149,31 @@ to reproduce JVM internals. They remain implementation work, not review
 deferrals.
 
 
+## Current clojure-test-suite residuals
+
+As of GitHub Actions run `29971832877` on 2026-07-23, the downstream
+`basilisp-lang/clojure-test-suite` gate reports `23 failed, 219 passed`.
+This is after the scalar text, collection sorting, numeric arithmetic, and
+instant epoch arithmetic tranches reduced the suite from `31 failed, 211
+passed`.
+
+The remaining failed test files are not all equivalent runtime work. Treat
+them as the following queues before changing behavior:
+
+| Failure cluster | Files | Classification | Next action |
+| --- | --- | --- | --- |
+| Basilisp `:lpy` numeric coercion expectations | `byte`, `double`, `float`, `int`, `long`, `short` | Mostly stale Python-host expectations in the suite, not Clojure parity gaps. The upstream `:lpy` branches still expect behavior such as string coercion and relaxed Python integer bounds in places where Clojure rejects or narrows. | Keep Basilisp aligned with the curated `numeric_coercion_cases.cljc` fixture unless a specific form is proven to differ from JVM Clojure. Patch suite expectations or mark host-extension behavior separately; do not restore permissive Python coercions under Clojure names. |
+| Character runtime representation | `char`, `char_qmark`, `string_qmark`, `pr_str`, `prn_str` | Stale suite assumptions from the old char-as-string model. Basilisp now has a distinct `basilisp.lang.character/Character`, so `char?`, `string?`, and printer output are intentionally closer to Clojure. | Preserve distinct characters. Add or maintain conformance fixtures that compare reader, predicate, equality, printing, and string-library behavior against Clojure. Update the upstream suite branch expectations rather than collapsing chars back to strings. |
+| Collection operations on characters | `empty_qmark`, `fnext`, `last`, `not_empty`, `remove`, `reverse`, `seq`, `seqable_qmark`, `set` | Secondary fallout from the same char-as-string assumption. The failing `:lpy` branches often treat a character like a one-character string/sequence; Clojure does not. | Do not make `Character` seqable merely to satisfy old `:lpy` tests. Keep collection semantics guarded by `shared_core_semantics_cases.cljc` and `character_cases.cljc`. |
+| `subs` Python slicing expectations | `subs` | The suite's `:lpy` expectations use Python slicing behavior for negative, `nil`, and out-of-range indexes. Clojure's `subs` rejects invalid indexes. Basilisp's UTF-16-aware implementation is intentionally Clojure-oriented. | Keep strict Clojure-style index validation and UTF-16 boundaries. If a Python slicing helper is desired, expose it under a Python-native name rather than `clojure.core/subs`. |
+| `case` numeric dispatch expectations | `case` | The current failures are tied to Python host numeric hash/equality behavior and stale `:lpy` expectations around numeric category dispatch. This area is sensitive because previous work deliberately moved numeric equality toward Clojure's category-aware semantics. | Reassess only with a dedicated `case` differential fixture that compares JVM Clojure dispatch across integer, ratio, float, decimal, boolean, char, string, collection, `nil`, and non-finite keys. Do not change `case` from CI alone. |
+| `merge` on non-map first arguments | `merge` | The upstream test labels this behavior undefined and only asserts `(any? ...)` for weird non-map first arguments. Clojure happens to return values for lists, vectors, and map entries because `merge` reduces through `conj`; Basilisp currently rejects some first arguments. | Low-priority compatibility choice, not a portable public contract. If implemented, isolate it as "undefined Clojure-compatible permissiveness" with adversarial tests proving ordinary map merge and position-2+ map-entry behavior remain unchanged. |
+
+The practical next tranche should therefore be **suite alignment and residual
+classification**, not broad `.core` mutation. Any new runtime tranche should
+first demonstrate one of these residuals is a real JVM Clojure behavioral gap
+using a portable differential fixture, not only a failing `:lpy` branch.
+
 ## Needs Review
 
 No public `clojure.core` names are currently missing from Basilisp. Future

@@ -123,6 +123,13 @@ Near-term deliverable:
   behavior.
   New public compatibility names should arrive with a portable fixture or a
   documented host-specific reason why a shared fixture is impossible.
+* treat the upstream ``clojure-test-suite`` result as a triage input, not a
+  direct implementation queue. The current residual suite failures are
+  classified in ``docs/core-parity-needs-review.md`` so stale ``:lpy`` branches,
+  host-specific behavior, and explicitly undefined Clojure behavior do not
+  receive compatibility-shaped runtime patches by accident. A failing upstream
+  case should become implementation work only after a portable fixture proves
+  the same behavior against JVM Clojure.
 * use ``scripts/library_acceptance.py`` for a source-level, multi-file library
   proof. It executes the library-owned ``run.cljc`` test entrypoint in Clojure
   and Basilisp, compares the final EDN summary, and rejects a stale checked-in
