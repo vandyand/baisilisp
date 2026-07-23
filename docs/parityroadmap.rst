@@ -183,6 +183,10 @@ Near-term deliverable:
   ``clojure.tools.reader.reader-types`` public surface parity. Shared fixtures
   now cover dynamic Vars, ``map-func``, reader-type constructors/coercers,
   metadata merging, and character-returning ``read-char`` behavior.
+* **Completed locally:** close ``clojure.tools.logging.impl`` and the portable
+  ``clojure.tools.logging`` dynamic Var/factory surface over Python logging.
+  Java backend selectors are documented no-ops; the remaining JVM proxy-class
+  public Var is treated as an implementation artifact.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -2,15 +2,49 @@
   "Python logging implementation used by basilisp.tools.logging."
   (:import [basilisp.tools_logging :as backend]))
 
-(defn get-logger [_factory logger-ns]
-  (backend/get_logger logger-ns))
+(defprotocol Logger
+  "Protocol through which the core logging API interacts with a logger."
+  (enabled? [logger level])
+  (write! [logger level throwable message]))
 
-(defn enabled?
-  [logger level]
-  (.isEnabledFor logger (backend/level_number level)))
+(defprotocol LoggerFactory
+  "Protocol through which the core logging API obtains logger instances."
+  (name [factory])
+  (get-logger [factory logger-ns]))
 
-(defn write!
-  [logger level throwable message]
-  (backend/write logger level throwable message))
+(extend python/object Logger
+        {:enabled? (fn [logger level]
+                     (.isEnabledFor logger (backend/level_number level)))
+         :write! (fn [logger level throwable message]
+                   (backend/write logger level throwable message))})
 
-(defn find-factory [] nil)
+(extend nil LoggerFactory
+        {:name (fn [_factory] "python-logging")
+         :get-logger (fn [_factory logger-ns]
+                       (backend/get_logger logger-ns))})
+
+(def disabled-logger
+  (reify Logger
+    (enabled? [_logger _level] false)
+    (write! [_logger _level _throwable _message] nil)))
+
+(def disabled-logger-factory
+  (reify LoggerFactory
+    (name [_factory] "disabled")
+    (get-logger [_factory _logger-ns] disabled-logger)))
+
+(defn class-found?
+  "Return true when Python can import the module portion of ``name``."
+  [name]
+  (backend/class_found name))
+
+(defn slf4j-factory [] nil)
+(defn cl-factory [] nil)
+(defn log4j2-factory [] nil)
+(defn log4j-factory [] nil)
+(defn jul-factory [] nil)
+(defn find-factory []
+  (reify LoggerFactory
+    (name [_factory] "python-logging")
+    (get-logger [_factory logger-ns]
+      (backend/get_logger logger-ns))))

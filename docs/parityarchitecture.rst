@@ -693,6 +693,13 @@ one-character strings. Raw positional constructor fields that only affect JVM
 implementation details are accepted only to the extent they map to source
 position and file metadata.
 
+The tools.logging follow-up closed ``clojure.tools.logging.impl`` public
+surface parity and the meaningful root logging Vars. The runtime uses Python's
+``logging`` package as its backend; Java-specific SLF4J, Commons Logging, JUL,
+and Log4j factory selectors return ``nil``. The only remaining root-surface
+delta is an upstream generated proxy class Var, which is a JVM implementation
+artifact rather than a portable logging API.
+
 ``instant``
 ~~~~~~~~~~~
 

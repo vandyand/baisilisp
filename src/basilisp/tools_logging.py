@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import sys
+import importlib
 from typing import Any
 
 from basilisp import logconfig
@@ -29,6 +30,17 @@ def level_number(level: Any) -> int:
 
 def get_logger(logger_ns: Any) -> logging.Logger:
     return logging.getLogger(str(logger_ns))
+
+
+def class_found(name: Any) -> bool:
+    parts = str(name).split(".")
+    for end in range(len(parts), 0, -1):
+        try:
+            importlib.import_module(".".join(parts[:end]))
+            return True
+        except Exception:  # pragma: no cover - mirrors Clojure's probing helper
+            continue
+    return False
 
 
 def write(

@@ -3,6 +3,7 @@
            logging)
   (:require [basilisp.test :refer [deftest is]]
             [clojure.tools.logging :as log]
+            [clojure.tools.logging.impl :as impl]
             [clojure.tools.logging.readable :as readable]))
 
 (defmacro with-capture
@@ -78,6 +79,25 @@
     (is (log/enabled? :warn "tests.logging.contract"))
     (is (thrown? Exception
                  (log/log "tests.logging.contract" :not-a-level nil "nope")))))
+
+(deftest public-logging-factory-surface
+  (doseq [sym '[*force* *logging-agent* *tx-agent-levels*]]
+    (is (contains? (ns-publics 'basilisp.tools.logging) sym)))
+  (doseq [sym '[Logger LoggerFactory class-found? disabled-logger
+                disabled-logger-factory slf4j-factory cl-factory
+                log4j2-factory log4j-factory jul-factory name]]
+    (is (contains? (ns-publics 'basilisp.tools.logging.impl) sym)))
+  (is (= "disabled" (impl/name impl/disabled-logger-factory)))
+  (is (not (impl/enabled? (impl/get-logger impl/disabled-logger-factory "x")
+                          :info)))
+  (is (= "python-logging" (impl/name (impl/find-factory))))
+  (is (impl/class-found? "logging.Logger"))
+  (is (not (impl/class-found? "definitely.missing.logging.Backend")))
+  (is (nil? (impl/slf4j-factory)))
+  (is (nil? (impl/cl-factory)))
+  (is (nil? (impl/log4j2-factory)))
+  (is (nil? (impl/log4j-factory)))
+  (is (nil? (impl/jul-factory))))
 
 (deftest stress-mixed-level-emission-remains-lossless
   (with-capture [logger stream] "tests.logging.stress" 5

@@ -4,6 +4,9 @@
   (:import [basilisp.tools_logging :as backend]))
 
 (def ^:dynamic *logger-factory* nil)
+(def ^:dynamic *force* nil)
+(def ^:dynamic *logging-agent* nil)
+(def ^:dynamic *tx-agent-levels* #{:info :warn})
 
 (defn- current-ns-form []
   (list 'quote (ns-name *ns*)))

@@ -443,7 +443,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``clojure.tools.logging`` macro API over Python's :external:py:mod:`logging`
   module. Its trace level maps to Basilisp's level 5 and fatal maps to Python
   ``CRITICAL``; logger back-end selection follows Python configuration rather
-  than SLF4J/JUL discovery.
+  than SLF4J/JUL discovery. The public ``impl`` protocol/factory surface is
+  available, with Java backend selectors returning ``nil``. An upstream
+  generated proxy-class Var may appear in JVM ``ns-publics`` and is intentionally
+  not exposed.
 * :lpy:ns:`basilisp.tools.reader` provides the portable
   ``clojure.tools.reader`` single-form reader and its stateful
   ``reader-types`` constructors. Its public surface now matches upstream
