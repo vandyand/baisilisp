@@ -28,9 +28,10 @@
   (zipper seq?
           identity
           (fn [node children]
-            (if children
-              (with-meta children (meta node))
-              children))
+            (if (nil? children)
+              (throw (python/Exception
+                      "Cannot attach metadata to nil seq-zip children"))
+              (with-meta children (meta node))))
           root))
 
 (defn vector-zip
@@ -100,7 +101,7 @@
         (with-meta [child {:l      []
                           :pnodes (if path (conj (:pnodes path) node) [node])
                           :ppath  path
-                          :r      child-next}]
+                          :r      (seq child-next)}]
                    (meta loc))))))
 
 (defn up
@@ -131,7 +132,7 @@
   [loc]
   (let [[node {left :l [right & right-next :as right-seq] :r :as path}] loc]
     (when (and path right-seq)
-      (with-meta [right (assoc path :l (conj left node) :r right-next)]
+      (with-meta [right (assoc path :l (conj left node) :r (seq right-next))]
                  (meta loc)))))
 
 (defn rightmost

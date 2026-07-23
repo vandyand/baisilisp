@@ -889,6 +889,16 @@ checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
 precision integers still mean ``*-exact`` overflow behavior remains documented
 as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
 
+``basilisp.zip`` is a direct functional-zipper port rather than a Python tree
+adapter. Locations remain immutable vectors carrying path metadata, and the
+public behavior is the Clojure navigation/editing contract: depth-first
+``next``/``prev``, sibling navigation, insertion, replacement, removal, root
+reconstruction, and custom constructor functions. Shared fixtures compare
+navigation summaries and generated traversal/edit/removal corpora against JVM
+Clojure. ``seq-zip`` preserves Clojure's edge behavior when removing the only
+child of a sequence root: rebuilding with nil children is an error boundary, not
+a silent nil root.
+
 Library Portability
 ^^^^^^^^^^^^^^^^^^^
 

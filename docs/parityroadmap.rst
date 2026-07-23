@@ -246,6 +246,11 @@ Near-term deliverable:
   retain generated isolated namespaces for loopback socket connections, accept
   string ports in ``remote-prepl`` like Clojure, and raise the pREPL socket
   backlog for concurrent-client stress.
+* **Completed locally:** lock ``clojure.zip`` semantic parity with a shared
+  fixture covering exact public names, vector/sequence/custom zipper navigation,
+  edits, removals, generated traversal/edit/removal corpora, and the Clojure
+  singleton ``seq-zip`` removal error boundary. Basilisp now normalizes zipper
+  right-sibling state and no longer turns that boundary into a silent ``nil``.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

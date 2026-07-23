@@ -488,3 +488,7 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   helpers scan Python's ``sys.path`` instead of a JVM classpath. The upstream
   alpha, destructive source-moving API is intentionally omitted.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``
+* :lpy:ns:`basilisp.zip` is a port of ``clojure.zip``. Shared fixtures cover
+  public names, navigation, editing, removal, custom zippers, generated
+  traversal/edit/removal corpora, and Clojure's singleton ``seq-zip`` removal
+  error boundary.
