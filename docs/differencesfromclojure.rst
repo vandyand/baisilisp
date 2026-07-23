@@ -375,7 +375,12 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``user`` like Clojure; loopback socket pREPL connections use generated
   isolated namespaces. ``repl-read`` retains Clojure's quit behavior but cannot
   expose the JVM reader's line-start prompt sentinel.
-* :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``
+* :lpy:ns:`basilisp.edn` is a port of ``clojure.edn``. Shared fixtures cover
+  the required ``read``/``read-string`` surface, EOF and trailing-form behavior,
+  comments, discard forms, scalar and collection literals, namespaced maps,
+  reader constants, custom/default tagged readers, stream reads, rejection
+  boundaries, and a generated nested EDN corpus. ``write`` and ``write-string``
+  are Basilisp extensions and are covered by local read/write round-trip tests.
 * :lpy:ns:`basilisp.instant` provides the portable timestamp parser from
   ``clojure.instant`` and returns Python :external:py:class:`datetime.datetime`
   values rather than Java date or timestamp classes. ``read-instant-date`` is a

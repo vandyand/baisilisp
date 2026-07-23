@@ -484,3 +484,48 @@
     [:a]                                        "[:a]"
     [:a :a :b :c]                               "[:a :a :b :c]"
     [:a :c {:d #{:e}} {:f '(1 2 3)} [:h :i :j]] "[:a :c {:d #{:e}} {:f (1 2 3)} [:h :i :j]]"))
+
+(defn generated-edn-value [depth seed]
+  (if (zero? depth)
+    (case (mod seed 9)
+      0 seed
+      1 (- seed)
+      2 (str "s" seed "\n" "x")
+      3 (keyword (str "kw" seed))
+      4 (symbol (str "sym" seed))
+      5 nil
+      6 true
+      7 false
+      \A)
+    (case (mod (+ depth seed) 5)
+      0 [(generated-edn-value (dec depth) (+ seed 1))
+         (generated-edn-value (dec depth) (+ seed 2))]
+      1 (list (generated-edn-value (dec depth) (+ seed 1))
+              (generated-edn-value (dec depth) (+ seed 2)))
+      2 {(keyword (str "a" seed)) (generated-edn-value (dec depth) (+ seed 1))
+         (keyword (str "b" seed)) (generated-edn-value (dec depth) (+ seed 2))}
+      3 #{(generated-edn-value (dec depth) (+ seed 1))
+          (generated-edn-value (dec depth) (+ seed 2))}
+      {:nested [(generated-edn-value (dec depth) (+ seed 1))]
+       :set    #{(generated-edn-value (dec depth) (+ seed 2))}})))
+
+(deftest generated-read-write-roundtrip-test
+  (doseq [seed (range 128)]
+    (let [value   (generated-edn-value 4 seed)
+          encoded (edn/write-string value)
+          decoded (edn/read-string encoded)]
+      (is (= value decoded)))))
+
+(deftest generated-read-string-corpus-test
+  (doseq [seed (range 96)]
+    (let [source (case (mod seed 8)
+                   0 (str "[" seed " " (inc seed) " #_" (+ seed 2) " " (+ seed 3) "]")
+                   1 (str "{:a" seed " " seed " :b" seed " \"" seed "\"}")
+                   2 (str "#{" seed " " (inc seed) "}")
+                   3 (str "(:" "kw" seed " sym" seed " nil)")
+                   4 (str "#:ns" seed "{:a " seed " :b [" (inc seed) "]}")
+                   5 (str ";; comment\n" seed " :trailing")
+                   6 (str "\"" "s" seed "\\n" "x" "\"")
+                   (str "\\" (python/chr (+ 65 (mod seed 26)))))
+          value  (edn/read-string source)]
+      (is (= value (edn/read-string (edn/write-string value)))))))

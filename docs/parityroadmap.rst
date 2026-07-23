@@ -269,6 +269,12 @@ Near-term deliverable:
   boundaries, duplicate binding handling, short/long value lists, quoted-form
   walking, ``do-template`` macroexpansion, incomplete group dropping, and
   generated apply/macroexpansion corpora.
+* **Completed locally:** lock ``clojure.edn`` reader parity with a shared
+  fixture covering the required public names, ``read-string`` EOF/trailing-form
+  behavior, comments, discard forms, numeric/symbol/keyword/character forms,
+  namespaced maps, reader constants, custom/default tagged readers, stream
+  reads, rejection boundaries, and a generated nested EDN corpus. Basilisp-only
+  EDN writer support is covered by local generated read/write round trips.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

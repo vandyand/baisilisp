@@ -738,6 +738,21 @@ and Log4j factory selectors return ``nil``. The only remaining root-surface
 delta is an upstream generated proxy class Var, which is a JVM implementation
 artifact rather than a portable logging API.
 
+``edn``
+~~~~~~~
+
+``basilisp.edn`` exposes the ``clojure.edn`` reader surface through
+``read`` and ``read-string``. Its compatibility boundary is data, not host
+reader classes: strings, pushback streams, EOF options, comments, discard
+forms, numbers, symbols, keywords, characters, maps, sets, vectors, lists,
+namespaced maps, reader constants, custom readers, default readers, and tagged
+``#inst``/``#uuid`` forms are compared against JVM Clojure by shared fixtures.
+Malformed numbers, duplicate map/set entries, invalid keywords, unclosed
+strings, bad escapes, unknown tags, and malformed built-in tags remain rejection
+boundaries. ``write`` and ``write-string`` are Basilisp extensions for emitting
+the EDN subset and are covered by local round-trip tests rather than Clojure
+namespace parity.
+
 ``instant``
 ~~~~~~~~~~~
 
