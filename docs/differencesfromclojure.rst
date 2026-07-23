@@ -413,7 +413,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
 * :lpy:ns:`basilisp.reducers` provides the serial reducible and foldable subset
   of ``clojure.core.reducers``. It preserves Clojure's map-reduction arity
   boundary, but it does not create a global parallel worker pool.
-* :lpy:ns:`basilisp.set` is a port of ``clojure.set``
+* :lpy:ns:`basilisp.set` is a port of ``clojure.set``. Shared fixtures cover
+  the required public names, set operation arities, metadata and sorted set
+  preservation, relational helpers, empty joins, natural join shared-key
+  selection, and a generated operation corpus. ``disjoint?`` and
+  ``symmetric-difference`` remain Basilisp extension helpers.
 * :lpy:ns:`basilisp.shell` is a port of ``clojure.java.shell`` and is
   available through that standard import path. Its public alias surface,
   result maps, stdin, environment and directory bindings, byte output, and

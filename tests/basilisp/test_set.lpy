@@ -8,6 +8,29 @@
   (is (= #{:a :b} (set/difference #{:a :b :c} #{:c :d :e})))
   (is (= #{:a} (set/difference #{:a :b :c} #{:c :d} #{:b "z" 3}))))
 
+(deftest set-operation-preservation-test
+  (let [source (with-meta (sorted-set 3 1 2) {:kind :source})]
+    (testing "union preserves the selected backing set"
+      (let [result (set/union source #{4})]
+        (is (sorted? result))
+        (is (= [1 2 3 4] (vec result)))
+        (is (= {:kind :source} (meta result)))))
+    (testing "intersection preserves the smaller backing set"
+      (let [result (set/intersection #{1 2 3 4} source)]
+        (is (sorted? result))
+        (is (= [1 2 3] (vec result)))
+        (is (= {:kind :source} (meta result)))))
+    (testing "difference preserves the left backing set"
+      (let [result (set/difference source #{3})]
+        (is (sorted? result))
+        (is (= [1 2] (vec result)))
+        (is (= {:kind :source} (meta result)))))
+    (testing "select preserves the input backing set"
+      (let [result (set/select odd? source)]
+        (is (sorted? result))
+        (is (= [1 3] (vec result)))
+        (is (= {:kind :source} (meta result)))))))
+
 (deftest disjoint?-test
   (is (not (set/disjoint? #{:a :b :c} #{:c :d :e})))
   (is (set/disjoint? #{:a :b :c} #{:d :e :f})))
@@ -28,6 +51,20 @@
   (is (= #{} (set/intersection #{:a :b :c} #{:c :d} #{:b "z" 3}))))
 
 (deftest join-test
+  (testing "empty relations"
+    (is (= #{} (set/join #{} #{{:a 1}})))
+    (is (= #{} (set/join #{{:a 1}} #{})))
+    (is (= #{} (set/join #{} #{}))))
+
+  (testing "natural join uses the keys shared by the first row of each relation"
+    (is (= #{{:left-rank 0 :right-rank 0 :rank 0 :id 1 :left :first :right :first}}
+           (set/join (sorted-set-by #(compare (:left-rank %1) (:left-rank %2))
+                                    {:left-rank 0 :rank 0 :id 1 :left :first}
+                                    {:left-rank 1 :region :east :left :second})
+                     (sorted-set-by #(compare (:right-rank %1) (:right-rank %2))
+                                    {:right-rank 0 :rank 0 :id 1 :right :first}
+                                    {:right-rank 1 :id 99 :region :east :right :second})))))
+
   (testing "natural join"
     (is (= #{{:b 1 :a 2}
              {:b 2 :a 1}
@@ -102,6 +139,38 @@
   (is (not (set/superset? #{:a :b :c} #{:a :b :c :d :e :f}))))
 
 (deftest union-test
+  (is (= #{} (set/union)))
   (is (= #{:a :b :c} (set/union #{:a :b :c})))
   (is (= #{:a :b :c :d :e} (set/union #{:a :b :c} #{:c :d :e})))
   (is (= #{:a :b :c :d "z" 3} (set/union #{:a :b :c} #{:c :d} #{:b "z" 3}))))
+
+(defn generated-set [seed offset]
+  (into (sorted-set)
+        (map #(mod (+ (* seed 17) (* % 7) offset) 29))
+        (range (mod (+ seed offset) 11))))
+
+(defn generated-hash-set [seed offset]
+  (set (map #(mod (+ (* seed 13) (* % 5) offset) 31)
+            (range (mod (+ seed offset) 13)))))
+
+(deftest generated-set-operation-corpus-test
+  (doseq [seed (range 96)]
+    (let [a (with-meta (generated-set seed 0) {:seed seed})
+          b (into (generated-hash-set seed 1) a)
+          c (into (generated-set seed 2) a)
+          union-result (set/union a b c)
+          intersection-result (set/intersection a b c)
+          difference-result (set/difference a b c)
+          select-result (set/select odd? a)]
+      (is (= (clojure.core/set (concat a b c)) union-result))
+      (is (= (clojure.core/set (filter #(and (contains? b %) (contains? c %)) a))
+             intersection-result))
+      (is (= (clojure.core/set (remove #(or (contains? b %) (contains? c %)) a))
+             difference-result))
+      (is (= (clojure.core/set (filter odd? a)) select-result))
+      (is (sorted? intersection-result))
+      (is (sorted? difference-result))
+      (is (sorted? select-result))
+      (is (= {:seed seed} (meta intersection-result)))
+      (is (= {:seed seed} (meta difference-result)))
+      (is (= {:seed seed} (meta select-result))))))

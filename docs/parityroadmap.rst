@@ -258,6 +258,12 @@ Near-term deliverable:
   reconstructs maps and sets through ``empty``/``into`` so walking preserves
   sorted collection behavior instead of coercing those values to hash
   collections.
+* **Completed locally:** lock ``clojure.set`` semantic parity with a shared
+  fixture covering the required public names, zero-arity ``union``, rejected
+  zero-arity ``intersection``/``difference``, sorted set and metadata
+  preservation across set operations, relational helpers, empty joins,
+  Clojure's first-row shared-key rule for natural joins, and a generated set
+  operation/join corpus.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

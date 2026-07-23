@@ -889,6 +889,16 @@ checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
 precision integers still mean ``*-exact`` overflow behavior remains documented
 as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
 
+``basilisp.set`` follows ``clojure.set``'s functional collection contract while
+retaining Basilisp-only extension helpers such as ``disjoint?`` and
+``symmetric-difference``. ``union`` has Clojure's zero-arity identity, while
+``intersection`` and ``difference`` keep Clojure's zero-arity rejection
+boundary. ``union``, ``intersection``, ``difference``, and ``select`` rebuild
+through ordinary persistent collection operations so metadata and sorted set
+behavior come from the same backing set Clojure would select. Natural joins
+return ``#{}`` for empty relations and use the keys shared by the first row of
+each non-empty relation, not the keys common to every row.
+
 ``basilisp.walk`` is a direct port of ``clojure.walk``'s recursive traversal
 contract. Lists, sequences, vectors, map entries, maps, sets, records, and
 scalars keep the same traversal points as Clojure, while Basilisp exposes the
