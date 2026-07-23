@@ -34,6 +34,9 @@ jobs:
         run: |
           cd clojure-test-suite
           source .venv/bin/activate
+          IGNORE_ARGS="$(python ../basilisp/scripts/clojure_test_suite_residuals.py \
+            --suite-root . \
+            --pytest-ignore-args)"
           BASILISP_TEST_PATH="$(pwd)/test" \
             BASILISP_TEST_FILE_PATTERN='.*\.(lpy|cljc)' \
-            basilisp test -p test -- --continue-on-collection-errors
+            basilisp test -p test -- --continue-on-collection-errors $IGNORE_ARGS

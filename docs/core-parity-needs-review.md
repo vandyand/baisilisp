@@ -167,13 +167,18 @@ them as the following queues before changing behavior:
 | Collection operations on characters | `empty_qmark`, `fnext`, `last`, `not_empty`, `remove`, `reverse`, `seq`, `seqable_qmark`, `set` | Secondary fallout from the same char-as-string assumption. The failing `:lpy` branches often treat a character like a one-character string/sequence; Clojure does not. | Do not make `Character` seqable merely to satisfy old `:lpy` tests. Keep collection semantics guarded by `shared_core_semantics_cases.cljc` and `character_cases.cljc`. |
 | `subs` Python slicing expectations | `subs` | The suite's `:lpy` expectations use Python slicing behavior for negative, `nil`, and out-of-range indexes. Clojure's `subs` rejects invalid indexes. Basilisp's UTF-16-aware implementation is intentionally Clojure-oriented. | Keep strict Clojure-style index validation and UTF-16 boundaries. If a Python slicing helper is desired, expose it under a Python-native name rather than `clojure.core/subs`. |
 | `case` numeric dispatch expectations | `case` | The remaining upstream failures are tied to Python host numeric hash/equality behavior and stale `:lpy` expectations around numeric category dispatch. This area is sensitive because previous work deliberately moved numeric equality toward Clojure's category-aware semantics. A separate portable fixture now covers real `case` dispatch and duplicate-test rejection. | Keep the `case_cases.cljc` fixture as the authority. Do not change numeric dispatch from CI alone unless a new fixture proves a JVM Clojure mismatch. |
-| `merge` on non-map first arguments | `merge` | Resolved in the parity fork with `merge_cases.cljc`: Basilisp now follows Clojure's observable reduction-through-`conj` behavior for truthy first arguments while still rejecting invalid map-entry values in map position. The downstream suite's remaining `:lpy` expectations for `(merge [:foo])`, `(merge :foo)`, and `(merge {} '(:a 1))` are stale relative to JVM Clojure. | Keep the differential fixture as authority. Do not reintroduce the old stricter first-argument guard or arbitrary-list map-entry coercion just to satisfy the stale `:lpy` branches. |
+| Map-entry coercion through `conj`/`merge` | `conj`, `merge` | Resolved in the parity fork with `merge_cases.cljc`: Basilisp now follows Clojure's observable `merge` reduction-through-`conj` behavior for truthy first arguments while still rejecting invalid map-entry values in map position. The downstream suite's remaining `:lpy` expectations for `(conj {:a 0} '(:b 1))`, `(merge [:foo])`, `(merge :foo)`, and `(merge {} '(:a 1))` are stale relative to JVM Clojure. | Keep the differential fixture as authority. Do not reintroduce the old stricter first-argument guard or arbitrary-list map-entry coercion just to satisfy the stale `:lpy` branches. |
 
 The practical next tranche after the `merge` fix should therefore be **suite
 alignment and residual classification**, not broad `.core` mutation. Any new
 runtime tranche should first demonstrate one of these residuals is a real JVM
 Clojure behavioral gap using a portable differential fixture, not only a failing
 `:lpy` branch.
+
+The `run-clojure-test-suite` CI workflow excludes the residual files above via
+`scripts/clojure_test_suite_residuals.py`. Each exclusion should remain tied to
+an authoritative local differential fixture; removing an exclusion should first
+update the external suite expectation or prove a new runtime gap.
 
 ## Needs Review
 
