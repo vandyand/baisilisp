@@ -50,6 +50,11 @@ class NamespacePair:
 TOOLS_LOGGING_PROXY_VAR = re.compile(
     r"^clojure\.tools\.logging\.proxy\$java\.io\.ByteArrayOutputStream\$[0-9a-f]+$"
 )
+JVM_REFLECT_VAR = re.compile(
+    r"^(->AsmReflector|->Constructor|->Field|->JavaReflector|->Method|"
+    r"ClassResolver|flag-descriptors|map->Constructor|map->Field|"
+    r"map->Method|resolve-class)$"
+)
 
 STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.core.cache", "basilisp.core.cache"),
@@ -57,6 +62,7 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.core.protocols", "basilisp.core.protocols"),
     NamespacePair("clojure.core.reducers", "basilisp.core.reducers"),
     NamespacePair("clojure.core.rrb-vector", "basilisp.core.rrb-vector"),
+    NamespacePair("clojure.core.server", "basilisp.core.server"),
     NamespacePair("clojure.data", "basilisp.data"),
     NamespacePair("clojure.data.codec.base64", "basilisp.data.codec.base64"),
     NamespacePair("clojure.data.csv", "basilisp.data.csv"),
@@ -71,11 +77,17 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.math", "basilisp.math"),
     NamespacePair("clojure.math.combinatorics", "basilisp.math.combinatorics"),
     NamespacePair("clojure.pprint", "basilisp.pprint"),
+    NamespacePair(
+        "clojure.reflect",
+        "basilisp.reflect",
+        allowed_missing=(JVM_REFLECT_VAR,),
+    ),
     NamespacePair("clojure.repl", "basilisp.repl"),
     NamespacePair("clojure.set", "basilisp.set"),
     NamespacePair("clojure.spec.alpha", "basilisp.spec.alpha"),
     NamespacePair("clojure.spec.gen.alpha", "basilisp.spec.gen.alpha"),
     NamespacePair("clojure.spec.test.alpha", "basilisp.spec.test.alpha"),
+    NamespacePair("clojure.stacktrace", "basilisp.stacktrace"),
     NamespacePair("clojure.string", "basilisp.string"),
     NamespacePair("clojure.template", "basilisp.template"),
     NamespacePair("clojure.test", "basilisp.test"),

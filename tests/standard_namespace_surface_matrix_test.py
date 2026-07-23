@@ -16,6 +16,11 @@ def test_namespace_pairs_are_sorted_unique_and_non_core():
     assert "clojure.core" not in clojure_namespaces
     assert all(ns.startswith("clojure.") for ns in clojure_namespaces)
     assert all(ns.startswith("basilisp.") for ns in basilisp_namespaces)
+    assert {
+        "clojure.core.server",
+        "clojure.reflect",
+        "clojure.stacktrace",
+    }.issubset(clojure_namespaces)
 
 
 def test_default_deps_cover_audited_external_libraries():
@@ -51,6 +56,26 @@ def test_tools_logging_generated_proxy_var_is_classified_missing():
             "clojure.tools.logging.proxy$java.io.ByteArrayOutputStream$ff19274a"
         ]
     )
+
+
+def test_jvm_reflect_public_vars_are_classified_missing():
+    rows = list(
+        matrix._rows(
+            matrix.NamespacePair(
+                "clojure.reflect",
+                "basilisp.reflect",
+                allowed_missing=(matrix.JVM_REFLECT_VAR,),
+            ),
+            {"reflect", "->Method", "resolve-class"},
+            {"reflect", "PythonReflector"},
+        )
+    )
+    statuses = {row["symbol"]: row["status"] for row in rows}
+
+    assert "shared" == statuses["reflect"]
+    assert "classified-missing-in-basilisp" == statuses["->Method"]
+    assert "classified-missing-in-basilisp" == statuses["resolve-class"]
+    assert "basilisp-extension" == statuses["PythonReflector"]
 
 
 @given(

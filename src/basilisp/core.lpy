@@ -6435,9 +6435,10 @@
       ;; If an `:as` alias is not given, we'll just use that. Otherwise, we use
       ;; `:original-namespace` to let the require machinery know to set an
       ;; extra alias here.
-      (cond-> (assoc libspec :namespace (symbol basilisp-ns-name))
-        (not (:as libspec)) (assoc :as (symbol ns-name))
-        (:as libspec)       (assoc :original-namespace (symbol ns-name)))
+      (cond-> (assoc libspec
+                     :namespace (symbol basilisp-ns-name)
+                     :original-namespace (symbol ns-name))
+        (not (:as libspec)) (assoc :as (symbol ns-name)))
       libspec)))
 
 (defn ^:private require-libspec
@@ -6525,7 +6526,8 @@
     ;; Add a special alias for the original namespace (e.g. `clojure.*`), if we
     ;; rewrote the namespace on require.
     (when-let [original-ns (:original-namespace libspec)]
-      (.add-alias requiring-ns (the-ns required-ns-sym) original-ns))
+      (.add-alias requiring-ns (the-ns required-ns-sym) original-ns)
+      (basilisp.lang.runtime.Namespace/add-namespace-alias original-ns required-ns-sym))
     ;; If an `:as-alias` is requested, apply that as well.
     (when-let [as-alias (:as-alias libspec)]
       (.add-alias requiring-ns (the-ns required-ns-sym) as-alias))

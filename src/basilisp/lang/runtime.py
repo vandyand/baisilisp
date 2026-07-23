@@ -707,6 +707,7 @@ class Namespace(ReferenceBase):
     )
 
     _NAMESPACES: Atom[NamespaceMap] = Atom(lmap.EMPTY)
+    _NAMESPACE_ALIASES: Atom[NamespaceMap] = Atom(lmap.EMPTY)
 
     __slots__ = (
         "_name",
@@ -1048,7 +1049,17 @@ class Namespace(ReferenceBase):
     def get(cls, name: sym.Symbol) -> "Optional[Namespace]":
         """Get the namespace bound to the symbol `name` in the global namespace
         cache. Return the namespace if it exists or None otherwise.."""
-        return cls._NAMESPACES.deref().val_at(name, None)
+        if (namespace := cls._NAMESPACES.deref().val_at(name, None)) is not None:
+            return namespace
+        return cls._NAMESPACE_ALIASES.deref().val_at(name, None)
+
+    @classmethod
+    def add_namespace_alias(cls, alias: sym.Symbol, target: sym.Symbol) -> None:
+        """Add a global namespace-name alias for an existing namespace."""
+        namespace = cls.get(target)
+        if namespace is None:
+            raise ValueError(f"Cannot alias missing namespace '{target}'")
+        cls._NAMESPACE_ALIASES.swap(lambda aliases: aliases.assoc(alias, namespace))
 
     @classmethod
     def remove(cls, name: sym.Symbol) -> Optional["Namespace"]:
@@ -1064,6 +1075,21 @@ class Namespace(ReferenceBase):
             if ns is not None:
                 newval = oldval.dissoc(name)
             if cls._NAMESPACES.compare_and_set(oldval, newval):
+                if ns is not None:
+                    cls._NAMESPACE_ALIASES.swap(
+                        lambda aliases: lmap.map(
+                            {
+                                alias: namespace
+                                for alias, namespace in aliases.items()
+                                if namespace is not ns
+                            }
+                        )
+                    )
+                    return ns
+                old_aliases: lmap.PersistentMap = cls._NAMESPACE_ALIASES.deref()
+                ns = old_aliases.val_at(name, None)
+                if ns is not None:
+                    cls._NAMESPACE_ALIASES.swap(lambda aliases: aliases.dissoc(name))
                 return ns
 
     # REPL Completion support

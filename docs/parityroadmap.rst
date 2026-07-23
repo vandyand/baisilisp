@@ -306,8 +306,14 @@ Near-term deliverable:
   compares each configured Clojure/Basilisp namespace pair in one process per
   runtime, includes the contrib dependencies needed for the audited surface,
   and fails on any unclassified missing Basilisp public Var. The only classified
-  missing symbol is ``clojure.tools.logging``'s generated JVM proxy class Var;
+  missing symbols are generated/JVM-hosted reflection and logging artifacts;
   Basilisp extensions remain reported but non-failing.
+* **Completed locally:** make rewritten standard ``clojure.*`` namespaces
+  globally findable by their requested names. Source-compatible requires such
+  as ``clojure.string``, ``clojure.core.server``, ``clojure.stacktrace``,
+  ``clojure.reflect``, and the portable ``clojure.java.*`` aliases now support
+  ``find-ns``/``ns-publics`` through the original Clojure namespace symbol
+  instead of only through the backing ``basilisp.*`` implementation name.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -337,6 +343,10 @@ Completed locally:
   ``basilisp.core.memoize`` no longer lets Python's parent-module submodule
   assignment overwrite an existing parent namespace Var such as
   ``basilisp.core/memoize`` used by direct-linked code
+* rewritten Clojure namespace identity: standard namespace rewrites now install
+  global namespace-name aliases, so ``find-ns`` and ``ns-publics`` work with the
+  original ``clojure.*`` symbol while ``all-ns`` remains a list of real loaded
+  Basilisp namespaces rather than duplicate alias entries
 
 Near-term deliverable:
 

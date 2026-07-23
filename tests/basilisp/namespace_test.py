@@ -1,6 +1,8 @@
 from unittest.mock import patch
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 from basilisp.lang import atom as atom
 from basilisp.lang import keyword as kw
@@ -14,10 +16,16 @@ from tests.basilisp.helpers import CompileFn, get_or_create_ns
 @pytest.fixture
 def ns_cache(core_ns_sym: sym.Symbol, core_ns: Namespace) -> atom.Atom[NamespaceMap]:
     """Patch the Namespace cache with a test fixture."""
-    with patch(
-        "basilisp.lang.runtime.Namespace._NAMESPACES",
-        new=atom.Atom(lmap.map({core_ns_sym: core_ns})),
-    ) as cache:
+    with (
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACES",
+            new=atom.Atom(lmap.map({core_ns_sym: core_ns})),
+        ) as cache,
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACE_ALIASES",
+            new=atom.Atom(lmap.EMPTY),
+        ),
+    ):
         yield cache
 
 
@@ -48,10 +56,16 @@ def ns_cache_with_existing_ns(
     ns_sym: sym.Symbol, core_ns_sym: sym.Symbol, core_ns: Namespace
 ) -> atom.Atom[NamespaceMap]:
     """Patch the Namespace cache with a test fixture with an existing namespace."""
-    with patch(
-        "basilisp.lang.runtime.Namespace._NAMESPACES",
-        atom.Atom(lmap.map({core_ns_sym: core_ns, ns_sym: Namespace(ns_sym)})),
-    ) as cache:
+    with (
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACES",
+            atom.Atom(lmap.map({core_ns_sym: core_ns, ns_sym: Namespace(ns_sym)})),
+        ) as cache,
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACE_ALIASES",
+            new=atom.Atom(lmap.EMPTY),
+        ),
+    ):
         yield cache
 
 
@@ -87,6 +101,95 @@ def test_remove_non_existent_ns(
     ns = Namespace.remove(other_ns_sym)
     assert ns is None
     assert len(list(ns_cache_with_existing_ns.deref().keys())) == 2
+
+
+def test_namespace_name_alias(ns_sym: sym.Symbol, ns_cache: atom.Atom[NamespaceMap]):
+    alias_sym = sym.symbol("clojure.some.ns")
+    ns = get_or_create_ns(ns_sym)
+
+    Namespace.add_namespace_alias(alias_sym, ns_sym)
+
+    assert ns is Namespace.get(alias_sym)
+    assert ns is Namespace.get(ns_sym)
+    assert alias_sym not in Namespace.ns_cache()
+    assert set(ns_cache.deref().keys()) == {
+        runtime.CORE_NS_SYM,
+        ns_sym,
+    }
+
+
+def test_namespace_name_alias_requires_existing_target(
+    ns_sym: sym.Symbol, ns_cache: atom.Atom[NamespaceMap]
+):
+    with pytest.raises(ValueError):
+        Namespace.add_namespace_alias(sym.symbol("clojure.missing"), ns_sym)
+
+
+def test_remove_namespace_removes_global_aliases(
+    ns_sym: sym.Symbol, ns_cache: atom.Atom[NamespaceMap]
+):
+    alias_sym = sym.symbol("clojure.some.ns")
+    ns = get_or_create_ns(ns_sym)
+    Namespace.add_namespace_alias(alias_sym, ns_sym)
+
+    assert ns is Namespace.remove(ns_sym)
+
+    assert None is Namespace.get(ns_sym)
+    assert None is Namespace.get(alias_sym)
+
+
+def test_remove_namespace_name_alias_preserves_target(
+    ns_sym: sym.Symbol, ns_cache: atom.Atom[NamespaceMap]
+):
+    alias_sym = sym.symbol("clojure.some.ns")
+    ns = get_or_create_ns(ns_sym)
+    Namespace.add_namespace_alias(alias_sym, ns_sym)
+
+    assert ns is Namespace.remove(alias_sym)
+
+    assert ns is Namespace.get(ns_sym)
+    assert None is Namespace.get(alias_sym)
+
+
+@given(
+    suffixes=st.lists(
+        st.from_regex(r"[a-z][a-z0-9-]{0,8}", fullmatch=True),
+        min_size=1,
+        max_size=25,
+        unique=True,
+    )
+)
+def test_generated_namespace_name_aliases_do_not_duplicate_cache(suffixes):
+    with (
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACES",
+            new=atom.Atom(
+                lmap.map({runtime.CORE_NS_SYM: Namespace(runtime.CORE_NS_SYM)})
+            ),
+        ),
+        patch(
+            "basilisp.lang.runtime.Namespace._NAMESPACE_ALIASES",
+            new=atom.Atom(lmap.EMPTY),
+        ),
+    ):
+        aliases: list[tuple[sym.Symbol, sym.Symbol, Namespace]] = []
+        for suffix in suffixes:
+            target_sym = sym.symbol(f"basilisp.generated.{suffix}")
+            alias_sym = sym.symbol(f"clojure.generated.{suffix}")
+            target_ns = Namespace.get_or_create(target_sym)
+            Namespace.add_namespace_alias(alias_sym, target_sym)
+            aliases.append((alias_sym, target_sym, target_ns))
+
+        cached_names = set(Namespace.ns_cache().keys())
+        for alias_sym, target_sym, target_ns in aliases:
+            assert target_ns is Namespace.get(alias_sym)
+            assert target_ns is Namespace.get(target_sym)
+            assert alias_sym not in cached_names
+
+        for alias_sym, target_sym, target_ns in aliases[::2]:
+            assert target_ns is Namespace.remove(alias_sym)
+            assert None is Namespace.get(alias_sym)
+            assert target_ns is Namespace.get(target_sym)
 
 
 def test_alter_ns_meta(

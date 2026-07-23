@@ -745,8 +745,10 @@ Clojure/Basilisp namespace pair in one process per runtime, emits a CSV matrix,
 and fails when a Clojure public Var is missing from Basilisp without an explicit
 classification. The audit intentionally reports Basilisp extensions separately
 instead of treating them as parity failures, because many are documented
-Python-hosted additions. Its current classified missing item is the generated
-``clojure.tools.logging`` proxy class Var.
+Python-hosted additions. Its classified missing items are JVM-hosted
+implementation artifacts: the generated ``clojure.tools.logging`` proxy class
+Var and Java reflection constructors, records, resolver, and flag descriptors
+from ``clojure.reflect``.
 
 ``datafy``
 ~~~~~~~~~~
@@ -897,6 +899,24 @@ locks the public surface, captured stdout, environment replacement/merge,
 Do not extend that exception to Java classloader changes, JDBC result-set sequences,
 browser/Javadoc wrappers, or Java-bean coercion. Those APIs expose services that
 Python already models differently.
+
+Rewritten standard namespaces must be visible by their requested
+``clojure.*`` names after ``require``. Basilisp still loads the backing
+``basilisp.*`` implementation module, but the runtime records a global
+namespace-name alias so ``find-ns`` and ``ns-publics`` work with source-facing
+symbols such as ``clojure.string``, ``clojure.core.server``,
+``clojure.stacktrace``, and ``clojure.java.io``. These aliases are lookup
+aliases rather than real duplicate namespaces, so ``all-ns`` continues to
+report the concrete loaded namespaces.
+
+``basilisp.reflect`` exposes Python inspection data behind the portable
+reflection entrypoints. ``reflect``, ``type-reflect``, ``typename``,
+``do-reflect``, ``Reflector``, and ``TypeReference`` are the shared
+Clojure-facing vocabulary. Java-specific record constructors such as
+``->Method``/``map->Method``, ``JavaReflector``/``AsmReflector``,
+``ClassResolver``, ``resolve-class``, and raw JVM flag descriptors are
+classified as host artifacts; they are not weakened into Python-shaped values
+under Clojure names.
 
 ``basilisp.xml`` is a deliberately small data-oriented XML adapter and is
 available through the usual ``clojure.xml`` import-path alias. It translates
