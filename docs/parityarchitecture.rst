@@ -708,6 +708,12 @@ Python class/protocol aliases. ``basilisp.core.reducers`` now exists so the
 standard ``clojure.core.reducers`` require path works, with an exact public
 surface. JVM-specific cache soft references and reducers ForkJoin hooks resolve
 as documented unsupported boundaries rather than silently changing semantics.
+Core semantic follow-ups should be proven by differential fixtures instead of
+raw downstream-suite failures. ``merge`` now follows Clojure's observable
+reduction-through-``conj`` behavior for truthy first arguments, including lists,
+vectors, scalars, and map entries. Map ``conj`` still accepts maps, map entries,
+nil, and vector-like pairs, but rejects arbitrary sequential pairs such as lists
+and strings to match Clojure's map-entry boundary.
 
 The tools.reader follow-up closed the remaining portable public surface for
 ``clojure.tools.reader`` and ``clojure.tools.reader.reader-types``. Reader-type

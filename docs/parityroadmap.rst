@@ -227,6 +227,12 @@ Near-term deliverable:
   ``disable-external-entities``, ``startparse-sax``, and
   ``startparse-sax-safe``. Shared fixtures now lock public names, accessor
   behavior, second-arity parse behavior, and the existing seeded XML corpus.
+* **Completed locally:** align ``clojure.core/merge`` with Clojure's observable
+  reduction-through-``conj`` edge behavior for non-map first arguments, and
+  tighten map ``conj`` so arbitrary sequential pairs such as lists and strings
+  are rejected while vector-like pairs remain accepted. A shared fixture locks
+  ordinary map merge, permissive first-argument reduction, map-entry rejection
+  boundaries, and a seeded merge corpus.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

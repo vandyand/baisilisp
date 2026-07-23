@@ -56,6 +56,19 @@ def _public_items(items: Iterable[tuple[Any, V]]) -> Iterable[tuple[Any, V]]:
     return ((public_key(key), value) for key, value in items)
 
 
+def _entry_from_vector_arg(elem) -> IMapEntry:
+    """Return a map entry from Clojure-compatible vector entry arguments.
+
+    Clojure map ``conj`` accepts map entries and vector pairs, but not arbitrary
+    sequential pairs such as lists or strings. Python tuple/list pairs are
+    retained as explicit host vector-like conveniences.
+    """
+
+    if isinstance(elem, (IPersistentVector, tuple, list)):
+        return MapEntry.from_vec(elem)
+    raise TypeError(f"Cannot make map entry from {type(elem)}")
+
+
 class TransientMap(ITransientMap[K, V]):
     __slots__ = ("_inner",)
 
@@ -128,7 +141,7 @@ class TransientMap(ITransientMap[K, V]):
                 elif elem is None:
                     continue
                 else:
-                    entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
+                    entry: IMapEntry[K, V] = _entry_from_vector_arg(elem)
                     self._inner[equivalence_key(entry.key)] = entry.value
         except (TypeError, ValueError) as e:
             raise ValueError(
@@ -380,7 +393,7 @@ class PersistentMap(
                     elif elem is None:
                         continue
                     else:
-                        entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
+                        entry: IMapEntry[K, V] = _entry_from_vector_arg(elem)
                         m.set(equivalence_key(entry.key), entry.value)
             except (TypeError, ValueError) as e:
                 raise ValueError(
@@ -534,7 +547,7 @@ class PersistentStructMap(PersistentMap[K, V]):
                 elif isinstance(elem, IMapEntry):
                     result = result.assoc(elem.key, elem.value)
                 elif elem is not None:
-                    entry: IMapEntry[K, V] = MapEntry.from_vec(elem)
+                    entry: IMapEntry[K, V] = _entry_from_vector_arg(elem)
                     result = result.assoc(entry.key, entry.value)
         except (TypeError, ValueError) as exc:
             raise ValueError(

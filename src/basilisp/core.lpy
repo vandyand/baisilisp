@@ -4374,14 +4374,8 @@
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a duplicate key
   appears in a map, the rightmost map's value for that key will be taken."
   [& maps]
-  (let [non-nil-maps (remove nil? maps)]
-    (when (seq non-nil-maps)
-      ;; Keep the long-standing Basilisp set-conjunction behavior, but reject
-      ;; scalar and sequential initial values instead of returning them unchanged.
-      (when-not (or (map? (first non-nil-maps))
-                    (set? (first non-nil-maps)))
-        (throw (python/TypeError #f "Expected a map; got {(type (first non-nil-maps))}")))
-      (reduce* #(conj (or %1 {}) %2) maps))))
+  (when (some identity maps)
+    (reduce* #(conj (or %1 {}) %2) maps)))
 
 (defn merge-with
   "Merge maps together from left to right as by :lpy:fn:`conj`. If a

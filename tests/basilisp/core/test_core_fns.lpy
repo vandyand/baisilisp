@@ -90,6 +90,32 @@
       (is (thrown? python/RuntimeError (get-a (struct other 1 2))))
       (is (thrown? python/ValueError (accessor basis :missing))))))
 
+(deftest merge-permissive-conj-parity-test
+  (testing "map merge behavior remains unchanged for ordinary map inputs"
+    (is (nil? (merge)))
+    (is (nil? (merge nil)))
+    (is (= {:a 1} (merge nil {:a 1})))
+    (is (= {:a 2 :b nil} (merge {:a 1} nil {:a 2 :b nil})))
+    (is (= {:foo "foo"} (merge {} [:foo "foo"])))
+    (is (= {:a 1} (merge {} {:a nil} [:a 1]))))
+
+  (testing "Clojure's undefined-but-observable first-argument reduction is preserved"
+    (is (= [:foo] (merge [:foo])))
+    (is (= :foo (merge :foo)))
+    (is (= '(1 1 2 3) (merge '(1 2 3) 1)))
+    (is (= [1 2 3 4 5] (merge [1 2] 3 4 5)))
+    (is (= [nil {} 1 {:a :c}] (merge [] nil {} 1 {:a :c})))
+    (is (= [:a :a-val {:b :b-val} {:c :c-val}]
+           (merge (first {:a :a-val}) {:b :b-val} {:c :c-val}))))
+
+  (testing "map conj accepts only map entries, maps, nil, and vector-like pairs"
+    (is (= {:a 1} (conj {} [:a 1])))
+    (is (= {:a 1} (conj {} #py (:a 1))))
+    (is (thrown? python/ValueError (conj {} '(:a 1))))
+    (is (thrown? python/ValueError (conj {} "ab")))
+    (is (thrown? python/ValueError (conj {} [:a])))
+    (is (thrown? python/ValueError (conj {} [:a 1 2])))))
+
 (deftest bound-test
   (let [unbound (intern *ns* 'parity-unbound)]
     (is (true? (bound?)))
