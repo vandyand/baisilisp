@@ -99,6 +99,49 @@
                           (rejected? #(rem ##Inf 1))
                           (rejected? #(mod ##Inf 1))]})
 
+(emit-case :quot-rem-mod-result-families
+           {:integer [(integer? (quot 10 3))
+                      (integer? (quot 3 1/2))
+                      (integer? (rem 10 3))
+                      (integer? (mod 10 3))]
+            :floating [(double? (quot 10 3.0))
+                       (double? (rem 10 3.0))
+                       (double? (mod 10 3.0))
+                       (double? (quot 10.0M 3.0))
+                       (double? (rem 10.0M 3.0))
+                       (double? (mod 10.0M 3.0))]
+            :decimal [(decimal? (quot 10 3.0M))
+                      (decimal? (quot 10.0M 3))
+                      (decimal? (quot 10.0M 3.0M))
+                      (decimal? (rem 10 3.0M))
+                      (decimal? (rem 10.0M 3))
+                      (decimal? (mod -10 3.0M))
+                      (decimal? (mod 10.0M -3))]
+            :ratio [(ratio? (rem 3 4/3))
+                    (ratio? (mod 3 4/3))
+                    (ratio? (rem -37/2 15))
+                    (ratio? (mod -37/2 15))]
+            :values [(quot 10 3.0M)
+                     (quot -10 3.0M)
+                     (rem 10 3.0M)
+                     (rem -10 3.0M)
+                     (mod 10 3.0M)
+                     (mod -10 3.0M)
+                     (rem 3 4/3)
+                     (mod -3 4/3)]
+            :nonfinite [(NaN? (rem 1 ##Inf))
+                        (NaN? (mod 1 ##Inf))
+                        (NaN? (rem 1 ##-Inf))
+                        (NaN? (mod 1 ##-Inf))
+                        (zero? (quot 1 ##Inf))
+                        (zero? (quot 1 ##-Inf))]
+            :nonfinite-errors [(rejected? #(quot ##Inf 1))
+                               (rejected? #(quot ##NaN 1))
+                               (rejected? #(rem ##Inf 1))
+                               (rejected? #(rem ##NaN 1))
+                               (rejected? #(mod ##Inf 1))
+                               (rejected? #(mod ##NaN 1))]})
+
 (defn next-seed [seed]
   (mod (+ (* seed 1664525) 1013904223) 4294967296))
 

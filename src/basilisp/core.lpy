@@ -1726,22 +1726,19 @@
 
   It uses floored division for calculating the quotient."
   [num div]
-  (- num (* div (math/floor (/ num div)))))
+  (basilisp.lang.numbers/modulus num div))
 
 (defn quot
   "Returns the quotient of ``num`` and ``div``\\.
 
   The division result is rounded towards zero."
   [num div]
-  (basilisp.lang.numbers/trunc (/ num div)))
+  (basilisp.lang.numbers/quotient num div))
 
 (defn rem
   "Returns the remainder of ``num`` and ``div``\\."
   [num div]
-  (let [m (- num (* div (quot num div)))]
-    (if (and (< num 0 div) (> m 0))
-      (- m)
-      m)))
+  (basilisp.lang.numbers/remainder num div))
 
 (defn unchecked-remainder-int
   "Return the signed 32-bit integer remainder of ``num`` divided by ``div``.

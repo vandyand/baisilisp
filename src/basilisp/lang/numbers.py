@@ -168,6 +168,43 @@ def _to_decimal(x: LispNumber) -> decimal.Decimal:
     return decimal.Decimal(x)
 
 
+def quotient(x: LispNumber, y: LispNumber) -> LispNumber:
+    """Return Clojure ``quot`` semantics without exact division first.
+
+    ``/`` intentionally rejects non-terminating BigDecimal quotients when
+    ``*math-context*`` is nil. ``quot`` is different: it truncates the quotient
+    toward zero and therefore must be able to handle cases such as
+    ``(quot 10 3.0M)`` without requiring an exact decimal expansion.
+    """
+
+    if isinstance(x, float) or isinstance(y, float):
+        return float(math.trunc(float(x) / float(y)))
+    if isinstance(x, decimal.Decimal) or isinstance(y, decimal.Decimal):
+        return _to_decimal(x) // _to_decimal(y)
+    return math.trunc(Fraction(x) / Fraction(y))
+
+
+def remainder(x: LispNumber, y: LispNumber) -> LispNumber:
+    """Return Clojure ``rem`` semantics using truncating quotient."""
+
+    return subtract(x, multiply(y, quotient(x, y)))
+
+
+def modulus(x: LispNumber, y: LispNumber) -> LispNumber:
+    """Return Clojure ``mod`` semantics using floored remainder."""
+
+    if isinstance(x, float) or isinstance(y, float):
+        quotient_floor = math.floor(float(x) / float(y))
+        return subtract(x, multiply(y, quotient_floor))
+    if isinstance(x, decimal.Decimal) or isinstance(y, decimal.Decimal):
+        decimal_x, decimal_y = _to_decimal(x), _to_decimal(y)
+        rem = decimal_x % decimal_y
+        if rem and ((rem > 0) != (decimal_y > 0)):
+            rem += decimal_y
+        return rem
+    return x % y
+
+
 # All the arithmetic helpers below downcast `decimal.Decimal` values down to floats
 # in any binary arithmetic operation which involves one `float` and one `decimal.Decimal`.
 # This perhaps peculiar behavior, but it is what Clojure does. I suspect that is due

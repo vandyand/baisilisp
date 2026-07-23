@@ -243,7 +243,19 @@
     6.095000000000027 475.095    7
     0.840200000000074 1024.8402  5.12
     4.279799999999926 -1024.8402 5.12)
-  )
+
+  (are [expected tp x y] (= [expected tp] (let [v (mod x y)]
+                                            [v (type v)]))
+    1.0M  decimal/Decimal  10    3.0M
+    2.0M  decimal/Decimal  -10   3.0M
+    -2.0M decimal/Decimal  10.0M -3
+    1/3   fractions/Fraction 3   4/3
+    -1/3  fractions/Fraction -3  -4/3)
+
+  (is (NaN? (mod 1 ##Inf)))
+  (is (NaN? (mod 1 ##-Inf)))
+  (is (thrown? Exception (mod ##Inf 1)))
+  (is (thrown? Exception (mod ##NaN 1))))
 
 (deftest quot-test
   (are [result x y] (= result (quot x y))
@@ -272,7 +284,20 @@
     -3   10   -3
     3    10   3
 
-    44879032948094820938438942938402938402984209842098984209449032094205874758758475837584759347 448790329480948209384389429384029384029842098420989842094490320942058747587584758375847593471 10))
+    44879032948094820938438942938402938402984209842098984209449032094205874758758475837584759347 448790329480948209384389429384029384029842098420989842094490320942058747587584758375847593471 10)
+
+  (are [expected tp x y] (= [expected tp] (let [v (quot x y)]
+                                            [v (type v)]))
+    3.0  python/float    10    3.0
+    3.0  python/float    10.0M 3.0
+    3.0M decimal/Decimal 10    3.0M
+    -3.0M decimal/Decimal -10  3.0M
+    6    python/int      3     1/2)
+
+  (is (zero? (quot 1 ##Inf)))
+  (is (zero? (quot 1 ##-Inf)))
+  (is (thrown? Exception (quot ##Inf 1)))
+  (is (thrown? Exception (quot ##NaN 1))))
 
 (deftest rem-test
   (are [result x y] (= result (rem x y))
@@ -293,7 +318,20 @@
     1  3   2
     -1 -3  2
     -1 -10 3
-    -1 -21 4))
+    -1 -21 4)
+
+  (are [expected tp x y] (= [expected tp] (let [v (rem x y)]
+                                            [v (type v)]))
+    1.0  python/float    10    3.0
+    1.0  python/float    10.0M 3.0
+    1.0M decimal/Decimal 10    3.0M
+    -1.0M decimal/Decimal -10  3.0M
+    1/3  fractions/Fraction 3  4/3)
+
+  (is (NaN? (rem 1 ##Inf)))
+  (is (NaN? (rem 1 ##-Inf)))
+  (is (thrown? Exception (rem ##Inf 1)))
+  (is (thrown? Exception (rem ##NaN 1))))
 
 (deftest math-context-test
   (is (thrown? decimal/Inexact (/ 1M 3M)))
