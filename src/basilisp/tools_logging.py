@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import importlib
 import logging
 import sys
-import importlib
 from typing import Any
 
 from basilisp import logconfig

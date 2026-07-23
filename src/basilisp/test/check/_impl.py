@@ -194,7 +194,8 @@ def rose_shrink(f: Callable[..., Any], roses: Sequence[RoseTree]) -> RoseTree:
     return RoseTree(
         f(*(rose.root for rose in roses)),
         tuple(
-            RoseTree(f(*(rose.root for rose in shrink))) for shrink in rose_remove(roses)
+            RoseTree(f(*(rose.root for rose in shrink)))
+            for shrink in rose_remove(roses)
         ),
     )
 

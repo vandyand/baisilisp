@@ -1,7 +1,8 @@
 import decimal
 from fractions import Fraction
 
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from basilisp.lang import character
 from basilisp.lang import keyword as kw

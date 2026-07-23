@@ -6092,9 +6092,7 @@ class TestReify:
                 f"actual_arg_{index}" for index in range(actual_arity)
             )
             actual_arg_vector = (
-                f"[this {actual_args} & rest]"
-                if variadic
-                else f"[this {actual_args}]"
+                f"[this {actual_args} & rest]" if variadic else f"[this {actual_args}]"
             )
             lcompile(f"""
             (import* abc)

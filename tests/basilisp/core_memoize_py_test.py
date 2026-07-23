@@ -1,5 +1,5 @@
-import threading
 import random
+import threading
 
 import pytest
 

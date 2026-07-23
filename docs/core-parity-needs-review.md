@@ -169,15 +169,19 @@ them as the following queues before changing behavior:
 | `case` numeric dispatch expectations | `case` | The remaining upstream failures are tied to Python host numeric hash/equality behavior and stale `:lpy` expectations around numeric category dispatch. This area is sensitive because previous work deliberately moved numeric equality toward Clojure's category-aware semantics. A separate portable fixture now covers real `case` dispatch and duplicate-test rejection. | Keep the `case_cases.cljc` fixture as the authority. Do not change numeric dispatch from CI alone unless a new fixture proves a JVM Clojure mismatch. |
 | Map-entry coercion through `conj`/`merge` | `conj`, `merge` | Resolved in the parity fork with `merge_cases.cljc`: Basilisp now follows Clojure's observable `merge` reduction-through-`conj` behavior for truthy first arguments while still rejecting invalid map-entry values in map position. The downstream suite's remaining `:lpy` expectations for `(conj {:a 0} '(:b 1))`, `(merge [:foo])`, `(merge :foo)`, and `(merge {} '(:a 1))` are stale relative to JVM Clojure. | Keep the differential fixture as authority. Do not reintroduce the old stricter first-argument guard or arbitrary-list map-entry coercion just to satisfy the stale `:lpy` branches. |
 
-The practical next tranche after the `merge` fix should therefore be **suite
-alignment and residual classification**, not broad `.core` mutation. Any new
-runtime tranche should first demonstrate one of these residuals is a real JVM
-Clojure behavioral gap using a portable differential fixture, not only a failing
-`:lpy` branch.
+The practical next tranche after the `merge` fix was therefore **suite
+alignment and residual classification**, not broad `.core` mutation. That
+guardrail now lives in `scripts/clojure_test_suite_residuals.py`: every excluded
+external suite file belongs to one structured cluster, every cluster names the
+local `tests/conformance` fixture that justifies the exclusion, and the helper
+fails if either the external suite path or the local evidence fixture
+disappears. Any new runtime tranche should first demonstrate one of these
+residuals is a real JVM Clojure behavioral gap using a portable differential
+fixture, not only a failing `:lpy` branch.
 
 The `run-clojure-test-suite` CI workflow excludes the residual files above via
-`scripts/clojure_test_suite_residuals.py`. Each exclusion should remain tied to
-an authoritative local differential fixture; removing an exclusion should first
+`scripts/clojure_test_suite_residuals.py`. Each exclusion is tied to an
+authoritative local differential fixture; removing an exclusion should first
 update the external suite expectation or prove a new runtime gap.
 
 ## Needs Review

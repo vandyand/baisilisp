@@ -4,10 +4,7 @@ import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
-from basilisp.lang import character
-from basilisp.lang import obj
-from basilisp.lang import reader
-from basilisp.lang import runtime
+from basilisp.lang import character, obj, reader, runtime
 from basilisp.lang import set as lset
 from basilisp.lang import vector as vec
 

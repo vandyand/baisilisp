@@ -1,11 +1,12 @@
 # pylint: disable=abstract-class-instantiated,import-error,no-name-in-module
 from typing import Iterable, TypeVar
 
-from basilisp.lang.character import Character, iter_utf16_units
 from basilisp._lang.seq import Cons as _Cons
 from basilisp._lang.seq import EmptySequence as _EmptySequenceNative
 from basilisp._lang.seq import LazySeq as _LazySeq
-from basilisp._lang.seq import sequence, to_seq as _to_seq
+from basilisp._lang.seq import sequence
+from basilisp._lang.seq import to_seq as _to_seq
+from basilisp.lang.character import Character, iter_utf16_units
 from basilisp.lang.interfaces import (
     ISeq,
     ISequential,

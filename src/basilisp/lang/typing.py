@@ -7,13 +7,13 @@ from re import Pattern
 from typing import Any, Protocol, TypeGuard, Union
 
 from basilisp.lang import keyword as kw
-from basilisp.lang.character import Character
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
 from basilisp.lang import queue as lqueue
 from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
+from basilisp.lang.character import Character
 from basilisp.lang.interfaces import (
     IPersistentMap,
     IPersistentSet,

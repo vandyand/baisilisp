@@ -129,7 +129,10 @@ Near-term deliverable:
   host-specific behavior, and explicitly undefined Clojure behavior do not
   receive compatibility-shaped runtime patches by accident. A failing upstream
   case should become implementation work only after a portable fixture proves
-  the same behavior against JVM Clojure.
+  the same behavior against JVM Clojure. The residual ignore helper also checks
+  that each excluded external file has a structured classification and an
+  existing local conformance fixture before emitting pytest ``--ignore``
+  arguments for CI.
 * use ``scripts/library_acceptance.py`` for a source-level, multi-file library
   proof. It executes the library-owned ``run.cljc`` test entrypoint in Clojure
   and Basilisp, compares the final EDN summary, and rejects a stale checked-in
@@ -320,6 +323,9 @@ Completed locally:
 * ``loop`` closure capture across eager, lazy, nested, and large-loop cases
 * compile-time inherited method signature diagnostics for ``deftype`` and
   ``reify``, including metadata suppression for known-safe mismatches
+* clojure-test-suite residual classification guardrails: every excluded external
+  core test file is assigned to an explicit stale-expectation cluster and backed
+  by a local conformance fixture before CI can ignore it
 
 Near-term deliverable:
 

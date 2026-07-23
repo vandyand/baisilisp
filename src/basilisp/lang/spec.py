@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import datetime as _datetime
 import functools
 import io
-import datetime as _datetime
 import math
 import threading
 from collections.abc import Callable, Iterable, Mapping, Sequence
