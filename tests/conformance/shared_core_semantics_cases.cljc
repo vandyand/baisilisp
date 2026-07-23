@@ -26,6 +26,86 @@
                         (vec (next [1 2]))
                         (vec (rest [1 2]))]})
 
+(emit-case :collection-edge-core
+           {:empties [(empty? nil)
+                      (empty? [])
+                      (empty? '())
+                      (empty? {})
+                      (empty? #{})
+                      (empty? "")
+                      (empty? [nil])]
+            :not-empty [(not-empty nil)
+                        (not-empty [])
+                        (not-empty "")
+                        (not-empty [nil])
+                        (not-empty {:a nil})]
+            :fnext-last [(fnext nil)
+                         (fnext [])
+                         (fnext [1])
+                         (fnext [1 nil])
+                         (fnext [1 2])
+                         (last nil)
+                         (last [])
+                         (last [nil])
+                         (last [1 2 nil])]
+            :reverse [(vec (reverse nil))
+                      (vec (reverse []))
+                      (vec (reverse [1 2 3]))
+                      (vec (reverse "ba"))]
+            :set [(set nil)
+                  (set [])
+                  (set "aba")
+                  (set {:a 1 :b 2})]
+            :merge [(merge)
+                    (merge nil)
+                    (merge nil {:a 1})
+                    (merge {:a 1} nil {:a 2 :b nil})]})
+
+(emit-case :sort-and-sort-by-boundaries
+           {:numbers [(vec (sort [3 1 2]))
+                      (vec (sort > [3 1 2]))
+                      (vec (sort-by :rank [{:id :b :rank 2}
+                                           {:id :a :rank 1}
+                                           {:id :c :rank 1}]))
+                      (vec (sort-by count ["bbb" "" "cc" "a"]))]
+            :maps [(vec (sort {:b 2 :a 1}))
+                   (vec (sort-by val {:b 2 :a 1 :c 3}))]
+            :strings [(vec (sort "cba"))
+                      (vec (sort-by int "bca"))
+                      (mapv str (sort "cba"))
+                      (mapv int (sort "cba"))]})
+
+(defn next-core-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(emit-case :seeded-collection-edge-corpus
+           (loop [remaining 48
+                  seed 424242
+                  result []]
+             (if (zero? remaining)
+               result
+               (let [s1 (next-core-seed seed)
+                     s2 (next-core-seed s1)
+                     s3 (next-core-seed s2)
+                     values [(mod s1 11) (- (mod s2 11) 5) (mod s3 7)]
+                     coll (case (mod s1 5)
+                            0 values
+                            1 (apply list values)
+                            2 (apply hash-set values)
+                            3 (zipmap [:a :b :c] values)
+                            "caba")
+                     ordered (if (or (map? coll) (set? coll))
+                               (sort coll)
+                               coll)]
+                 (recur (dec remaining)
+                        s3
+                        (conj result
+                              {:empty? (empty? coll)
+                               :seqable? (seqable? coll)
+                               :not-empty? (boolean (not-empty coll))
+                               :last (last ordered)
+                               :sorted (vec (sort coll))}))))))
+
 (emit-case :indexed-boundaries
            {:nth [(nth [10 20] 0)
                   (nth [10 20] 1)

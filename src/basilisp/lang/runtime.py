@@ -2200,9 +2200,6 @@ def sort(coll, f=compare) -> ISeq | None:
     The comparator fn can be either a boolean or 3-way comparison fn."""
     seq = lseq.to_seq(coll)
     if seq:
-        if isinstance(coll, IPersistentMap):
-            coll = seq
-
         comparator = _fn_to_comparator(f)
 
         class key:
@@ -2219,7 +2216,7 @@ def sort(coll, f=compare) -> ISeq | None:
 
             __hash__ = None  # type: ignore
 
-        return lseq.sequence(sorted(coll, key=key))
+        return lseq.sequence(sorted(seq, key=key))
     else:
         return llist.EMPTY
 
@@ -2232,9 +2229,6 @@ def sort_by(keyfn, coll, cmp=compare) -> ISeq | None:
     The comparator fn can be either a boolean or 3-way comparison fn."""
     seq = lseq.to_seq(coll)
     if seq:
-        if isinstance(coll, IPersistentMap):
-            coll = seq
-
         comparator = _fn_to_comparator(cmp)
 
         @functools.total_ordering
@@ -2252,7 +2246,7 @@ def sort_by(keyfn, coll, cmp=compare) -> ISeq | None:
 
             __hash__ = None  # type: ignore
 
-        return lseq.sequence(sorted(coll, key=key))
+        return lseq.sequence(sorted(seq, key=key))
     else:
         return llist.EMPTY
 

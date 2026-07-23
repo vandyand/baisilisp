@@ -3990,13 +3990,15 @@
   Return a stateful transducer if no collection is provided."
   ([sep]
    (fn [rf]
-     (let [v (volatile! 1)]
+     (let [first? (volatile! true)]
        (fn
          ([] (rf))
          ([result] (rf result))
          ([result input]
-          (if (zero? (vswap! v dec))
-            (rf result input)
+          (if @first?
+            (do
+              (vreset! first? false)
+              (rf result input))
             (rf (rf result sep) input)))))))
   ([sep coll]
    (lazy-seq

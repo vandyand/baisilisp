@@ -716,6 +716,10 @@
       '() (seq [])
       '(1 2 3) (seq [2 3 1])))
 
+  (testing "sorting strings uses Basilisp characters"
+    (is (= '(\a \b \c) (sort "cba")))
+    (is (= [97 98 99] (mapv int (sort "cba")))))
+
   (testing "sorting maps"
     (are [res v] (= res (sort v))
       '() {}
@@ -747,6 +751,10 @@
     (are [res v] (= res (sort-by second > v))
       '() (seq [])
       '([1 7] [3 4] [2 1]) (seq [[2 1] [3 4] [1 7]])))
+
+  (testing "sorting strings by keyfn uses Basilisp characters"
+    (is (= '(\a \b \c) (sort-by int "bca")))
+    (is (= ["a" "b" "c"] (mapv str (sort-by int "bca")))))
 
   (testing "sorting maps"
     (are [res v] (= res (sort-by identity v))
