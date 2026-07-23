@@ -2199,9 +2199,13 @@
   (instance? basilisp.lang.runtime/Var x))
 
 (defn ^:inline zero?
-  "Return ``true`` if ``x`` is 0."
+  "Return ``true`` if ``x`` is numerically zero."
   [x]
-  (= 0 x))
+  (if-not (number? x)
+    false
+    (try
+      (== x 0)
+      (catch python/TypeError _ false))))
 
 ;;;;;;;;;;;;;;;;;;;;
 ;; Type Utilities ;;

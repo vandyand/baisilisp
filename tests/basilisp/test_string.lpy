@@ -35,7 +35,8 @@
   (are [x] (not (str/blank? x))
     "rn"
     "?"
-    "abcdef")
+    "abcdef"
+    \a)
 
   (are [x] (str/blank? x)
     nil
@@ -43,7 +44,10 @@
     "\u2007"
     "                     "
     "\n\r"
-    "\n"))
+    "\n"
+    \space
+    \tab
+    \newline))
 
 (deftest capitalize-test
   (are [x y] (= y (str/capitalize x))

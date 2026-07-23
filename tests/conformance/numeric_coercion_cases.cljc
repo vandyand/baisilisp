@@ -51,3 +51,71 @@
             :rejected [(rejected? #(bigint ##NaN))
                        (rejected? #(bigdec ##NaN))
                        (rejected? #(bigdec \1))]})
+
+(emit-case :zero-predicate
+           {:zeros [(zero? 0)
+                    (zero? 0.0)
+                    (zero? 0M)
+                    (zero? 0N)
+                    (zero? 0/2)]
+            :nonzeros [(zero? 0.0000001)
+                       (zero? 1)
+                       (zero? -1)
+                       (zero? 1.0)
+                       (zero? -1.0)
+                       (zero? 1M)
+                       (zero? -1M)
+                       (zero? 1N)
+                       (zero? -1N)
+                       (zero? 1/2)
+                       (zero? -1/2)
+                       (zero? ##Inf)
+                       (zero? ##-Inf)
+                       (zero? ##NaN)]})
+
+(emit-case :quot-rem-mod-boundaries
+           {:integer [(quot 10 3)
+                      (quot -10 3)
+                      (quot 10 -3)
+                      (quot -10 -3)
+                      (rem 10 3)
+                      (rem -10 3)
+                      (rem 10 -3)
+                      (rem -10 -3)
+                      (mod 10 3)
+                      (mod -10 3)
+                      (mod 10 -3)
+                      (mod -10 -3)]
+            :ratio [(quot 3 1/2)
+                    (quot 3 -1/2)
+                    (rem 3 4/3)
+                    (rem -3 4/3)
+                    (mod 3 4/3)
+                    (mod -3 4/3)]
+            :exceptional [(rejected? #(quot 10 0))
+                          (rejected? #(rem 10 0))
+                          (rejected? #(mod 10 0))
+                          (rejected? #(quot ##Inf 1))
+                          (rejected? #(rem ##Inf 1))
+                          (rejected? #(mod ##Inf 1))]})
+
+(defn next-seed [seed]
+  (mod (+ (* seed 1664525) 1013904223) 4294967296))
+
+(emit-case :seeded-zero-corpus
+           (loop [remaining 64
+                  seed 8675309
+                  result []]
+             (if (zero? remaining)
+               result
+               (let [next (next-seed seed)
+                     centered (- (mod next 21) 10)
+                     value (case (mod next 5)
+                             0 centered
+                             1 (double centered)
+                             2 (bigdec centered)
+                             3 (bigint centered)
+                             (/ centered 3))]
+                 (recur (dec remaining)
+                        next
+                        (conj result [(zero? value) (zero? (- value value))]))))))
