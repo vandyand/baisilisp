@@ -454,6 +454,7 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   dependency tracking, and REPL refresh workflow from
   ``clojure.tools.namespace``. Its default refresh platform is Basilisp
   ``.lpy``/``.cljc`` source with the ``:lpy`` feature; ``:clj`` and ``:cljs``
-  discovery platforms remain available explicitly. The upstream alpha,
-  destructive source-moving API is intentionally omitted.
+  discovery platforms remain available explicitly. Deprecated root classpath
+  helpers scan Python's ``sys.path`` instead of a JVM classpath. The upstream
+  alpha, destructive source-moving API is intentionally omitted.
 * :lpy:ns:`basilisp.walk` is a port of ``clojure.walk``

@@ -12,6 +12,12 @@ platforms when scanning those source trees. Refresh explicitly discards
 Basilisp bytecode cache entries for changed namespaces, including same-size
 edits within a filesystem timestamp tick.
 
+The deprecated root helpers ``find-ns-decls-on-classpath`` and
+``find-namespaces-on-classpath`` scan Basilisp's Python import path
+(``sys.path``) rather than a JVM classpath. They include directories and
+ZIP/JAR archives and use the Basilisp ``:lpy`` platform, so ``.lpy`` and
+portable ``.cljc`` sources are discovered.
+
 The source-moving refactoring API from upstream is deliberately not exposed:
 it is labelled alpha upstream, is destructive, and has no safe cross-platform
 text-rewrite contract. The discovery and reload APIs are non-destructive apart

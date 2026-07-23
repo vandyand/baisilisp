@@ -176,6 +176,9 @@ Near-term deliverable:
   import path. Shared fixtures now cover cache/memoize generated constructors,
   core protocol reduction helpers, reducers stress cases through the standard
   namespace, and explicit JVM-boundary classification.
+* **Completed locally:** close the remaining deprecated
+  ``clojure.tools.namespace`` root facade names by mapping classpath discovery
+  to Basilisp's Python import path, including directories and ZIP/JAR archives.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

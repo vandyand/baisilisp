@@ -4,7 +4,9 @@
   New code should require the focused `parse`, `find`, `file`, `track`, or
   `repl` namespace directly, matching upstream tools.namespace guidance.
   "
-  (:require [basilisp.tools.namespace.file :as file]
+  (:import sys zipfile)
+  (:require [basilisp.io :as io]
+            [basilisp.tools.namespace.file :as file]
             [basilisp.tools.namespace.find :as find]
             [basilisp.tools.namespace.parse :as parse]))
 
@@ -20,3 +22,34 @@
 (def read-ns-decl-from-jarfile-entry find/read-ns-decl-from-jarfile-entry)
 (def find-ns-decls-in-jarfile find/find-ns-decls-in-jarfile)
 (def find-namespaces-in-jarfile find/find-namespaces-in-jarfile)
+
+(defn- classpath-entries []
+  (->> sys/path
+       (map #(if (= "" %) "." %))
+       (map io/path)
+       (filter #(.exists %))
+       (map #(.resolve %))
+       distinct))
+
+(defn- classpath-dirs []
+  (filter #(.is_dir %) (classpath-entries)))
+
+(defn- classpath-archives []
+  (filter #(and (.is_file %) (zipfile/is_zipfile %)) (classpath-entries)))
+
+(defn find-ns-decls-on-classpath
+  "Search Basilisp's Python import path for ``.lpy``/``.cljc`` namespace declarations.
+
+  This is the Python-hosted counterpart to the deprecated
+  ``clojure.tools.namespace/find-ns-decls-on-classpath`` helper. Directories and
+  ZIP/JAR archives from ``sys.path`` are scanned with the Basilisp ``:lpy``
+  reader platform."
+  []
+  (concat
+   (mapcat #(find/find-ns-decls-in-dir % find/lpy) (classpath-dirs))
+   (mapcat #(find/find-ns-decls-in-jarfile % find/lpy) (classpath-archives))))
+
+(defn find-namespaces-on-classpath
+  "Return namespace symbols found by :lpy:fn:`find-ns-decls-on-classpath`."
+  []
+  (map second (find-ns-decls-on-classpath)))

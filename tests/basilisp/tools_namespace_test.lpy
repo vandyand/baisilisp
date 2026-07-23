@@ -88,6 +88,26 @@
     (is (= ["archive/item.lpy"] (vec (find/sources-in-jar archive find/lpy))))
     (is (= ['archive.item] (vec (find/find-namespaces-in-jarfile archive find/lpy))))))
 
+(deftest deprecated-root-namespace-scans-python-import-path
+  (let [root (pathlib/Path *tempdir*)
+        archive (pathlib/Path root "classpath-sources.zip")
+        original-path (list sys/path)]
+    (write-source! "classpath_dir/item.lpy" "(ns classpath-dir.item)")
+    (with-open [jar (zipfile/ZipFile archive "w")]
+      (.writestr jar "classpath_archive/item.cljc" "(ns classpath-archive.item)"))
+    (try
+      (.clear sys/path)
+      (.extend sys/path [(str root) (str archive)])
+      (let [names (set (namespace/find-namespaces-on-classpath))
+            decls (set (map second (namespace/find-ns-decls-on-classpath)))]
+        (is (contains? names 'classpath-dir.item))
+        (is (contains? names 'classpath-archive.item))
+        (is (contains? decls 'classpath-dir.item))
+        (is (contains? decls 'classpath-archive.item)))
+      (finally
+        (.clear sys/path)
+        (.extend sys/path original-path)))))
+
 (deftest refresh-all-reloads-dependencies-before-their-dependents
   (let [root (pathlib/Path *tempdir*)]
     (try
