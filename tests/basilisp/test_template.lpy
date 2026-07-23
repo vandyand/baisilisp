@@ -1,0 +1,83 @@
+(ns tests.basilisp.test-template
+  (:require
+   [basilisp.template :as template]
+   [basilisp.test :refer [deftest is testing]]))
+
+(deftest apply-template-boundary-test
+  (testing "ordinary replacement"
+    (is (= '(= 1 2)
+           (template/apply-template '[x y] '(= x y) '[1 2]))))
+  (testing "duplicate bindings use the last provided value"
+    (is (= '(list 2)
+           (template/apply-template '[x x] '(list x) '[1 2]))))
+  (testing "short and long value lists are tolerated"
+    (is (= '(list 1 y)
+           (template/apply-template '[x y] '(list x y) '[1])))
+    (is (= '(list 1)
+           (template/apply-template '[x] '(list x) '[1 2]))))
+  (testing "replacement applies throughout ordinary data"
+    (is (= '{:x :value, :value :symbol}
+           (template/apply-template '[x] '{:x x x :symbol} '[:value]))))
+  (testing "quoted forms are still walked as data"
+    (is (= '(quote :value)
+           (template/apply-template '[x] ''x '[:value])))))
+
+(deftest do-template-macroexpansion-test
+  (is (= '(do (= 1 (inc 0)) (= 2 (dec 3)))
+         (macroexpand '(template/do-template [x y]
+                         (= x y)
+                         1 (inc 0)
+                         2 (dec 3)))))
+  (is (= '(do (= 1 2))
+         (macroexpand '(template/do-template [x y]
+                         (= x y)
+                         1 2 3))))
+  (is (= '(do {:left :a, :right [1 2]} {:left :b, :right [3 4]})
+         (macroexpand '(template/do-template [x y z]
+                         {:left x :right [y z]}
+                         :a 1 2
+                         :b 3 4)))))
+
+(defn generated-value [seed]
+  (case (mod seed 7)
+    0 seed
+    1 (keyword (str "kw" seed))
+    2 (symbol (str "sym" seed))
+    3 (str "s" seed)
+    4 [seed (inc seed)]
+    5 {:seed seed}
+    #{seed (inc seed)}))
+
+(defn generated-template [seed]
+  (case (mod seed 5)
+    0 '(list x y)
+    1 '[x {:inner y} #{x y}]
+    2 '{:x x :y y x y}
+    3 '(quote [x y])
+    '(vector {:x x} (list y x))))
+
+(deftest generated-apply-template-corpus-test
+  (doseq [seed (range 128)]
+    (let [x      (generated-value (+ seed 1))
+          y      (generated-value (+ seed 2))
+          result (template/apply-template '[x y]
+                                          (generated-template seed)
+                                          [x y])]
+      (case (mod seed 5)
+        0 (is (= (list 'list x y) result))
+        1 (is (= [x {:inner y} #{x y}] result))
+        2 (is (= {:x x :y y x y} result))
+        3 (is (= (list 'quote [x y]) result))
+        (is (= (list 'vector {:x x} (list 'list y x)) result))))))
+
+(deftest generated-do-template-corpus-test
+  (doseq [seed (range 64)]
+    (let [expanded (macroexpand `(template/do-template [x y]
+                                   ~(generated-template seed)
+                                   ~(generated-value (+ seed 1))
+                                   ~(generated-value (+ seed 2))
+                                   ~(generated-value (+ seed 3))
+                                   ~(generated-value (+ seed 4))
+                                   :trailing))]
+      (is (= 'do (first expanded)))
+      (is (= 2 (count (rest expanded)))))))

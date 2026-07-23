@@ -467,6 +467,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   Basilisp but does not promise Java ``SplittableRandom`` byte-for-byte output.
 * :lpy:ns:`basilisp.test.tap` is a port of ``clojure.test.tap`` for REPL test
   runners. ``clojure.test.junit`` remains JVM-specific and is not provided.
+* :lpy:ns:`basilisp.template` is a port of ``clojure.template``. Shared
+  fixtures cover public names, ``apply-template`` replacement boundaries,
+  duplicate binding handling, short/long value lists, quoted-form walking,
+  ``do-template`` macroexpansion, incomplete group dropping, and generated
+  apply/macroexpansion corpora.
 * :lpy:ns:`basilisp.tools.logging` provides the portable
   ``clojure.tools.logging`` macro API over Python's :external:py:mod:`logging`
   module. Its trace level maps to Basilisp's level 5 and fatal maps to Python

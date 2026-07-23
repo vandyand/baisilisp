@@ -264,6 +264,11 @@ Near-term deliverable:
   preservation across set operations, relational helpers, empty joins,
   Clojure's first-row shared-key rule for natural joins, and a generated set
   operation/join corpus.
+* **Completed locally:** lock ``clojure.template`` parity with a shared
+  fixture covering the exact public surface, ``apply-template`` replacement
+  boundaries, duplicate binding handling, short/long value lists, quoted-form
+  walking, ``do-template`` macroexpansion, incomplete group dropping, and
+  generated apply/macroexpansion corpora.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

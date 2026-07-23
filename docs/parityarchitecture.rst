@@ -899,6 +899,14 @@ behavior come from the same backing set Clojure would select. Natural joins
 return ``#{}`` for empty relations and use the keys shared by the first row of
 each non-empty relation, not the keys common to every row.
 
+``basilisp.template`` preserves ``clojure.template``'s data-walking replacement
+model. ``apply-template`` builds the binding map with Clojure's ordinary
+last-write-wins map semantics, tolerates short and long value lists, and walks
+quoted forms as data. ``do-template`` expands to a ``do`` over complete
+argument groups and drops incomplete trailing groups, matching Clojure's
+``partition``-based behavior. The Clojure zero-binding case is pathological and
+is not a compatibility target.
+
 ``basilisp.walk`` is a direct port of ``clojure.walk``'s recursive traversal
 contract. Lists, sequences, vectors, map entries, maps, sets, records, and
 scalars keep the same traversal points as Clojure, while Basilisp exposes the
