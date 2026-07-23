@@ -13,7 +13,7 @@
     (is (= 8 (mine 4)))
     (is (= 1 @calls))
     (is (= {[5] 99 [4] 8} (memo/snapshot mine)))
-    (is (= [[5] 99] (first (memo/lazy-snapshot mine))))
+    (is (= #{[[5] 99] [[4] 8]} (set (memo/lazy-snapshot mine))))
     (is (= original (memo/memo-unwrap mine)))
     (memo/memo-clear! mine [4])
     (is (= {[5] 99} (memo/snapshot mine)))
@@ -60,6 +60,22 @@
     (is (= 2 (lru 2)))
     (is (= 3 (ttl 3)))
     (is (= 4 (lu 4)))))
+
+(deftest public-positional-memoize-constructors-retain-contract
+  (let [delay-realized (memo/->RetryingDelay (fn [] :computed) true :seeded)
+        delay-pending (memo/->RetryingDelay (fn [] :computed) false nil)
+        plug (memo/->PluggableMemoization identity (cache/basic-cache-factory {:a 1}))
+        pending-before (realized? delay-pending)
+        pending-value @delay-pending
+        pending-after (realized? delay-pending)]
+    (is (contains? (ns-publics 'basilisp.core.memoize) '->RetryingDelay))
+    (is (contains? (ns-publics 'basilisp.core.memoize) '->PluggableMemoization))
+    (is (realized? delay-realized))
+    (is (= :seeded @delay-realized))
+    (is (= false pending-before))
+    (is (= :computed pending-value))
+    (is (= true pending-after))
+    (is (= 1 (cache/lookup plug :a)))))
 
 (defn ^{:clojure.core.memoize/args-fn rest} ignores-first-arg
   [a b c]

@@ -61,10 +61,12 @@ class RetryingDelay(IDeref, IPending):
 
     __slots__ = ("_fun", "_available", "_value", "_lock")
 
-    def __init__(self, fun: Callable[[], Any]):
+    def __init__(
+        self, fun: Callable[[], Any], available: bool = False, value: Any = None
+    ):
         self._fun = fun
-        self._available = False
-        self._value = None
+        self._available = available
+        self._value = value
         self._lock = threading.Lock()
 
     def deref(self):
@@ -83,6 +85,14 @@ class RetryingDelay(IDeref, IPending):
     @property
     def is_realized(self) -> bool:
         return self._available
+
+
+def retrying_delay_from_parts(
+    fun: Callable[[], Any], available: bool, value: Any
+) -> RetryingDelay:
+    return RetryingDelay(
+        fun, available=available is True or available == True, value=value
+    )
 
 
 class _ValueDelay(IDeref, IPending):

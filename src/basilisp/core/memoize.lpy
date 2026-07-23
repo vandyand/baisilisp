@@ -17,6 +17,13 @@
 
 (def RetryingDelay impl/RetryingDelay)
 (def PluggableMemoization impl/PluggableMemoization)
+
+(defn ->RetryingDelay [fun available? value]
+  (impl/retrying_delay_from_parts fun (if available? true false) value))
+
+(defn ->PluggableMemoization [f cache]
+  (impl/PluggableMemoization f cache))
+
 (def memoizer impl/memoizer)
 (def build-memoizer impl/build_memoizer)
 (def memo impl/memo)

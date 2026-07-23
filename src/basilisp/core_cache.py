@@ -17,6 +17,8 @@ from collections.abc import Callable, Mapping
 from typing import Any
 
 from basilisp.lang import map as lmap
+from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang.equality import unkey as public_key
 from basilisp.lang.interfaces import IMapEntry, IPersistentMap
 from basilisp.lang.map import PersistentMap
 
@@ -50,11 +52,11 @@ class PersistentCache(PersistentMap):
 
     def cache_lookup(self, item: Any, not_found: Any = _MISSING) -> Any:
         if not_found is _MISSING:
-            return self._inner.get(item)
-        return self._inner.get(item, not_found)
+            return self._inner.get(equivalence_key(item))
+        return self._inner.get(equivalence_key(item), not_found)
 
     def cache_has(self, item: Any) -> bool:
-        return item in self._inner
+        return equivalence_key(item) in self._inner
 
     def cache_hit(self, item: Any) -> "PersistentCache":
         return self
@@ -110,7 +112,7 @@ class PersistentCache(PersistentMap):
         until the next miss, so mapping's default ``items`` implementation is
         too eager for an expired entry.
         """
-        return self._inner.items()
+        return ((public_key(key), value) for key, value in self._inner.items())
 
     def assoc(self, *kvs: Any):
         if len(kvs) % 2:

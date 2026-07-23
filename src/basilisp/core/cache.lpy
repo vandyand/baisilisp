@@ -31,6 +31,10 @@
           {:lookup cache-lookup :has? cache-has :hit cache-hit
            :miss cache-miss :evict cache-evict :seed cache-seed}))
 
+(extend python/object CacheProtocol
+        {:lookup cache-lookup :has? cache-has :hit cache-hit
+         :miss cache-miss :evict cache-evict :seed cache-seed})
+
 (def BasicCache impl/BasicCache)
 (def FnCache impl/FnCache)
 (def FIFOCache impl/FIFOCache)
@@ -38,6 +42,43 @@
 (def TTLCacheQ impl/TTLCacheQ)
 (def LUCache impl/LUCache)
 (def LIRSCache impl/LIRSCache)
+
+(defn ->BasicCache [cache]
+  (impl/BasicCache cache))
+
+(defn ->FnCache [cache f]
+  (impl/FnCache cache f))
+
+(defn ->FIFOCache [cache q limit]
+  (impl/FIFOCache cache q limit))
+
+(defn ->LRUCache [cache lru tick limit]
+  (impl/LRUCache cache lru tick limit))
+
+(defn ->TTLCacheQ [cache ttl q gen ttl-ms]
+  (impl/TTLCacheQ cache ttl q gen ttl-ms))
+
+(defn ->LUCache [cache lu limit]
+  (impl/LUCache cache lu limit))
+
+(defn ->LIRSCache [cache lruS lruQ tick limitS limitQ]
+  (impl/LIRSCache cache lruS lruQ tick limitS limitQ))
+
+(defn ->SoftCache [_cache _rcache _rq]
+  (throw (python/NotImplementedError
+          "SoftCache requires JVM SoftReference semantics and is not available")))
+
+(defn make-reference [_v _rq]
+  (throw (python/NotImplementedError
+          "make-reference requires JVM ReferenceQueue semantics and is not available")))
+
+(defn clear-soft-cache! [_cache _rcache _rq]
+  (throw (python/NotImplementedError
+          "clear-soft-cache! requires JVM ReferenceQueue semantics and is not available")))
+
+(defmacro defcache [_type-name _fields & _specifics]
+  (throw (python/NotImplementedError
+          "defcache defines JVM Clojure cache records and is not available")))
 
 (def basic-cache-factory impl/basic_cache_factory)
 

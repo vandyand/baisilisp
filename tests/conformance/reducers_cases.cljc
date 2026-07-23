@@ -3,8 +3,7 @@
 ;; Clojure uses key/value arity for the former and entry values for serial
 ;; transformed reduction.
 
-#?(:clj (require '[clojure.core.reducers :as r])
-   :lpy (require '[basilisp.reducers :as r]))
+(require '[clojure.core.reducers :as r])
 
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
@@ -13,7 +12,13 @@
   (sorted-map :a 1 :b 2))
 
 (emit-case :basic-transformations
-           {:map (into [] (r/map inc [1 2 3]))
+           {:surface (every? #(contains? (ns-publics #?(:clj 'clojure.core.reducers
+                                                        :lpy 'basilisp.core.reducers))
+                                         %)
+                             '[->Cat CollFold append! cat coll-fold drop filter
+                               fjtask flatten fold foldcat folder map mapcat
+                               monoid pool reduce reducer remove take take-while])
+            :map (into [] (r/map inc [1 2 3]))
             :filter (into [] (r/filter even? [1 2 3 4]))
             :remove (into [] (r/remove even? [1 2 3 4]))
             :mapcat (into [] (r/mapcat #(vector % (inc %)) [1 2 3]))
@@ -82,3 +87,9 @@
                                                      (r/mapcat #(vector % (inc %))
                                                                values)))}))
                  (range 40)))
+
+(emit-case :jvm-forkjoin-boundary
+           (every? #(contains? (ns-publics #?(:clj 'clojure.core.reducers
+                                              :lpy 'basilisp.core.reducers))
+                               %)
+                   '[pool fjtask]))

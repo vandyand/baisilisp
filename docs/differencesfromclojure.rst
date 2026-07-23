@@ -353,6 +353,14 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``clojure.core.rrb-vector`` constructors, concatenation, and non-view
   slicing operations over ordinary persistent Basilisp vectors. It does not
   claim the JVM's specialized RRB storage or primitive unboxing layout.
+* :lpy:ns:`basilisp.core.cache` and :lpy:ns:`basilisp.core.memoize` provide the
+  portable persistent cache and memoization policies from ``core.cache`` and
+  ``core.memoize``. Their generated constructor names are available for source
+  compatibility. ``SoftCache`` and its reference-queue helpers resolve but
+  raise explicitly because Python has no JVM ``SoftReference`` retention model.
+* :lpy:ns:`basilisp.core.reducers` is the standard
+  ``clojure.core.reducers`` import path for Basilisp's serial reducers port.
+  ForkJoin-specific ``pool`` and ``fjtask`` resolve but raise when used.
 * :lpy:ns:`basilisp.core.server` provides named socket-server lifecycle and
   ``repl``/``io-prepl``/``remote-prepl`` support through the
   ``clojure.core.server`` import path. Its generic listener uses Python text

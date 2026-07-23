@@ -676,6 +676,15 @@ thread stopping, debugger break handlers, and Java stack-frame rendering, while
 belong in the host-boundary queue below unless a new fixture proves a portable
 behavioral contract.
 
+The same audit also closed the portable constructor/protocol layer for
+``clojure.core.cache``, ``clojure.core.memoize``,
+``clojure.core.protocols``, and ``clojure.core.reducers``. The first three now
+have no missing upstream public names; remaining extras are Basilisp's explicit
+Python class/protocol aliases. ``basilisp.core.reducers`` now exists so the
+standard ``clojure.core.reducers`` require path works, with an exact public
+surface. JVM-specific cache soft references and reducers ForkJoin hooks resolve
+as documented unsupported boundaries rather than silently changing semantics.
+
 ``instant``
 ~~~~~~~~~~~
 
@@ -703,8 +712,9 @@ must not become a required dependency.
 ~~~~~~~~~~~~~~~~~
 
 Basilisp already has serial ``reduce``, transducers, ``eduction``, and custom
-reduction protocols. ``basilisp.reducers`` now supplies the missing foldable
-abstraction without becoming a second general collection API: deterministic
+reduction protocols. ``basilisp.core.reducers`` now supplies the standard
+``clojure.core.reducers`` import path, backed by ``basilisp.reducers``, without
+becoming a second general collection API: deterministic
 ``reducer``/``folder`` and ``fold``, plus ``map``, ``filter``, ``remove``,
 ``take``, ``drop``, ``mapcat``, ``flatten``, and ``cat``. It preserves
 ``reduced`` short-circuiting, raw map key/value reduction, and the supplied
@@ -716,7 +726,8 @@ ordinary map entries.
 Parallel folding is a separate, opt-in execution policy. Threads do not make
 CPU-bound Python reduction parallel under the GIL; process pools impose
 pickling, importability, cancellation, exception, and data-copy constraints.
-Therefore ``basilisp.reducers/fold`` is serial. A later ``:executor`` option may
+Therefore ``basilisp.core.reducers/fold`` is serial. ``pool`` and ``fjtask`` are
+JVM ForkJoin boundaries and raise explicitly when used. A later ``:executor`` option may
 accept an application-owned executor only when the collection and reducing
 functions pass an explicit portability check. It must neither create global
 worker pools nor promise speedup. The implementation remains internal and

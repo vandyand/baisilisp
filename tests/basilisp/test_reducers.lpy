@@ -1,5 +1,6 @@
 (ns tests.basilisp.test-reducers
   (:require
+   [clojure.core.reducers :as cr]
    [basilisp.reducers :as r]
    [basilisp.test :refer [deftest is testing]]))
 
@@ -89,3 +90,11 @@
   (let [acc (python/list)]
     (is (identical? acc (r/append! acc :value)))
     (is (= [:value] (vec acc)))))
+
+(deftest standard-clojure-core-reducers-alias-test
+  (is (= [2 3 4] (into [] (cr/map inc [1 2 3]))))
+  (is (= 10 (cr/fold + [1 2 3 4])))
+  (is (contains? (ns-publics 'basilisp.core.reducers) 'pool))
+  (is (contains? (ns-publics 'basilisp.core.reducers) 'fjtask))
+  (is (thrown? python/NotImplementedError @cr/pool))
+  (is (thrown? python/NotImplementedError (cr/fjtask (fn [] :x)))))

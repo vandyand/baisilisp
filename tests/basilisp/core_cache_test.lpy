@@ -10,7 +10,7 @@
     (is (= {:a 1 :b 2} changed))
     (is (= 1 (cache/lookup changed :a)))
     (is (= :missing (cache/lookup changed :missing :missing)))
-    (is (cache/has? changed :b))
+    (is (contains? changed :b))
     (is (= {:cache :test} (meta (with-meta changed {:cache :test}))))
     (is (= {:a 1 :b 2} (with-meta changed {:cache :test})))
     (is (= {:a 1 :b 2 :c 3}
@@ -50,4 +50,27 @@
            (wrapped/miss wrapped-cache :b 2)))))
 
 (deftest soft-cache-is-explicitly-unavailable
-  (is (thrown? Exception (cache/soft-cache-factory {}))))
+  (is (contains? (ns-publics 'basilisp.core.cache) '->SoftCache))
+  (is (contains? (ns-publics 'basilisp.core.cache) 'make-reference))
+  (is (contains? (ns-publics 'basilisp.core.cache) 'clear-soft-cache!))
+  (is (contains? (ns-publics 'basilisp.core.cache) 'defcache))
+  (is (thrown? Exception (cache/soft-cache-factory {})))
+  (is (thrown? python/NotImplementedError (cache/->SoftCache {} {} nil)))
+  (is (thrown? python/NotImplementedError (cache/make-reference :value nil)))
+  (is (thrown? python/NotImplementedError (cache/clear-soft-cache! {} {} nil))))
+
+(deftest public-positional-cache-constructors-retain-policy
+  (let [basic (cache/->BasicCache {:a 1})
+        fn-cache (cache/->FnCache {:a 2} inc)
+        fifo (cache/->FIFOCache {:a 1} [:a] 2)
+        lru (cache/->LRUCache {:a 1} {:a 0} 0 2)
+        ttl (cache/seed (cache/->TTLCacheQ {} {} [] 0 2000) {:a 1})
+        lu (cache/->LUCache {:a 1} {:a 0} 2)
+        lirs (cache/->LIRSCache {:a 1} {-1 -1} {-1 -1} 0 2 2)]
+    (is (= 1 (cache/lookup basic :a)))
+    (is (= 3 (cache/lookup fn-cache :a)))
+    (is (= [[:a 1]] (vec fifo)))
+    (is (= {:a 1 :b 2} (cache/miss lru :b 2)))
+    (is (= 1 (cache/lookup ttl :a)))
+    (is (= 1 (cache/lookup (cache/hit lu :a) :a)))
+    (is (= 1 (cache/lookup lirs :a)))))

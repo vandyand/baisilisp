@@ -271,3 +271,15 @@
   (fn
     ([] (ctor))
     ([left right] (op left right))))
+
+(def pool
+  "Unsupported JVM ForkJoinPool delay retained for clojure.core.reducers source compatibility."
+  (delay
+    (throw (python/NotImplementedError
+            "clojure.core.reducers/pool requires a JVM ForkJoinPool"))))
+
+(defn fjtask
+  "Unsupported JVM ForkJoinTask adapter retained for clojure.core.reducers source compatibility."
+  [_f]
+  (throw (python/NotImplementedError
+          "clojure.core.reducers/fjtask requires JVM ForkJoinTask semantics")))

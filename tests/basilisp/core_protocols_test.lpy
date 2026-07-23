@@ -1,0 +1,14 @@
+(ns tests.basilisp.core-protocols-test
+  (:require [basilisp.test :refer [deftest is]]
+            [clojure.core.protocols :as p]))
+
+(deftest public-core-protocol-helper-surface-test
+  (doseq [sym '[IKVReduce InternalReduce internal-reduce iterator-reduce!]]
+    (is (contains? (ns-publics 'basilisp.core.protocols) sym))))
+
+(deftest iterator-reduce-consumes-single-use-python-iterators
+  (let [it (python/iter [1 2 3])]
+    (is (= 16 (p/iterator-reduce! it + 10)))
+    (is (= [] (vec it))))
+  (is (= 6 (p/iterator-reduce! (python/iter [1 2 3]) +)))
+  (is (= :empty (p/iterator-reduce! (python/iter []) (fn [] :empty)))))

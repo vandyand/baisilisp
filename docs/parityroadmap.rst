@@ -170,6 +170,12 @@ Near-term deliverable:
   differential fixtures. Remaining audited misses are JVM/SAX-hosted
   ``clojure.repl`` and ``clojure.xml`` internals, not ordinary portable
   namespace gaps.
+* **Completed locally:** close portable constructor/protocol gaps in
+  ``clojure.core.cache``, ``clojure.core.memoize``, and
+  ``clojure.core.protocols``, and add the standard ``clojure.core.reducers``
+  import path. Shared fixtures now cover cache/memoize generated constructors,
+  core protocol reduction helpers, reducers stress cases through the standard
+  namespace, and explicit JVM-boundary classification.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
