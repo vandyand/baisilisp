@@ -1,0 +1,11 @@
+(ns basilisp.core.specs.alpha
+  "Small portable subset of ``clojure.core.specs.alpha``.
+
+  The broader Clojure namespace describes JVM/Clojure reader and compiler
+  grammar. Basilisp exposes only portable helpers whose behavior is independent
+  of the JVM grammar model.")
+
+(defn even-number-of-forms?
+  "Return true when ``forms`` contains an even number of entries."
+  [forms]
+  (even? (count forms)))

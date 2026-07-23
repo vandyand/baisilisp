@@ -314,6 +314,13 @@ Near-term deliverable:
   ``clojure.reflect``, and the portable ``clojure.java.*`` aliases now support
   ``find-ns``/``ns-publics`` through the original Clojure namespace symbol
   instead of only through the backing ``basilisp.*`` implementation name.
+* **Completed locally:** lock the Clojure 1.12.4 bundled namespace inventory.
+  ``scripts/standard_namespace_inventory.py`` classifies every bundled
+  ``clojure.*`` source/resource entry as core-covered, surface-audited,
+  source-resource-only, UI/JVM/tooling omission, or deferred design work. The
+  tranche also implements the portable ``clojure.core.specs.alpha`` helper
+  ``even-number-of-forms?`` and the empty ``clojure.uuid`` namespace, with
+  shared differential fixtures for both.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

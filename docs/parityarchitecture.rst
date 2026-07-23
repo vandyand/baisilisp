@@ -863,15 +863,21 @@ Basilisp alias would add a familiar name without compatible behavior.
 ~~~~~~~~~~~~~~~~~~~~
 
 Do not port ``clojure.core.specs.alpha`` as a general application namespace.
-Its specifications describe Clojure reader, namespace, ``:import``, and
+Most of its specifications describe Clojure reader, namespace, ``:import``, and
 ``:gen-class`` grammar, including Java-specific clauses. Basilisp's analyzer is
 the authority for its distinct grammar, and a stale public spec layer would
-mislead tooling. Extract reusable predicates only where they are meaningful to
-the Basilisp compiler, beginning with even binding forms, function declarations,
-destructuring, and ``ns`` clauses. Keep them in a private analyzer schema module
-until external tools need a stable, versioned diagnostics schema. Java import,
-class, and ``gen-class`` specifications remain omissions rather than weakened
-copies.
+mislead tooling. The one public helper that is portable on its own,
+``even-number-of-forms?``, is exposed through ``basilisp.core.specs.alpha`` and
+compared against JVM Clojure for ``nil``, sequential, string, map, set, and
+seeded vector inputs. Java import, class, and ``gen-class`` specifications
+remain omissions rather than weakened copies.
+
+``uuid``
+~~~~~~~~
+
+``clojure.uuid`` is a bundled empty namespace. ``basilisp.uuid`` intentionally
+has the same empty public surface so source that requires ``clojure.uuid`` can
+load without inventing a Python-specific UUID API under a Clojure name.
 
 Java-hosted helper namespaces
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -1,0 +1,6 @@
+(ns basilisp.uuid
+  "Compatibility namespace for ``clojure.uuid``.
+
+  Clojure's bundled ``clojure.uuid`` namespace has no public Vars. This
+  namespace exists so portable source which requires it can load successfully
+  and observe the same empty public surface.")
