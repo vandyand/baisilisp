@@ -5,9 +5,13 @@ from __future__ import annotations
 import datetime
 import re
 from collections.abc import Callable
+from fractions import Fraction
 from typing import TypeVar
 
 T = TypeVar("T")
+
+_UTC = datetime.timezone.utc
+_UNIX_EPOCH = datetime.datetime(1970, 1, 1, tzinfo=_UTC)
 
 _TIMESTAMP = re.compile(
     r"(\d{4})(?:-(\d{2})(?:-(\d{2})(?:T(\d{2})(?::(\d{2})(?::(\d{2})"
@@ -114,6 +118,33 @@ def read_instant(cs: str) -> datetime.datetime:
     return parse_timestamp(validated(_construct_datetime), cs)
 
 
+class InstantDateTime(datetime.datetime):
+    """Datetime subclass used for reader instants with exact timestamp arithmetic."""
+
+    def timestamp(self) -> Fraction:  # type: ignore[override]
+        return timestamp_seconds(self)
+
+
+def timestamp_seconds(value: datetime.datetime) -> Fraction:
+    """Return exact seconds between ``value`` and the Unix epoch."""
+
+    delta = value.astimezone(_UTC) - _UNIX_EPOCH
+    micros = (
+        (delta.days * 24 * 60 * 60) + delta.seconds
+    ) * 1_000_000 + delta.microseconds
+    return Fraction(micros, 1_000_000)
+
+
+def epoch_millis(value: datetime.datetime) -> int:
+    """Return exact integer milliseconds between ``value`` and the Unix epoch."""
+
+    delta = value.astimezone(_UTC) - _UNIX_EPOCH
+    micros = (
+        (delta.days * 24 * 60 * 60) + delta.seconds
+    ) * 1_000_000 + delta.microseconds
+    return micros // 1_000
+
+
 def _days_in_month(year: int, month: int) -> int:
     if month == 2:
         return 29 if year % 4 == 0 and (year % 100 != 0 or year % 400 == 0) else 28
@@ -145,4 +176,15 @@ def _construct_datetime(
         nanoseconds // 1_000,
         tzinfo=datetime.timezone(offset),
     )
-    return value.astimezone(datetime.timezone.utc)
+    normalized = value.astimezone(_UTC)
+    return InstantDateTime(
+        normalized.year,
+        normalized.month,
+        normalized.day,
+        normalized.hour,
+        normalized.minute,
+        normalized.second,
+        normalized.microsecond,
+        tzinfo=normalized.tzinfo,
+        fold=normalized.fold,
+    )

@@ -21,6 +21,7 @@
          basilisp.lang.character
          basilisp.lang.agent
          basilisp.lang.chunk
+         basilisp.lang.instant
          basilisp.lang.numeric_coerce
          basilisp.lang.primitive_array
          basilisp.lang.range
@@ -9151,9 +9152,6 @@
 ;; Insts ;;
 ;;;;;;;;;;;
 
-(def ^:private unix-epoch
-  (datetime.datetime/fromtimestamp 0 datetime.timezone/utc))
-
 (defprotocol Inst
   (inst-ms* [inst]
     "Return the number of milliseconds since the Unix epoch
@@ -9162,13 +9160,10 @@
 (extend-protocol Inst
   datetime/datetime
   (inst-ms* [inst]
-    (-> inst
-        (- unix-epoch)
-        (.total-seconds)
-        (* 1000)
-        ;; Datetime milliseconds routinely exceed the Clojure ``int`` range;
-        ;; the public result is a long-sized timestamp.
-        (python/int))))
+    ;; Datetime milliseconds routinely exceed the Clojure ``int`` range; the
+    ;; public result is a long-sized timestamp. Use exact arithmetic instead of
+    ;; Python's floating ``total_seconds`` to avoid precision and type drift.
+    (basilisp.lang.instant/epoch_millis inst)))
 
 (defn ^:inline inst-ms
   "Return the number of milliseconds since the Unix epoch

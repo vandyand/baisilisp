@@ -1,4 +1,5 @@
 import datetime
+from fractions import Fraction
 
 import pytest
 
@@ -120,3 +121,31 @@ def test_validated_rejects_invalid_calendar_values_and_read_instant_normalizes_u
         instant.read_instant("2024-01-01T00:00:60Z")
     with pytest.raises(ValueError, match="second"):
         instant.read_instant("2024-01-01T00:59:60Z")
+
+
+def test_read_instant_exposes_exact_timestamp_seconds():
+    value = instant.read_instant("2010-01-01T01:01:01.001-01:01")
+
+    assert isinstance(value, datetime.datetime)
+    assert value == datetime.datetime(
+        2010, 1, 1, 2, 2, 1, 1000, tzinfo=datetime.timezone.utc
+    )
+    assert value.timestamp() == Fraction(1262311321001, 1000)
+    assert value.timestamp() * 1000 == 1262311321001
+
+
+def test_epoch_millis_uses_exact_integer_arithmetic():
+    assert (
+        instant.epoch_millis(
+            datetime.datetime(2010, 1, 1, 2, 2, 1, 1000, tzinfo=datetime.timezone.utc)
+        )
+        == 1262311321001
+    )
+    assert (
+        instant.epoch_millis(
+            datetime.datetime(
+                1969, 12, 31, 23, 59, 59, 999500, tzinfo=datetime.timezone.utc
+            )
+        )
+        == -1
+    )
