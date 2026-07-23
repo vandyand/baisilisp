@@ -18,7 +18,9 @@
   ([left right]
    (require-vector left)
    (require-vector right)
-   (into left right))
+   (if (empty? left)
+     right
+     (into left right)))
   ([left right & vectors]
    (reduce catvec (catvec left right) vectors)))
 
@@ -27,8 +29,11 @@
   ([vector start end]
    (require-vector vector)
    ;; `basilisp.core/subvec` already validates bounds; wrapping in `vec`
-   ;; guarantees an independent persistent vector rather than a view.
-   (basilisp.core/vec (basilisp.core/subvec vector start end))))
+   ;; guarantees an independent persistent vector rather than a view. Preserve
+   ;; the source vector's metadata to match clojure.core.rrb-vector slicing.
+   (with-meta
+     (basilisp.core/vec (basilisp.core/subvec vector start end))
+     (meta vector))))
 
 (defn vector [& values] (basilisp.core/vec values))
 (defn vec [coll] (basilisp.core/vec coll))

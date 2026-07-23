@@ -280,6 +280,11 @@ Near-term deliverable:
   provenance metadata keys, unchanged identity results, ``nav`` delegation,
   ordinary collection navigation defaults, Clojure-compatible ``nil`` ``nav``
   rejection, and a generated object-to-data corpus.
+* **Completed locally:** lock ``clojure.core.rrb-vector`` parity with a shared
+  fixture covering the exact public surface, constructors, ``catvec`` and
+  ``subvec`` rejection boundaries, metadata preservation/drop boundaries for
+  empty and non-empty concatenation, source metadata preservation for slicing,
+  and generated concatenation/slicing corpora.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

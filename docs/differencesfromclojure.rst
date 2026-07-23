@@ -364,8 +364,10 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   non-``nil`` values.
 * :lpy:ns:`basilisp.core.rrb-vector` provides the public
   ``clojure.core.rrb-vector`` constructors, concatenation, and non-view
-  slicing operations over ordinary persistent Basilisp vectors. It does not
-  claim the JVM's specialized RRB storage or primitive unboxing layout.
+  slicing operations over ordinary persistent Basilisp vectors. Shared fixtures
+  cover public names, constructor behavior, concatenation/slicing boundaries,
+  generated operation corpora, and Clojure's observable metadata behavior. It
+  does not claim the JVM's specialized RRB storage or primitive unboxing layout.
 * :lpy:ns:`basilisp.core.cache` and :lpy:ns:`basilisp.core.memoize` provide the
   portable persistent cache and memoization policies from ``core.cache`` and
   ``core.memoize``. Their generated constructor names are available for source

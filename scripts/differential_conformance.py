@@ -29,6 +29,7 @@ DEFAULT_CLOJURE_SDEPS = (
     'org.clojure/data.priority-map {:mvn/version \\"1.2.0\\"} '
     'org.clojure/core.cache {:mvn/version \\"1.1.234\\"} '
     'org.clojure/core.memoize {:mvn/version \\"1.1.266\\"} '
+    'org.clojure/core.rrb-vector {:mvn/version \\"0.2.0\\"} '
     'org.clojure/tools.namespace {:mvn/version \\"1.5.0\\"} '
     'org.clojure/tools.logging {:mvn/version \\"1.3.0\\"} '
     'org.clojure/tools.reader {:mvn/version \\"1.5.2\\"} '

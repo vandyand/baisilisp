@@ -921,6 +921,16 @@ checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
 precision integers still mean ``*-exact`` overflow behavior remains documented
 as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
 
+``basilisp.core.rrb-vector`` provides the portable public
+``clojure.core.rrb-vector`` constructors, concatenation, and slicing API over
+Basilisp's ordinary persistent vectors. The compatibility target is the
+functional result, vector-ness, arity/rejection boundary, and observable
+metadata behavior: one-arity ``catvec`` preserves its input metadata,
+multi-vector ``catvec`` keeps the left metadata when the left side contributes
+elements, empty-left concatenation follows the right vector's metadata, and
+``subvec`` preserves source vector metadata. Basilisp does not emulate the JVM
+RRB tree layout or expose internal node/view classes.
+
 ``basilisp.set`` follows ``clojure.set``'s functional collection contract while
 retaining Basilisp-only extension helpers such as ``disjoint?`` and
 ``symmetric-difference``. ``union`` has Clojure's zero-arity identity, while

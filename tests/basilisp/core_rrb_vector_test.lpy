@@ -17,6 +17,19 @@
   (is (thrown? Exception (rrb/subvec '(1 2) 0 1)))
   (is (thrown? Exception (rrb/subvec [1] 2))))
 
+(deftest catvec-and-subvec-preserve-left-or-source-metadata
+  (is (= {:source :left}
+         (meta (rrb/catvec (with-meta [1] {:source :left})
+                           (with-meta [2] {:source :right})))))
+  (is (= {:source :left}
+         (meta (rrb/catvec (with-meta [1 2] {:source :left})))))
+  (is (= {:source :right}
+         (meta (rrb/catvec (with-meta [] {:source :left})
+                           (with-meta [1] {:source :right})))))
+  (is (nil? (meta (rrb/catvec (with-meta [] {:source :left}) [1]))))
+  (is (= {:source :slice}
+         (meta (rrb/subvec (with-meta [1 2 3 4] {:source :slice}) 1 3)))))
+
 (deftest concatenation-and-slicing-match-vector-model-under-fuzzing
   (let [property
         (prop/for-all [left (gen/vector (gen/choose -10000 10000) 0 16)
