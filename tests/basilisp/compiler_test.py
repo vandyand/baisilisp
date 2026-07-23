@@ -5985,6 +5985,153 @@ class TestReify:
                         (--call-- [this & args]
                           (concat [:no-starter] args))))""")
 
+        def test_reify_warns_on_interface_method_arity_mismatch(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithReifyMethod
+              (python/type "WithReifyMethod"
+                           #py (abc/ABC)
+                           #py {"method"
+                                (abc/abstractmethod (fn [self value]))}))
+            (reify* :implements [WithReifyMethod]
+              (method [this] :incorrect))
+            """)
+
+            assert any(
+                "reify* implements method 'method' with arities 0; expected 1"
+                in message
+                for _, _, message in caplog.record_tuples
+            )
+            diagnostic = next(
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+            )
+            data = diagnostic.val_at(kw.keyword("data"))
+            assert kw.keyword(
+                "inherited-method-arity-mismatch", ns="basilisp.compiler"
+            ) == data.val_at(kw.keyword("kind", ns="basilisp.compiler"))
+            assert "method" == data.val_at(kw.keyword("method", ns="basilisp.compiler"))
+            assert 1 == data.val_at(
+                kw.keyword("expected-arity", ns="basilisp.compiler")
+            )
+            assert (0,) == data.val_at(
+                kw.keyword("actual-arities", ns="basilisp.compiler")
+            )
+
+        def test_reify_inherited_method_warning_can_be_suppressed_with_metadata(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithSuppressedReifyMethod
+              (python/type "WithSuppressedReifyMethod"
+                           #py (abc/ABC)
+                           #py {"method"
+                                (abc/abstractmethod (fn [self value]))}))
+            (reify* :implements [WithSuppressedReifyMethod]
+              (^:no-warn-on-arity-mismatch method [this] :incorrect))
+            """)
+
+            assert not [
+                record
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                )
+                == "method"
+            ]
+
+        def test_deftype_inherited_method_warning_can_be_suppressed_with_metadata(
+            self, lcompile: CompileFn, caplog
+        ):
+            lcompile("""
+            (import* abc)
+            (def WithSuppressedDeftypeMethod
+              (python/type "WithSuppressedDeftypeMethod"
+                           #py (abc/ABC)
+                           #py {"method"
+                                (abc/abstractmethod (fn [self value]))}))
+            (deftype* SuppressedDeftypeMethod []
+              :implements [WithSuppressedDeftypeMethod]
+              (^:no-warn-on-arity-mismatch method [this] :incorrect))
+            """)
+
+            assert not [
+                record
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                )
+                == "method"
+            ]
+
+        @settings(suppress_health_check=[HealthCheck.function_scoped_fixture])
+        @given(
+            expected_arity=st.integers(min_value=0, max_value=5),
+            actual_arity=st.integers(min_value=0, max_value=5),
+            variadic=st.booleans(),
+        )
+        def test_reify_method_arity_diagnostics_fuzz(
+            self,
+            lcompile: CompileFn,
+            caplog,
+            expected_arity: int,
+            actual_arity: int,
+            variadic: bool,
+        ):
+            caplog.clear()
+            expected_args = " ".join(
+                f"expected_arg_{index}" for index in range(expected_arity)
+            )
+            actual_args = " ".join(
+                f"actual_arg_{index}" for index in range(actual_arity)
+            )
+            actual_arg_vector = (
+                f"[this {actual_args} & rest]"
+                if variadic
+                else f"[this {actual_args}]"
+            )
+            lcompile(f"""
+            (import* abc)
+            (def ReifyArityInterface
+              (python/type "ReifyArityInterface"
+                           #py (abc/ABC)
+                           #py {{"method"
+                                (abc/abstractmethod
+                                 (fn [self {expected_args}]))}}))
+            (reify* :implements [ReifyArityInterface]
+              (method {actual_arg_vector} :ok))
+            """)
+
+            diagnostics = [
+                record.basilisp_diagnostic
+                for record in caplog.records
+                if hasattr(record, "basilisp_diagnostic")
+                and record.basilisp_diagnostic.val_at(kw.keyword("data")).val_at(
+                    kw.keyword("method", ns="basilisp.compiler")
+                )
+                == "method"
+            ]
+            supports_expected_arity = (
+                expected_arity == actual_arity
+                or variadic
+                and expected_arity >= actual_arity
+            )
+            assert bool(diagnostics) is not supports_expected_arity
+            if diagnostics:
+                data = diagnostics[-1].val_at(kw.keyword("data"))
+                assert expected_arity == data.val_at(
+                    kw.keyword("expected-arity", ns="basilisp.compiler")
+                )
+                assert (actual_arity,) == data.val_at(
+                    kw.keyword("actual-arities", ns="basilisp.compiler")
+                )
+
         @pytest.mark.parametrize(
             "code",
             [

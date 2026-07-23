@@ -568,12 +568,13 @@ The fixture covers one and multiple loop locals, let locals derived from loop
 state, nested closures, lazy realization after loop exit, a large loop that
 does not grow the Python stack, and a seeded closure corpus.
 
-``deftype`` and ``reify`` have enough declared protocol/interface information
-to report method-signature mismatches at analysis time. The check should compare
-method name, fixed arities excluding ``self``, and variadic lower bounds;
-inherited interface methods must be included. It should initially emit an
-opt-in compiler warning with source location and expected/actual arities, with
-an explicit metadata suppression key. It must not inspect arbitrary Python
+``deftype`` and ``reify`` now use declared protocol/interface information to
+report inherited method-signature mismatches at analysis time. The check compares
+method name, fixed arities excluding ``self``, variadic lower bounds, and
+descriptor kind for inspectable instance, class, and static abstract methods.
+Warnings include source location and structured expected/actual arity data, and
+``^:no-warn-on-arity-mismatch`` suppresses known-safe implementation methods.
+The analyzer remains conservative: it does not inspect arbitrary Python
 callables or claim signature certainty where Python permits dynamic calls.
 
 Finally, structured compiler diagnostics should be the common format for CLI,

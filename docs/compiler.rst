@@ -44,7 +44,7 @@ Warnings
 
 The following settings enable and disable warnings from the Basilisp compiler during compilation.
 
-* ``warn-on-arity-mismatch`` - if ``true``, emit warnings if a Basilisp function invocation is detected with an unsupported number of arguments. It also checks ``deftype`` implementations of inspectable abstract Python methods, including instance, class, and static method arities and descriptor kinds.
+* ``warn-on-arity-mismatch`` - if ``true``, emit warnings if a Basilisp function invocation is detected with an unsupported number of arguments. It also checks ``deftype`` and ``reify`` implementations of inspectable abstract Python methods, including inherited instance, class, and static method arities and descriptor kinds. Add ``^:no-warn-on-arity-mismatch`` metadata to an implementation method to suppress a known-safe inherited method diagnostic.
 
   * Environment Variable: ``BASILISP_WARN_ON_ARITY_MISMATCH``
   * Default: ``true``

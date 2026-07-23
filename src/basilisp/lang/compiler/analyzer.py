@@ -63,6 +63,7 @@ from basilisp.lang.compiler.constants import (
     SYM_MACRO_META_KEY,
     SYM_MUTABLE_META_KEY,
     SYM_NO_INLINE_META_KEY,
+    SYM_NO_WARN_ON_ARITY_MISMATCH_META_KEY,
     SYM_NO_WARN_ON_REDEF_META_KEY,
     SYM_NO_WARN_ON_SHADOW_META_KEY,
     SYM_NO_WARN_ON_VAR_INDIRECTION_META_KEY,
@@ -757,6 +758,9 @@ _is_py_staticmethod = _bool_meta_getter(SYM_STATICMETHOD_META_KEY)
 _is_slotted_type = _bool_meta_getter(SYM_SLOTS_META_KEY, True)
 _is_macro = _bool_meta_getter(SYM_MACRO_META_KEY)
 _is_no_inline = _bool_meta_getter(SYM_NO_INLINE_META_KEY)
+_is_no_warn_on_arity_mismatch = _bool_meta_getter(
+    SYM_NO_WARN_ON_ARITY_MISMATCH_META_KEY
+)
 _is_allow_var_indirection = _bool_meta_getter(SYM_NO_WARN_ON_VAR_INDIRECTION_META_KEY)
 _is_use_var_indirection = _bool_meta_getter(SYM_USE_VAR_INDIRECTION_KEY)
 _inline_meta = _meta_getter(SYM_INLINE_META_KW)
@@ -1843,6 +1847,8 @@ def __warn_inherited_member_mismatch(
     data: Mapping[kw.Keyword, Any],
 ) -> None:
     """Emit a source-located diagnostic for an inherited member mismatch."""
+    if __suppress_inherited_member_mismatch_warning(member):
+        return
     source_data: dict[kw.Keyword, Any] = {FILE_KW: member.env.file}
     for key, value in (
         (LINE_KW, member.env.line),
@@ -1876,6 +1882,23 @@ def __warn_inherited_member_mismatch(
         lrepr(diagnostic),
         extra={"basilisp_diagnostic": diagnostic},
     )
+
+
+def __suppress_inherited_member_mismatch_warning(member: DefTypeMember) -> bool:
+    """Return True if member metadata disables inherited arity/kind diagnostics."""
+    forms: list[Any] = [member.form]
+    if isinstance(member, DefTypeMethod):
+        forms.extend(arity.form for arity in member.arities)
+    for form in forms:
+        if isinstance(form, IMeta) and _is_no_warn_on_arity_mismatch(form):
+            return True
+        if (
+            isinstance(form, ISeq)
+            and isinstance(form.first, IMeta)
+            and _is_no_warn_on_arity_mismatch(form.first)
+        ):
+            return True
+    return False
 
 
 def __deftype_and_reify_impls_are_all_abstract(  # pylint: disable=too-many-locals,too-many-statements

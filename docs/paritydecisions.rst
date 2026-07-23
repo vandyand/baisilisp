@@ -444,15 +444,17 @@ remain adapters outside the core diagnostic data. Fixtures now assert compiler
 and runtime diagnostic type, phase, source, and cause data across pREPL, nREPL,
 CLI, and direct human traceback rendering.
 
-The analyzer already checks known abstract members and can inspect ordinary
-Python signatures when ``:warn-on-arity-mismatch`` is active. These warnings
-now include a source span and structured diagnostic data, rather than
-converting every mismatch into an error. It may issue a precise diagnostic only
-when the base class is statically resolved and ``inspect.signature`` succeeds
-with an unambiguous positional contract. Builtins, extension methods,
-decorators without recoverable signatures, defaults, keyword-only parameters,
-and dynamically resolved bases should retain the existing conservative warning
-or runtime behavior. `inspect.signature
+The analyzer already checks known abstract members for ``deftype`` and
+``reify`` and can inspect ordinary Python signatures when
+``:warn-on-arity-mismatch`` is active. These warnings now include a source span
+and structured diagnostic data, rather than converting every mismatch into an
+error. ``^:no-warn-on-arity-mismatch`` suppresses a known-safe implementation
+method. The analyzer may issue a precise diagnostic only when the base class is
+statically resolved and ``inspect.signature`` succeeds with an unambiguous
+positional contract. Builtins, extension methods, decorators without recoverable
+signatures, defaults, keyword-only parameters, and dynamically resolved bases
+should retain the existing conservative warning or runtime behavior.
+`inspect.signature
 <https://docs.python.org/3/library/inspect.html#inspect.signature>`_ explicitly
 does not guarantee introspection for every callable. Tests must distinguish
 known exact matches, known wrong fixed/variadic arity, uninspectable methods,

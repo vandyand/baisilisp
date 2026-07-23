@@ -314,6 +314,13 @@ Initial targets:
 * custom Basilisp tracebacks (`#461 <https://github.com/basilisp-lang/basilisp/issues/461>`_)
 * coverage.py plugin (`#318 <https://github.com/basilisp-lang/basilisp/issues/318>`_)
 
+Completed locally:
+
+* macro definitions in nested compiler bodies, including ``try``/``catch``/``finally``
+* ``loop`` closure capture across eager, lazy, nested, and large-loop cases
+* compile-time inherited method signature diagnostics for ``deftype`` and
+  ``reify``, including metadata suppression for known-safe mismatches
+
 Near-term deliverable:
 
 * improve source mapping, traceback output, and coverage support before making
