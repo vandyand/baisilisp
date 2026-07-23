@@ -605,6 +605,17 @@ failure data. Arbitrary predicates require ``with-gen`` with an explicit
 strategy; Hypothesis is an optional test adapter, not the implementation of the
 spec contract.
 
+The spec public-surface tranche closes the remaining audited
+``clojure.spec.alpha``, ``clojure.spec.test.alpha``, and
+``clojure.spec.gen.alpha`` public name gaps. Public protocol/helper names such
+as ``Spec``, ``Specize``, ``conform*``, ``explain-data*``, ``specize*``,
+``registry``, and the ``*-impl`` constructors are available as compatibility
+entrypoints backed by the descriptor engine. ``spec.test.alpha`` exposes
+``->sym``, namespace enumeration, summary, and instrumentability helper names
+without claiming JVM classpath-wide instrumentation. Deeper semantic parity for
+recursive generators, arbitrary function values, and Python model adapters
+remains a design task rather than a surface-name task.
+
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for
 dataclasses, ``attrs``, Pydantic models, mappings, sequences, and asynchronous

@@ -184,6 +184,12 @@ def get_spec(key: kw.Keyword) -> Any | None:
         return _REGISTRY.get(key)
 
 
+def registry() -> IPersistentMap:
+    """Return a snapshot of the registered named specs."""
+    with _REGISTRY_LOCK:
+        return lmap.map(dict(_REGISTRY))
+
+
 def fspec(
     *, args: Any | None = None, ret: Any | None = None, fn: Any | None = None
 ) -> _FSpec:

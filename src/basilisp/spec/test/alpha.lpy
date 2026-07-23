@@ -2,22 +2,101 @@
   "Opt-in instrumentation for registered ``basilisp.spec.alpha`` function specs."
   (:import basilisp.lang.spec))
 
+(defn ->sym
+  "Return the symbol naming ``x`` when it is already a symbol or a Basilisp Var."
+  [x]
+  (cond
+    (symbol? x) x
+    (var? x)    (symbol (str (.-name (.-ns x))) (name (.-name x)))
+    :else       x))
+
+(defn- resolve-target [x]
+  (if (symbol? x)
+    (resolve x)
+    x))
+
+(defn- target-list [sym-or-syms]
+  (cond
+    (nil? sym-or-syms) []
+    (or (symbol? sym-or-syms) (var? sym-or-syms)) [(resolve-target sym-or-syms)]
+    :else (mapv resolve-target sym-or-syms)))
+
+(defn abbrev-result [x] x)
+
+(defn checkable-syms
+  ([] #{})
+  ([_opts] (checkable-syms)))
+
+(defn instrumentable-syms
+  ([] #{})
+  ([_opts] (instrumentable-syms)))
+
+(defn enumerate-namespace [ns-sym-or-syms]
+  (let [nss (if (sequential? ns-sym-or-syms)
+              ns-sym-or-syms
+              [ns-sym-or-syms])]
+    (set
+     (for [ns-sym nss
+           [_ v] (ns-publics ns-sym)]
+       (->sym v)))))
+
+(defmacro with-instrument-disabled [& body]
+  `(do ~@body))
+
+(defn summarize-results
+  ([check-results]
+   (summarize-results check-results {}))
+  ([check-results summary-result]
+   (let [total (count check-results)]
+     (cond-> (assoc summary-result :total total)
+       (pos? total)
+       (assoc :check-passed
+              (count (filter #(or (:clojure.spec.test.check/pass? %)
+                                  (:basilisp.spec.test.alpha/pass? %))
+                             check-results)))))))
+
+(defn check-fn
+  ([f spec]
+   (check-fn f spec {}))
+  ([f _spec opts]
+   (first
+    (basilisp.lang.spec/check (resolve-target f)
+                              **
+                              :num-tests (or (:num-tests opts) 100)
+                              :seed (:seed opts)))))
+
 (defn instrument
   "Instrument registered Basilisp Vars, or the explicitly supplied Vars.
 
   Instrumentation validates calls through the Var and its current namespace module
   binding. It does not patch existing references to the original Python callable."
-  [& targets]
-  (apply basilisp.lang.spec/instrument targets))
+  ([] (basilisp.lang.spec/instrument))
+  ([sym-or-syms]
+   (apply basilisp.lang.spec/instrument (target-list sym-or-syms)))
+  ([sym-or-syms opts-or-target & more]
+   (if (map? opts-or-target)
+     (apply basilisp.lang.spec/instrument (target-list sym-or-syms))
+     (apply basilisp.lang.spec/instrument
+            (map resolve-target (concat [sym-or-syms opts-or-target] more))))))
 
 (defn unstrument
   "Restore bindings installed by ``instrument`` when they have not been redefined."
-  [& targets]
-  (apply basilisp.lang.spec/unstrument targets))
+  ([] (basilisp.lang.spec/unstrument))
+  ([sym-or-syms]
+   (apply basilisp.lang.spec/unstrument (target-list sym-or-syms)))
+  ([sym-or-syms target & more]
+   (apply basilisp.lang.spec/unstrument
+          (map resolve-target (concat [sym-or-syms target] more)))))
 
 (defn check
   "Run Hypothesis-backed generated checks for one registered Basilisp Var.
 
   ``:num-tests`` defaults to 100. ``:seed`` makes a run reproducible."
-  [target & {:keys [num-tests seed]}]
-  (basilisp.lang.spec/check target ** :num-tests (or num-tests 100) :seed seed))
+  ([] (basilisp.lang.spec/check))
+  ([target & {:keys [num-tests seed] :as opts}]
+   (if (map? target)
+     (basilisp.lang.spec/check ** :num-tests (or (:num-tests target) 100) :seed (:seed target))
+     (basilisp.lang.spec/check (resolve-target target)
+                               **
+                               :num-tests (or num-tests 100)
+                               :seed seed))))

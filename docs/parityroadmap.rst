@@ -187,6 +187,13 @@ Near-term deliverable:
   ``clojure.tools.logging`` dynamic Var/factory surface over Python logging.
   Java backend selectors are documented no-ops; the remaining JVM proxy-class
   public Var is treated as an implementation artifact.
+* **Completed locally:** close ``clojure.spec.alpha``,
+  ``clojure.spec.test.alpha``, and ``clojure.spec.gen.alpha`` public namespace
+  surface gaps. Shared fixtures now cover protocol/helper names, registry and
+  explain-data entrypoints, regex implementation helpers, and portable
+  ``spec.test.alpha`` summary/symbol helpers. Remaining spec work is semantic
+  depth for recursive generators, function-value generation, and explicit
+  Python model adapters, not missing public names.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

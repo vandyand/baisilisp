@@ -410,10 +410,15 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   first-class ``spec``/``conformer``/``nonconforming`` descriptors, map
   merging, ``every``/``every-kv``, sequence specs, and ``fspec``/``fdef``
   descriptors. ``int-in``, ``double-in``, ``inst-in``, and runtime-toggleable
-  ``s/assert`` checks use Python integer, float, and ``datetime`` values. Its opt-in
-  :lpy:ns:`basilisp.spec.test.alpha` instrumentation validates calls through
-  Basilisp Vars only and offers Hypothesis-backed checking for known portable
-  descriptor domains or explicit ``with-gen`` strategies.
+  ``s/assert`` checks use Python integer, float, and ``datetime`` values. The
+  public ``clojure.spec.alpha`` surface is available, including the documented
+  dynamic Vars, protocol/helper names, implementation-constructor helpers, and
+  registry/explain printer entrypoints; those helpers delegate to Basilisp's
+  portable descriptor engine rather than JVM spec internals. Its opt-in
+  :lpy:ns:`basilisp.spec.test.alpha` public surface now matches
+  ``clojure.spec.test.alpha``. Instrumentation validates calls through Basilisp
+  Vars only and offers Hypothesis-backed checking for known portable descriptor
+  domains or explicit ``with-gen`` strategies.
   :lpy:ns:`basilisp.spec.gen.alpha` provides the standard
   ``clojure.spec.gen.alpha`` generator facade, including Clojure-style
   primitive constructors and built-in predicate generators. ``s/gen``,

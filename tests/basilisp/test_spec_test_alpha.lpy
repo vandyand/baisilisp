@@ -39,3 +39,22 @@
 (deftest generated-function-check-test
   (let [result (first (st/check (var typed-identity) :num-tests 10 :seed 5))]
     (is (:basilisp.spec.test.alpha/pass? result))))
+
+(deftest public-spec-test-compatibility-surface-test
+  (doseq [sym '[->sym
+                abbrev-result
+                check-fn
+                checkable-syms
+                enumerate-namespace
+                instrumentable-syms
+                summarize-results
+                with-instrument-disabled]]
+    (is (contains? (ns-publics 'basilisp.spec.test.alpha) sym)))
+  (is (= 'tests.basilisp.test-spec-test-alpha/typed-identity
+         (st/->sym (var typed-identity))))
+  (is (= 'tests.basilisp.test-spec-test-alpha/typed-identity
+         (st/->sym 'tests.basilisp.test-spec-test-alpha/typed-identity)))
+  (is (= {:total 0} (st/summarize-results [])))
+  (is (contains? (st/enumerate-namespace 'tests.basilisp.test-spec-test-alpha)
+                 'tests.basilisp.test-spec-test-alpha/typed-identity))
+  (is (= :ok (st/with-instrument-disabled :ok))))

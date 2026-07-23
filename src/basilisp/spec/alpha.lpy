@@ -7,6 +7,76 @@
 (def ^:dynamic *compile-asserts*
   "Controls whether newly compiled ``s/assert`` forms retain runtime checks."
   true)
+(def ^:dynamic *coll-check-limit* 101)
+(def ^:dynamic *coll-error-limit* 20)
+(def ^:dynamic *explain-out* basilisp.lang.spec/explain-printer)
+(def ^:dynamic *fspec-iterations* 21)
+(def ^:dynamic *recursion-limit* 4)
+
+(defn- attach-gen [spec gfn]
+  (if (nil? gfn)
+    spec
+    (basilisp.lang.spec/with-gen spec gfn)))
+
+(defn- specize-value
+  ([s]
+   (specize-value s s))
+  ([s _form]
+   (if (keyword? s)
+     (let [resolved (basilisp.lang.spec/get-spec s)]
+       (if (nil? resolved)
+         (throw (python/Exception (str "Unable to resolve spec: " s)))
+         (basilisp.lang.spec/spec resolved)))
+     (basilisp.lang.spec/spec s))))
+
+(defprotocol Spec
+  (conform* [spec x])
+  (unform* [spec y])
+  (explain* [spec path via in x])
+  (gen* [spec overrides path rmap])
+  (with-gen* [spec gfn])
+  (describe* [spec]))
+
+(extend-protocol Spec
+  basilisp.lang.spec/_Spec
+  (conform* [spec x]
+    (basilisp.lang.spec/conform spec x))
+  (unform* [spec y]
+    (basilisp.lang.spec/unform spec y))
+  (explain* [spec _path _via _in x]
+    (basilisp.lang.spec/explain-data spec x))
+  (gen* [spec overrides _path _rmap]
+    (basilisp.lang.spec/gen spec overrides))
+  (with-gen* [spec gfn]
+    (basilisp.lang.spec/with-gen spec gfn))
+  (describe* [spec]
+    (basilisp.lang.spec/describe spec)))
+
+(defprotocol Specize
+  (specize* [s] [s form]))
+
+(extend-protocol Specize
+  python/object
+  (specize* [s]
+    (specize-value s))
+  (specize* [s form]
+    (specize-value s form))
+
+  nil
+  (specize* [s]
+    (specize-value s))
+  (specize* [s form]
+    (specize-value s form)))
+
+(defn conform* [spec x] (basilisp.lang.spec/conform spec x))
+(defn unform* [spec y] (basilisp.lang.spec/unform spec y))
+(defn explain* [spec _path _via _in x] (basilisp.lang.spec/explain-data spec x))
+(defn gen* [spec overrides _path _rmap] (basilisp.lang.spec/gen spec overrides))
+(defn with-gen* [spec gfn] (basilisp.lang.spec/with-gen spec gfn))
+(defn describe* [spec] (basilisp.lang.spec/describe spec))
+(defn specize*
+  ([s] (specize-value s))
+  ([s form] (specize-value s form)))
 
 (defn def [key spec] (basilisp.lang.spec/define key spec))
 (defn spec
@@ -45,11 +115,15 @@
     value))
 (defn form [spec] (basilisp.lang.spec/form spec))
 (defn describe [spec] (basilisp.lang.spec/describe spec))
-(defn explain [spec value] (basilisp.lang.spec/explain spec value))
+(defn explain-printer [ed] (basilisp.lang.spec/explain-printer ed))
+(defn explain-out [data] (*explain-out* data))
+(defn explain-data [spec value] (basilisp.lang.spec/explain-data spec value))
+(defn explain-data* [spec _path _via _in x] (basilisp.lang.spec/explain-data spec x))
+(defn explain [spec value] (explain-out (explain-data spec value)))
 (defn explain-str [spec value] (basilisp.lang.spec/explain-str spec value))
-(defn explain-out [data] (basilisp.lang.spec/explain-out data))
 (defn get-spec [key] (basilisp.lang.spec/get-spec key))
 (defn get-fspec [target] (basilisp.lang.spec/get-fspec target))
+(defn registry [] (basilisp.lang.spec/registry))
 (defn fspec [& {:keys [args ret fn]}]
   (basilisp.lang.spec/fspec ** :args args :ret ret :fn fn))
 (defn with-gen [spec generator]
@@ -87,7 +161,6 @@
 (defn valid? [spec value] (basilisp.lang.spec/valid spec value))
 (defn conform [spec value] (basilisp.lang.spec/conform spec value))
 (defn unform [spec value] (basilisp.lang.spec/unform spec value))
-(defn explain-data [spec value] (basilisp.lang.spec/explain-data spec value))
 (defn and [& specs] (apply basilisp.lang.spec/and_ specs))
 (defn or [& tagged-specs] (apply basilisp.lang.spec/or_ tagged-specs))
 (defn nilable [spec] (basilisp.lang.spec/nilable spec))
@@ -104,3 +177,64 @@
 (defn + [spec] (basilisp.lang.spec/plus spec))
 (defn ? [spec] (basilisp.lang.spec/maybe spec))
 (defn & [spec & predicates] (apply basilisp.lang.spec/amp spec predicates))
+
+(defn abbrev [form] form)
+(defn spec-impl
+  ([form pred gfn cpred?]
+   (spec-impl form pred gfn cpred? nil))
+  ([_form pred gfn cpred? unc]
+   (attach-gen
+    (cond
+      (some? unc) (basilisp.lang.spec/conformer pred unc)
+      cpred?      (basilisp.lang.spec/conformer pred)
+      :else       (basilisp.lang.spec/spec pred))
+    gfn)))
+(defn and-spec-impl [_forms preds gfn]
+  (attach-gen (apply and preds) gfn))
+(defn or-spec-impl [ks _forms preds gfn]
+  (attach-gen (apply or (mapcat vector ks preds)) gfn))
+(defn nilable-impl [_form pred gfn]
+  (attach-gen (nilable pred) gfn))
+(defn every-impl
+  ([_form pred opts]
+   (every pred
+          :kind (:kind opts)
+          :count (:count opts)
+          :min-count (:min-count opts)
+          :max-count (:max-count opts)
+          :distinct (:distinct opts)))
+  ([form pred opts gfn]
+   (attach-gen (every-impl form pred opts) gfn)))
+(defn map-spec-impl [argm]
+  (keys :req (or (:req argm) [])
+        :opt (or (:opt argm) [])))
+(defn tuple-impl
+  ([_forms preds]
+   (apply tuple preds))
+  ([_forms preds gfn]
+   (attach-gen (apply tuple preds) gfn)))
+(defmacro keys* [& kspecs]
+  `(keys ~@kspecs))
+(defn regex-spec-impl [re gfn]
+  (attach-gen re gfn))
+(defn cat-impl [ks ps _forms]
+  (apply cat (mapcat vector ks ps)))
+(defn alt-impl [ks ps _forms]
+  (apply alt (mapcat vector ks ps)))
+(defn amp-impl [re _re-form preds _pred-forms]
+  (apply & re preds))
+(defn rep-impl [_form p] (* p))
+(defn rep+impl [_form p] (+ p))
+(defn maybe-impl [p _form] (? p))
+(defn merge-spec-impl [_forms preds gfn]
+  (attach-gen (apply merge preds) gfn))
+(defn multi-spec-impl
+  ([_form mmvar retag]
+   (multi-spec (fn [x]
+                 (retag (mmvar x)))))
+  ([_form mmvar retag gfn]
+   (attach-gen (multi-spec-impl _form mmvar retag) gfn)))
+(defn fspec-impl [_argspec aform _retspec rform _fnspec fform gfn]
+  (attach-gen (fspec :args aform :ret rform :fn fform) gfn))
+(defn def-impl [k _form spec]
+  (basilisp.lang.spec/define k spec))

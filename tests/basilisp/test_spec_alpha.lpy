@@ -107,3 +107,60 @@
     (is (= function-spec (s/get-fspec (var spec-function))))
     (is (s/valid? function-spec spec-function))
     (is (not (s/valid? function-spec 42)))))
+
+(deftest public-spec-compatibility-surface-test
+  (doseq [sym '[*coll-check-limit*
+                *coll-error-limit*
+                *explain-out*
+                *fspec-iterations*
+                *recursion-limit*
+                Spec
+                Specize
+                abbrev
+                alt-impl
+                amp-impl
+                and-spec-impl
+                cat-impl
+                conform*
+                def-impl
+                describe*
+                every-impl
+                explain*
+                explain-data*
+                explain-printer
+                fspec-impl
+                gen*
+                keys*
+                map-spec-impl
+                maybe-impl
+                merge-spec-impl
+                multi-spec-impl
+                nilable-impl
+                or-spec-impl
+                regex-spec-impl
+                registry
+                rep+impl
+                rep-impl
+                spec-impl
+                specize*
+                tuple-impl
+                unform*
+                with-gen*]]
+    (is (contains? (ns-publics 'basilisp.spec.alpha) sym)))
+  (let [sp (s/spec int?)]
+    (is (s/spec? sp))
+    (is (= 1 (s/conform* sp 1)))
+    (is (s/invalid? (s/conform* sp "x")))
+    (is (= 1 (s/unform* sp 1)))
+    (is (s/explain-data* sp [] [] [] "x"))
+    (is (s/describe* sp))
+    (is (s/spec? (s/specize* int?))))
+  (s/def :tests.spec/compat int?)
+  (is (contains? (s/registry) :tests.spec/compat))
+  (is (= :tests.spec/from-def-impl
+         (s/def-impl :tests.spec/from-def-impl 'int? int?)))
+  (is (s/valid? :tests.spec/from-def-impl 5))
+  (is (= {:x 1} (s/conform (s/cat-impl [:x] [int?] ['int?]) [1])))
+  (is (= [:i 1] (s/conform (s/alt-impl [:i] [int?] ['int?]) [1])))
+  (is (= [1 2] (s/conform (s/rep+impl 'int? int?) [1 2])))
+  (is (= nil (s/conform (s/maybe-impl int? 'int?) []))))
