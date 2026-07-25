@@ -1,0 +1,106 @@
+(ns tests.basilisp.deps-tooling-test
+  (:require
+   [clojure.java.basis :as basis]
+   [clojure.java.basis.impl :as basis-impl]
+   [clojure.main :as main]
+   [clojure.repl.deps :as repl-deps]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]
+   [clojure.tools.deps.interop :as interop]
+   [basilisp.test :refer [deftest is]]))
+
+(defn- thrown-message
+  [f]
+  (try
+    (f)
+    :ok
+    (catch python/Exception e
+      (ex-message e))))
+
+(deftest dependency-tooling-public-surfaces-test
+  (is (= #{"current-basis" "initial-basis"}
+         (set (map name (keys (ns-publics 'basilisp.java.basis))))))
+  (is (= #{"init-basis" "the-basis" "update-basis!"}
+         (set (map name (keys (ns-publics 'basilisp.java.basis.impl))))))
+  (is (= #{"add-lib" "add-libs" "sync-deps"}
+         (set (map name (keys (ns-publics 'basilisp.repl-deps))))))
+  (is (= #{"invoke-tool"}
+         (set (map name (keys (ns-publics 'basilisp.tools.deps.interop))))))
+  (is (= (find-ns 'basilisp.java.basis) (find-ns 'clojure.java.basis)))
+  (is (= (find-ns 'basilisp.java.basis.impl)
+         (find-ns 'clojure.java.basis.impl)))
+  (is (= (find-ns 'basilisp.repl-deps) (find-ns 'clojure.repl.deps)))
+  (is (= (find-ns 'basilisp.tools.deps.interop)
+         (find-ns 'clojure.tools.deps.interop))))
+
+(deftest clojure-main-repl-requires-are-loadable-test
+  (doseq [libspec main/repl-requires]
+    (is (nil? (require libspec)))))
+
+(deftest basis-state-and-update-test
+  (let [original (basis/current-basis)]
+    (try
+      (is (= @basis-impl/init-basis (basis/initial-basis)))
+      (is (= (basis/current-basis) @@basis-impl/the-basis))
+      (is (or (nil? (basis/initial-basis))
+              (map? (basis/initial-basis))))
+      (is (= original (basis/current-basis)))
+      (is (= {:libs {'demo/lib {:mvn/version "1"}}}
+             (basis-impl/update-basis!
+              (fn [_] {:libs {'demo/lib {:mvn/version "1"}}}))))
+      (is (= {:libs {'demo/lib {:mvn/version "1"}}}
+             (basis/current-basis)))
+      (is (= (basis/current-basis) @@basis-impl/the-basis))
+      (is (= {:libs {'demo/lib {:mvn/version "1"}}
+              :paths ["src"]}
+             (basis-impl/update-basis! assoc :paths ["src"])))
+      (finally
+        (basis-impl/update-basis! (constantly original))))))
+
+(deftest interop-validation-and-host-boundary-test
+  (is (= "Either :tool-alias or :tool-name must be provided"
+         (thrown-message #(interop/invoke-tool {}))))
+  (is (= ":fn should be a symbol :bad"
+         (thrown-message #(interop/invoke-tool {:tool-name "demo" :fn :bad}))))
+  (is (= ":fn should be a symbol "
+         (thrown-message #(interop/invoke-tool {:tool-name "demo"}))))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"requires the Clojure CLI and JVM tools.deps runtime"
+       (interop/invoke-tool {:tool-name "demo" :fn 'demo.tool/run}))))
+
+(deftest repl-deps-repl-guard-and-host-boundary-test
+  (is (= "add-libs is only available at the REPL"
+         (binding [*repl* false]
+           (thrown-message #(repl-deps/add-libs {})))))
+  (is (= "add-libs is only available at the REPL"
+         (binding [*repl* false]
+           (thrown-message #(repl-deps/add-lib 'demo/lib {:mvn/version "1"})))))
+  (is (= "add-libs is only available at the REPL"
+         (binding [*repl* false]
+           (thrown-message #(repl-deps/sync-deps)))))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"classpath mutation"
+       (binding [*repl* true]
+         (repl-deps/add-libs {'demo/lib {:mvn/version "1"}}))))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"classpath mutation"
+       (binding [*repl* true]
+         (repl-deps/add-lib 'demo/lib))))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"classpath mutation"
+       (binding [*repl* true]
+         (repl-deps/sync-deps)))))
+
+(deftest interop-validation-seeded-fuzz-test
+  (let [invalid-fn-gen (gen/elements [nil :kw "string" 42 [] {}])
+        property (prop/for-all [invalid-fn invalid-fn-gen]
+                   (= (str ":fn should be a symbol " invalid-fn)
+                      (thrown-message
+                       #(interop/invoke-tool {:tool-name "demo"
+                                              :fn invalid-fn}))))]
+    (is (:pass? (tc/quick-check 120 property)))))

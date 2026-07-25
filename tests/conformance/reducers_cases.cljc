@@ -48,6 +48,7 @@
 (emit-case :fold-semantics
            {:sum (r/fold + [1 2 3 4])
             :partition-size (r/fold 2 + + [1 2 3 4])
+            :coll-fold (r/coll-fold [1 2 3 4] 2 + +)
             :map-key-values (r/fold (fn
                                       ([] {})
                                       ([left right] (merge left right)))
@@ -58,11 +59,36 @@
             :mapped-key-values (r/fold (fn
                                          ([] [])
                                          ([left right] (into left right)))
-                                       conj
+                                         conj
                                        (r/map (fn [key value]
                                                 [key (inc value)])
                                               sorted-pairs))
             :foldcat (vec (r/foldcat [[1 2] [3 4]]))})
+
+(emit-case :direct-construction-api
+           (let [cat-direct (r/->Cat 4 [1 2] [3 4])
+                 cat-combiner (r/cat vector)
+                 inc-xf (fn [f]
+                          (fn
+                            ([] (f))
+                            ([ret value] (f ret (inc value)))))
+                 reducer-direct (r/reducer [1 2 3] inc-xf)
+                 folder-direct (r/folder [1 2 3] inc-xf)
+                 join (r/monoid str (fn [] ""))
+                 append-result #?(:clj (let [acc (java.util.ArrayList.)]
+                                         (r/append! acc :value)
+                                         (vec acc))
+                                  :lpy (let [acc (python/list)]
+                                         (r/append! acc :value)
+                                         (vec acc)))]
+             {:cat-empty (vec (r/cat))
+              :cat-direct [(count cat-direct) (into [] cat-direct)]
+              :cat-combiner (into [] (cat-combiner [1 2] [3 4]))
+              :reducer (r/reduce conj [] reducer-direct)
+              :folder (r/fold + folder-direct)
+              :monoid [(join) (join "a" "b")]
+              :append append-result
+              :coll-fold-protocol? (some? r/CollFold)}))
 
 (emit-case :early-reduced
            (let [calls (atom 0)
@@ -89,7 +115,13 @@
                  (range 40)))
 
 (emit-case :jvm-forkjoin-boundary
-           (every? #(contains? (ns-publics #?(:clj 'clojure.core.reducers
-                                              :lpy 'basilisp.core.reducers))
-                               %)
-                   '[pool fjtask]))
+           {:surface (every? #(contains? (ns-publics #?(:clj 'clojure.core.reducers
+                                                        :lpy 'basilisp.core.reducers))
+                                         %)
+                             '[pool fjtask])
+            :pool-var? (some? r/pool)
+            :fjtask-boundary? #?(:clj (some? (r/fjtask (fn [] :x)))
+                                 :lpy (try
+                                        (r/fjtask (fn [] :x))
+                                        false
+                                        (catch Exception _ true)))})

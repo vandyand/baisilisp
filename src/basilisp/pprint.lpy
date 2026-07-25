@@ -286,7 +286,25 @@
              (tokens-fit? [tokens]
                (let [{:keys [col max]} @writer]
                  (or (nil? max)
+                     (not (neg? (- max (+ col (buffer-length tokens))))))))
+
+             ;; `:fill` newline subsection decisions use the original XP strict
+             ;; boundary: a subsection which exactly reaches the right margin is
+             ;; considered not to fit, so the fill newline is emitted.
+             (tokens-fit-strict? [tokens]
+               (let [{:keys [col max]} @writer]
+                 (or (nil? max)
                      (pos? (- max (+ col (buffer-length tokens)))))))
+
+             (contains-fill-newline? [tokens]
+               (some #(and (instance? Newline %)
+                           (= :fill (.-kind %)))
+                     tokens))
+
+             (buffer-fits? [tokens]
+               (if (contains-fill-newline? tokens)
+                 (tokens-fit-strict? tokens)
+                 (tokens-fit? tokens)))
 
              ;; Record an emitted newline. Ancestors inherit the forced-newline
              ;; state and remember that a nested block has already broken, which
@@ -328,7 +346,7 @@
                  :linear    (emit-linear-nl? token section)
                  :miser     (emit-miser-nl? token section)
                  :fill      (or (.-intra-block-nl? (.-block token))
-                                (not (tokens-fit? subsection))
+                                (not (tokens-fit-strict? subsection))
                                 (emit-miser-nl? token section))))
 
              ;; Generate the newline and subsequent indent from a newline token token.
@@ -362,34 +380,44 @@
                                 EndBlock   (.-suffix (.-block token)))]
                    (.write writer s))))
 
-             ;; Write a single line and possibly emit a conditional newline.
-             (write-line []
-               (let [{:keys [buffer]} @state
-                     [s buf]          (split-at-newline buffer)]
-                 (when (seq s)
-                   (write-tokens s))
-                 (vswap! state #(assoc % :buffer buf))
-                 ;; check if buffer still exceeds length; if so, we'll need to emit newlines
-                 (when (seq buf)
-                   (let [[section remainder] (get-section buf)
-                         maybe-nl            (first buf)
-                         subsection          (get-subsection buf)
-                         buf                 (if (emit-nl? maybe-nl section subsection)
+             ;; Recursively process a token buffer until it either fits or has emitted
+             ;; the earliest newline-bearing section which cannot be broken further.
+             (write-token-string [tokens]
+               (let [[head tail] (split-at-newline tokens)]
+                 (when (seq head)
+                   (write-tokens head))
+                 (if (seq tail)
+                   (let [[section remainder] (get-section tail)
+                         maybe-nl            (first tail)
+                         result              (if (emit-nl? maybe-nl section (get-subsection tail))
                                                (do
                                                  (.write writer (gen-nl maybe-nl))
-                                                 (pop buf))
-                                               buf)]
-                     (if-not (tokens-fit? buf)
-                       (do
-                         (write-tokens section)
-                         (vswap! state #(assoc % :buffer remainder)))
-                       (vswap! state #(assoc % :buffer buf)))))))
+                                                 (pop tail))
+                                               tail)]
+                     (if-not (tokens-fit? result)
+                       (let [remaining-section (write-token-string section)]
+                         (if (= remaining-section section)
+                           (do
+                             (write-tokens section)
+                             remainder)
+                           (into (queue) (concat remaining-section remainder))))
+                       result))
+                   (queue))))
+
+             ;; Write a single line and possibly emit a conditional newline.
+             (write-line []
+               (loop [{:keys [buffer]} @state]
+                 (when-not (buffer-fits? buffer)
+                   (let [new-buffer (write-token-string buffer)]
+                     (vswap! state #(assoc % :buffer new-buffer))
+                     (when-not (= buffer new-buffer)
+                       (recur @state))))))
 
              ;; Write tokens from the buffer to the base writer as long as the tokens
              ;; in the buffer won't fit on the current line.
              (write-lines []
                (loop [{:keys [buffer]} @state]
-                 (if-not (tokens-fit? buffer)
+                 (if-not (buffer-fits? buffer)
                    (write-line)
                    (when-not (identical? buffer (:buffer @state))
                      (recur @state)))))
@@ -398,7 +426,7 @@
              ;; the tokens do not fit on the base line.
              (add-to-buffer [token]
                (let [{:keys [buffer]} (vswap! state #(update % :buffer conj token))]
-                 (when-not (tokens-fit? buffer)
+                 (when-not (buffer-fits? buffer)
                    (write-lines))))
 
              ;; Update the current position in the state based on the given value,
@@ -595,29 +623,39 @@
                (conj c (base-chr (mod v base))))
         (.join "" (map str (rseq c)))))))
 
+(defn ^:private format-radix-prefix [base]
+  (case base
+    2  "#b"
+    8  "#o"
+    16 "#x"
+    10 ""
+    (.format "#{}r" base)))
+
+(defn ^:private printable-int-value [n base]
+  (if (and (neg? n) (not= 10 base))
+    (bit-and n 0xffffffffffffffff)
+    n))
+
+(defn ^:private format-int* [n radix?]
+  (let [base       *print-base*
+        value      (printable-int-value n base)
+        prefix     (if radix? (format-radix-prefix base) "")
+        format-str (case base
+                     2  "{0:b}"
+                     8  "{0:o}"
+                     10 "{}"
+                     16 "{0:x}"
+                     nil)]
+    (str prefix
+         (if format-str
+           (.format format-str value)
+           (int->base value base)))))
+
 (defn ^:private format-int
   "Format an integer value ``n`` subject to the rules of both :lpy:var:`*print-base*`
   and :lpy:var:`*print-radix*`."
   [n]
-  (let [base         *print-base*
-        radix-prefix (if *print-radix*
-                       (case base
-                         2  "#b"
-                         8  "#o"
-                         16 "#x"
-                         10 ""
-                         (.format "#{}r" base))
-                       "")
-        format-str   (case base
-                       2  "{0:b}"
-                       8  "{0:o}"
-                       10 "{}"
-                       16 "{0:x}"
-                       nil)]
-    (str radix-prefix
-         (if format-str
-           (.format format-str n)
-           (int->base n base)))))
+  (format-int* n *print-radix*))
 
 (defmulti simple-dispatch type)
 
@@ -640,7 +678,7 @@
   (.write *out*
           (str (format-int (numerator obj))
                "/"
-               (format-int (denominator obj)))))
+               (format-int* (denominator obj) false))))
 
 (defmethod simple-dispatch basilisp.lang.symbol/Symbol
   [obj]
@@ -816,6 +854,24 @@
           (pprint-newline :linear)
           (recur more))))))
 
+(defn ^:private print-code-if
+  "Pretty print ``if``/``when``-style forms using Clojure's code dispatch layout."
+  [forms]
+  (pprint-logical-block :prefix "(" :suffix ")"
+    (pprint-indent :block 1)
+    (write-out (first forms))
+    (when-let [remaining (next forms)]
+      (.write *out* " ")
+      (pprint-newline :miser)
+      (write-out (first remaining))
+      (print-length-loop [body (next remaining)]
+        (when body
+          (.write *out* " ")
+          (pprint-newline :linear)
+          (write-out (first body))
+          (when-let [more (next body)]
+            (recur more)))))))
+
 (defn ^:private print-code-binding-form
   "Pretty print bindings as condition/value pairs."
   [bindings]
@@ -916,10 +972,10 @@
       (pprint-indent :block 1)
       (write-out (first forms))
       (.write *out* " ")
-      (pprint-newline :linear)
+      (pprint-newline :miser)
       (write-out (second forms))
       (.write *out* " ")
-      (pprint-newline :linear)
+      (pprint-newline :miser)
       (write-out (first (next (next forms))))
       (.write *out* " ")
       (pprint-newline :linear)
@@ -1059,7 +1115,6 @@
    "->>"             print-code-threading
    "binding"         print-code-let
    "case"            print-code-case
-   "catch"           print-code-catch
    "cond"            print-code-cond
    "condp"           print-code-condp
    "def"             print-code-hold-first
@@ -1070,12 +1125,11 @@
    "defonce"         print-code-hold-first
    "doseq"           print-code-let
    "dotimes"         print-code-let
-   "finally"         print-code-clauses
    "fn"              print-code-defn
    "fn*"             print-code-anon-func
-   "if"              print-simple-code-list
+   "if"              print-code-if
    "if-let"          print-code-let
-   "if-not"          print-simple-code-list
+   "if-not"          print-code-if
    "let"             print-code-let
    "locking"         print-code-hold-first
    "loop"            print-code-let
@@ -1085,11 +1139,10 @@
    "some->>"         print-code-threading
    "struct"          print-code-hold-first
    "struct-map"      print-code-hold-first
-   "try"             print-code-clauses
-   "when"            print-simple-code-list
+   "when"            print-code-if
    "when-first"      print-code-let
    "when-let"        print-code-let
-   "when-not"        print-simple-code-list
+   "when-not"        print-code-if
    "with-local-vars" print-code-let
    "with-open"       print-code-let})
 
@@ -1208,6 +1261,7 @@
      (binding [*out*          writer
                *print-pretty* true]
        (write-out object)
+       (.flush writer)
        (newline)))))
 
 (def ^:private write-control-map
@@ -1247,8 +1301,23 @@
                                            [vvar v])))
                                   (filter identity))
                             opts)
+        needs-dispatch? (or (contains? opts :base)
+                            (contains? opts :radix)
+                            (contains? opts :sort-keys)
+                            (contains? opts :suppress-namespaces))
+        force-dispatch? (and needs-dispatch?
+                             (not (true? (:pretty opts))))
+        opts-bindings (cond-> opts-bindings
+                        force-dispatch?
+                        (assoc #'*print-pretty* true
+                               #'*print-right-margin* nil))
         writer        (get opts :stream *out*)]
-    (with-bindings* opts-bindings pprint object writer)))
+    (with-bindings* opts-bindings
+      (fn []
+        (with-pretty-writer [writer writer]
+          (binding [*out* writer]
+            (write-out object)
+            (.flush writer)))))))
 
 (defn pp
   "Print the last thing output to the REPL.
@@ -2518,10 +2587,12 @@ python/str, or one python/str longer."
 (defn fresh-line
   "Write a newline only when the current output is not already at column zero."
   []
-  (when (not (zero? (get-column *out*)))
+  (if (column-writer-state *out*)
+    (when (not (zero? (get-column *out*)))
+      (newline))
     (newline)))
 
-(defn pprint-tab
+(defn- pprint-tab*
   "Write spaces to an absolute or relative tab stop in a pretty-print stream."
   [kind colnum colinc]
   (let [current (get-column *out*)
@@ -2530,17 +2601,32 @@ python/str, or one python/str longer."
                          (< current colnum) (- colnum current)
                          (zero? colinc) 0
                          :else (- colinc (mod (- current colnum) colinc)))
-                 :section (let [offset (+ current colnum)]
-                            (+ colnum (if (zero? colinc) 0 (- colinc (mod offset colinc)))))
+                  :section (if (zero? colinc)
+                             colnum
+                             (let [offset (+ current colnum)
+                                   remainder (mod offset colinc)]
+                               (+ colnum
+                                  (if (zero? remainder)
+                                    0
+                                    (- colinc remainder)))))
                  (throw (ex-info "pprint-tab kind must be :line or :section" {:kind kind})))]
     (.write *out* (apply str (repeat spaces " ")))))
 
+(defn pprint-tab
+  "Public Clojure-compatible tab helper.
+
+  Clojure exposes this Var but throws when it is called directly. Basilisp keeps
+  tabulation support internally for ``cl-format``'s ``~T`` directive, but the
+  public function follows Clojure's portable contract."
+  [_kind _colnum _colinc]
+  (throw (ex-info "pprint-tab is not yet implemented" {})))
+
 (defn- absolute-tabulation [params navigator offsets]
-  (pprint-tab :line (:colnum params) (:colinc params))
+  (pprint-tab* :line (:colnum params) (:colinc params))
   navigator)
 
 (defn- relative-tabulation [params navigator offsets]
-  (pprint-tab :section (:colnum params) (:colinc params))
+  (pprint-tab* :section (:colnum params) (:colinc params))
   navigator)
 ;;; Support for accessing the pretty printer from a format
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
@@ -2576,7 +2662,10 @@ python/str, or one python/str longer."
   (let [kind (if (:colon params)
                (if (:at params) :mandatory :fill)
                (if (:at params) :miser :linear))]
-    (pprint-newline kind)
+    (if (column-writer-state *out*)
+      (when (:block (column-writer-state *out*))
+        (pprint-newline kind))
+      (pprint-newline kind))
     navigator))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;

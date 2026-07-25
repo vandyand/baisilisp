@@ -24,8 +24,8 @@ def runner(lcompile: CompileFn) -> CompileFn:
     lcompile("""
     (require '[basilisp.test :refer
                 [assert-expr deftest deftest- do-report gen-assert is run-all-tests run-test-var
-                run-test run-tests set-test successful? test-ns testing-contexts-str
-                testing testing-vars-str use-fixtures with-test]])
+                run-test run-tests set-test successful? test-all-vars test-ns test-vars
+                testing-contexts-str testing testing-vars-str use-fixtures with-test]])
 
     (def events (atom []))
 
@@ -73,6 +73,11 @@ def test_run_test_var_uses_namespace_fixtures(runner: CompileFn):
         kw.keyword("each-after"),
         kw.keyword("once-after"),
     ]
+
+
+def test_low_level_test_vars_return_nil_like_clojure(runner: CompileFn):
+    assert runner("(nil? (test-vars [#'passing-test]))") is True
+    assert runner("(nil? (test-all-vars 'basilisp.test-runner-compat))") is True
 
 
 def test_run_tests_counts_assertion_failures_errors_and_fixtures(
@@ -258,10 +263,10 @@ def test_single_runner_context_helpers_and_namespace_hook(runner: CompileFn):
     runner("""
     (deftest hook-target
       (is true)
-      (is (= "(hook-target) (line 7)" (testing-vars-str {:line 7})))
+      (is (= "(hook-target) (:7)" (testing-vars-str {:line 7})))
       (testing "outer"
         (testing "inner"
-          (is (= "outer :: inner" (testing-contexts-str))))))
+          (is (= "outer inner" (testing-contexts-str))))))
 
     (deftest second-hook-target (is true))
 
@@ -273,7 +278,7 @@ def test_single_runner_context_helpers_and_namespace_hook(runner: CompileFn):
     assert 1 == _summary_value(runner("(run-test hook-target)"), "test")
     assert 2 == _summary_value(runner("(test-ns 'basilisp.test-runner-compat)"), "test")
     assert runner("(testing-contexts-str)") == ""
-    assert runner("(testing-vars-str {:line 7})") == "() (line 7)"
+    assert runner("(testing-vars-str {:line 7})") == "() (:7)"
 
 
 def test_namespace_hook_captures_direct_test_exceptions(runner: CompileFn, cap_lisp_io):
@@ -288,11 +293,11 @@ def test_namespace_hook_captures_direct_test_exceptions(runner: CompileFn, cap_l
 
     summary = runner("(test-ns 'basilisp.test-runner-compat)")
 
-    assert 0 == _summary_value(summary, "test")
+    assert 1 == _summary_value(summary, "test")
     assert 0 == _summary_value(summary, "pass")
     assert 0 == _summary_value(summary, "fail")
     assert 1 == _summary_value(summary, "error")
-    assert "ERROR in test-ns-hook:" in out.getvalue()
+    assert "ERROR in (hook-error-target)" in out.getvalue()
 
 
 def test_namespace_hook_empty_and_error_results(runner: CompileFn, cap_lisp_io):

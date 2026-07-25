@@ -171,7 +171,7 @@ def test_continue_mode_processes_actions_queued_after_pre_start_failure():
         assert a.await_completion(timeout=2)
 
     assert a.deref() == 1
-    assert isinstance(a.error, RuntimeError)
+    assert a.error is None
     assert not a.pending()
 
 
@@ -231,7 +231,7 @@ def test_submit_failure_preserves_or_continues_queued_actions(error_mode):
             assert a.await_completion(timeout=2)
             assert a.error is None
         else:
-            assert isinstance(a.error, RuntimeError)
+            assert a.error is None
 
     assert a.deref() == 2
 

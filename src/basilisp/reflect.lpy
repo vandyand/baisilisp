@@ -1,6 +1,7 @@
 (ns basilisp.reflect
   "Runtime reflection of Python objects."
-  (:import importlib
+  (:import [basilisp.lang.symbol :as sym]
+           importlib
            inspect
            types))
 
@@ -13,6 +14,9 @@
     "Return a canonical name for the type named by ``this``."))
 
 (extend-protocol TypeReference
+  sym/Symbol
+  (typename [this]
+    (.replace (str this) "<>" "[]"))
   types/ModuleType
   (typename [this]
     (python/getattr this "__name__"))
@@ -207,6 +211,46 @@
 (extend types/MethodDescriptorType      Reflectable {:reflect* reflect-callable})
 (extend types/ClassMethodDescriptorType Reflectable {:reflect* reflect-callable})
 
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;; Clojure Reflection Shapes ;;
+;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+
+(def ^{:doc "The Java access bitflags, along with their friendly names and
+the kinds of objects to which they can apply."}
+  flag-descriptors
+  [{:name :public :flag 0x0001 :contexts #{:class :field :method}}
+   {:name :private :flag 0x0002 :contexts #{:class :field :method}}
+   {:name :protected :flag 0x0004 :contexts #{:class :field :method}}
+   {:name :static :flag 0x0008 :contexts #{:field :method}}
+   {:name :final :flag 0x0010 :contexts #{:class :field :method}}
+   {:name :synchronized :flag 0x0020 :contexts #{:method}}
+   {:name :volatile :flag 0x0040 :contexts #{:field}}
+   {:name :bridge :flag 0x0040 :contexts #{:method}}
+   {:name :varargs :flag 0x0080 :contexts #{:method}}
+   {:name :transient :flag 0x0080 :contexts #{:field}}
+   {:name :native :flag 0x0100 :contexts #{:method}}
+   {:name :interface :flag 0x0200 :contexts #{:class}}
+   {:name :abstract :flag 0x0400 :contexts #{:class :method}}
+   {:name :strict :flag 0x0800 :contexts #{:method}}
+   {:name :synthetic :flag 0x1000 :contexts #{:class :field :method}}
+   {:name :annotation :flag 0x2000 :contexts #{:class}}
+   {:name :enum :flag 0x4000 :contexts #{:class :field :inner}}])
+
+(defrecord Constructor [name declaring-class parameter-types exception-types flags])
+
+(defrecord Method [name return-type declaring-class parameter-types exception-types flags])
+
+(defrecord Field [name type declaring-class flags])
+
+(defprotocol ClassResolver
+  (resolve-class [this name]
+    "Given a class name, return that typeref's class bytes as an InputStream."))
+
+(extend-protocol ClassResolver
+  types/FunctionType
+  (resolve-class [this name]
+    (this name)))
+
 ;;;;;;;;;;;;;;;;;;;
 ;; Reflector API ;;
 ;;;;;;;;;;;;;;;;;;;
@@ -218,12 +262,42 @@
 (deftype PythonReflector []
   Reflector
   (do-reflect [_ typeref]
-    (let [[mod-name obj] (.rsplit typeref "." 1)
+    (let [typeref-name (if (string? typeref)
+                         typeref
+                         (.replace (typename typeref) "/" "."))
+          parts        (.rsplit typeref-name "." 1)
+          mod-name     (first parts)
+          obj          (second parts)
           mod            (importlib/import-module mod-name)]
       (reflect*
        (if obj
          (python/getattr mod obj)
          mod)))))
+
+(defn- unavailable-java-reflector!
+  [reflector-name]
+  (throw (python/NotImplementedError
+          (str "clojure.reflect/" reflector-name
+               " requires JVM class metadata; use basilisp.reflect/PythonReflector or reflect Python objects directly"))))
+
+(deftype JavaReflector [classloader]
+  Reflector
+  (do-reflect [_ _typeref]
+    (unavailable-java-reflector! "JavaReflector")))
+
+(deftype AsmReflector [class-resolver]
+  Reflector
+  (do-reflect [_ _typeref]
+    (unavailable-java-reflector! "AsmReflector")))
+
+(def ^:private default-reflector
+  (->PythonReflector))
+
+(defn- options->map
+  [options]
+  (if (seq options)
+    (apply hash-map options)
+    {}))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Public Interface ;;
@@ -241,10 +315,17 @@
   If ``o`` is an object, then return the results of ``(reflect (type o))``.
 
   If ``o`` is ``nil``, return ``nil``."
-  [o]
-  (reflect* o))
+  [o & options]
+  (let [{:keys [reflector]} (options->map options)]
+    (if reflector
+      (do-reflect reflector o)
+      (reflect* o))))
 
 (defn type-reflect
   "Identical to :lpy:fn:`reflect`."
-  [o]
-  (reflect* o))
+  [o & options]
+  (let [{:keys [reflector]} (merge {:reflector default-reflector}
+                                   (options->map options))]
+    (if (= reflector default-reflector)
+      (reflect* o)
+      (do-reflect reflector o))))

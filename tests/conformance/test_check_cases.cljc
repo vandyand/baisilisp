@@ -8,16 +8,22 @@
 (ns tests.conformance.test-check-cases
   #?(:clj
      (:require [clojure.test.check :as tc]
+               [clojure.test.check.clojure-test.assertions :as assertions]
+               [clojure.test.check.clojure-test.assertions.cljs :as assertions-cljs]
                [clojure.test.check.clojure-test :as ct]
                [clojure.test.check.generators :as gen]
+               [clojure.test.check.impl :as impl]
                [clojure.test.check.properties :as prop]
                [clojure.test.check.random :as rnd]
                [clojure.test.check.results :as results]
                [clojure.test.check.rose-tree :as rose])
      :lpy
      (:require [basilisp.test.check :as tc]
+               [basilisp.test.check.clojure-test.assertions :as assertions]
+               [basilisp.test.check.clojure-test.assertions.cljs :as assertions-cljs]
                [basilisp.test.check.clojure-test :as ct]
                [basilisp.test.check.generators :as gen]
+               [basilisp.test.check.impl :as impl]
                [basilisp.test.check.properties :as prop]
                [basilisp.test.check.random :as rnd]
                [basilisp.test.check.results :as results]
@@ -64,6 +70,9 @@
    :shrunk-has-result (contains? (:shrunk result) :result)
    :shrunk-has-result-data (contains? (:shrunk result) :result-data)})
 
+(ct/defspec direct-defspec-contract 1
+  (prop/for-all [x gen/nat] (= x x)))
+
 (emit-case :public-surface
            {:root (has-publics? #?(:clj 'clojure.test.check
                                    :lpy 'basilisp.test.check)
@@ -90,7 +99,198 @@
                                           *report-trials* *trial-report-period*
                                           assert-check default-reporter-fn
                                           defspec process-options trial-report-dots
-                                          trial-report-periodic with-test-out*])})
+                                          trial-report-periodic with-test-out*])
+            :assertions (has-publics?
+                         #?(:clj 'clojure.test.check.clojure-test.assertions
+                            :lpy 'basilisp.test.check.clojure-test.assertions)
+                         '[check-results check? file-and-line*
+                           test-context-stacktrace])
+            :assertions-cljs (empty?
+                              (ns-publics
+                               #?(:clj 'clojure.test.check.clojure-test.assertions.cljs
+                                  :lpy 'basilisp.test.check.clojure-test.assertions.cljs)))
+            :impl (has-publics? #?(:clj 'clojure.test.check.impl
+                                   :lpy 'basilisp.test.check.impl)
+                                 '[get-current-time-millis])})
+
+(emit-case :direct-public-generator-contracts
+           (let [rng (rnd/make-random 123)
+                 size-generator (gen/sized (fn [size] (gen/return size)))
+                 sized-value (gen/generate size-generator 9 123)
+                 scaled-value (gen/generate (gen/scale inc size-generator) 9 123)
+                 resized-value (gen/generate (gen/resize
+                                              4
+                                              size-generator)
+                                             9
+                                             123)
+                 no-shrink-tree (gen/call-gen (gen/no-shrink gen/nat) rng 10)
+                 recursive (gen/recursive-gen
+                            (fn [inner]
+                              (gen/one-of [(gen/vector inner 0 2)
+                                           gen/small-integer]))
+                            gen/small-integer)]
+             {:extension-type-refs #?(:clj true
+                                      :lpy (every? true?
+                                                  [(some? gen/Generator)
+                                                   (some? prop/ErrorResult)
+                                                   (some? rose/RoseTree)]))
+              :primitive [(sample-ok? any? gen/any 12)
+                          (sample-ok? any? gen/any-equatable 12)
+                          (sample-ok? any? gen/any-printable 12)
+                          (sample-ok? any? gen/any-printable-equatable 12)
+                          (sample-ok? boolean? gen/boolean 20)
+                          (sample-ok? #(<= -2147483648 % 2147483647) gen/int 20)
+                          (sample-ok? pos? gen/pos-int 20)
+                          (sample-ok? neg? gen/neg-int 20)
+                          (sample-ok? pos? gen/s-pos-int 20)
+                          (sample-ok? neg? gen/s-neg-int 20)
+                          (sample-ok? integer? gen/large-integer 20)
+                          (sample-ok? integer? (gen/large-integer* {}) 20)
+                          (sample-ok? float? gen/double 20)
+                          (sample-ok? float? (gen/double* {}) 20)
+                          (sample-ok? string? gen/string 20)
+                          (sample-ok? string? gen/string-alphanumeric 20)
+                          (sample-ok? string? gen/string-alpha-numeric 20)
+                          (sample-ok? #(or (nil? %) (char? %)) gen/char 20)
+                          (sample-ok? #(or (nil? %) (char? %)) gen/char-alpha 20)
+                          (sample-ok? #(or (nil? %) (char? %))
+                                      gen/char-alphanumeric
+                                      20)
+                          (sample-ok? #(or (nil? %) (char? %))
+                                      gen/char-alpha-numeric
+                                      20)
+                          (sample-ok? symbol? gen/symbol-ns 20)
+                          (sample-ok? keyword? gen/keyword-ns 20)
+                          (sample-ok? any? gen/simple-type 20)
+                          (sample-ok? any? gen/simple-type-equatable 20)
+                          (sample-ok? any? gen/simple-type-printable 20)
+                          (sample-ok? any?
+                                      gen/simple-type-printable-equatable
+                                      20)]
+              :collections [(sample-ok? sequential? (gen/list gen/nat) 20)
+                            (sample-ok? #(= (count %) (count (set %)))
+                                        (gen/list-distinct gen/nat)
+                                        20)
+                            (sample-ok? #(= (count %) (count (set (map abs %))))
+                                        (gen/list-distinct-by
+                                         abs
+                                         (gen/choose -20 20))
+                                        20)
+                            (sample-ok? map?
+                                        (gen/hash-map :a gen/nat :b gen/boolean)
+                                        20)
+                            (sample-ok? set?
+                                        (gen/sorted-set gen/small-integer)
+                                        20)
+                            (sample-ok? bytes? gen/bytes 10)
+                            (sample-ok? #(= (count %) (count (set (map abs %))))
+                                        (gen/vector-distinct-by
+                                         abs
+                                         (gen/choose -20 20))
+                                        20)
+                            (sample-ok? seq
+                                        (gen/not-empty (gen/vector gen/nat))
+                                        20)]
+              :combinators [(gen/generator? (gen/elements [:a :b :c]))
+                            (gen/generator? (gen/frequency [[2 gen/nat]
+                                                            [1 gen/boolean]]))
+                            (gen/generator? (gen/gen-pure :x))
+                            (gen/generator? (gen/gen-fmap inc gen/nat))
+                            (gen/generator? (gen/gen-bind gen/nat
+                                                          (fn [_]
+                                                            gen/boolean)))
+                            (gen/generator? (gen/one-of [gen/nat gen/boolean]))
+                            (gen/generator? (gen/container-type gen/nat))
+                            (gen/generator? (gen/shuffle [1 2 3]))
+                            (gen/generator? recursive)
+                            (= 9 sized-value)
+                            (= 10 scaled-value)
+                            (= 4 resized-value)
+                            (some? (rose/root no-shrink-tree))
+                            (some? (rose/root (gen/call-gen
+                                               (gen/shrink-2 gen/small-integer)
+                                               rng
+                                               10)))]
+              :tuple (sample-ok? #(= 3 (count %))
+                                 (gen/tuple gen/nat gen/boolean gen/string)
+                                 20)}))
+
+(emit-case :direct-public-random-result-and-rose-contracts
+           (let [rng (rnd/make-random 123)
+                 rng2 (rnd/make-java-util-splittable-random 123)
+                 rng3 (rnd/->JavaUtilSplittableRandom 1 2)
+                 split-pair (rnd/split rng)
+                 split-many (rnd/split-n rng 4)
+                 error-result (prop/->ErrorResult :boom)
+                 prop-result (gen/call-gen
+                              (prop/for-all* [gen/nat]
+                                (fn [x] (= x x)))
+                              rng
+                              3)
+                 tree (rose/make-rose 1 [(rose/pure 2)
+                                          (rose/make-rose 3 [(rose/pure 4)])])
+                 joined (rose/join (rose/pure (rose/pure :joined)))
+                 bound (rose/bind (rose/pure 1) #(rose/pure (inc %)))
+                 filtered (rose/filter odd? tree)]
+             {:random [(some? rnd/IRandom)
+                       #?(:clj true :lpy (some? rnd/JavaUtilSplittableRandom))
+                       (number? (rnd/rand-long rng))
+                       (float? (rnd/rand-double rng))
+                       (= 2 (count split-pair))
+                       (= 4 (count split-many))
+                       (number? (rnd/rand-long rng2))
+                       (number? (rnd/rand-long rng3))]
+              :results [(some? results/Result)
+                        (satisfies? results/Result true)
+                        (not (results/pass? error-result))
+                        (some? (results/result-data error-result))
+                        (results/pass? (rose/root prop-result))]
+              :properties [(not (results/pass? error-result))
+                           (some? (prop/map->ErrorResult {:error :mapped}))
+                           (some? prop-result)]
+              :rose [(= :joined (rose/root joined))
+                     (= 2 (rose/root bound))
+                     (= 1 (rose/root filtered))
+                     (every? odd? (map rose/root (rose/children filtered)))]}))
+
+(emit-case :direct-public-clojure-test-helper-contracts
+           {:defaults [(number? ct/*default-test-count*)
+                       (map? ct/*default-opts*)
+                       (boolean? ct/*report-trials*)
+                       (boolean? ct/*report-shrinking*)
+                       (boolean? ct/*report-completion*)
+                       (number? ct/*trial-report-period*)]
+            :callables [(fn? ct/default-reporter-fn)
+                        (fn? ct/trial-report-dots)
+                        (fn? ct/trial-report-periodic)
+                        (fn? ct/with-test-out*)
+                        (try
+                          (ct/assert-check {:pass? true})
+                          true
+                          (catch #?(:clj Throwable :lpy Exception) _ false))]
+            :defspec #?(:clj (some? #'ct/defspec)
+                        :lpy (some? #'ct/defspec))})
+
+(emit-case :direct-public-impl-and-assertion-contracts
+           (let [before (impl/get-current-time-millis)
+                 check-form (assertions/check? nil
+                                               '(clojure.test.check.clojure-test/check?
+                                                 {:pass? true}))
+                 report-result (assertions/check-results {:pass? true
+                                                          :result true
+                                                          :num-tests 1})
+                 after (impl/get-current-time-millis)]
+             {:time [(integer? before)
+                     (integer? after)
+                     (<= before after)]
+              :assertions [(sequential? (assertions/test-context-stacktrace []))
+                           (= {:file nil :line nil}
+                              (assertions/file-and-line* []))
+                           (seq? check-form)
+                           (nil? report-result)]
+              :cljs-empty (empty? (ns-publics
+                                   #?(:clj 'clojure.test.check.clojure-test.assertions.cljs
+                                      :lpy 'basilisp.test.check.clojure-test.assertions.cljs)))}))
 
 (emit-case :primitive-generator-invariants
            {:byte (sample-ok? #(<= -128 % 127) gen/byte 80)

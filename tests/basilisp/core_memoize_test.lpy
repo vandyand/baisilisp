@@ -87,3 +87,23 @@
     (is (= 13 (mine 10 2 1)))
     (is (= 13 (mine 10 2 10)))
     (is (= {[2 10] 13 [2 1] 13} (memo/snapshot mine)))))
+
+(deftest memoizer-build-memoizer-and-lazy-snapshot-retain-contract
+  (let [original (fn [x] [:value x])
+        direct (memo/memoizer original
+                              (cache/basic-cache-factory {})
+                              {[:seed] :seeded})
+        built (memo/build-memoizer
+               (fn [_] (cache/basic-cache-factory {}))
+               identity)]
+    (direct :x)
+    (memo/memo-clear! direct [:x])
+    (memo/memo-swap! direct cache/miss [:x] :swapped)
+    (is (memo/memoized? direct))
+    (is (= original (memo/memo-unwrap direct)))
+    (is (= {[:seed] :seeded [:x] :swapped} (memo/snapshot direct)))
+    (is (= #{[[:seed] :seeded] [[:x] :swapped]}
+           (set (memo/lazy-snapshot direct))))
+    (memo/memo-reset! direct {[:r] :reset})
+    (is (= {[:r] :reset} (memo/snapshot direct)))
+    (is (= :built (built :built)))))

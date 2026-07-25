@@ -1,0 +1,97 @@
+(ns tests.basilisp.inspector-test
+  (:require
+   [clojure.inspector :as inspector]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]
+   [basilisp.test :refer [deftest is testing]]))
+
+(deftest inspector-public-surface-test
+  (is (= #{"atom?" "collection-tag" "get-child" "get-child-count"
+           "inspect" "inspect-table" "inspect-tree" "is-leaf"
+           "list-model" "list-provider" "old-table-model" "table-model"
+           "tree-model"}
+         (set (map name (keys (ns-publics 'basilisp.inspector))))))
+  (is (= (find-ns 'basilisp.inspector) (find-ns 'clojure.inspector))))
+
+(deftest inspector-tree-traversal-test
+  (testing "classification matches Clojure's traversal tags"
+    (is (true? (inspector/atom? nil)))
+    (is (true? (inspector/atom? 1)))
+    (is (true? (inspector/atom? "s")))
+    (is (false? (inspector/atom? [1])))
+    (is (= :atom (inspector/collection-tag nil)))
+    (is (= :atom (inspector/collection-tag "s")))
+    (is (= :seq (inspector/collection-tag [1 2])))
+    (is (= :seqable (inspector/collection-tag {:a 1})))
+    (is (= :entry (inspector/collection-tag (first {:a [1 2]})))))
+
+  (testing "child helpers recurse through map entries"
+    (let [entry (first {:a [10 20]})]
+      (is (false? (inspector/is-leaf entry)))
+      (is (= 2 (inspector/get-child-count entry)))
+      (is (= 20 (inspector/get-child entry 1)))))
+
+  (testing "tree model exposes Java-style read methods"
+    (let [model (inspector/tree-model {:a [1 2]})
+          root  (.getRoot model)
+          child (.getChild model root 0)]
+      (is (= {:a [1 2]} root))
+      (is (= [:a [1 2]] child))
+      (is (= 1 (.getChildCount model root)))
+      (is (= -1 (.getIndexOfChild model root child)))
+      (is (false? (.isLeaf model root)))
+      (is (true? (.isLeaf model 1))))))
+
+(deftest inspector-table-models-test
+  (testing "old-table-model supports vector rows"
+    (let [model (inspector/old-table-model [[1 2] [3 4]])]
+      (is (= 2 (.getColumnCount model)))
+      (is (= 2 (.getRowCount model)))
+      (is (= "1" (.getColumnName model 1)))
+      (is (= 4 (.getValueAt model 1 1)))
+      (is (false? (.isCellEditable model 0 0)))))
+
+  (testing "old-table-model supports map rows"
+    (let [model (inspector/old-table-model [(sorted-map :a 1 :b 2)])]
+      (is (= 2 (.getColumnCount model)))
+      (is (= 1 (.getRowCount model)))
+      (is (= "a" (.getColumnName model 0)))
+      (is (= 2 (.getValueAt model 0 1)))))
+
+  (testing "list-provider and list-model expose labels and printed values"
+    (let [provider (inspector/list-provider [10 20])
+          model    (inspector/list-model provider)]
+      (is (= 2 (:nrows provider)))
+      (is (= 20 ((:get-value provider) 1)))
+      (is (= 1 ((:get-label provider) 1)))
+      (is (= 2 (.getColumnCount model)))
+      (is (= 2 (.getRowCount model)))
+      (is (= 1 (.getValueAt model 1 0)))
+      (is (= "20" (.getValueAt model 1 1)))))
+
+  (testing "map list-provider sorts key/value rows"
+    (let [provider (inspector/list-provider {:b 2 :a 1})]
+      (is (= 2 (:nrows provider)))
+      (is (= :a ((:get-label provider) 0)))
+      (is (= 1 ((:get-value provider) 0)))))
+
+  (testing "inspect helpers return model objects instead of opening Swing"
+    (is (= {:a [1]} (.getRoot (inspector/inspect-tree {:a [1]}))))
+    (is (= 2 (.getColumnCount (inspector/inspect-table [[1 2]]))))
+    (is (= 2 (.getColumnCount (inspector/inspect {:a 1}))))
+    (is (= 1 (.getRowCount (inspector/table-model :x))))))
+
+(deftest inspector-vector-traversal-fuzz-test
+  (let [leaf-gen (gen/elements [nil true false -1 0 1 42 "" "alpha" :kw 'sym])
+        vector-gen (gen/vector leaf-gen 0 24)
+        property (prop/for-all [v vector-gen]
+                   (let [model (inspector/tree-model v)]
+                     (and (= (count v) (inspector/get-child-count v))
+                          (= (count v) (.getChildCount model v))
+                          (every? identity
+                                  (map-indexed
+                                   (fn [idx expected]
+                                     (= expected (.getChild model v idx)))
+                                   v)))))]
+    (is (:pass? (tc/quick-check 220 property)))))

@@ -44,10 +44,15 @@
   hook signature. Basilisp's portable text readers do not expose the JVM
   line-start sentinel, so it is not returned."
   [_request-prompt request-exit]
-  (let [form (read *in* false request-exit)]
-    (if (= :repl/quit form)
+  (let [eof-sentinel (gensym "core-server-eof")
+        result       (read+string {:eof eof-sentinel} *in*)]
+    (if (nil? result)
       request-exit
-      form)))
+      (let [[form _source] result]
+        (if (or (= eof-sentinel form)
+                (= :repl/quit form))
+          request-exit
+          form)))))
 
 (defn- print-repl-error [out error]
   (binding [*out* out]

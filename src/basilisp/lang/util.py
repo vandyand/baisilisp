@@ -57,6 +57,26 @@ def munge(s: str, allow_builtins: bool = False) -> str:
 
 _DEMUNGE_PATTERN = re.compile(r"(__[A-Z]+__)")
 _DEMUNGE_REPLACEMENTS = {v: k for k, v in _MUNGE_REPLACEMENTS.items()}
+_CLOJURE_DEMUNGE_REPLACEMENTS = {
+    "_AMP_": "&",
+    "_BANG_": "!",
+    "_CIRCA_": "~",
+    "_COLON_": ":",
+    "_DOLLAR_": "$",
+    "_EQ_": "=",
+    "_GT_": ">",
+    "_LT_": "<",
+    "_PERCENT_": "%",
+    "_PLUS_": "+",
+    "_QMARK_": "?",
+    "_SLASH_": "/",
+    "_STAR_": "*",
+}
+_CLOJURE_DEMUNGE_PATTERN = re.compile(
+    "|".join(
+        map(re.escape, sorted(_CLOJURE_DEMUNGE_REPLACEMENTS, key=len, reverse=True))
+    )
+)
 
 
 def demunge(s: str) -> str:
@@ -70,7 +90,13 @@ def demunge(s: str) -> str:
             return replacement
         return full_match
 
-    return re.sub(_DEMUNGE_PATTERN, demunge_replacer, s).replace("_", "-")
+    basilisp_demunged = re.sub(_DEMUNGE_PATTERN, demunge_replacer, s)
+    clojure_demunged = re.sub(
+        _CLOJURE_DEMUNGE_PATTERN,
+        lambda match: _CLOJURE_DEMUNGE_REPLACEMENTS[match.group(0)],
+        basilisp_demunged,
+    )
+    return clojure_demunged.replace("_", "-")
 
 
 def is_abstract(tp: type) -> bool:

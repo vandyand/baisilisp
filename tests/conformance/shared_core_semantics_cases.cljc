@@ -206,6 +206,81 @@
                        (unreduced :value)
                        @ensure-new]}))
 
+(defn recording-rf [events]
+  (fn
+    ([] (swap! events conj :init) [])
+    ([result] (swap! events conj :complete) (conj result :done))
+    ([result input]
+     (swap! events conj [:step input])
+     (conj result input))))
+
+(emit-case :transduce-completion-boundaries
+           (let [with-init-events (atom [])
+                 with-init-rf     (recording-rf with-init-events)
+                 with-init-value  (transduce (map inc) with-init-rf [] [])
+                 no-init-events   (atom [])
+                 no-init-rf       (recording-rf no-init-events)
+                 no-init-value    (transduce (map inc) no-init-rf [])
+                 early-events     (atom [])
+                 early-rf         (recording-rf early-events)
+                 early-value      (transduce (comp (map inc) (take 2))
+                                             early-rf
+                                             []
+                                             (range 5))]
+             {:with-init {:value with-init-value
+                          :events @with-init-events}
+              :no-init {:value no-init-value
+                        :events @no-init-events}
+              :early {:value early-value
+                      :events @early-events}}))
+
+(emit-case :sequence-completion-and-halt-boundaries
+           (let [events (atom [])
+                 logging-xf (fn [rf]
+                              (fn
+                                ([] (swap! events conj :init) (rf))
+                                ([result]
+                                 (swap! events conj :complete)
+                                 (rf result))
+                                ([result input]
+                                 (swap! events conj [:step input])
+                                 (rf result input))))
+                 empty-value (vec (sequence logging-xf []))
+                 empty-events @events
+                 _ (reset! events [])
+                 full-value (vec (sequence logging-xf [1 2 3]))
+                 full-events @events]
+             {:empty {:value empty-value
+                      :events empty-events}
+              :full {:value full-value
+                     :events full-events}
+              :halt-default (vec (sequence (halt-when #(= % 3))
+                                           (range 6)))
+              :take-zero (vec (sequence (take 0) (range 6)))
+              :take-three (vec (sequence (take 3) (range 6)))
+              :partition-all (vec (sequence (partition-all 2) (range 5)))
+              :multi-coll (vec (sequence (map vector)
+                                         [:a :b :c]
+                                         [1 2]))}))
+
+(defn transducer-case [seed]
+  (let [source (vec (range (mod seed 9)))
+        xf (case (mod seed 7)
+             0 (map inc)
+             1 (filter even?)
+             2 (keep #(when (odd? %) (* % 10)))
+             3 (take (mod seed 5))
+             4 (drop (mod seed 4))
+             5 (comp (map inc) (filter odd?) (take 3))
+             (comp (partition-all 2) (map vec)))]
+    {:source source
+     :sequence (vec (sequence xf source))
+     :into (into [] xf source)
+     :transduce (transduce xf conj [] source)}))
+
+(emit-case :seeded-transducer-corpus
+           (mapv transducer-case (range 96)))
+
 (let [realizations (atom [])
       source (map (fn [x]
                     (swap! realizations conj x)

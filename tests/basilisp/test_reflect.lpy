@@ -3,7 +3,11 @@
            json)
   (:require
    basilisp.string
-   [basilisp.reflect :refer [reflect typename]]
+   [basilisp.reflect :as r :refer [reflect typename]]
+   [clojure.reflect]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]
    [basilisp.test :refer [deftest is are testing]]))
 
 (deftest typename-test
@@ -12,7 +16,6 @@
     0
     0.0
     :kw
-    'sym
     "str"
     []
     {}
@@ -20,6 +23,9 @@
     '())
 
   (are [expected v] (= expected (typename v))
+    "sym"                                   'sym
+    "pkg/Name"                              'pkg/Name
+    "java.lang.String[]"                    'java.lang.String<>
     "json"                                  json
     "collections.abc.Mapping"               collections.abc/Mapping
     "basilisp.lang.vector.PersistentVector" (type [])))
@@ -82,3 +88,160 @@
       (is (string? (:file m)))
       (is (= #{:function :routine :basilisp-function} (:flags m)))
       (is (= :basilisp.reflect/empty (:return-annotation signature))))))
+
+(deftest clojure-reflect-data-surface-test
+  (testing "public Clojure-shaped records and factories exist"
+    (is (every? #(contains? (ns-publics 'clojure.reflect) %)
+                '[->AsmReflector
+                  ->Constructor
+                  ->Field
+                  ->JavaReflector
+                  ->Method
+                  ClassResolver
+                  Reflector
+                  TypeReference
+                  do-reflect
+                  flag-descriptors
+                  map->Constructor
+                  map->Field
+                  map->Method
+                  reflect
+                  resolve-class
+                  type-reflect
+                  typename])))
+
+  (testing "record constructors preserve Clojure field order and map access"
+    (let [method      (r/->Method 'demo/run 'python/object 'demo.Type
+                                  ['python/str] ['python/Exception] #{:public})
+          field       (r/->Field 'value 'python/int 'demo.Type #{:private})
+          constructor (r/->Constructor 'demo.Type 'demo.Type
+                                       ['python/str] [] #{:public})]
+      (is (= ['demo/run 'python/object 'demo.Type ['python/str]
+              ['python/Exception] #{:public}]
+             ((juxt :name :return-type :declaring-class :parameter-types
+                    :exception-types :flags)
+              method)))
+      (is (= ['value 'python/int 'demo.Type #{:private}]
+             ((juxt :name :type :declaring-class :flags) field)))
+      (is (= ['demo.Type 'demo.Type ['python/str] [] #{:public}]
+             ((juxt :name :declaring-class :parameter-types
+                    :exception-types :flags)
+              constructor)))))
+
+  (testing "map factories keep omitted Clojure fields as nil"
+    (is (= [nil 'demo.Type nil nil nil]
+           ((juxt :name :declaring-class :parameter-types :exception-types :flags)
+            (r/map->Constructor {:declaring-class 'demo.Type}))))
+    (is (= ['run nil nil nil nil nil]
+           ((juxt :name :return-type :declaring-class :parameter-types
+                  :exception-types :flags)
+            (r/map->Method {:name 'run}))))
+    (is (= ['field nil nil nil]
+           ((juxt :name :type :declaring-class :flags)
+            (r/map->Field {:name 'field}))))))
+
+(deftest clojure-reflect-protocol-boundaries-test
+  (is (some? r/ClassResolver))
+  (is (some? r/Reflector))
+  (is (some? r/TypeReference))
+  (is (= [:resolved 'demo.Type]
+         (r/resolve-class (fn [name] [:resolved name]) 'demo.Type)))
+  (is (= {:typeref 'demo.Type}
+         (r/do-reflect
+          (reify r/Reflector
+            (do-reflect [_ typeref] {:typeref typeref}))
+          'demo.Type)))
+  (is (= 'JSONDecoder
+         (:name (r/do-reflect (r/->PythonReflector) 'json/JSONDecoder))))
+  (is (= 'str
+         (:name (r/do-reflect (r/->PythonReflector) python/str))))
+  (is (map? (r/type-reflect python/str)))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"requires JVM class metadata"
+       (r/do-reflect (r/->JavaReflector nil) 'java.lang.String)))
+  (is (thrown-with-msg?
+       python/NotImplementedError
+       #"requires JVM class metadata"
+       (r/do-reflect (r/->AsmReflector (fn [_] nil)) 'java.lang.String))))
+
+(deftest clojure-reflect-java-resource-require-test
+  (testing "clojure.reflect.java is a plain source resource loaded through clojure.reflect"
+    (is (nil? (require 'clojure.reflect.java)))
+    (is (nil? (require 'clojure.reflect.java :reload)))
+    (is (nil? (find-ns 'clojure.reflect.java))))
+
+  (testing "namespace-style options still fail because the resource creates no namespace"
+    (is (thrown? python/ImportError
+                 (require '[clojure.reflect.java :as reflect-java])))
+    (is (thrown? python/ImportError
+                 (require '[clojure.reflect.java :refer :all])))))
+
+(deftest flag-descriptors-match-clojure-shape-test
+  (is (= 17 (count r/flag-descriptors)))
+  (is (= {:name :public :flag 1 :contexts #{:class :field :method}}
+         (first r/flag-descriptors)))
+  (is (= {:name :enum :flag 0x4000 :contexts #{:class :field :inner}}
+         (last r/flag-descriptors)))
+  (is (= #{:class :field :method :inner}
+         (set (mapcat :contexts r/flag-descriptors)))))
+
+(deftest reflection-record-seeded-fuzz-test
+  (let [sym-gen  (gen/elements ['a
+                                'demo/run
+                                'python/object
+                                'java.lang.String<>
+                                'pkg/Name
+                                'with-dash
+                                'UPPER
+                                '_hidden])
+        flag-gen (gen/set (gen/elements [:public :private :static :final])
+                          {:max-elements 4})
+        property (prop/for-all [name sym-gen
+                                typ sym-gen
+                                decl sym-gen
+                                params (gen/vector sym-gen 0 6)
+                                exceptions (gen/vector sym-gen 0 4)
+                                flags flag-gen]
+                   (let [method (r/->Method name typ decl params exceptions flags)]
+                     (= [name typ decl params exceptions flags]
+                        ((juxt :name :return-type :declaring-class
+                               :parameter-types :exception-types :flags)
+                         method))))]
+    (is (:pass? (tc/quick-check 240 property)))))
+
+(deftest reflection-member-record-seeded-fuzz-test
+  (let [sym-gen  (gen/elements ['a
+                                'demo/run
+                                'python/object
+                                'java.lang.String<>
+                                'pkg/Name
+                                'with-dash
+                                'UPPER
+                                '_hidden])
+        flag-gen (gen/set (gen/elements [:public :private :static :final])
+                          {:max-elements 4})
+        property (prop/for-all [name sym-gen
+                                typ sym-gen
+                                decl sym-gen
+                                params (gen/vector sym-gen 0 6)
+                                exceptions (gen/vector sym-gen 0 4)
+                                flags flag-gen]
+                   (let [method      (r/->Method name typ decl params exceptions flags)
+                         field       (r/->Field name typ decl flags)
+                         constructor (r/->Constructor decl decl params exceptions flags)]
+                     (and (= [name typ decl params exceptions flags]
+                             ((juxt :name :return-type :declaring-class
+                                    :parameter-types :exception-types :flags)
+                              method))
+                          (= [name typ decl flags]
+                             ((juxt :name :type :declaring-class :flags)
+                              field))
+                          (= [decl decl params exceptions flags]
+                             ((juxt :name :declaring-class :parameter-types
+                                    :exception-types :flags)
+                              constructor))
+                          (= 6 (count (seq method)))
+                          (= 4 (count (seq field)))
+                          (= 5 (count (seq constructor))))))]
+    (is (:pass? (tc/quick-check 240 property)))))

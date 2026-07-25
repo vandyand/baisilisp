@@ -1,0 +1,214 @@
+(ns tests.basilisp.tools-reader-impl-errors-test
+  (:require [basilisp.string :as str]
+            [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader.impl.errors :as errors]
+            [clojure.tools.reader.reader-types :as rt]))
+
+(def expected-publics
+  '[eof-error
+    illegal-arg-error
+    reader-error
+    throw-bad-char
+    throw-bad-escape-char
+    throw-bad-metadata
+    throw-bad-metadata-target
+    throw-bad-ns
+    throw-bad-octal-number
+    throw-bad-reader-tag
+    throw-eof-at-dispatch
+    throw-eof-at-start
+    throw-eof-delimited
+    throw-eof-error
+    throw-eof-in-character
+    throw-eof-reading
+    throw-feature-not-keyword
+    throw-invalid
+    throw-invalid-character-literal
+    throw-invalid-number
+    throw-invalid-octal-len
+    throw-invalid-unicode-char
+    throw-invalid-unicode-digit
+    throw-invalid-unicode-digit-in-token
+    throw-invalid-unicode-escape
+    throw-invalid-unicode-len
+    throw-invalid-unicode-literal
+    throw-ns-map-no-map
+    throw-odd-map
+    throw-single-colon
+    throw-unknown-reader-tag
+    throw-unmatch-delimiter
+    throw-unsupported-character])
+
+(defn- thrown-summary [f]
+  (try
+    (f)
+    {:thrown? false}
+    (catch Exception e
+      {:thrown? true
+       :message (ex-message e)
+       :data (select-keys (ex-data e)
+                          [:type :ex-kind :file :line :col])})))
+
+(defn- indexed-rdr []
+  (rt/indexing-push-back-reader "abc" 1 "sample.cljc"))
+
+(deftest public-impl-errors-api-test
+  (is (boolean (find-ns 'basilisp.tools.reader.impl.errors)))
+  (doseq [sym expected-publics]
+    (is (contains? (ns-publics 'basilisp.tools.reader.impl.errors) sym))))
+
+(deftest generic-error-contracts-test
+  (is (= {:thrown? true
+          :message "xy"
+          :data {:type :reader-exception
+                 :ex-kind :reader-error}}
+         (thrown-summary
+          #(errors/reader-error (rt/string-push-back-reader "abc") "x" "y"))))
+  (is (= {:thrown? true
+          :message "sample.cljc [line 1, col 1] done"
+          :data {:type :reader-exception
+                 :ex-kind :eof
+                 :file "sample.cljc"
+                 :line 1
+                 :col 1}}
+         (thrown-summary #(errors/eof-error (indexed-rdr) "done"))))
+  (is (= {:thrown? true
+          :message "sample.cljc [line 1, col 1] bad"
+          :data {:type :reader-exception
+                 :ex-kind :illegal-argument
+                 :file "sample.cljc"
+                 :line 1
+                 :col 1}}
+         (thrown-summary #(errors/illegal-arg-error (indexed-rdr) "bad")))))
+
+(deftest exact-helper-message-contracts-test
+  (doseq [[label expected f]
+          [[:throw-eof-delimited
+            "sample.cljc [line 1, col 1] Unexpected EOF while reading list, starting at line 2 and column 3."
+            #(errors/throw-eof-delimited (indexed-rdr) :list 2 3)]
+           [:throw-eof-delimited-n
+            "sample.cljc [line 1, col 1] Unexpected EOF while reading item 4 of vector, starting at line 2 and column 3."
+            #(errors/throw-eof-delimited (indexed-rdr) :vector 2 3 4)]
+           [:throw-odd-map
+            "sample.cljc [line 1, col 1] The map literal starting with :a on line 5 column 6 contains 3 form(s). Map literals must contain an even number of forms."
+            #(errors/throw-odd-map (indexed-rdr) 5 6 [:a 1 :b])]
+           [:throw-invalid-number
+            "sample.cljc [line 1, col 1] Invalid number: 09."
+            #(errors/throw-invalid-number (indexed-rdr) "09")]
+           [:throw-eof-reading-string
+            "sample.cljc [line 1, col 1] Unexpected EOF reading string starting \"ab."
+            #(errors/throw-eof-reading (indexed-rdr) :string \a \b)]
+           [:throw-eof-reading-regex
+            "sample.cljc [line 1, col 1] Unexpected EOF reading regex starting #\"a."
+            #(errors/throw-eof-reading (indexed-rdr) :regex \a)]
+           [:throw-bad-metadata
+            "sample.cljc [line 1, col 1] Metadata cannot be 42. Metadata must be a Symbol, Keyword, String, Map or Vector."
+            #(errors/throw-bad-metadata (indexed-rdr) 42)]
+           [:throw-bad-metadata-target
+            "sample.cljc [line 1, col 1] Metadata can not be applied to 42. Metadata can only be applied to IMetas."
+            #(errors/throw-bad-metadata-target (indexed-rdr) 42)]
+           [:throw-unknown-reader-tag
+            "sample.cljc [line 1, col 1] No reader function for tag demo/tag."
+            #(errors/throw-unknown-reader-tag (indexed-rdr) 'demo/tag)]]]
+    (testing (str label)
+      (is (= expected (:message (thrown-summary f)))))))
+
+(deftest every-helper-ex-kind-contract-test
+  (doseq [[label expected-kind f]
+          [[:throw-eof-delimited :eof
+            #(errors/throw-eof-delimited (indexed-rdr) :list 2 3)]
+           [:throw-eof-delimited-n :eof
+            #(errors/throw-eof-delimited (indexed-rdr) :vector 2 3 4)]
+           [:throw-eof-at-start :eof
+            #(errors/throw-eof-at-start (indexed-rdr) :map)]
+           [:throw-eof-at-dispatch :eof
+            #(errors/throw-eof-at-dispatch (indexed-rdr))]
+           [:throw-eof-reading :eof
+            #(errors/throw-eof-reading (indexed-rdr) :string \a)]
+           [:throw-eof-in-character :eof
+            #(errors/throw-eof-in-character (indexed-rdr))]
+           [:throw-eof-error :eof
+            #(errors/throw-eof-error (indexed-rdr) 7)]
+           [:throw-odd-map :reader-error
+            #(errors/throw-odd-map (indexed-rdr) 5 6 [:a 1 :b])]
+           [:throw-invalid-number :reader-error
+            #(errors/throw-invalid-number (indexed-rdr) "09")]
+           [:throw-invalid-unicode-escape :reader-error
+            #(errors/throw-invalid-unicode-escape (indexed-rdr) \x)]
+           [:throw-invalid :reader-error
+            #(errors/throw-invalid (indexed-rdr) :token "abc")]
+           [:throw-bad-char :reader-error
+            #(errors/throw-bad-char (indexed-rdr) :string \q)]
+           [:throw-unmatch-delimiter :reader-error
+            #(errors/throw-unmatch-delimiter (indexed-rdr) \])]
+           [:throw-invalid-character-literal :reader-error
+            #(errors/throw-invalid-character-literal (indexed-rdr) "ZZ")]
+           [:throw-invalid-octal-len :reader-error
+            #(errors/throw-invalid-octal-len (indexed-rdr) "1234")]
+           [:throw-bad-octal-number :reader-error
+            #(errors/throw-bad-octal-number (indexed-rdr))]
+           [:throw-unsupported-character :reader-error
+            #(errors/throw-unsupported-character (indexed-rdr) "newline")]
+           [:throw-bad-escape-char :reader-error
+            #(errors/throw-bad-escape-char (indexed-rdr) \z)]
+           [:throw-single-colon :reader-error
+            #(errors/throw-single-colon (indexed-rdr))]
+           [:throw-bad-metadata :reader-error
+            #(errors/throw-bad-metadata (indexed-rdr) 42)]
+           [:throw-bad-metadata-target :reader-error
+            #(errors/throw-bad-metadata-target (indexed-rdr) 42)]
+           [:throw-feature-not-keyword :reader-error
+            #(errors/throw-feature-not-keyword (indexed-rdr) 'feature)]
+           [:throw-ns-map-no-map :reader-error
+            #(errors/throw-ns-map-no-map (indexed-rdr) 'demo)]
+           [:throw-bad-ns :reader-error
+            #(errors/throw-bad-ns (indexed-rdr) 42)]
+           [:throw-bad-reader-tag :reader-error
+            #(errors/throw-bad-reader-tag (indexed-rdr) :tag)]
+           [:throw-unknown-reader-tag :reader-error
+            #(errors/throw-unknown-reader-tag (indexed-rdr) 'demo/tag)]
+           [:throw-invalid-unicode-literal :illegal-argument
+            #(errors/throw-invalid-unicode-literal (indexed-rdr) "12")]
+           [:throw-invalid-unicode-char :illegal-argument
+            #(errors/throw-invalid-unicode-char (indexed-rdr) "ZZ")]
+           [:throw-invalid-unicode-digit-in-token :illegal-argument
+            #(errors/throw-invalid-unicode-digit-in-token
+              (indexed-rdr)
+              \G
+              "12G")]
+           [:throw-invalid-unicode-digit :illegal-argument
+            #(errors/throw-invalid-unicode-digit (indexed-rdr) \G)]
+           [:throw-invalid-unicode-len :illegal-argument
+            #(errors/throw-invalid-unicode-len (indexed-rdr) 2 4)]]]
+    (testing (str label)
+      (let [summary (thrown-summary f)]
+        (is (:thrown? summary))
+        (is (= expected-kind (get-in summary [:data :ex-kind])))))))
+
+(deftest generated-reader-location-corpus-test
+  (doseq [[source consumed file-name] [["abc" 0 nil]
+                                      ["abc" 1 "one.cljc"]
+                                      ["a\nbc" 2 "two.cljc"]
+                                      ["a\nbc" 3 "three.cljc"]
+                                      ["\n\nz" 2 "four.cljc"]
+                                      ["xy\nz\n" 5 "five.cljc"]]]
+    (let [r (rt/indexing-push-back-reader source 1 file-name)]
+      (dotimes [_ consumed]
+        (rt/read-char r))
+      (let [line    (rt/get-line-number r)
+            col     (rt/get-column-number r)
+            summary (thrown-summary #(errors/reader-error r "seed-" consumed))
+            data    (:data summary)
+            prefix  (str (if file-name (str file-name " "))
+                         "[line " line ", col " col "] ")]
+        (testing (str {:source source :consumed consumed :file file-name})
+          (is (:thrown? summary))
+          (is (= {:type :reader-exception
+                  :ex-kind :reader-error
+                  :file file-name
+                  :line line
+                  :col col}
+                 data))
+          (is (str/starts-with? (:message summary) prefix))
+          (is (str/ends-with? (:message summary)
+                              (str "seed-" consumed))))))))

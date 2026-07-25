@@ -1,4 +1,6 @@
 import io
+import math
+from fractions import Fraction
 
 import pytest
 from hypothesis import given
@@ -19,6 +21,14 @@ def _utf16_units(value: str) -> list[str]:
         chr(int.from_bytes(encoded[offset : offset + 2], "little"))
         for offset in range(0, len(encoded), 2)
     ]
+
+
+def _utf16_slice(value: str, start: int, end: int) -> str:
+    return "".join(_utf16_units(value)[start:end])
+
+
+def _utf16_bytes(value: str) -> bytes:
+    return value.encode("utf-16-le", "surrogatepass")
 
 
 @pytest.mark.parametrize(
@@ -71,6 +81,54 @@ def test_string_sequence_fuzz_produces_distinct_utf16_characters(value):
         assert runtime.get(text, index) == expected_character
     assert runtime.nth(text, -1, "missing") == "missing"
     assert runtime.get(text, -1, "missing") == "missing"
+
+
+@given(st.integers(min_value=0, max_value=0xFFFF).map(chr))
+def test_character_scalar_fuzz_never_inherits_string_collection_behavior(value):
+    char_value = character.Character(value)
+    string_value = str(char_value)
+
+    assert char_value != string_value
+    assert runtime.to_py(char_value) == string_value
+    assert runtime._interop_arg(char_value) == string_value
+
+    for coercion in (runtime.to_seq, runtime.to_set, runtime.vector, runtime.count):
+        with pytest.raises(TypeError):
+            coercion(char_value)
+
+
+@given(
+    value=st.text(),
+    start_offset=st.integers(min_value=0, max_value=50),
+    end_offset=st.integers(min_value=0, max_value=50),
+)
+def test_utf16_substring_fuzz_matches_code_unit_slice(
+    value, start_offset, end_offset
+):
+    units = _utf16_units(value)
+    start = min(start_offset, len(units))
+    end = min(start + end_offset, len(units))
+
+    expected = _utf16_bytes(_utf16_slice(value, start, end))
+
+    assert _utf16_bytes(character.utf16_substring(value, start, end)) == expected
+    assert character.utf16_substring(
+        value, Fraction(start * 10 + 9, 10), Fraction(end * 10 + 9, 10)
+    ).encode("utf-16-le", "surrogatepass") == expected
+    assert character.utf16_substring(value, math.nan) == value
+
+
+def test_utf16_substring_rejects_explicit_nil_bool_and_infinite_indexes():
+    with pytest.raises(TypeError):
+        character.utf16_substring("abc", None)
+    with pytest.raises(TypeError):
+        character.utf16_substring("abc", 1, None)
+    with pytest.raises(TypeError):
+        character.utf16_substring("abc", True)
+    with pytest.raises(TypeError):
+        character.utf16_substring("abc", 1, False)
+    with pytest.raises(ValueError):
+        character.utf16_substring("abc", math.inf)
 
 
 @given(st.text())

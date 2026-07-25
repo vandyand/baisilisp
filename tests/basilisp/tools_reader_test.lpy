@@ -1,6 +1,8 @@
 (ns tests.basilisp.tools-reader-test
   (:require [basilisp.test :refer [deftest is testing]]
+            [basilisp.edn :as bedn]
             [clojure.tools.reader :as tr]
+            [clojure.tools.reader.edn :as edn]
             [clojure.tools.reader.reader-types :as rt]
             [clojure.test.check :as tc]
             [clojure.test.check.generators :as gen]
@@ -10,7 +12,13 @@
   (is (= [1 :two] (tr/read-string "[1 :two]")))
   (is (nil? (tr/read-string nil)))
   (is (nil? (tr/read-string "")))
-  (is (= :selected (tr/read-string "#?(:lpy :selected :default :wrong)")))
+  (is (thrown? Exception
+               (tr/read-string "#?(:lpy :selected :default :wrong)")))
+  (is (thrown? Exception
+               (tr/read-string "[1 #?(:lpy :selected :default :wrong)]")))
+  (is (= :selected
+         (tr/read-string {:read-cond :allow :features #{:lpy}}
+                         "#?(:lpy :selected :default :wrong)")))
   (is (= '(:lpy :selected :default :wrong)
          (:form (tr/read-string {:read-cond :preserve}
                                 "#?(:lpy :selected :default :wrong)"))))
@@ -21,6 +29,65 @@
     (is (thrown? EOFError (tr/read r))))
   (binding [tr/*data-readers* {'demo/tag (fn [x] [:tagged x])}]
     (is (= [:tagged 42] (tr/read-string "#demo/tag 42")))))
+
+(deftest tools-reader-edn-matches-edn-subset-boundaries
+  (is (contains? (ns-publics 'basilisp.tools.reader.edn) 'read))
+  (is (contains? (ns-publics 'basilisp.tools.reader.edn) 'read-string))
+  (is (nil? (edn/read-string nil)))
+  (is (nil? (edn/read-string "")))
+  (is (nil? (edn/read-string " \n\t ")))
+  (is (= 1 (edn/read-string "1 2")))
+  (is (= {:a [1 2] :b #{:c :d}}
+         (edn/read-string "{:a [1 2] :b #{:c :d}}")))
+  (is (= {:ns/a 1 :ns/b 2}
+         (edn/read-string "#:ns{:a 1 :b 2}")))
+  (is (= (symbol "'a") (edn/read-string "'a")))
+  (is (= {:private true}
+         (select-keys (meta (edn/read-string "^:private a"))
+                      [:private])))
+  (let [r (rt/string-push-back-reader "1 2")]
+    (is (= 1 (edn/read r)))
+    (is (= 2 (edn/read r)))
+    (is (= :done (edn/read r false :done {})))
+    (is (thrown? EOFError (edn/read r))))
+  (is (= :done
+         (edn/read {:eof :done} (rt/string-push-back-reader ""))))
+  (is (= [:box [1 2]]
+         (edn/read-string {:readers {'demo/box (fn [x] [:box x])}}
+                          "#demo/box [1 2]")))
+  (is (= [:default 'unknown/tag {:x 1}]
+         (edn/read-string {:default (fn [tag value] [:default tag value])}
+                          "#unknown/tag {:x 1}")))
+  (is (= [:default 'py [1 2]]
+         (edn/read-string {:default (fn [tag value] [:default tag value])}
+                          "#py [1 2]")))
+  (is (= "550e8400-e29b-41d4-a716-446655440000"
+         (str (edn/read-string "#uuid \"550e8400-e29b-41d4-a716-446655440000\""))))
+  (is (some? (edn/read-string "#inst \"2020-01-02T03:04:05.000Z\""))))
+
+(deftest tools-reader-edn-rejects-non-edn-reader-syntax
+  (doseq [source ["]"
+                  "(1 2"
+                  "[1 2"
+                  "{:a 1"
+                  "{:a}"
+                  "#{:a"
+                  "foo/bar/baz"
+                  "::kw"
+                  "`a"
+                  "~a"
+                  "@a"
+                  "#'a"
+                  "#()"
+                  "#\"a+\""
+                  "#=(+ 1 2)"
+                  "#?(:lpy :x)"
+                  "#?@(:lpy [1])"
+                  "#b \"x\""
+                  "#f \"x\""
+                  "#unknown/tag 1"]]
+    (testing source
+      (is (thrown? Exception (edn/read-string source))))))
 
 (deftest suppress-read-preserves-tagged-literals
   (let [source   "#demo/tag {:x [1 2]}"
@@ -52,6 +119,11 @@
                (tr/read+string (rt/string-push-back-reader "1")))))
 
 (deftest reader-types-maintain-pushback-and-location-state
+  (let [plain (rt/string-push-back-reader "ab")]
+    (is (not (rt/indexing-reader? plain)))
+    (is (nil? (rt/get-line-number plain)))
+    (is (nil? (rt/get-column-number plain)))
+    (is (nil? (rt/get-file-name plain))))
   (let [r (rt/indexing-push-back-reader "ab\n" 2 "sample.lpy")]
     (is (rt/indexing-reader? r))
     (is (rt/line-start? r))
@@ -66,11 +138,22 @@
     (is (= \b (rt/read-char r)))
     (is (= "" (rt/read-line r)))
     (is (= 2 (rt/get-line-number r)))
-    (is (rt/line-start? r))))
+    (is (rt/line-start? r))
+    (is (= "" (rt/read-line r)))))
 
 (deftest public-reader-type-constructors-and-coercers
   (is (contains? (ns-publics 'basilisp.tools.reader) '*alias-map*))
   (is (contains? (ns-publics 'basilisp.tools.reader) '*read-delim*))
+  (is (false? tr/*read-delim*))
+  (is (contains? tr/default-data-readers 'inst))
+  (is (contains? tr/default-data-readers 'uuid))
+  (let [quoted (tr/syntax-quote (map inc [1 2]))]
+    (is (seq? quoted))
+    (is (= ["map" "inc" "[1 2]"]
+           (mapv #(if (symbol? %)
+                    (name %)
+                    (pr-str %))
+                 quoted))))
   (is (= 'clojure.core/array-map (tr/map-func (range 15))))
   (is (= 'clojure.core/hash-map (tr/map-func (range 16))))
   (is (= \b (rt/read-char (rt/->StringReader "abc" 3 1))))
@@ -90,6 +173,27 @@
          (meta (rt/merge-meta (with-meta 'value {:source :old :a 1})
                               {:b 2})))))
 
+(deftest public-read-symbol-and-resolve-symbol-contracts
+  (is (bound? #'tr/read-symbol))
+  (let [r  (rt/indexing-push-back-reader "alpha)" 1 "symbols.lpy")
+        ch (rt/read-char r)
+        s  (tr/read-symbol r ch)]
+    (is (= 'alpha s))
+    (is (= \) (rt/read-char r)))
+    (is (= {:line 1 :column 1 :end-line 1 :end-column 6 :file "symbols.lpy"}
+           (select-keys (meta s) [:line :column :end-line :end-column :file]))))
+  (is (= 'target.ns/name
+         (binding [tr/*alias-map* {'alias.ns 'target.ns}]
+           (tr/resolve-symbol 'alias.ns/name))))
+  (is (= 'clojure.core/map (tr/resolve-symbol 'map)))
+  (is (= 42 (tr/read-string "#=(+ 20 22)")))
+  (is (thrown? Exception
+               (binding [tr/*read-eval* false]
+                 (tr/read-string "#=(+ 20 22)"))))
+  (is (thrown? PermissionError
+               (binding [tr/*read-eval* :unknown]
+                 (tr/read-string "1")))))
+
 (deftest repeated-reads-survive-parser-lookahead-under-fuzzing
   ;; This catches the subtle regression where a fresh parser is wrapped around
   ;; a stream for every read and silently consumes its lookahead character.
@@ -103,6 +207,21 @@
       (is (:pass? result))
       (is (= 600 (:num-tests result))))))
 
+(deftest read-symbol-matches-read-string-for-simple-fuzzed-symbols
+  (let [simple-symbol (gen/fmap (fn [[c suffix]] (str c suffix))
+                                (gen/tuple gen/char-alpha gen/string-alphanumeric))
+        property (prop/for-all [name simple-symbol]
+                   (let [name   (if (seq name) name "x")
+                         source (str name ")")
+                         r      (rt/string-push-back-reader source)
+                         ch     (rt/read-char r)
+                         sym    (tr/read-symbol r ch)]
+                     (and (= (tr/read-string name) sym)
+                          (= \) (rt/read-char r)))))
+        result (tc/quick-check 300 property :seed 20260724 :max-size 40)]
+    (is (:pass? result))
+    (is (= 300 (:num-tests result)))))
+
 (deftest suppress-read-preserves-arbitrary-tagged-data-under-fuzzing
   (let [property (prop/for-all [tag-name (gen/elements ["demo/tag" "vendor/thing" "local"])
                                 value    (gen/vector (gen/choose -100000 100000))]
@@ -114,3 +233,69 @@
         result (tc/quick-check 600 property :seed 20260723 :max-size 80)]
     (is (:pass? result))
     (is (= 600 (:num-tests result)))))
+
+(deftest reader-conditionals-require-explicit-read-cond-under-fuzzing
+  (let [property (prop/for-all [value (gen/choose -100000 100000)
+                                wrapper (gen/elements [:top :vector :map])]
+                   (let [conditional (str "#?(:lpy " value " :default :wrong)")
+                         source      (case wrapper
+                                       :top conditional
+                                       :vector (str "[1 " conditional " 2]")
+                                       :map (str "{:value " conditional "}"))]
+                     (and
+                      (try
+                        (tr/read-string source)
+                        false
+                        (catch Exception _ true))
+                      (some? (tr/read-string {:read-cond :allow :features #{:lpy}}
+                                             source)))))
+        result (tc/quick-check 600 property :seed 20260725 :max-size 80)]
+    (is (:pass? result))
+    (is (= 600 (:num-tests result)))))
+
+(deftest tools-reader-edn-matches-basilisp-edn-generated-corpus
+  (doseq [xs [[] [1] [-1 0 1] (range 12)]
+          ys [[] [:a] [:a :b :a] [:d :c :b :a]]]
+    (let [source (pr-str {:xs xs
+                          :ys ys
+                          :unique (set ys)
+                          :nested [xs {:ys ys}]})]
+      (is (= (bedn/read-string source)
+             (edn/read-string source))))))
+
+(deftest reader-conditional-splicing-survives-generated-collections
+  (let [property (prop/for-all [prefix (gen/vector (gen/choose -1000 1000) 0 8)
+                                middle (gen/vector (gen/choose -1000 1000) 0 8)
+                                suffix (gen/vector (gen/choose -1000 1000) 0 8)]
+                   (let [source (str "["
+                                     (apply str (map #(str % " ") prefix))
+                                     "#?@(:lpy " (pr-str middle) ") "
+                                     (apply str (map #(str % " ") suffix))
+                                     "]")]
+                     (= (vec (concat prefix middle suffix))
+                        (tr/read-string {:read-cond :allow :features #{:lpy}}
+                                        source))))
+        result (tc/quick-check 100 property :seed 20260726 :max-size 50)]
+    (is (:pass? result))
+    (is (= 100 (:num-tests result)))))
+
+(deftest source-logging-preserves-form-boundaries-under-fuzzing
+  (let [property (prop/for-all [x (gen/choose -100000 100000)
+                                y (gen/choose -100000 100000)
+                                ws1 (gen/elements [" " "  " "\n " "\t "])
+                                ws2 (gen/elements [" " "\n" "\n ; comment\n" "\r\n"])]
+                   (let [first-form (pr-str [x :selected])
+                         second-form (pr-str {:y y})
+                         source (str ws1 "#_ :discard\n"
+                                     first-form
+                                     ws2
+                                     second-form
+                                     "   ")
+                         r (rt/source-logging-push-back-reader source)]
+                     (and (= [[x :selected] (str "#_ :discard\n" first-form)]
+                             (tr/read+string r))
+                          (= [{:y y} (.strip (str ws2 second-form))]
+                             (tr/read+string r)))))
+        result (tc/quick-check 100 property :seed 20260727 :max-size 80)]
+    (is (:pass? result))
+    (is (= 100 (:num-tests result)))))

@@ -56,6 +56,14 @@
       (catch #?(:clj Throwable :lpy python/Exception) _
         {:error? true}))))
 
+(defn decoded-bytes-or-error [xs]
+  (let [bs (byte-array* xs)]
+    (try
+      {:error? false
+       :bytes (unsigned-bytes (b64/decode bs))}
+      (catch #?(:clj Throwable :lpy python/Exception) _
+        {:error? true}))))
+
 (emit-case :public-surface
            (sort (map name (keys (ns-publics #?(:clj 'clojure.data.codec.base64
                                                 :lpy 'basilisp.data.codec.base64))))))
@@ -90,21 +98,46 @@
                  encoded (b64/encode source 2 6)
                  enc-dest (byte-array (b64/enc-length 6))
                  dec-dest (byte-array 6)
+                 enc-tail-dest (byte-array* [35 35 35 35 35 35 35 35])
+                 dec-tail-dest (byte-array* [35 35 35 35 35])
                  enc-written (b64/encode! source 2 6 enc-dest)
-                 dec-written (b64/decode! enc-dest 0 8 dec-dest)]
+                 dec-written (b64/decode! enc-dest 0 8 dec-dest)
+                 enc-tail-written (b64/encode! source 2 2 enc-tail-dest)
+                 dec-tail-written (b64/decode! (ascii-bytes "Zm8=") 0 4 dec-tail-dest)]
              {:encoded (ascii encoded)
               :enc-written enc-written
               :enc-dest (ascii enc-dest)
               :dec-written dec-written
               :dec-dest (unsigned-bytes dec-dest)
+              :enc-tail-written enc-tail-written
+              :enc-tail-dest (ascii enc-tail-dest)
+              :dec-tail-written dec-tail-written
+              :dec-tail-dest (unsigned-bytes dec-tail-dest)
               :zero-offset-decode (unsigned-bytes (b64/decode source 10 0))}))
 
 (emit-case :permissive-decoding
            (into {}
                  (map (fn [s] [s (decoded-or-error s)]))
-                 ["" "A" "AA" "AAA" "AAAA" "AAAAA" "abc" "abcd"
-                  "!!!!" "Zg=a" "=" "==" "===" "====" "A=" "A=="
-                  "A===" "AA=" "AA==" "AAA=" "AAA=="]))
+                  ["" "A" "AA" "AAA" "AAAA" "AAAAA" "abc" "abcd"
+                   "!!!!" "Zg=a" "=" "==" "===" "====" "A=" "A=="
+                   "A===" "AA=" "AA==" "AAA=" "AAA=="]))
+
+(emit-case :adversarial-decoder-table-boundaries
+           {:low-invalid (decoded-bytes-or-error [35 35 35 35])
+            :high-invalid-active (decoded-bytes-or-error [65 65 65 126])
+            :high-invalid-all (decoded-bytes-or-error [126 126 126 126])
+            :max-table-invalid (decoded-bytes-or-error [122 122 122 122])
+            :beyond-table (decoded-bytes-or-error [123 123 123 123])
+            :unchecked-byte (decoded-bytes-or-error [255 255 255 255])
+            :trailing-partial-high (decoded-bytes-or-error [65 65 65 65 126])
+            :offset-high-active (try
+                                  {:error? false
+                                   :bytes (unsigned-bytes
+                                           (b64/decode (byte-array* [65 65 65 65 126 65])
+                                                       1
+                                                       4))}
+                                  (catch #?(:clj Throwable :lpy python/Exception) _
+                                    {:error? true}))})
 
 (defn transfer-encode [bytes buffer-size]
   (let [out (output-stream)]
@@ -130,7 +163,9 @@
             :decode (mapv (fn [size]
                             [size (transfer-decode "AAAA" size)])
                           [0 1 2 3 4 5 8 12])
-            :permissive-tail (transfer-decode "AAAAA" 4)})
+            :permissive-tail (transfer-decode "AAAAA" 4)
+            :high-byte-split-buffer (transfer-decode "AAAA~~~~" 4)
+            :high-byte-same-buffer (transfer-decode "AAAA~~~~" 8)})
 
 (defn next-seed [seed]
   (mod (+ (* seed 1103515245) 12345) 2147483648))

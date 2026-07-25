@@ -16,10 +16,21 @@ from zipfile import ZipFile
 _REQUIRED_SOURCES = (
     "basilisp/core.lpy",
     "basilisp/datafy.lpy",
+    "basilisp/inspector.lpy",
     "basilisp/java/io.lpy",
+    "basilisp/java/basis.lpy",
+    "basilisp/java/basis/impl.lpy",
+    "basilisp/java/browse.lpy",
+    "basilisp/java/browse_ui.lpy",
+    "basilisp/java/javadoc.lpy",
     "basilisp/java/shell.lpy",
+    "basilisp/main_compat.lpy",
     "basilisp/math/combinatorics.lpy",
+    "basilisp/parallel.lpy",
+    "basilisp/repl_deps.lpy",
     "basilisp/spec/alpha.lpy",
+    "basilisp/test/junit.lpy",
+    "basilisp/tools/deps/interop.lpy",
     "medley/core.lpy",
 )
 
@@ -33,17 +44,39 @@ from basilisp.main import init
 init()
 core = importlib.import_module("basilisp.core")
 datafy = importlib.import_module("basilisp.datafy")
+inspector = importlib.import_module("basilisp.inspector")
+basis = importlib.import_module("basilisp.java.basis")
+basis_impl = importlib.import_module("basilisp.java.basis.impl")
+browse = importlib.import_module("basilisp.java.browse")
+browse_ui = importlib.import_module("basilisp.java.browse_ui")
 java_io = importlib.import_module("basilisp.java.io")
+javadoc = importlib.import_module("basilisp.java.javadoc")
 java_shell = importlib.import_module("basilisp.java.shell")
+main_compat = importlib.import_module("basilisp.main_compat")
 combinatorics = importlib.import_module("basilisp.math.combinatorics")
 medley = importlib.import_module("medley.core")
+parallel = importlib.import_module("basilisp.parallel")
+repl_deps = importlib.import_module("basilisp.repl_deps")
 spec = importlib.import_module("basilisp.spec.alpha")
+test_junit = importlib.import_module("basilisp.test.junit")
+deps_interop = importlib.import_module("basilisp.tools.deps.interop")
 assert callable(datafy.datafy)
+assert callable(inspector.tree_model)
+assert callable(basis.current_basis)
+assert callable(basis_impl.update_basis__BANG__)
+assert callable(browse.browse_url)
+assert browse_ui is not None
 assert callable(java_io.file)
+assert callable(javadoc.javadoc)
 assert callable(java_shell.sh)
+assert callable(main_compat.repl_read)
 assert callable(combinatorics.combinations)
 assert callable(medley.deep_merge)
+assert callable(parallel.pvec)
+assert callable(repl_deps.add_libs)
 assert callable(spec.valid__Q__)
+assert callable(test_junit.junit_report)
+assert callable(deps_interop.invoke_tool)
 cache_files = tuple(Path(core.__file__).parent.joinpath("__pycache__").glob("core.*.lpyc"))
 assert cache_files, core.__file__
 print(importlib.metadata.version("baisilisp"))

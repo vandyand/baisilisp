@@ -13,7 +13,7 @@ from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from itertools import chain
 from typing import Any
-from urllib.parse import quote, unquote
+from urllib.parse import quote_plus, unquote_plus
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
@@ -71,18 +71,28 @@ class QNameEvent:
 
 @dataclass(frozen=True)
 class EndElementEvent:
-    pass
+    tag: kw.Keyword | None = None
+    nss: lmap.PersistentMap | None = None
+    location_info: Any = None
 
 
 end_element_event = EndElementEvent()
 
 
 def encode_uri(value: Any) -> str:
-    return quote(str(value), safe="")
+    return quote_plus(str(value), safe="")
 
 
 def decode_uri(value: Any) -> str:
-    return unquote(str(value))
+    return unquote_plus(str(value))
+
+
+def parse_qname(value: Any) -> kw.Keyword:
+    text = str(value)
+    if text.startswith("{"):
+        uri, local = text[1:].split("}", 1)
+        return qname(uri, local)
+    return qname(text)
 
 
 def qname(uri: Any = "", local: Any | None = None, _prefix: Any = None) -> kw.Keyword:
@@ -93,6 +103,8 @@ def qname(uri: Any = "", local: Any | None = None, _prefix: Any = None) -> kw.Ke
 
 
 def qname_uri(name: Any) -> str:
+    if isinstance(name, str):
+        name = parse_qname(name)
     if not isinstance(name, kw.Keyword):
         raise TypeError("XML QName must be a keyword")
     if name.ns is None:
@@ -107,6 +119,8 @@ def qname_uri(name: Any) -> str:
 
 
 def qname_local(name: Any) -> str:
+    if isinstance(name, str):
+        name = parse_qname(name)
     if not isinstance(name, kw.Keyword):
         raise TypeError("XML QName must be a keyword")
     return name.name
@@ -177,17 +191,20 @@ def parse(source: Any, options: Mapping[Any, Any] | None = None) -> lmap.Persist
 
 
 class _EventHandler(xml.sax.handler.ContentHandler):
-    def __init__(self, include_comments: bool) -> None:
+    def __init__(self, include_comments: bool, coalescing: bool) -> None:
         super().__init__()
         self.events: deque[Any] = deque()
         self._pending: list[tuple[kw.Keyword, lmap.PersistentMap]] = []
+        self._open_tags: list[kw.Keyword] = []
         self._include_comments = include_comments
+        self._coalescing = coalescing
         self._in_cdata = False
 
     def _flush_pending(self) -> None:
         if self._pending:
             tag, attrs = self._pending.pop()
             self.events.append(StartElementEvent(tag, attrs, lmap.EMPTY))
+            self._open_tags.append(tag)
 
     def startElementNS(self, name, _qname, attrs):  # noqa: N802
         self._flush_pending()
@@ -198,18 +215,19 @@ class _EventHandler(xml.sax.handler.ContentHandler):
         }
         self._pending.append((qname(uri or "", local), lmap.map(converted)))
 
-    def endElementNS(self, _name, _qname):  # noqa: N802
+    def endElementNS(self, name, _qname):  # noqa: N802
         if self._pending:
             tag, attrs = self._pending.pop()
             self.events.append(EmptyElementEvent(tag, attrs, lmap.EMPTY))
         else:
-            self.events.append(end_element_event)
+            tag = self._open_tags.pop() if self._open_tags else qname(name[0] or "", name[1])
+            self.events.append(EndElementEvent(tag, lmap.EMPTY, None))
 
     def characters(self, content: str) -> None:
         if not content:
             return
         self._flush_pending()
-        event_type = CDataEvent if self._in_cdata else CharsEvent
+        event_type = CDataEvent if self._in_cdata and not self._coalescing else CharsEvent
         if self.events and isinstance(self.events[-1], event_type):
             previous = self.events[-1]
             self.events[-1] = event_type(previous.str + content)
@@ -290,7 +308,8 @@ def event_seq(source: Any, options: Mapping[Any, Any] | None = None):
     include = options.get(
         kw.keyword("include-node?"), {kw.keyword("element"), kw.keyword("characters")}
     )
-    handler = _EventHandler(kw.keyword("comment") in include)
+    coalescing = bool(options.get(kw.keyword("coalescing"), True))
+    handler = _EventHandler(kw.keyword("comment") in include, coalescing)
     parser = xml.sax.make_parser()
     parser.setFeature(xml.sax.handler.feature_namespaces, True)
     for feature in (
@@ -316,8 +335,8 @@ def event_seq(source: Any, options: Mapping[Any, Any] | None = None):
 
 
 def event_exit(value: Any) -> bool:
-    """Return true for the canonical end-element event singleton."""
-    return value is end_element_event
+    """Return true for end-element events."""
+    return isinstance(value, EndElementEvent)
 
 
 def event_node(value: Any) -> Any:
@@ -338,14 +357,67 @@ def event_element(value: Any, content: Sequence[Any] | None = None):
     return element(value.tag, value.attrs, content)
 
 
-def element_nss(_value: Any) -> lmap.PersistentMap:
+def _xmlns_prefix(name: Any) -> str | None:
+    if not isinstance(name, kw.Keyword):
+        return None
+    uri = qname_uri(name)
+    if uri == "http://www.w3.org/2000/xmlns/":
+        return qname_local(name)
+    if uri == "" and qname_local(name) == "xmlns":
+        return ""
+    return None
+
+
+def _nss_shape(prefix_to_uri: Mapping[str, str]) -> lmap.PersistentMap:
+    p_to_u = {
+        "xml": "http://www.w3.org/XML/1998/namespace",
+        "xmlns": "http://www.w3.org/2000/xmlns/",
+        **dict(prefix_to_uri),
+    }
+    u_to_ps: dict[str, list[str]] = {}
+    for prefix, uri in p_to_u.items():
+        u_to_ps.setdefault(uri, []).append(prefix)
+    return lmap.map(
+        {
+            kw.keyword("p->u"): lmap.map(p_to_u),
+            kw.keyword("u->ps"): lmap.map(
+                {uri: vec.vector(prefixes) for uri, prefixes in u_to_ps.items()}
+            ),
+        }
+    )
+
+
+def element_nss_raw(value: Any) -> Any:
+    meta = getattr(value, "meta", None)
+    if meta is None and hasattr(value, "_meta"):
+        meta = value._meta  # noqa: SLF001 - Basilisp collection metadata
+    if meta:
+        nss_key = kw.keyword("nss", ns="clojure.data.xml")
+        nss = meta.val_at(nss_key) if hasattr(meta, "val_at") else meta.get(nss_key)
+        if nss is not None:
+            return nss
+    return lmap.EMPTY
+
+
+def element_nss(value: Any) -> lmap.PersistentMap:
     """Return the lexical namespace environment associated with an element.
 
     ElementTree and SAX resolve names to URI-qualified keywords but do not retain
     lexical prefix declarations.  The portable tree representation therefore
     has no extra namespace environment to expose.
     """
-    return lmap.EMPTY
+    attrs = value.get(kw.keyword("attrs"), {}) if isinstance(value, Mapping) else {}
+    prefix_to_uri: dict[str, str] = {}
+    raw = element_nss_raw(value)
+    if isinstance(raw, Mapping):
+        if kw.keyword("p->u") in raw:
+            prefix_to_uri.update(dict(raw[kw.keyword("p->u")]))
+        else:
+            prefix_to_uri.update(dict(raw))
+    for attr, uri in attrs.items():
+        if (prefix := _xmlns_prefix(attr)) is not None:
+            prefix_to_uri[prefix] = str(uri)
+    return _nss_shape(prefix_to_uri)
 
 
 def _xml_string(value: Any) -> str:
@@ -411,7 +483,7 @@ def flatten_elements(elements: Iterable[Any]):
                 yield EmptyElementEvent(tag, attrs, element_nss(value))
             else:
                 yield StartElementEvent(tag, attrs, element_nss(value))
-                stack.append(("event", end_element_event))
+                stack.append(("event", EndElementEvent(tag, element_nss(value), None)))
                 stack.append(("items", chain((first,), contents)))
         elif (
             isinstance(value, str)
@@ -458,13 +530,14 @@ def element(
     tag: Any,
     attrs: Mapping[Any, Any] | None = None,
     content: Sequence[Any] | None = None,
+    meta: lmap.PersistentMap | None = None,
 ):
     data: dict[Any, Any] = {kw.keyword("tag"): tag}
     if attrs:
         data[kw.keyword("attrs")] = lmap.map(dict(attrs))
     if content:
         data[kw.keyword("content")] = vec.vector(x for x in content if x is not None)
-    return lmap.map(data)
+    return lmap.map(data, meta=meta)
 
 
 def element_p(value: Any) -> bool:
@@ -513,6 +586,36 @@ def _replace_cdata_tokens(text: str, cdata_tokens: Mapping[str, str]) -> str:
     return text
 
 
+def _indent(element: etree.Element, level: int = 0, space: str = "  ") -> None:
+    """Pretty-print like clojure.data.xml's indent writer.
+
+    ``xml.etree.ElementTree.indent`` intentionally avoids changing mixed text
+    nodes.  ``clojure.data.xml/indent`` still places mixed text on an indented
+    line, so keep a small local indenter instead of relying on ElementTree's
+    stricter policy.
+    """
+    children = list(element)
+    if not children:
+        return
+
+    child_indent = "\n" + space * (level + 1)
+    parent_indent = "\n" + space * level
+    if element.text and element.text.strip():
+        element.text = child_indent + element.text + child_indent
+    else:
+        element.text = child_indent
+
+    last_index = len(children) - 1
+    for index, child in enumerate(children):
+        _indent(child, level + 1, space)
+        if child.tail and child.tail.strip():
+            child.tail = child_indent + child.tail + (
+                parent_indent if index == last_index else child_indent
+            )
+        else:
+            child.tail = parent_indent if index == last_index else child_indent
+
+
 def emit_str(value: Any, options: Mapping[Any, Any] | None = None) -> str:
     options = {} if options is None else options
     encoding = options.get(kw.keyword("encoding"), "UTF-8")
@@ -540,7 +643,7 @@ def emit(value: Any, writer: Any, options: Mapping[Any, Any] | None = None) -> N
 def indent_str(value: Any, options: Mapping[Any, Any] | None = None) -> str:
     cdata_tokens: dict[str, str] = {}
     root = _to_etree(value, cdata_tokens)
-    etree.indent(root, space="  ")
+    _indent(root)
     options = dict(options or {})
     encoding = options.get(kw.keyword("encoding"), "UTF-8")
     declaration = options.get(kw.keyword("declaration"), True)

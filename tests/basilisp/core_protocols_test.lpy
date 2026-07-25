@@ -3,8 +3,46 @@
             [clojure.core.protocols :as p]))
 
 (deftest public-core-protocol-helper-surface-test
-  (doseq [sym '[IKVReduce InternalReduce internal-reduce iterator-reduce!]]
+  (doseq [sym '[CollReduce Datafiable IKVReduce InternalReduce KVReduce
+                Navigable coll-reduce datafy internal-reduce
+                iterator-reduce! kv-reduce nav]]
     (is (contains? (ns-publics 'basilisp.core.protocols) sym))))
+
+(deftest coll-reduce-and-kv-reduce-retain-core-protocol-contracts
+  (is (= 6 (p/coll-reduce [1 2 3] +)))
+  (is (= [1 2 3]
+         (p/coll-reduce [1 2 3]
+                        (fn [acc value] (conj acc value))
+                        [])))
+  (is (= :empty (p/coll-reduce nil (fn [] :empty))))
+  (is (= 42 (p/coll-reduce nil + 42)))
+  (is (= {:a 1 :b 2}
+         (p/kv-reduce {:a 1 :b 2}
+                      (fn [acc key value] (assoc acc key value))
+                      {}))))
+
+(deftest reductions-honor-reduced-short-circuit
+  (is (= [1 2]
+         (p/coll-reduce [1 2 3 4]
+                        (fn [acc value]
+                          (if (= value 3)
+                            (reduced acc)
+                            (conj acc value)))
+                        [])))
+  (is (= [1 2]
+         (p/iterator-reduce! (python/iter [1 2 3 4])
+                             (fn [acc value]
+                               (if (= value 3)
+                                 (reduced acc)
+                                 (conj acc value)))
+                             [])))
+  (is (= {0 1 1 2}
+         (p/kv-reduce [1 2 3 4]
+                      (fn [acc key value]
+                        (if (= key 2)
+                          (reduced acc)
+                          (assoc acc key value)))
+                      {}))))
 
 (deftest iterator-reduce-consumes-single-use-python-iterators
   (let [it (python/iter [1 2 3])]

@@ -2,7 +2,10 @@
   (:require
    [basilisp.pprint :as pprint]
    [basilisp.string :as str]
-   [basilisp.test :refer [deftest are is testing]])
+   [basilisp.test :refer [deftest are is testing]]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop])
   (:import io
            os
            textwrap))
@@ -11,6 +14,12 @@
   [s]
   (-> (str/trim s)
       (str/replace "\r\n" "\n")))
+
+(defn trim-rendered-line-trailing-whitespace
+  [s]
+  (-> s
+      trim-and-replace-newlines
+      (str/replace #"[ \t]+\n" "\n")))
 
 (deftest column-writer-test
   (let [write (fn [s]
@@ -22,6 +31,83 @@
     (is (= {:line 1 :col 15} (write (str "hello" os/linesep "there my friend"))))
     (is (= {:line 2 :col 0} (write (str "hello" os/linesep "there my friend" os/linesep))))
     (is (= {:line 0 :col 0} (write "")))))
+
+(deftest fresh-line-direct-and-pretty-writer-contract-test
+  (is (= "\na\n\nb"
+         (str/replace
+          (with-out-str
+            (pprint/fresh-line)
+            (print "a")
+            (pprint/fresh-line)
+            (pprint/fresh-line)
+            (print "b"))
+          "\r\n"
+          "\n")))
+  (is (= "a\nb"
+         (str/replace
+          (with-out-str
+            (let [writer (pprint/get-pretty-writer *out*)]
+              (binding [*out* writer
+                        pprint/*print-pretty* true]
+                (.write *out* "a")
+                (pprint/fresh-line)
+                (.write *out* "b")
+                (.flush writer))))
+          "\r\n"
+          "\n"))))
+
+(deftest pretty-writer-extension-protocol-boundary-test
+  (let [block (pprint/LogicalBlock nil "[" nil "]" 0 0 false false)]
+    (is (= [7 3 true]
+           [(binding [pprint/*current-level* 7]
+              pprint/*current-level*)
+            (binding [pprint/*current-length* 3]
+              pprint/*current-length*)
+            (binding [pprint/*print-sort-keys* true]
+              pprint/*print-sort-keys*)]))
+    (are [token] (some? token)
+      block
+      (pprint/StartBlock block 0 1)
+      (pprint/EndBlock block 1 2)
+      (pprint/Blob "x" 0 1)
+      (pprint/Indent block :block 2 1 1)
+      (pprint/Newline block :mandatory 1 1))
+    (is (some? pprint/PrettyWriter)))
+  (is (= "[alpha\n   beta]"
+         (trim-rendered-line-trailing-whitespace
+          (with-out-str
+            (let [writer (pprint/get-pretty-writer *out* 12)]
+              (binding [*out* writer
+                        pprint/*print-pretty* true]
+                (pprint/start-block writer "[" nil "]")
+                (.write writer "alpha")
+                (pprint/pp-indent writer :block 2)
+                (pprint/pp-newline writer :mandatory)
+                (.write writer "beta")
+                (pprint/end-block writer)
+                (.flush writer))))))))
+
+(deftest pprint-tab-public-contract-test
+  (is (thrown? Exception (pprint/pprint-tab :line 5 1)))
+  (is (= "a    z"
+         (pprint/cl-format nil "a~5Tz"))))
+
+(deftest write-option-contract-test
+  (is (= "[1 2 [3 4]]"
+         (with-out-str
+           (pprint/write [1 2 [3 4]]))))
+  (is (= "[#x1f #x20]"
+         (with-out-str
+           (pprint/write [31 32] :base 16 :radix true))))
+  (is (= "bar"
+         (with-out-str
+           (pprint/write 'foo/bar :suppress-namespaces true))))
+  (is (= "[1\n 2\n [3 4]]"
+         (trim-rendered-line-trailing-whitespace
+          (with-out-str
+            (pprint/write [1 2 [3 4]]
+                          :pretty true
+                          :right-margin 8))))))
 
 (deftest pprint-test
   (testing "scalars"
@@ -216,10 +302,41 @@
     "#x0"  16 0
     "#x1"  16 1
     "#x1b" 16 27
+    "#xffffffffffffffe1" 16 -31
 
     "#18r0"  18 0
     "#18r1"  18 1
     "#18r27" 18 43))
+
+(deftest pprint-base-and-radix-ratio-test
+  (is (= "#x3/2"
+         (trim-and-replace-newlines
+          (binding [pprint/*print-radix* true
+                    pprint/*print-base* 16]
+            (with-out-str
+              (pprint/pprint 3/2)))))))
+
+(deftest pprint-radix-negative-and-ratio-fuzz-test
+  (let [property (prop/for-all [n (gen/choose -100000 -1)
+                                d (gen/choose 1 1000)]
+                   (let [int-output (binding [pprint/*print-radix* true
+                                              pprint/*print-base* 16]
+                                      (trim-and-replace-newlines
+                                       (with-out-str
+                                         (pprint/pprint n))))
+                         ratio-output (binding [pprint/*print-radix* true
+                                                pprint/*print-base* 16]
+                                        (trim-and-replace-newlines
+                                         (with-out-str
+                                           (pprint/pprint (/ n d)))))]
+                     (and (str/starts-with? int-output "#x")
+                          (not (str/includes? int-output "#x-"))
+                          (= 1 (count (re-seq #"#x" ratio-output)))
+                          (not (str/includes? ratio-output "/#x"))
+                          (not (str/includes? ratio-output "#x-")))))
+        result (tc/quick-check 200 property :seed 20260726 :max-size 80)]
+    (is (:pass? result))
+    (is (= 200 (:num-tests result)))))
 
 (deftest pprint-var-test
   (is (= "#'basilisp.core/map"
@@ -392,7 +509,7 @@
                    '(defn add "Adds two numbers." [x y] (+ x y))))))))))
 
   (testing "binding forms"
-    (is (= "(let \n  [first-name \"Ada\" last-name \n                    \"Lovelace\"] \n  (str \n    first-name \n    last-name))"
+    (is (= "(let \n  [first-name \"Ada\" \n   last-name \"Lovelace\"] \n  (str \n    first-name \n    last-name))"
            (trim-and-replace-newlines
             (binding [pprint/*print-right-margin* 26]
               (with-out-str
@@ -414,7 +531,7 @@
 
 (deftest pprint-code-dispatch-extended-forms-test
   (testing "case forms"
-    (is (= "(case \n  command \n  :start \n  (start-service \n    command) \n  :stop \n  (stop-service command) \n  (unknown-command \n    command))"
+    (is (= "(case \n  command \n  :start \n  (start-service command) \n  :stop \n  (stop-service command) \n  (unknown-command \n    command))"
            (trim-and-replace-newlines
             (binding [pprint/*print-right-margin* 26]
               (with-out-str
@@ -496,7 +613,7 @@
         (is (not (.startswith line (str expected-indent " "))) line))))
 
   (testing "try, catch, and finally clauses"
-    (is (= "(try \n  (open-resource path) \n  (catch IOError error \n    (log-error error) \n    nil) \n  (finally (close-resource \n             path)))"
+    (is (= "(try \n  (open-resource path) \n  (catch \n    IOError \n    error \n    (log-error error) \n    nil) \n  (finally \n    (close-resource \n      path)))"
            (trim-and-replace-newlines
             (binding [pprint/*print-right-margin* 26]
               (with-out-str
@@ -516,10 +633,45 @@
             (binding [pprint/*print-right-margin* 22]
               (with-out-str
                 (pprint/with-pprint-dispatch pprint/code-dispatch
-                  (pprint/pprint
-                    '(ns example.service
-                      (:require [basilisp.string :as str]
-                                [basilisp.set :as set])))))))))))
+                   (pprint/pprint
+                     '(ns example.service
+                       (:require [basilisp.string :as str]
+                                 [basilisp.set :as set])))))))))))
+
+(deftest pprint-code-dispatch-exact-width-adversarial-test
+  (are [margin form expected]
+    (= expected
+       (trim-rendered-line-trailing-whitespace
+        (binding [pprint/*print-right-margin* margin]
+          (with-out-str
+            (pprint/with-pprint-dispatch pprint/code-dispatch
+              (pprint/pprint form))))))
+
+    16
+    '(condp = command
+       :start (do (prepare! system) (start! system))
+       :stop (do (stop! system) :stopped)
+       :restart (do (stop! system) (start! system))
+       :unknown)
+    "(condp\n  =\n  command\n  :start\n  (do\n    (prepare!\n      system)\n    (start!\n      system))\n  :stop\n  (do\n    (stop!\n      system)\n    :stopped)\n  :restart\n  (do\n    (stop!\n      system)\n    (start!\n      system))\n  :unknown)"
+
+    20
+    '(when-not (ready? (state system))
+       (prepare! system)
+       (start! system)
+       (await-ready system))
+    "(when-not\n  (ready?\n    (state system))\n  (prepare! system)\n  (start! system)\n  (await-ready\n    system))"
+
+    24
+    '(when-not (ready? system)
+       (condp = command
+         :start (start! system)
+         :stop (stop! system)
+         :unknown)
+       (if-not (healthy? system)
+         (restart! system)
+         (report-ready system)))
+    "(when-not\n  (ready? system)\n  (condp\n    =\n    command\n    :start\n    (start! system)\n    :stop\n    (stop! system)\n    :unknown)\n  (if-not\n    (healthy? system)\n    (restart! system)\n    (report-ready\n      system)))"))
 
 (deftest pprint-print-level-test
   (are [res plen expr] (= res (trim-and-replace-newlines
@@ -586,6 +738,72 @@
   (apply sorted-map
          (mapcat (fn [i] [(keyword (str "k" i)) i])
                  (range n))))
+
+(defn next-pprint-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(defn seeded-readable-scalar [seed]
+  (case (mod seed 7)
+    0 (mod seed 10000)
+    1 (- (mod seed 10000))
+    2 (keyword (str "k" (mod seed 37)))
+    3 (symbol (str "sym" (mod seed 41)))
+    4 (str "s" (mod seed 53))
+    5 (zero? (mod seed 2))
+    nil))
+
+(defn seeded-readable-form [seed depth]
+  (if (zero? depth)
+    (seeded-readable-scalar seed)
+    (let [s1 (next-pprint-seed seed)
+          s2 (next-pprint-seed s1)
+          s3 (next-pprint-seed s2)]
+      (case (mod seed 5)
+        0 [(seeded-readable-form s1 (dec depth))
+           (seeded-readable-form s2 (dec depth))]
+        1 (list (seeded-readable-form s1 (dec depth))
+                (seeded-readable-form s2 (dec depth)))
+        2 {:a (seeded-readable-form s1 (dec depth))
+           :b (seeded-readable-form s2 (dec depth))}
+        3 (set [(seeded-readable-scalar s1)
+                (seeded-readable-scalar s2)
+                (seeded-readable-scalar s3)])
+        4 (sorted-map :a (seeded-readable-form s1 (dec depth))
+                      :b (seeded-readable-form s2 (dec depth)))))))
+
+(deftest pprint-generated-readable-data-roundtrips-under-seeded-fuzzing
+  (let [property (prop/for-all [seed (gen/choose 0 100000)
+                                depth (gen/choose 0 5)
+                                margin (gen/choose 8 80)]
+                   (let [form (seeded-readable-form seed depth)
+                         rendered (trim-rendered-line-trailing-whitespace
+                                   (binding [pprint/*print-right-margin* margin]
+                                     (with-out-str
+                                       (pprint/pprint form))))]
+                     (and (seq rendered)
+                          (= form (read-string rendered)))))
+        result (tc/quick-check 120 property :seed 20260724 :max-size 50)]
+    (is (:pass? result))
+    (is (= 120 (:num-tests result)))))
+
+(deftest pprint-trailing-newline-does-not-affect-layout-under-seeded-fuzzing
+  (let [property (prop/for-all [seed (gen/choose 0 100000)
+                                depth (gen/choose 0 5)
+                                margin (gen/choose 8 80)]
+                   (let [form (seeded-readable-form seed depth)
+                         pprint-rendered (trim-rendered-line-trailing-whitespace
+                                          (binding [pprint/*print-right-margin* margin]
+                                            (with-out-str
+                                              (pprint/pprint form))))
+                         write-rendered (trim-rendered-line-trailing-whitespace
+                                         (with-out-str
+                                           (pprint/write form
+                                                         :pretty true
+                                                         :right-margin margin)))]
+                     (= write-rendered pprint-rendered)))
+        result (tc/quick-check 120 property :seed 20260727 :max-size 50)]
+    (is (:pass? result))
+    (is (= 120 (:num-tests result)))))
 
 (deftest pprint-map-comma-conformance-stress-test
   (doseq [n (range 0 24)]
@@ -657,3 +875,127 @@
     (is (= (dec (count ks))
            (count (re-seq #"\+" divider)))
         divider)))
+
+(deftest print-table-adversarial-boundary-test
+  (is (= (trim-newlines-and-dedent
+          "
+          |  :a |  :b |  :c |
+          |-----+-----+-----|
+          |   1 |     |     |
+          | 222 |     | see |
+          |     | bee |     |
+          ")
+         (with-out-str
+           (pprint/print-table [:a :b :c]
+                               [(sorted-map :a 1 :b nil)
+                                (sorted-map :a 222 :c "see")
+                                (sorted-map :b "bee" :c nil)]))))
+  (is (= (trim-newlines-and-dedent
+          "
+          | :alpha | :beta |
+          |--------+-------|
+          |      x |    22 |
+          | longer |       |
+          ")
+         (with-out-str
+           (pprint/print-table [(sorted-map :alpha "x" :beta 22)
+                                (sorted-map :alpha "longer" :gamma nil)]))))
+  (is (= (trim-newlines-and-dedent
+          "
+          |               :k |        :v |
+          |------------------+-----------|
+          |           :short |         1 |
+          | :much-longer-key | wide text |
+          |                  |  :keyword |
+          ")
+         (with-out-str
+           (pprint/print-table [:k :v]
+                               [(sorted-map :k :short :v 1)
+                                (sorted-map :k :much-longer-key
+                                            :v "wide text")
+                                (sorted-map :k nil :v :keyword)])))))
+
+(deftest cl-format-adversarial-control-flow-test
+  (is (= "(1,2);(:a,:b,:c)"
+         (pprint/cl-format nil "~{(~{~A~^,~})~^;~}"
+                           [[1 2] [:a :b :c]])))
+  (is (= "HELLO WORLD Hello World Hello world hello"
+         (pprint/cl-format nil
+                           "~:@(~A~) ~:(~A~) ~@(~A~) ~(~A~)"
+                           "hello world"
+                           "hello world"
+                           "hello world"
+                           "HELLO")))
+  (is (= ":a :a :a :b"
+         (pprint/cl-format nil "~A ~:*~A ~2:*~A ~A" :a :b :c)))
+  (is (= ":a|:b|:c"
+         (pprint/cl-format nil "~{~A~^|~}" [:a :b :c])))
+  (is (= "many"
+         (pprint/cl-format nil
+                           "~#[none~;one=~A~;two=~A/~A~:;many~]"
+                           :x :y :z)))
+  (is (= ""
+         (pprint/cl-format nil "~[zero~;one~;two~]" 5)))
+  (is (= "|s|y|ies"
+         (pprint/cl-format nil "~:P|~P|~@P|~:@P" 1 2 1 2))))
+
+(deftest cl-format-english-roman-and-error-boundary-test
+  (are [n expected] (= expected (pprint/cl-format nil "~R|~:R|~@R|~:@R" n n n n))
+    4 "four|fourth|IV|IIII"
+    9 "nine|ninth|IX|VIIII"
+    19 "nineteen|nineteenth|XIX|XVIIII"
+    44 "forty-four|forty-fourth|XLIV|XXXXIIII"
+    99 "ninety-nine|ninety-ninth|XCIX|LXXXXVIIII"
+    944 "nine hundred forty-four|nine hundred forty-fourth|CMXLIV|DCCCCXXXXIIII")
+  (is (thrown? Exception
+               (pprint/cl-format nil
+                                 "~{~#[Z~;O=~A~;T=~A/~A~:;M~]~^;~}"
+                                 [[:a] [:b :c] [:d :e :f]])))
+  (is (thrown? Exception
+               (pprint/cl-format nil "~A ~A" :only-one)))
+  (is (thrown? Exception
+               (pprint/cl-format nil "~Q" :x)))
+  (is (thrown? Exception
+               (pprint/cl-format nil "a~_b"))))
+
+(deftest cl-format-directive-adversarial-test
+  (testing "integer radix directives and comma grouping"
+    (is (= "1010|12|10|a"
+           (pprint/cl-format nil "~B|~O|~D|~X" 10 10 10 10)))
+    (is (= "100,101,101,011,010,000,111|4,553,207|1,234,567|12d,687"
+           (pprint/cl-format nil "~:B|~:O|~:D|~:X"
+                             1234567 1234567 1234567 1234567)))
+    (is (= "+1010|+12|+10|+a"
+           (pprint/cl-format nil "~@B|~@O|~@D|~@X" 10 10 10 10))))
+  (testing "character, string, and justification directives"
+    (is (= "A|Space|\\newline|Tab"
+           (pprint/cl-format nil "~C|~:C|~@C|~:@C"
+                             \A \space \newline \tab)))
+    (is (= "x y|\"x y\"|x         |\"x\"       |         x|       \"x\""
+           (pprint/cl-format nil "~A|~S|~10A|~10S|~10@A|~10@S"
+                             "x y" "x y" "x" "x" "x" "x")))
+    (is (= "       abc|    abc   "
+           (pprint/cl-format nil "~10<~A~>|~10:@<~A~>" "abc" "abc"))))
+  (testing "recursive format indirection"
+    (is (= ":x/:y"
+           (pprint/cl-format nil "~?" "~A/~A" [:x :y])))
+    (is (= ":x/:y"
+           (pprint/cl-format nil "~@?" "~A/~A" :x :y))))
+  (testing "absolute and relative tabulation"
+    (is (= "a    z|a z|a     z|a      z"
+           (pprint/cl-format nil
+                             "a~5Tz|a~5,2Tz|a~5@Tz|a~5,2@Tz")))
+    (is (= "     z|ab     z|abc     z|abcd      z"
+           (pprint/cl-format nil
+                             "~5@Tz|ab~5,2@Tz|abc~5,2@Tz|abcd~5,2@Tz"))))
+  (testing "fresh-line boundaries"
+    (is (= "a" (pprint/cl-format nil "~&a")))
+    (is (= "a\nb"
+           (trim-rendered-line-trailing-whitespace
+            (pprint/cl-format nil "a~&b"))))
+    (is (= "a\nb"
+           (trim-rendered-line-trailing-whitespace
+            (pprint/cl-format nil "a~%~&b"))))
+    (is (= "a\n\nb"
+           (trim-rendered-line-trailing-whitespace
+            (pprint/cl-format nil "a~2&b"))))))

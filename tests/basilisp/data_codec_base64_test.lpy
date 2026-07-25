@@ -44,7 +44,14 @@
     (is (= 8 (base64/encode! input 2 6 enc-dest)))
     (is (= encoded (python/bytes enc-dest)))
     (is (= 6 (base64/decode! enc-dest 0 8 dec-dest)))
-    (is (= #b "foobar" (python/bytes dec-dest)))))
+    (is (= #b "foobar" (python/bytes dec-dest))))
+  (let [input #b "xxfoobaryy"
+        enc-dest (python/bytearray #b "########")
+        dec-dest (python/bytearray #b "#####")]
+    (is (= 4 (base64/encode! input 2 2 enc-dest)))
+    (is (= #b "Zm8=####" (python/bytes enc-dest)))
+    (is (= 2 (base64/decode! #b "Zm8=" 0 4 dec-dest)))
+    (is (= #b "fo###" (python/bytes dec-dest)))))
 
 (deftest transfer-supports-custom-buffer-sizes
   (let [plain #b "A compact stream that crosses several transfer buffers."
@@ -59,8 +66,14 @@
   (is (= [0 0 0] (unsigned-bytes (base64/decode #b "!!!!"))))
   (is (= [102 0 26] (unsigned-bytes (base64/decode #b "Zg=a"))))
   (is (= [0] (unsigned-bytes (base64/decode #b "===="))))
+  (is (= [207 60 243] (unsigned-bytes (base64/decode #b "zzzz"))))
   (is (= [] (unsigned-bytes (base64/decode #b "abcd" 4 0))))
   (is (= [] (unsigned-bytes (base64/decode #b "abcd" 5 0))))
+  (is (= [0 0 0] (unsigned-bytes (base64/decode (python/bytes [65 65 65 65 126])))))
+  (is (thrown? Exception (base64/decode #b "~~~=")))
+  (is (thrown? Exception (base64/decode #b "{{{{")))
+  (is (thrown? Exception (base64/decode (python/bytes [255 255 255 255]))))
+  (is (thrown? Exception (base64/decode (python/bytes [65 65 65 65 126 65]) 1 4)))
   (is (thrown? Exception (base64/decode #b "=")))
   (is (thrown? Exception (base64/decode #b "A=")))
   (is (thrown? Exception (base64/encode #b "abc" -1 1)))
@@ -71,6 +84,14 @@
     (is (= #b "" (.getvalue out))))
   (let [out (io/BytesIO)]
     (base64/decoding-transfer (io/BytesIO #b "AAAA") out :buffer-size 0)
+    (is (= #b "" (.getvalue out))))
+  (let [out (io/BytesIO)]
+    (is (thrown? Exception
+                 (base64/decoding-transfer (io/BytesIO #b "AAAA~~~~") out :buffer-size 4)))
+    (is (= #b "\x00\x00\x00" (.getvalue out))))
+  (let [out (io/BytesIO)]
+    (is (thrown? Exception
+                 (base64/decoding-transfer (io/BytesIO #b "AAAA~~~~") out :buffer-size 8)))
     (is (= #b "" (.getvalue out))))
   (is (thrown? Exception
                (base64/encoding-transfer (io/BytesIO #b "abc") (io/BytesIO) :buffer-size 2)))

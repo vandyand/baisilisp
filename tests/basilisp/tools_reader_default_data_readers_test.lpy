@@ -1,0 +1,142 @@
+(ns tests.basilisp.tools-reader-default-data-readers-test
+  (:require [basilisp.instant :as instant]
+            [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader :as tr]
+            [clojure.tools.reader.default-data-readers :as ddr]))
+
+(defn- timestamp-nanos [value]
+  (.-nanoseconds value))
+
+(defn- calendar-summary [value]
+  {:year (.-year value)
+   :month (.-month value)
+   :day (.-day value)
+   :hour (.-hour value)
+   :minute (.-minute value)
+   :second (.-second value)
+   :millisecond (.-millisecond value)
+   :offset-minutes (.-offset-minutes value)})
+
+(defn- next-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(defn- pad2 [n]
+  (let [s (str n)]
+    (if (= 1 (count s)) (str "0" s) s)))
+
+(defn- seeded-instant-source [seed]
+  (let [s1 (next-seed seed)
+        s2 (next-seed s1)
+        s3 (next-seed s2)
+        s4 (next-seed s3)
+        s5 (next-seed s4)
+        s6 (next-seed s5)
+        year (+ 1970 (mod s1 80))
+        month (inc (mod s2 12))
+        day (inc (mod s3 28))
+        hour (mod s4 24)
+        minute (mod s5 60)
+        second (mod s6 60)
+        nanos (mod (* s6 1664525) 1000000000)
+        offset-hour (mod s5 14)
+        offset-minute (mod s4 60)
+        sign (if (zero? (mod s3 2)) "+" "-")]
+    (str year "-" (pad2 month) "-" (pad2 day) "T"
+         (pad2 hour) ":" (pad2 minute) ":" (pad2 second) "."
+         nanos sign (pad2 offset-hour) ":" (pad2 offset-minute))))
+
+(deftest public-default-data-readers-api-test
+  (is (boolean (find-ns 'basilisp.tools.reader.default-data-readers)))
+  (doseq [sym '[default-uuid-reader
+                parse-timestamp
+                read-instant-calendar
+                read-instant-date
+                read-instant-timestamp
+                validated]]
+    (is (contains? (ns-publics 'basilisp.tools.reader.default-data-readers)
+                   sym))))
+
+(deftest timestamp-parser-and-validator-contracts
+  (is (= [2024 2 3 4 5 6 123456789 0 0 0]
+         (ddr/parse-timestamp vector "2024-02-03T04:05:06.123456789123Z")))
+  (is (= [2024 99 1 0 0 0 0 0 0 0]
+         (ddr/parse-timestamp vector "2024-99")))
+  (doseq [source [nil
+                  ""
+                  "2024-1"
+                  "2024-01-01T"
+                  "2024-01-01T00:"
+                  "not an instant"]]
+    (testing (pr-str source)
+      (is (thrown? Exception (ddr/parse-timestamp vector source)))))
+  (let [validating-vector (ddr/validated vector)]
+    (is (= [2024 2 29 23 59 60 123456789 -1 7 30]
+           (validating-vector 2024 2 29 23 59 60 123456789 -1 7 30)))
+    (doseq [args [[2024 13 1 0 0 0 0 0 0 0]
+                  [2023 2 29 0 0 0 0 0 0 0]
+                  [2024 1 1 24 0 0 0 0 0 0]
+                  [2024 1 1 0 0 0 1000000000 0 0 0]
+                  [2024 1 1 0 0 0 0 0 24 0]
+                  [2024 1 1 0 0 0 0 0 0 60]]]
+      (testing (pr-str args)
+        (is (thrown? Exception (apply validating-vector args)))))))
+
+(deftest instant-reader-contracts
+  (is (= (inst-ms (instant/read-instant-date "2024-02-03T04:05:06.7-07:30"))
+         (inst-ms (ddr/read-instant-date "2024-02-03T04:05:06.7-07:30"))))
+  (is (= {:year 2024
+          :month 2
+          :day 3
+          :hour 4
+          :minute 5
+          :second 6
+          :millisecond 700
+          :offset-minutes -450}
+         (calendar-summary
+          (ddr/read-instant-calendar "2024-02-03T04:05:06.7-07:30"))))
+  (let [timestamp (ddr/read-instant-timestamp
+                   "2024-02-03T04:05:06.123456789123Z")]
+    (is (= (inst-ms (instant/read-instant-timestamp
+                     "2024-02-03T04:05:06.123456789123Z"))
+           (inst-ms timestamp)))
+    (is (= 123456789 (timestamp-nanos timestamp))))
+  (doseq [source ["2024-99"
+                  "2023-02-29"
+                  "2024-01-01T00:00:60Z"
+                  "2010-01-01T24:00:00.000Z"
+                  "not an instant"]]
+    (testing source
+      (is (thrown? Exception (ddr/read-instant-date source))))))
+
+(deftest uuid-reader-and-tools-reader-integration
+  (is (= "550e8400-e29b-41d4-a716-446655440000"
+         (str (ddr/default-uuid-reader
+               "550e8400-e29b-41d4-a716-446655440000"))))
+  (is (= "550e8400-e29b-41d4-a716-446655440000"
+         (str (ddr/default-uuid-reader
+               "550E8400-E29B-41D4-A716-446655440000"))))
+  (doseq [form [nil 1 "not-a-uuid"]]
+    (testing (pr-str form)
+      (is (thrown? Exception (ddr/default-uuid-reader form)))))
+  (let [timestamp (binding [tr/*data-readers* {'inst ddr/read-instant-timestamp}]
+                    (tr/read-string
+                     "#inst \"2024-02-03T04:05:06.123456789Z\""))]
+    (is (= 123456789 (timestamp-nanos timestamp))))
+  (is (= "550e8400-e29b-41d4-a716-446655440000"
+         (str (binding [tr/*data-readers* {'uuid ddr/default-uuid-reader}]
+                (tr/read-string
+                 "#uuid \"550e8400-e29b-41d4-a716-446655440000\""))))))
+
+(deftest seeded-instant-corpus-stresses-parser-and-readers
+  (loop [remaining 64
+         seed 424242]
+    (when (pos? remaining)
+      (let [source (seeded-instant-source seed)
+            parsed (ddr/parse-timestamp vector source)
+            date (ddr/read-instant-date source)
+            timestamp (ddr/read-instant-timestamp source)]
+        (testing source
+          (is (= 10 (count parsed)))
+          (is (= (inst-ms date) (inst-ms timestamp)))
+          (is (<= 0 (timestamp-nanos timestamp) 999999999))))
+      (recur (dec remaining) (next-seed seed)))))

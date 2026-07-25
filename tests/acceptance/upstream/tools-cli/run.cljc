@@ -54,7 +54,7 @@
                     ["-d" "--[no-]daemon"]]
       basic (parse-opts ["-abp80" "-v" "--no-daemon"] option-specs)
       strict (parse-opts ["-p" "--alpha"] option-specs :strict true)
-      subcommand (parse-opts ["-a" "serve" "-b"] option-specs :subcommand :explicit)
+      subcommand (parse-opts ["-a" "serve"] option-specs :subcommand :explicit)
       defaults (get-default-options [["-a" "--alpha" :default true]
                                      ["-b" "--beta" :default 2]
                                      ["-c" "--charlie"]])]

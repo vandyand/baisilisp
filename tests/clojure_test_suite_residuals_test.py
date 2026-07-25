@@ -1,7 +1,9 @@
 import sys
 from pathlib import Path
+from subprocess import CompletedProcess
 from tempfile import TemporaryDirectory
 
+import pytest
 from hypothesis import given
 from hypothesis import strategies as st
 
@@ -118,3 +120,94 @@ def test_report_mode_does_not_require_external_suite_checkout(
 
     assert 0 == residuals.main()
     assert "numeric-coercion-expectations" in capsys.readouterr().out
+
+
+def test_pytest_ignore_mode_checks_suite_before_verifying_evidence(
+    tmp_path: Path, monkeypatch, capsys
+):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("evidence verification should not run")
+
+    monkeypatch.setattr(residuals, "verify_evidence_fixtures", fail_if_called)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "clojure_test_suite_residuals.py",
+            "--suite-root",
+            str(tmp_path / "missing-suite"),
+            "--repo-root",
+            str(Path.cwd()),
+            "--pytest-ignore-args",
+            "--verify-evidence",
+        ],
+    )
+
+    with pytest.raises(SystemExit) as exc_info:
+        residuals.main()
+
+    assert exc_info.value.code == 2
+    assert "residual files are missing" in capsys.readouterr().err
+
+
+def test_verify_evidence_fixtures_runs_unique_differential_fixtures(monkeypatch):
+    seen = {}
+
+    def fake_run(command, **kwargs):
+        seen["command"] = command
+        seen["cwd"] = kwargs["cwd"]
+        seen["capture_output"] = kwargs["capture_output"]
+        seen["text"] = kwargs["text"]
+        return CompletedProcess(command, 0, stdout="ok", stderr="")
+
+    monkeypatch.setattr(residuals.subprocess, "run", fake_run)
+
+    residuals.verify_evidence_fixtures(
+        Path.cwd(),
+        clojure_command="clojure -M",
+        basilisp_command="basilisp run",
+        disable_basilisp_ns_cache=True,
+    )
+
+    command = seen["command"]
+    assert command[0] == sys.executable
+    script_path = Path(command[1])
+    assert script_path.name == "differential_conformance.py"
+    assert script_path.parent.name == "scripts"
+    assert seen["cwd"] == Path.cwd().resolve()
+    assert seen["capture_output"] is True
+    assert seen["text"] is True
+    assert "--clojure-command" in command
+    assert "clojure -M" in command
+    assert "--basilisp-command" in command
+    assert "basilisp run" in command
+    assert "--disable-basilisp-ns-cache" in command
+
+    fixture_args = [
+        Path(command[index + 1]).relative_to(Path.cwd().resolve()).as_posix()
+        for index, token in enumerate(command)
+        if token == "--fixture"
+    ]
+    assert tuple(fixture_args) == tuple(
+        path.relative_to(Path.cwd().resolve()).as_posix()
+        for path in residuals.evidence_fixture_paths(Path.cwd())
+    )
+    assert len(fixture_args) == len(set(fixture_args))
+
+
+def test_verify_evidence_fixtures_surfaces_differential_failures(monkeypatch):
+    def fake_run(command, **kwargs):
+        return CompletedProcess(
+            command,
+            1,
+            stdout="fixture before failure",
+            stderr="semantic mismatch",
+        )
+
+    monkeypatch.setattr(residuals.subprocess, "run", fake_run)
+
+    with pytest.raises(
+        RuntimeError,
+        match="(?s)residual evidence fixture verification failed.*semantic mismatch",
+    ):
+        residuals.verify_evidence_fixtures(Path.cwd())

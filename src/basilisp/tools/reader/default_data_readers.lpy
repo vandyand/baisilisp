@@ -1,0 +1,35 @@
+(ns basilisp.tools.reader.default-data-readers
+  "Portable compatibility surface for `clojure.tools.reader.default-data-readers`."
+  (:require [basilisp.instant :as instant])
+  (:import uuid))
+
+(defn parse-timestamp
+  "Parse an RFC3339-like timestamp and pass its ten numeric components to `new-instant`."
+  [new-instant cs]
+  (instant/parse-timestamp new-instant cs))
+
+(defn validated
+  "Return a timestamp constructor wrapper that validates Clojure instant ranges."
+  [new-instance]
+  (instant/validated new-instance))
+
+(defn read-instant-date
+  "Read `cs` as a Date-like timezone-aware Python datetime normalized to UTC."
+  [cs]
+  (instant/read-instant-date cs))
+
+(defn read-instant-calendar
+  "Read `cs` as an offset-preserving portable calendar value."
+  [cs]
+  (instant/read-instant-calendar cs))
+
+(defn read-instant-timestamp
+  "Read `cs` as a UTC timestamp value preserving parsed nanoseconds."
+  [cs]
+  (instant/read-instant-timestamp cs))
+
+(defn default-uuid-reader
+  "Read `form` as a UUID. Mirrors tools.reader's default #uuid data reader."
+  [form]
+  (assert (string? form))
+  (uuid/UUID form))

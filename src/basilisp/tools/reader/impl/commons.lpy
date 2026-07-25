@@ -1,0 +1,129 @@
+(ns basilisp.tools.reader.impl.commons
+  "Portable compatibility helpers for `clojure.tools.reader.impl.commons`."
+  (:refer-basilisp :exclude [char])
+  (:require [basilisp.string :as str]
+            [clojure.tools.reader.reader-types :as rt])
+  (:import decimal fractions))
+
+(def int-pattern
+  #"([-+]?)(?:(0)|([1-9][0-9]*)|0[xX]([0-9A-Fa-f]+)|0([0-7]+)|([1-9][0-9]?)[rR]([0-9A-Za-z]+)|0[0-9]+)(N)?")
+
+(def ratio-pattern #"([-+]?[0-9]+)/([0-9]+)")
+
+(def float-pattern #"([-+]?[0-9]+(\.[0-9]*)?([eE][-+]?[0-9]+)?)(M)?")
+
+(defn- char-str [ch]
+  (when ch
+    (str ch)))
+
+(defn- numeric? [ch]
+  (when-let [s (char-str ch)]
+    (boolean (re-matches #"[0-9]" s))))
+
+(defn- newline? [ch]
+  (or (nil? ch)
+      (= \newline ch)))
+
+(defn number-literal?
+  "Checks whether the reader is at the start of a number literal."
+  [reader initch]
+  (or (numeric? initch)
+      (and (or (= \+ initch) (= \- initch))
+           (numeric? (rt/peek-char reader)))))
+
+(defn read-past
+  "Read until first character that does not match `pred`, returning that char."
+  [pred rdr]
+  (loop [ch (rt/read-char rdr)]
+    (if (pred ch)
+      (recur (rt/read-char rdr))
+      ch)))
+
+(defn skip-line
+  "Advance the reader to the end of a line. Returns the reader."
+  [reader]
+  (loop []
+    (when-not (newline? (rt/read-char reader))
+      (recur)))
+  reader)
+
+(defn- parse-int-base [digits radix]
+  (python/int digits radix))
+
+(defn- match-int [m]
+  (if (nth m 2)
+    0
+    (let [negate? (= "-" (nth m 1))
+          parsed  (cond
+                    (nth m 3) [(nth m 3) 10]
+                    (nth m 4) [(nth m 4) 16]
+                    (nth m 5) [(nth m 5) 8]
+                    (nth m 7) [(nth m 7) (python/int (nth m 6))]
+                    :else     [nil nil])
+          digits  (first parsed)
+          radix   (second parsed)]
+      (when digits
+        (let [value (parse-int-base digits radix)]
+          (if negate?
+            (- value)
+            value))))))
+
+(defn- match-ratio [m]
+  (let [numerator-raw (nth m 1)
+        numerator     (if (str/starts-with? numerator-raw "+")
+                        (subs numerator-raw 1)
+                        numerator-raw)
+        denominator   (nth m 2)]
+    (fractions/Fraction (python/int numerator)
+                        (python/int denominator))))
+
+(defn- match-float [s m]
+  (if (nth m 4)
+    (decimal/Decimal (nth m 1))
+    (python/float s)))
+
+(defn match-number
+  "Parse `s` as a Clojure tools.reader number literal, returning nil if unmatched."
+  [s]
+  (if-let [int-match (re-matches int-pattern s)]
+    (match-int int-match)
+    (if-let [float-match (re-matches float-pattern s)]
+      (match-float s float-match)
+      (when-let [ratio-match (re-matches ratio-pattern s)]
+        (match-ratio ratio-match)))))
+
+(defn parse-symbol
+  "Parse a token into `[namespace symbol]`, or nil if the token is invalid."
+  [token]
+  (when-not (or (= "" token)
+                (str/ends-with? token ":")
+                (str/starts-with? token "::"))
+    (let [ns-idx (str/index-of token "/")]
+      (if-let [ns (and ns-idx
+                       (pos? ns-idx)
+                       (subs token 0 ns-idx))]
+        (let [sym-start (inc ns-idx)]
+          (when-not (= sym-start (count token))
+            (let [sym (subs token sym-start)]
+              (cond
+                (re-matches #"[1-9]" sym)
+                [ns sym]
+
+                (and (not (numeric? (subs sym 0 1)))
+                     (not= "" sym)
+                     (not (str/ends-with? ns ":"))
+                     (or (= sym "/")
+                         (nil? (str/index-of sym "/"))))
+                [ns sym]))))
+        (when (or (= token "/")
+                  (nil? (str/index-of token "/")))
+          [nil token])))))
+
+(defn read-comment
+  [rdr & _]
+  (skip-line rdr))
+
+(defn throwing-reader
+  [msg]
+  (fn [rdr & _]
+    (throw (ex-info msg {:reader rdr}))))

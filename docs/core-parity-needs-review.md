@@ -6,6 +6,11 @@ missing Basilisp Vars, and 59 Basilisp extensions. The matrix is a raw public-va
 comparison, so it includes Clojure implementation details and Java-runtime
 facilities in addition to portable user APIs.
 
+The matrix script is now gate-shaped: it discovers Clojure through
+`CLOJURE_COMMAND`, native `clojure`, or WSL on Windows, pins the default JVM
+runtime to Clojure 1.12.4, and exits non-zero when any `clojure.core` public
+Var is missing from Basilisp.
+
 The goal is to implement every portable API with tests. Symbols in **Needs
 review** must not receive a compatibility-shaped stub: their documented Clojure
 behavior depends on the JVM, Clojure's compiler internals, or its STM/agent
@@ -162,12 +167,12 @@ them as the following queues before changing behavior:
 
 | Failure cluster | Files | Classification | Next action |
 | --- | --- | --- | --- |
-| Basilisp `:lpy` numeric coercion expectations | `byte`, `double`, `float`, `int`, `long`, `short` | Mostly stale Python-host expectations in the suite, not Clojure parity gaps. The upstream `:lpy` branches still expect behavior such as string coercion and relaxed Python integer bounds in places where Clojure rejects or narrows. | Keep Basilisp aligned with the curated `numeric_coercion_cases.cljc` fixture unless a specific form is proven to differ from JVM Clojure. Patch suite expectations or mark host-extension behavior separately; do not restore permissive Python coercions under Clojure names. |
-| Character runtime representation | `char`, `char_qmark`, `string_qmark`, `pr_str`, `prn_str` | Stale suite assumptions from the old char-as-string model. Basilisp now has a distinct `basilisp.lang.character/Character`, so `char?`, `string?`, and printer output are intentionally closer to Clojure. | Preserve distinct characters. Add or maintain conformance fixtures that compare reader, predicate, equality, printing, and string-library behavior against Clojure. Update the upstream suite branch expectations rather than collapsing chars back to strings. |
-| Collection operations on characters | `empty_qmark`, `fnext`, `last`, `not_empty`, `remove`, `reverse`, `seq`, `seqable_qmark`, `set` | Secondary fallout from the same char-as-string assumption. The failing `:lpy` branches often treat a character like a one-character string/sequence; Clojure does not. | Do not make `Character` seqable merely to satisfy old `:lpy` tests. Keep collection semantics guarded by `shared_core_semantics_cases.cljc` and `character_cases.cljc`. |
-| `subs` Python slicing expectations | `subs` | The suite's `:lpy` expectations use Python slicing behavior for negative, `nil`, and out-of-range indexes. Clojure's `subs` rejects invalid indexes. Basilisp's UTF-16-aware implementation is intentionally Clojure-oriented. | Keep strict Clojure-style index validation and UTF-16 boundaries. If a Python slicing helper is desired, expose it under a Python-native name rather than `clojure.core/subs`. |
-| `case` numeric dispatch expectations | `case` | The remaining upstream failures are tied to Python host numeric hash/equality behavior and stale `:lpy` expectations around numeric category dispatch. This area is sensitive because previous work deliberately moved numeric equality toward Clojure's category-aware semantics. A separate portable fixture now covers real `case` dispatch and duplicate-test rejection. | Keep the `case_cases.cljc` fixture as the authority. Do not change numeric dispatch from CI alone unless a new fixture proves a JVM Clojure mismatch. |
-| Map-entry coercion through `conj`/`merge` | `conj`, `merge` | Resolved in the parity fork with `merge_cases.cljc`: Basilisp now follows Clojure's observable `merge` reduction-through-`conj` behavior for truthy first arguments while still rejecting invalid map-entry values in map position. The downstream suite's remaining `:lpy` expectations for `(conj {:a 0} '(:b 1))`, `(merge [:foo])`, `(merge :foo)`, and `(merge {} '(:a 1))` are stale relative to JVM Clojure. | Keep the differential fixture as authority. Do not reintroduce the old stricter first-argument guard or arbitrary-list map-entry coercion just to satisfy the stale `:lpy` branches. |
+| Basilisp `:lpy` numeric coercion expectations | `byte`, `double`, `float`, `int`, `long`, `short` | Mostly stale Python-host expectations in the suite, not Clojure parity gaps. The upstream `:lpy` branches still expect behavior such as string coercion and relaxed Python integer bounds where Clojure rejects or narrows. The residual follow-up also found and fixed a real checked integer edge: `byte`/`short`/`int`/`long` must range-check the original numeric value before truncation. | Keep Basilisp aligned with the curated `numeric_coercion_cases.cljc` fixture, including strict host string/collection rejection and pre-truncation checked-range validation. Patch suite expectations or mark host-extension behavior separately; do not restore permissive Python coercions under Clojure names. |
+| Character runtime representation | `char`, `char_qmark`, `string_qmark`, `pr_str`, `prn_str` | Stale suite assumptions from the old char-as-string model. Basilisp now has a distinct `basilisp.lang.character/Character`, so `char?`, `string?`, map/set identity, UTF-16 string indexing, and printer output are intentionally closer to Clojure. | Preserve distinct characters. Maintain `character_cases.cljc` as the authority for reader, predicate, equality, printing, string-library, and scalar collection-boundary behavior. Update the upstream suite branch expectations rather than collapsing chars back to strings. |
+| Collection operations on characters | `empty_qmark`, `fnext`, `last`, `not_empty`, `remove`, `reverse`, `seq`, `seqable_qmark`, `set` | Secondary fallout from the same char-as-string assumption. The failing `:lpy` branches often treat a character like a one-character string/sequence; Clojure does not. The character residual follow-up now directly proves that `seq`, `empty?`, `not-empty`, `fnext`, `last`, realized `remove`, `reverse`, and `set` reject characters while strings keep collection behavior. | Do not make `Character` seqable merely to satisfy old `:lpy` tests. Keep collection semantics guarded by `character_cases.cljc` and `shared_core_semantics_cases.cljc`; patch upstream `:lpy` expectations separately. |
+| `subs` Python slicing expectations | `subs` | Mostly stale suite expectations using Python slicing behavior for negative, `nil`, and out-of-range indexes. Clojure's `subs` rejects invalid indexes while still coercing numeric indexes through primitive-int truncation. The residual follow-up fixed two real edges: explicit 3-arity `nil` end now rejects, and numeric indexes such as `1.9`/`##NaN` follow Clojure's coercion behavior. | Keep strict Clojure-style UTF-16 index validation under `clojure.core/subs`, including numeric index truncation and explicit `nil` end rejection. If a Python slicing helper is desired, expose it under a Python-native name rather than `clojure.core/subs`. |
+| `case` numeric dispatch expectations | `case` | The remaining upstream failures are tied to Python host numeric hash/equality behavior and stale `:lpy` expectations around numeric category dispatch. This area is sensitive because previous work deliberately moved numeric equality toward Clojure's category-aware semantics. The residual follow-up now directly covers numeric family dispatch, signed zero, NaN defaulting, grouped constants, generated dispatch tables, and duplicate-test boundaries against JVM Clojure. | Keep the `case_cases.cljc` fixture as the authority. Do not change numeric dispatch from CI alone unless a new fixture proves a JVM Clojure mismatch. Patch upstream `:lpy` expectations separately. |
+| Map-entry coercion through `conj`/`merge` | `conj`, `merge` | Resolved in the parity fork with `merge_cases.cljc`: Basilisp now follows Clojure's observable `merge` reduction-through-`conj` behavior for truthy first arguments while still rejecting invalid map-entry values in map position. The residual follow-up directly covers persistent `conj`, `merge`, transient `conj!`, `nil`, maps, map entries, vector pairs, nested vector-pair keys, character/string key distinction, invalid lists/strings/short vectors/long vectors, and generated mixed-input cases. The downstream suite's remaining `:lpy` expectations for `(conj {:a 0} '(:b 1))`, `(merge [:foo])`, `(merge :foo)`, and `(merge {} '(:a 1))` are stale relative to JVM Clojure. | Keep the differential fixture as authority. Do not reintroduce the old stricter first-argument guard or arbitrary-list map-entry coercion just to satisfy the stale `:lpy` branches. |
 
 The practical next tranche after the `merge` fix was therefore **suite
 alignment and residual classification**, not broad `.core` mutation. That
@@ -175,14 +180,19 @@ guardrail now lives in `scripts/clojure_test_suite_residuals.py`: every excluded
 external suite file belongs to one structured cluster, every cluster names the
 local `tests/conformance` fixture that justifies the exclusion, and the helper
 fails if either the external suite path or the local evidence fixture
-disappears. Any new runtime tranche should first demonstrate one of these
-residuals is a real JVM Clojure behavioral gap using a portable differential
-fixture, not only a failing `:lpy` branch.
+disappears. Use `--verify-evidence` to run the named local fixtures through the
+differential Clojure/Basilisp harness before emitting ignore arguments; use
+`--disable-basilisp-ns-cache` for the same cache-independent proof mode as the
+full conformance corpus. Any new runtime tranche should first demonstrate one
+of these residuals is a real JVM Clojure behavioral gap using a portable
+differential fixture, not only a failing `:lpy` branch.
 
 The `run-clojure-test-suite` CI workflow excludes the residual files above via
 `scripts/clojure_test_suite_residuals.py`. Each exclusion is tied to an
-authoritative local differential fixture; removing an exclusion should first
-update the external suite expectation or prove a new runtime gap.
+authoritative local differential fixture, and the workflow installs Java plus
+Clojure CLI before invoking `--verify-evidence` so residual ignores are backed
+by live local Clojure/Basilisp proof in the same job. Removing an exclusion
+should first update the external suite expectation or prove a new runtime gap.
 
 ## Needs Review
 

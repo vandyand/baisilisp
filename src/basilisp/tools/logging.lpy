@@ -39,27 +39,31 @@
 
 (defmacro logp
   [level x & more]
-  `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
-     (when (impl/enabled? logger# ~level)
-       (let [x# ~x]
-         (if (python/isinstance x# python/BaseException)
-           (log* logger# ~level x# (print-str ~@more))
-           (log* logger# ~level nil (print-str x# ~@more)))))))
+  (if (or (string? x) (nil? more))
+    `(log ~level (print-str ~x ~@more))
+    `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
+       (when (impl/enabled? logger# ~level)
+         (let [x# ~x]
+           (if (python/isinstance x# python/BaseException)
+             (log* logger# ~level x# (print-str ~@more))
+             (log* logger# ~level nil (print-str x# ~@more))))))))
 
 (defmacro logf
   [level x & more]
-  `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
-     (when (impl/enabled? logger# ~level)
-       (let [x# ~x]
-         (if (python/isinstance x# python/BaseException)
-           (log* logger# ~level x# (format ~@more))
-           (log* logger# ~level nil (format x# ~@more)))))))
+  (if (or (string? x) (nil? more))
+    `(log ~level (format ~x ~@more))
+    `(let [logger# (impl/get-logger *logger-factory* ~(current-ns-form))]
+       (when (impl/enabled? logger# ~level)
+         (let [x# ~x]
+           (if (python/isinstance x# python/BaseException)
+             (log* logger# ~level x# (format ~@more))
+             (log* logger# ~level nil (format x# ~@more))))))))
 
 (defmacro spy
   ([expr] `(spy :debug ~expr))
   ([level expr]
    `(let [value# ~expr]
-      (log ~level (str (pr-str '~expr) " => " (pr-str value#)))
+      (log ~level (str (pr-str '~expr) "\n=> " (pr-str value#)))
       value#)))
 
 (defmacro spyf

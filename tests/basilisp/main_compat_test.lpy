@@ -1,0 +1,200 @@
+(ns tests.basilisp.main-compat-test
+  (:require [basilisp.string :as str]
+            [basilisp.test :refer [deftest is testing]]
+            [clojure.main :as main]
+            [clojure.test.check :as tc]
+            [clojure.test.check.generators :as gen]
+            [clojure.test.check.properties :as prop]
+            [clojure.tools.reader.reader-types :as reader-types])
+  (:import io))
+
+(deftest clojure-main-require-uses-a-non-conflicting-compat-namespace
+  (testing "the standard require path exposes Clojure's public surface"
+    (is (every? #(contains? (ns-publics 'clojure.main) %)
+                '[demunge
+                  err->msg
+                  ex-str
+                  ex-triage
+                  load-script
+                  main
+                  renumbering-read
+                  repl
+                  repl-caught
+                  repl-exception
+                  repl-prompt
+                  repl-read
+                  repl-requires
+                  report-error
+                  root-cause
+                  skip-if-eol
+                  skip-whitespace
+                  stack-element-str
+                  with-bindings
+                  with-read-known])))
+
+  (testing "the backing namespace deliberately avoids the Python basilisp.main module"
+    (is (= (find-ns 'basilisp.main-compat) (find-ns 'clojure.main)))
+    (is (= (ns-publics 'basilisp.main-compat) (ns-publics 'clojure.main)))
+    (is (nil? (find-ns 'basilisp.main)))))
+
+(deftest reader-sentinel-helpers-match-clojure-main-shapes
+  (testing "skip-if-eol consumes only one leading newline"
+    (is (= :line-start (main/skip-if-eol (reader-types/string-push-back-reader "\nabc"))))
+    (doseq [source ["\rabc" "\r\nabc"]]
+      (let [reader (reader-types/string-push-back-reader source)]
+        (is (= :line-start (main/skip-if-eol reader)))
+        (is (= \a (reader-types/read-char reader)))))
+    (let [reader (reader-types/string-push-back-reader "abc")]
+      (is (= :body (main/skip-if-eol reader)))
+      (is (= \a (reader-types/read-char reader))))
+    (is (= :stream-end (main/skip-if-eol (reader-types/string-push-back-reader "")))))
+
+  (testing "skip-whitespace handles comments, commas, EOF, and body pushback"
+    (doseq [source ["  ,;comment\nabc"
+                    "\rabc"
+                    "\r\nabc"
+                    "  \rabc"
+                    "  \r\nabc"
+                    ";comment\rabc"
+                    ";comment\r\nabc"]]
+      (let [reader (reader-types/string-push-back-reader source)]
+        (is (= :line-start (main/skip-whitespace reader)))
+        (is (= \a (reader-types/read-char reader)))))
+    (let [reader (reader-types/string-push-back-reader "abc")]
+      (is (= :body (main/skip-whitespace reader)))
+      (is (= \a (reader-types/read-char reader))))
+    (is (= :line-start (main/skip-whitespace
+                        (reader-types/string-push-back-reader ";unterminated"))))
+    (is (= :stream-end (main/skip-whitespace
+                        (reader-types/string-push-back-reader "  \t,\f"))))))
+
+(deftest repl-read-and-dynamic-binding-contracts
+  (testing "repl-read prompts at fresh lines, exits at EOF, and consumes one EOL after forms"
+    (let [reader (reader-types/string-push-back-reader "\n42\n99")]
+      (binding [*in* reader]
+        (is (= :prompt (main/repl-read :prompt :exit)))
+        (is (= 42 (main/repl-read :prompt :exit)))
+        (is (= 99 (main/repl-read :prompt :exit)))
+        (is (= :exit (main/repl-read :prompt :exit))))))
+
+  (testing "with-read-known makes :unknown readable without leaking the binding"
+    (binding [*read-eval* :unknown]
+      (is (= true (main/with-read-known *read-eval*)))
+      (is (= :unknown *read-eval*))))
+
+  (testing "with-bindings clears REPL result Vars only inside the dynamic extent"
+    (binding [*print-namespace-maps* false
+              *1 :one
+              *2 :two
+              *3 :three
+              *e :error]
+      (is (= [true nil nil nil nil]
+             (main/with-bindings [*print-namespace-maps* *1 *2 *3 *e])))
+      (is (= [false :one :two :three :error]
+             [*print-namespace-maps* *1 *2 *3 *e])))))
+
+(deftest remaining-helper-entrypoints-match-portable-contracts
+  (is (= "foo?!" (main/demunge "foo_QMARK__BANG_")))
+  (is (= 42 (main/renumbering-read {:eof :eof}
+                                   (reader-types/string-push-back-reader "42")
+                                   99)))
+  (try
+    (throw (python/RuntimeError "boom"))
+    (catch python/RuntimeError e
+      (is (= "boom" (ex-message (main/repl-exception e))))
+      (is (= "boom" (ex-message (main/root-cause e))))
+      (is (seq (main/err->msg e)))))
+  (is (str/ends-with? (with-out-str (main/repl-prompt)) "=> "))
+  (is (= '[clojure.repl clojure.java.javadoc clojure.pprint clojure.repl.deps]
+         (mapv first main/repl-requires)))
+  (is (= :execution
+         (:clojure.error/phase
+          (main/ex-triage {:clojure.error/phase :execution
+                           :clojure.error/cause "x"}))))
+  (is (every? ifn? [main/load-script
+                    main/main
+                    main/repl-caught
+                    main/report-error
+                    main/stack-element-str])))
+
+(defn- run-hooked-repl
+  [forms]
+  (let [state   (atom forms)
+        prompts (atom [])
+        printed (atom [])
+        flushes (atom 0)]
+    (main/repl :need-prompt (fn [] true)
+               :prompt #(swap! prompts conj :prompt)
+               :flush #(swap! flushes inc)
+               :read (fn [request-prompt request-exit]
+                       (let [x (first @state)]
+                         (swap! state rest)
+                         (case x
+                           :prompt request-prompt
+                           :exit request-exit
+                           x)))
+               :eval (fn [x]
+                       (if (= :boom x)
+                         (throw (python/RuntimeError "boom"))
+                         (inc x)))
+               :print #(swap! printed conj %)
+               :caught #(swap! printed conj [:caught (ex-message %)]))
+    [@prompts @printed @flushes]))
+
+(deftest option-driven-repl-loop-matches-clojure-hook-contract
+  (is (= [[:prompt :prompt :prompt] [2 3] 3]
+         (run-hooked-repl [1 2 :exit])))
+  (is (= [[:prompt :prompt :prompt] [4] 3]
+         (run-hooked-repl [:prompt 3 :exit])))
+  (is (= [[:prompt :prompt] [[:caught "boom"]] 2]
+         (run-hooked-repl [:boom :exit]))))
+
+(deftest error-formatting-and-report-boundary
+  (testing "portable triage maps format like clojure.main"
+    (is (= "Syntax error reading source at (sample.clj:4:9).\nbad read\n"
+           (main/ex-str {:clojure.error/phase :read-source
+                         :clojure.error/source "sample.clj"
+                         :clojure.error/line 4
+                         :clojure.error/column 9
+                         :clojure.error/cause "bad read"})))
+    (is (= "Unexpected error macroexpanding demo/m at (sample.clj:2:5).\nbad macroexpand\n"
+           (main/ex-str {:clojure.error/phase :macroexpansion
+                         :clojure.error/source "sample.clj"
+                         :clojure.error/line 2
+                         :clojure.error/column 5
+                         :clojure.error/symbol 'demo/m
+                         :clojure.error/class 'java.lang.RuntimeException
+                         :clojure.error/cause "bad macroexpand"})))
+    (is (= "Execution error at demo/run (sample.clj:8:1).\nbad exec\n"
+           (main/ex-str {:clojure.error/phase :execution
+                         :clojure.error/source "sample.clj"
+                         :clojure.error/line 8
+                         :clojure.error/column 1
+                         :clojure.error/symbol 'demo/run
+                         :clojure.error/class 'java.lang.RuntimeException
+                         :clojure.error/cause "bad exec"}))))
+
+  (testing "exception reporting supports stderr and none targets"
+    (let [err (io/StringIO)]
+      (try
+        (throw (python/RuntimeError "report fixture"))
+        (catch python/RuntimeError e
+          (is (= "" (binding [*err* err]
+                       (main/report-error e :target "none")
+                       (.getvalue err))))
+          (binding [*err* err]
+            (main/report-error e :target "stderr")
+            (is (str/includes? (.getvalue err) ":clojure.main/message"))
+            (is (str/includes? (.getvalue err) "report fixture"))))))))
+
+(deftest reader-whitespace-seeded-fuzz-test
+  (let [property (prop/for-all [prefix (gen/vector (gen/elements [" " "\t" "\f" ","])
+                                                   0
+                                                   24)]
+                   (let [reader (reader-types/string-push-back-reader
+                                 (str (str/join "" prefix) "x"))]
+                     (and (= :body (main/skip-whitespace reader))
+                          (= \x (reader-types/read-char reader)))))
+        result   (tc/quick-check 250 property :seed 20260724 :max-size 40)]
+    (is (:pass? result))
+    (is (= 250 (:num-tests result)))))

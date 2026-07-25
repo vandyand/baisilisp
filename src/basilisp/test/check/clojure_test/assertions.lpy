@@ -1,0 +1,43 @@
+(ns basilisp.test.check.clojure-test.assertions
+  "``clojure.test`` assertion integration for test.check results."
+  (:require [clojure.test :as t]))
+
+(defn test-context-stacktrace
+  "Return stacktrace entries after removing test/check assertion frames.
+
+  Basilisp stack entries are Python-hosted, so this helper preserves the
+  public sequence boundary and leaves host-specific frame filtering to the
+  reporter layer."
+  [st]
+  (drop-while (constantly false) st))
+
+(defn file-and-line*
+  "Return ``{:file ... :line ...}`` for the first stack frame, or nil values."
+  [stacktrace]
+  (if (seq stacktrace)
+    (let [frame (first stacktrace)
+          code (python/getattr frame "f_code" nil)]
+      {:file (or (python/getattr frame "filename" nil)
+                 (when code (python/getattr code "co_filename" nil)))
+       :line (or (python/getattr frame "lineno" nil)
+                 (python/getattr frame "f_lineno" nil))})
+    {:file nil :line nil}))
+
+(defn check-results
+  [m]
+  (if (:pass? m)
+    (t/do-report {:type :pass
+                  :message (dissoc m :result)})
+    (t/do-report (merge {:type :fail
+                         :expected {:result true}
+                         :actual m}
+                        (file-and-line* (test-context-stacktrace []))))))
+
+(defn check?
+  [_ form]
+  `(let [m# ~(nth form 1)]
+     (check-results m#)))
+
+(defmethod t/assert-expr 'clojure.test.check.clojure-test/check?
+  [msg form]
+  (check? msg form))

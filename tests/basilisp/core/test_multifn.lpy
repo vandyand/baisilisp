@@ -108,3 +108,16 @@
     (is (= 2 (:test mt2)))
     (is (= {:doc "test3" :test 3} (select-keys mt3 [:doc :test])))
     (is (= "test4" (:doc mt4)))))
+
+(defmulti preference-cleanup-test
+  :kind)
+
+(defmethod preference-cleanup-test :pref/a [_] :a)
+(defmethod preference-cleanup-test :pref/b [_] :b)
+
+(deftest remove-all-methods-clears-preferences-test
+  (prefer-method preference-cleanup-test :pref/a :pref/b)
+  (is (= {:pref/a #{:pref/b}} (prefers preference-cleanup-test)))
+  (remove-all-methods preference-cleanup-test)
+  (is (= {} (prefers preference-cleanup-test)))
+  (is (= {} (methods preference-cleanup-test))))

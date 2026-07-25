@@ -619,7 +619,8 @@
 (deftest list-star-test
   (is (= '(1 2) (list* [1 2])))
   (is (= '(1 2 3) (list* 1 [2 3])))
-  (is (= '(1 2 3 4) (list* 1 2 [3 4]))))
+  (is (= '(1 2 3 4) (list* 1 2 [3 4])))
+  (is (not (list? (list* 1 [2 3])))))
 
 (deftest reductions-test
   (is (= '(0 1 3 6) (reductions + [0 1 2 3])))
@@ -680,14 +681,20 @@
     nil     -1 [:a]))
 
 (deftest min-key-test
-  (is (= "dsd" (max-key count "asd" "bsd" "dsd")))
-  (is (= "long word" (max-key count "asd" "bsd" "dsd" "long word")))
-  (is (= "long word" (max-key count "long word" "asd" "bsd" "dsd"))))
-
-(deftest max-key-test
+  (is (= "a" (min-key count "a")))
+  (is (= "bb" (min-key count "aa" "bb")))
   (is (= "dsd" (min-key count "asd" "bsd" "dsd")))
   (is (= "dsd" (min-key count "asd" "bsd" "dsd" "long word")))
-  (is (= "a" (min-key count "a" "bsd" "dsd" "long word"))))
+  (is (= "a" (min-key count "a" "bsd" "dsd" "long word")))
+  (is (thrown? python/Exception (min-key count))))
+
+(deftest max-key-test
+  (is (= "a" (max-key count "a")))
+  (is (= "bb" (max-key count "aa" "bb")))
+  (is (= "dsd" (max-key count "asd" "bsd" "dsd")))
+  (is (= "long word" (max-key count "asd" "bsd" "dsd" "long word")))
+  (is (= "long word" (max-key count "long word" "asd" "bsd" "dsd")))
+  (is (thrown? python/Exception (max-key count))))
 
 (deftest sort-test
   (testing "no cmp function"
@@ -791,12 +798,12 @@
     {:a 53 :b "hi"} [{:a 1 :b "hi"} {:a 53}]
     #{1 2}          [#{1} 2])
 
-  (are [x] (thrown? python/TypeError (merge x))
+  (are [x] (thrown? Exception (merge {} x))
     [:foo]
-    :foo
-    100
-    "str"
-    (range)))
+    '(:foo)
+    "ab"
+    [:a]
+    [:a 1 2]))
 
 (deftest zipmap-test
   (are [x y z] (= x (zipmap y z))

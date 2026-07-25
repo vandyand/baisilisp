@@ -74,11 +74,29 @@
 (deftest folder-and-fold-test
   (is (= 10 (r/fold + [1 2 3 4])))
   (is (= 10 (r/fold 2 + + [1 2 3 4])))
+  (is (= 10 (r/coll-fold [1 2 3 4] 2 + +)))
   (is (= 9 (r/fold + (r/map inc [1 2 3]))))
   (is (= 0 (r/fold + nil)))
   (is (thrown? python/ValueError (r/fold 0 + + [1])))
   (is (= [[1 2] [3 4]]
          (vec (r/foldcat [[1 2] [3 4]])))))
+
+(deftest direct-reducer-construction-api-test
+  (let [inc-xf (fn [f]
+                 (fn
+                   ([] (f))
+                   ([ret value] (f ret (inc value)))))
+        reducer-direct (r/reducer [1 2 3] inc-xf)
+        folder-direct (r/folder [1 2 3] inc-xf)
+        cat-direct (r/->Cat 4 [1 2] [3 4])
+        cat-combiner (r/cat vector)
+        join (r/monoid str (fn [] ""))]
+    (is (= [2 3 4] (r/reduce conj [] reducer-direct)))
+    (is (= 9 (r/fold + folder-direct)))
+    (is (= [4 [1 2 3 4]] [(count cat-direct) (into [] cat-direct)]))
+    (is (= [1 2 3 4] (into [] (cat-combiner [1 2] [3 4]))))
+    (is (= [] (vec (r/cat))))
+    (is (= ["" "ab"] [(join) (join "a" "b")]))))
 
 (deftest concatenation-and-monoid-test
   (let [cat (r/cat [1 2] [3 4])]

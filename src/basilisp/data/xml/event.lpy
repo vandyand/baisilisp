@@ -19,6 +19,18 @@
 (def ->QNameEvent xml/->QNameEvent)
 (def ->EndElementEvent xml/->EndElementEvent)
 (def element-nss xml/element-nss)
+(def element-nss* xml/element-nss*)
 (def event-exit? xml/event-exit?)
 (def event-node xml/event-node)
 (def event-element xml/event-element)
+
+(defn map->StartElementEvent [m]
+  (xml/->StartElementEvent (:tag m) (:attrs m) (:nss m) (:location-info m)))
+(defn map->EmptyElementEvent [m]
+  (xml/->EmptyElementEvent (:tag m) (:attrs m) (:nss m) (:location-info m)))
+(defn map->CharsEvent [m] (xml/->CharsEvent (:str m)))
+(defn map->CDataEvent [m] (xml/->CDataEvent (:str m)))
+(defn map->CommentEvent [m] (xml/->CommentEvent (:str m)))
+(defn map->QNameEvent [m] (xml/->QNameEvent (:qn m)))
+(defn map->EndElementEvent [m]
+  (xml/->EndElementEvent (:tag m) (:nss m) (:location-info m)))

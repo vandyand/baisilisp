@@ -2,7 +2,7 @@
   (:require [basilisp.test :refer [deftest is]]))
 
 (deftest vector-of-coerces-supported-primitive-types
-  (is (= [true false] (vector-of :boolean true false)))
+  (is (= [true false true false] (vector-of :boolean true false 1 nil)))
   (is (= [-128] (vector-of :byte -128)))
   (is (= [(char 937)] (vector-of :char (char 937))))
   (is (= [-32768] (vector-of :short -32768)))
@@ -16,5 +16,47 @@
   (is (thrown? Exception (vector-of :byte 128)))
   (is (thrown? Exception (vector-of :short 32768)))
   (is (thrown? Exception (vector-of :int 2147483648)))
-  (is (thrown? Exception (vector-of :boolean 1)))
   (is (thrown? Exception (vector-of :char "a"))))
+
+(deftest vector-of-preserves-coercion-on-persistent-updates
+  (let [v (with-meta (vector-of :int 1.9) {:kind :typed})]
+    (is (= [1] v))
+    (is (= [1 2 -3] (conj v 2.9 -3.9)))
+    (is (= [9 8] (assoc v 0 9.9 1 8.1)))
+    (is (= [1] (pop (conj v 2.9))))
+    (is (= [2 3] (subvec (conj v 2.9 3.9 4.9) 1 3)))
+    (is (= [false true false] (conj (vector-of :boolean false) 1 nil)))
+    (is (= [false true] (assoc (vector-of :boolean true) 0 nil 1 1)))
+    (is (= {:kind :typed} (meta (conj v 2.9))))
+    (is (= {:kind :typed} (meta (assoc v 0 3.9))))
+    (is (= {:kind :typed} (meta (pop (conj v 2.9)))))
+    (is (nil? (meta (empty v))))
+    (is (= [7] (conj (empty v) 7.9)))))
+
+(deftest vector-of-rejects-transient-conversion
+  (is (thrown? Exception (transient (vector-of :int 1))))
+  (is (thrown? Exception (transient (with-meta (vector-of :int 1)
+                                     {:kind :typed})))))
+
+(deftest vector-of-rejects-invalid-values-on-updates
+  (is (thrown? Exception (conj (vector-of :byte 1) 128)))
+  (is (thrown? Exception (assoc (vector-of :char (char 97)) 0 "a")))
+  (is (thrown? Exception (conj (vector-of :int 1) 2147483648))))
+
+(deftest vector-of-seeded-update-stress-test
+  (doseq [n (range 96)]
+    (let [base (apply vector-of
+                      (cons :int
+                            (map #(+ (* n 10) % 0.9)
+                                 (range (inc (mod n 7))))))
+          c1 (conj base (+ 100 n 0.9))
+          a1 (assoc c1 0 (- (+ n 0.9)))
+          p1 (pop a1)
+          expected-base (mapv #(+ (* n 10) %) (range (inc (mod n 7))))
+          expected-conj (conj expected-base (+ 100 n))
+          expected-assoc (assoc expected-conj 0 (- n))]
+      (is (= expected-base base))
+      (is (= expected-conj c1))
+      (is (= expected-assoc a1))
+      (is (= (pop expected-assoc) p1))
+      (is (= (reduce + 0 expected-assoc) (reduce + 0 a1))))))

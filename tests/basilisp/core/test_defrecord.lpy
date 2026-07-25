@@ -287,6 +287,51 @@
       (is (= "radius: 1" (str c1)))
       (is (= "radius: 2" (str (assoc c :radius 2)))))))
 
+(defrecord NilEntryRecord [a b])
+
+(deftest defrecord-nil-entry-and-contains-boundary-test
+  (let [base     (->NilEntryRecord nil 2)
+        extra    (assoc base :extra nil)
+        from-map (map->NilEntryRecord {:a nil :b nil :extra nil})]
+    (is (true? (contains? base :a)))
+    (is (true? (contains? base :b)))
+    (is (false? (contains? base :missing)))
+    (is (= (map-entry :a nil) (.entry base :a)))
+    (is (= (map-entry :a nil) (find base :a)))
+    (is (nil? (.entry base :missing)))
+    (is (true? (contains? extra :extra)))
+    (is (= (map-entry :extra nil) (.entry extra :extra)))
+    (is (= (map-entry :extra nil) (find extra :extra)))
+    (is (= #{[:a nil] [:b nil] [:extra nil]}
+           (set (map vec (seq from-map)))))
+    (is (= {:a nil :b nil :extra nil}
+           (into {} from-map)))))
+
+(deftest defrecord-nil-entry-seeded-update-stress-test
+  (doseq [n (range 96)]
+    (let [r0 (->NilEntryRecord n nil)
+          r1 (assoc r0
+                    :a (when (odd? n) n)
+                    :extra (when (zero? (mod n 3)) n)
+                    :nil-extra nil)
+          r2 (if (zero? (mod n 4))
+               (dissoc r1 :a)
+               r1)
+          expected (cond-> {:b nil
+                            :extra (when (zero? (mod n 3)) n)
+                            :nil-extra nil}
+                     (not (zero? (mod n 4)))
+                     (assoc :a (when (odd? n) n)))]
+      (is (= expected (into {} r2)))
+      (doseq [k [:a :b :extra :nil-extra]]
+        (is (= (contains? expected k) (contains? r2 k)))
+        (is (= (when (contains? expected k)
+                 (map-entry k (get expected k)))
+               (.entry r2 k)))
+        (is (= (when (contains? expected k)
+                 (map-entry k (get expected k)))
+               (find r2 k)))))))
+
 (defrecord ?Name [? x? ?x ?? ?x? ??x ?x- x?x])
 
 (deftest defrecord-with-munged-fields

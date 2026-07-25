@@ -184,6 +184,7 @@ class MultiFunction(Generic[T, P]):
         """Remove all methods defined for this multimethod1."""
         with self._lock:
             self._methods = lmap.EMPTY
+            self._prefers = lmap.EMPTY
             self._reset_cache()
 
     @property

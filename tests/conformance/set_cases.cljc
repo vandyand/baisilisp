@@ -66,6 +66,23 @@
             :superset? [(set/superset? #{1 2 3} #{1 2})
                         (set/superset? #{1 2} #{1 2 3})]})
 
+#?(:lpy
+   (emit-case :basilisp-extension-set-helpers
+              {:disjoint [(set/disjoint? #{1 2} #{3 4})
+                          (set/disjoint? #{1 2} #{2 3})]
+               :symmetric [(sorted-vec (set/symmetric-difference #{1 2 3}))
+                           (sorted-vec (set/symmetric-difference #{1 2 3}
+                                                                 #{3 4 5}))
+                           (sorted-vec (set/symmetric-difference #{1 2 3}
+                                                                 #{2 4}
+                                                                 #{1 5}))]})
+   :clj
+   (emit-case :basilisp-extension-set-helpers
+              {:disjoint [true false]
+               :symmetric [[1 2 3]
+                           [1 2 4 5]
+                           [3 4 5]]}))
+
 (emit-case :metadata-and-sorted-preservation
            (let [sorted-source (with-meta (sorted-set 3 1 2) {:m :sorted})
                  small-sorted (with-meta (sorted-set 1) {:m :small})

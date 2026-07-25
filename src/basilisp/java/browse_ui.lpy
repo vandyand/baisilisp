@@ -1,0 +1,6 @@
+(ns basilisp.java.browse-ui
+  "Empty public compatibility namespace for ``clojure.java.browse-ui``.
+
+  Clojure loads this namespace lazily for a private Swing browser fallback.
+  Basilisp has no Swing fallback and exposes no public Vars, matching
+  Clojure's public namespace surface.")

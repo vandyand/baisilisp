@@ -3,19 +3,52 @@
   (:require [basilisp.tools.logging :as log]
             [basilisp.tools.logging.impl :as impl]))
 
+(defn- readable-print-args
+  [args]
+  (for [arg args]
+    (if (string? arg)
+      arg
+      `(pr-str ~arg))))
+
+(defn- readable-format-args
+  [args]
+  (for [arg args]
+    `(pr-str ~arg)))
+
 (defmacro logp
   [level x & more]
-  `(let [logger# (impl/get-logger log/*logger-factory* '~(ns-name *ns*))]
-     (when (impl/enabled? logger# ~level)
-       (let [x# ~x]
-         (if (python/isinstance x# python/BaseException)
-           (log/log* logger# ~level x# (print-str ~@(map (fn [arg] `(pr-str ~arg)) more)) )
-           (log/log* logger# ~level nil
-                     (print-str (pr-str x#) ~@(map (fn [arg] `(pr-str ~arg)) more))))))))
+  (if (or (string? x) (nil? more))
+    `(log/log ~level (binding [*print-readably* true]
+                       (print-str ~@(readable-print-args (cons x more)))))
+    `(let [logger# (impl/get-logger log/*logger-factory* '~(ns-name *ns*))]
+       (when (impl/enabled? logger# ~level)
+         (let [x# ~x]
+           (if (python/isinstance x# python/BaseException)
+             (log/log* logger# ~level x#
+                       (binding [*print-readably* true]
+                         (print-str ~@(readable-print-args more))))
+             (log/log* logger# ~level nil
+                       (binding [*print-readably* true]
+                         (print-str (pr-str x#)
+                                    ~@(readable-print-args more))))))))))
 
 (defmacro logf
   [level fmt & args]
-  `(log/logf ~level ~fmt ~@(map (fn [arg] `(pr-str ~arg)) args)))
+  (if (or (string? fmt) (nil? args))
+    `(log/log ~level (binding [*print-readably* true]
+                       (format ~fmt ~@(readable-format-args args))))
+    `(let [logger# (impl/get-logger log/*logger-factory* '~(ns-name *ns*))]
+       (when (impl/enabled? logger# ~level)
+         (let [fmt# ~fmt]
+           (if (python/isinstance fmt# python/BaseException)
+             (log/log* logger# ~level fmt#
+                       (binding [*print-readably* true]
+                         (format ~(first args)
+                                 ~@(readable-format-args (rest args)))))
+             (log/log* logger# ~level nil
+                       (binding [*print-readably* true]
+                         (format fmt#
+                                 ~@(readable-format-args args))))))))))
 
 (defmacro trace [& args] `(logp :trace ~@args))
 (defmacro debug [& args] `(logp :debug ~@args))
@@ -29,3 +62,11 @@
 (defmacro warnf [& args] `(logf :warn ~@args))
 (defmacro errorf [& args] `(logf :error ~@args))
 (defmacro fatalf [& args] `(logf :fatal ~@args))
+
+(defmacro spyf
+  ([fmt expr]
+   `(spyf :debug ~fmt ~expr))
+  ([level fmt expr]
+   `(let [a# ~expr]
+      (logf ~level ~fmt a#)
+      a#)))

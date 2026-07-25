@@ -44,6 +44,22 @@
                (xml/parse "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>"
                           xml/startparse-sax))))
 
+(deftest xml-dynamic-state-and-emit-helper-boundaries-test
+  (is (nil? xml/*current*))
+  (is (nil? xml/*sb*))
+  (is (nil? xml/*stack*))
+  (is (= :between xml/*state*))
+  (let [element (xml-el :root {:b "2" :a "1"} ["body" (xml-el :child nil nil)])
+        element-out (io/StringIO)
+        document-out (io/StringIO)]
+    (binding [*out* element-out]
+      (xml/emit-element element))
+    (binding [*out* document-out]
+      (xml/emit element))
+    (is (= (xml-el :root {:a "1" :b "2"} ["body" (xml-el :child nil nil)])
+           (xml/parse (.getvalue element-out))))
+    (is (not= -1 (.find (.getvalue document-out) "<?xml")))))
+
 (deftest xml-rejects-unsafe-and-malformed-input-test
   (is (thrown? python/ValueError (xml/parse "<!DOCTYPE x [<!ENTITY y 'boom'>]><x>&y;</x>")))
   (is (thrown? python/ValueError

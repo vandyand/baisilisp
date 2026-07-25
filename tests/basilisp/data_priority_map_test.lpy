@@ -1,6 +1,7 @@
 (ns tests.basilisp.data-priority-map-test
   (:import random)
   (:require [basilisp.test :refer [deftest is]]
+            [clojure.set :as set]
             [clojure.data.priority-map :as pm]))
 
 (deftest priority-map-map-and-queue-contract
@@ -83,3 +84,33 @@
                   (is (= expected-priority (second (peek next-queue))))))
               (recur (inc step) next-model next-queue))
             (recur (inc step) (dissoc model item) (dissoc queue item))))))))
+
+(deftest seeded-keyfn-by-priority-queue-model-fuzz
+  (let [rng (random/Random 20260724)]
+    (loop [step 0 model {} queue (pm/priority-map-keyfn-by first >)]
+      (if (= step 650)
+        (is (= model queue))
+        (let [item (keyword (str "k" (.randint rng 0 95)))]
+          (if (< (.random rng) 0.72)
+            (let [priority (.randint rng -35 35)
+                  payload [priority (keyword (str "payload-" step))]
+                  next-model (assoc model item payload)
+                  next-queue (assoc queue item payload)
+                  expected-priorities (sort > (map first (vals next-model)))
+                  observed-priorities (vec (map (comp first val) next-queue))]
+              (is (= next-model next-queue))
+              (is (= expected-priorities observed-priorities))
+              (when (seq next-model)
+                (is (= (first expected-priorities)
+                       (first (val (peek next-queue)))))
+                (is (= (set (keys next-model))
+                       (apply set/union
+                              (vals (pm/priority->set-of-items next-queue))))))
+              (recur (inc step) next-model next-queue))
+            (let [next-model (dissoc model item)
+                  next-queue (dissoc queue item)
+                  expected-priorities (sort > (map first (vals next-model)))]
+              (is (= next-model next-queue))
+              (is (= expected-priorities
+                     (vec (map (comp first val) next-queue))))
+              (recur (inc step) next-model next-queue))))))))

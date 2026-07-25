@@ -481,6 +481,9 @@ class TestLiterals:
         assert lcompile('{:a "string" 45 :my-age}') == lmap.map(
             {kw.keyword("a"): "string", 45: kw.keyword("my-age")}
         )
+        assert (
+            lcompile("(let [m {##NaN :x}] [(count m) (hash m) (vec (vals m))])")[0] == 1
+        )
 
     def test_set(self, lcompile: CompileFn):
         assert lcompile("#{}") == lset.s()

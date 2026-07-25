@@ -14,8 +14,9 @@ import time
 import uuid as _uuid
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any, Callable, Iterable, Mapping, Sequence
+from typing import Any, Callable, Iterable, Mapping, Sequence, Sized
 
+from basilisp.lang import character as lchar
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
@@ -502,8 +503,16 @@ def such_that(
     return Generator(produce)
 
 
+def _not_empty(value: Any) -> bool:
+    if value is None:
+        return False
+    if isinstance(value, Sized):
+        return len(value) > 0
+    return True
+
+
 def not_empty(generator: Generator) -> Generator:
-    return such_that(bool, generator)
+    return such_that(_not_empty, generator)
 
 
 def no_shrink(generator: Generator) -> Generator:
@@ -698,11 +707,11 @@ def double_star(opts: Any = None) -> Generator:
 
 
 def _char(lower: int, upper: int) -> Generator:
-    return fmap(chr, choose(lower, upper))
+    return fmap(lambda value: lchar.character(chr(value)), choose(lower, upper))
 
 
 def _string(char_gen: Generator) -> Generator:
-    return fmap(lambda chars: "".join(chars), vector(char_gen))
+    return fmap(lambda chars: "".join(str(char) for char in chars), vector(char_gen))
 
 
 def recursive_gen(

@@ -4,8 +4,12 @@
    [basilisp.test :as t]
    [basilisp.test.tap :as tap]
    tests.basilisp.tap-cases)
-  (:import io
-           os))
+  (:import io))
+
+(defn normalize-newlines [s]
+  (-> s
+      (str/replace "\r\n" "\n")
+      (str/replace #"[ \t]+\n" "\n")))
 
 (t/deftest tap-output-test
   (let [writer (io/StringIO)
@@ -23,9 +27,46 @@
     (t/is (not (str/includes? output "Testing tests.basilisp.tap-cases")))))
 
 (t/deftest tap-printers-test
-  (t/is (= (str/join os/linesep ["# first" "# second" ""])
-           (with-out-str
-             (tap/print-tap-diagnostic "first\nsecond"))))
-  (t/is (= (str "1..2" os/linesep)
-           (with-out-str
-             (tap/print-tap-plan 2)))))
+  (t/is (= "#\n"
+           (normalize-newlines
+            (with-out-str
+              (tap/print-tap-diagnostic "")))))
+  (t/is (= "# first\n# second\n"
+           (normalize-newlines
+            (with-out-str
+              (tap/print-tap-diagnostic "first\nsecond")))))
+  (t/is (= "# first\n#\n# third\n"
+           (normalize-newlines
+            (with-out-str
+              (tap/print-tap-diagnostic "first\n\nthird\n")))))
+  (t/is (= "1..2\n"
+           (normalize-newlines
+            (with-out-str
+              (tap/print-tap-plan 2))))))
+
+(t/deftest tap-diagnostic-boundary-test
+  (t/is (= "# inner outer\n# expected:x\n#   actual:y\n"
+           (normalize-newlines
+            (binding [t/*testing-contexts* (list "outer" "inner")]
+              (with-out-str
+                (tap/print-diagnostics {:type :fail
+                                        :expected 'x
+                                        :actual 'y}))))))
+  (let [writer (io/StringIO)]
+    (binding [t/*test-out* writer
+              t/*test-failures* nil
+              t/*testing-vars* []]
+      (tap/tap-report {:type :error
+                       :message "error message"
+                       :expected 'ok
+                       :actual 'bad}))
+    (t/is (= "not ok () (:)\n# error message\n# expected:ok\n#   actual:bad\n"
+             (normalize-newlines (.getvalue writer)))))
+  (let [writer (io/StringIO)]
+    (binding [t/*test-out* writer]
+      (tap/tap-report {:type :summary
+                       :pass 0
+                       :fail 0
+                       :error 0}))
+    (t/is (= "1..0\n"
+             (normalize-newlines (.getvalue writer))))))

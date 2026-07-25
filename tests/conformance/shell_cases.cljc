@@ -38,6 +38,18 @@
 (emit-case :public-surface
            (public-shell-names))
 
+(emit-case :dynamic-var-bindings
+           {:defaults [(nil? sh/*sh-dir*)
+                       (nil? sh/*sh-env*)]
+            :bound-env (sh/with-sh-env {"BASILISP_SHELL_CASE" "bound"}
+                         (get sh/*sh-env* "BASILISP_SHELL_CASE"))
+            :bound-dir (sh/with-sh-dir "tests"
+                         sh/*sh-dir*)
+            :nested (sh/with-sh-dir "tests"
+                      (sh/with-sh-env {"BASILISP_SHELL_CASE" "nested"}
+                        [(some? sh/*sh-dir*)
+                         (get sh/*sh-env* "BASILISP_SHELL_CASE")]))})
+
 (emit-case :basic-result-map
            (normalize-result
             (apply sh/sh
@@ -70,6 +82,31 @@
              (str/trim
               (out-command #?(:clj "basename \"$PWD\""
                               :lpy "import pathlib; print(pathlib.Path.cwd().name)")))))
+
+(emit-case :adversarial-option-precedence-and-errors
+           {:explicit-dir-over-bound
+            (sh/with-sh-dir "."
+              (str/trim
+               (out-command #?(:clj "basename \"$PWD\""
+                               :lpy "import pathlib; print(pathlib.Path.cwd().name)")
+                            :dir "tests")))
+            :explicit-env-replaces-bound
+            (sh/with-sh-env {"BASILISP_SHELL_CASE" "bound"
+                             "BASILISP_SHELL_BOUND_ONLY" "present"}
+              (shell-command #?(:clj "printf '%s:%s' \"$BASILISP_SHELL_CASE\" \"${BASILISP_SHELL_BOUND_ONLY:-missing}\""
+                                :lpy "import os; print(os.environ.get('BASILISP_SHELL_CASE', 'missing') + ':' + os.environ.get('BASILISP_SHELL_BOUND_ONLY', 'missing'), end='')")
+                             :env {"BASILISP_SHELL_CASE" "explicit"}))
+            :nonzero-no-throw
+            (shell-command #?(:clj "printf '%s' 'out'; printf '%s' 'err' >&2; exit 13"
+                              :lpy "import sys; print('out', end=''); print('err', file=sys.stderr, end=''); sys.exit(13)"))
+            :explicit-output-encoding
+            (shell-command #?(:clj "printf '%s' 'shell-ok'"
+                              :lpy "print('shell-ok', end='')")
+                           :out-enc "UTF-8")
+            :stdin-lines
+            (shell-command #?(:clj "cat"
+                              :lpy "import sys; print(sys.stdin.read(), end='')")
+                           :in "alpha\nbeta")})
 
 (defn next-seed [seed]
   (mod (+ (* seed 1103515245) 12345) 2147483648))

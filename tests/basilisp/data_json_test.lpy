@@ -4,7 +4,8 @@
            math
            random)
   (:require [basilisp.test :refer [deftest is testing]]
-            [clojure.data.json :as json]))
+            [clojure.data.json :as json]
+            [clojure.string :as str]))
 
 (deftype JSONValue [])
 
@@ -25,6 +26,11 @@
            :escape-unicode}
          (set (keys json/default-write-options))))
   (is (instance? python/Exception (json/invalid-array-exception))))
+
+(deftest host-reader-boundary-constructors-are-present
+  (is (some? (json/->ReaderPBR (io/StringIO "[]"))))
+  (is (some? (json/->StringPBR "[1,2]" 0 5)))
+  (is (some? json/codepoint-decoder)))
 
 (deftest reads-persistent-json-values
   (is (= {:name "BaisiLisp"
@@ -89,12 +95,54 @@
   (is (thrown? Exception (json/write-str ##NaN)))
   (is (thrown? Exception (json/write-str {nil 1}))))
 
+(deftest adversarial-read-write-option-boundaries
+  (is (= {:keep {:value 2}
+          :items [{:value 4}]}
+         (json/read-str "{\"keep\":{\"drop\":1,\"value\":2},\"items\":[{\"drop\":3,\"value\":4}]}"
+                        :key-fn keyword
+                        :value-fn (fn omit-drop [key value]
+                                    (if (= :drop key) omit-drop value)))))
+  (is (= [{:a 1} "tail"]
+         (json/read-str "{\"a\":1}  \n  tail"
+                        :key-fn keyword
+                        :extra-data-fn (fn [value reader]
+                                         [value (str/trim (.read reader))]))))
+  (let [line-separator (str "line" (char 8232) "sep")
+        paragraph-separator (str "para" (char 8233) "sep")
+        encoded-default (json/write-str {"line" line-separator
+                                         "paragraph" paragraph-separator})
+        encoded-raw (json/write-str {"line" line-separator
+                                     "paragraph" paragraph-separator}
+                                    :escape-js-separators false)]
+    (is (str/includes? encoded-default "\\u2028"))
+    (is (str/includes? encoded-default "\\u2029"))
+    (is (= {"line" line-separator
+            "paragraph" paragraph-separator}
+           (json/read-str encoded-raw))))
+  (is (= {"k-alpha-key" 1}
+         (json/read-str
+          (json/write-str {:alpha-key 1}
+                          :key-fn #(str "k-" (name %))))))
+  (is (= {"keep" 1 "nested" {"keep" 2}}
+         (json/read-str
+          (json/write-str {:drop nil :keep 1 :nested {:drop nil :keep 2}}
+                          :value-fn (fn omit-nil [key value]
+                                      (if (nil? value) omit-nil value)))))))
+
 (deftest writer-and-legacy-apis
   (let [writer (io/StringIO)]
     (json/write {:a 1} writer)
     (is (= "{\"a\":1}" (.getvalue writer))))
   (is (= {:a 1} (json/read-json "{\"a\":1}")))
   (is (= "[1,2]" (json/json-str [1 2])))
+  (is (= "{\"printed\":1}" (with-out-str (json/print-json {:printed 1}))))
+  (is (not (str/blank? (with-out-str (json/pprint-json {:pretty [1 2]})))))
+  (let [writer (io/StringIO)]
+    (json/write-json {:legacy 1} writer false)
+    (is (= "{\"legacy\":1}" (.getvalue writer))))
+  (let [writer (io/StringIO)]
+    (json/-write (->JSONValue) writer json/default-write-options)
+    (is (= "\"protocol\"" (.getvalue writer))))
   (is (= "custom"
          (json/write-str (python/object)
                          :default-write-fn (fn [_ writer _] (.write writer "custom")))))

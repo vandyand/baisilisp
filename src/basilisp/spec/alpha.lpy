@@ -183,7 +183,13 @@
 (defn ? [spec] (basilisp.lang.spec/maybe spec))
 (defn & [spec & predicates] (apply basilisp.lang.spec/amp spec predicates))
 
-(defn abbrev [form] form)
+(defn- abbrev-form [form]
+  (cond
+    (symbol? form) (symbol (name form))
+    (seq? form)    (apply list (map abbrev-form form))
+    :else          form))
+
+(defn abbrev [form] (abbrev-form form))
 (defn spec-impl
   ([form pred gfn cpred?]
    (spec-impl form pred gfn cpred? nil))

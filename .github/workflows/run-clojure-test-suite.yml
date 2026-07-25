@@ -23,6 +23,13 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: '3.14'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
       - name: Install pip and dependencies
         run: |
           cd clojure-test-suite
@@ -34,8 +41,13 @@ jobs:
         run: |
           cd clojure-test-suite
           source .venv/bin/activate
+          BASILISP_COMMAND="$(pwd)/.venv/bin/basilisp run"
           IGNORE_ARGS="$(python ../basilisp/scripts/clojure_test_suite_residuals.py \
             --suite-root . \
+            --repo-root ../basilisp \
+            --verify-evidence \
+            --disable-basilisp-ns-cache \
+            --basilisp-command "$BASILISP_COMMAND" \
             --pytest-ignore-args)"
           BASILISP_TEST_PATH="$(pwd)/test" \
             BASILISP_TEST_FILE_PATTERN='.*\.(lpy|cljc)' \

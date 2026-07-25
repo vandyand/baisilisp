@@ -1,0 +1,83 @@
+(ns basilisp.java.javadoc
+  "Python-hosted compatibility surface for ``clojure.java.javadoc``.
+
+  The namespace keeps Clojure's public Vars and browser-opening workflow while
+  resolving documentation URLs from Basilisp/Python class names where possible."
+  (:require [clojure.java.browse :refer [browse-url]])
+  (:import os
+           pathlib))
+
+(def ^:dynamic *feeling-lucky-url*
+  "http://www.google.com/search?btnI=I%27m%20Feeling%20Lucky&q=allinurl:")
+
+(def ^:dynamic *feeling-lucky* true)
+
+(def ^:dynamic *local-javadocs* (atom (list)))
+
+(def ^:dynamic *core-java-api*
+  "https://docs.oracle.com/en/java/javase/17/docs/api/%s/")
+
+(def ^:dynamic *remote-javadocs*
+  (atom (sorted-map
+         "com.google.common." "http://google.github.io/guava/releases/23.0/api/docs/"
+         "java." *core-java-api*
+         "javax." *core-java-api*
+         "org.ietf.jgss." *core-java-api*
+         "org.omg." *core-java-api*
+         "org.w3c.dom." *core-java-api*
+         "org.xml.sax." *core-java-api*
+         "org.apache.commons.codec." "http://commons.apache.org/proper/commons-codec/apidocs/"
+         "org.apache.commons.io." "http://commons.apache.org/proper/commons-io/javadocs/api-release/"
+         "org.apache.commons.lang." "http://commons.apache.org/proper/commons-lang/javadocs/api-2.6/"
+         "org.apache.commons.lang3." "http://commons.apache.org/proper/commons-lang/javadocs/api-release/"
+         "builtins." "https://docs.python.org/3/library/stdtypes.html#")))
+
+(defn add-local-javadoc
+  "Add ``path`` to the local documentation search paths."
+  [path]
+  (swap! *local-javadocs* conj path))
+
+(defn add-remote-javadoc
+  "Associate ``package-prefix`` with a remote documentation URL."
+  [package-prefix url]
+  (swap! *remote-javadocs* assoc package-prefix url))
+
+(defn- fill-in-module-name
+  [url _classname]
+  (if (.contains (str url) "%s")
+    (.replace (str url) "%s" "")
+    (str url)))
+
+(defn- class-name
+  [class-or-object]
+  (let [klass (if (python/isinstance class-or-object python/type)
+                class-or-object
+                (python/type class-or-object))]
+    (str (.-__module__ klass) "." (.-__qualname__ klass))))
+
+(defn- javadoc-url
+  [classname]
+  (let [file-path (.replace classname "." (str os/sep))
+        url-path  (.replace classname "." "/")]
+    (if-let [local-file (first
+                         (filter (fn [file]
+                                   (.exists file))
+                                 (map #(pathlib/Path (str %) (str file-path ".html"))
+                                      @*local-javadocs*)))]
+      (str (.as_uri local-file))
+      (or (some (fn [[prefix url]]
+                  (when (.startswith classname prefix)
+                    (str (fill-in-module-name url classname)
+                         url-path
+                         ".html")))
+                @*remote-javadocs*)
+          (when *feeling-lucky*
+            (str *feeling-lucky-url* url-path ".html"))))))
+
+(defn javadoc
+  "Open documentation for the class of ``class-or-object`` in a browser."
+  [class-or-object]
+  (let [classname (class-name class-or-object)]
+    (if-let [url (javadoc-url classname)]
+      (browse-url url)
+      (println "Could not find Javadoc for" classname))))

@@ -6,7 +6,9 @@
   be moved out into a new file."
   (:import decimal
            io
+           pathlib
            shutil
+           tempfile
            threading
            time
            [xml.etree.ElementTree :as etree])
@@ -18,7 +20,13 @@
 
 (deftest array-map-test
   (is (= {} (array-map)))
-  (is (= {:a 2 :b 3} (array-map :a 1 :a 2 :b 3))))
+  (is (= {:a 2 :b 3} (array-map :a 1 :a 2 :b 3)))
+  (is (= [[:a 2] [:b 3]]
+         (vec (seq (array-map :a 1 :a 2 :b 3)))))
+  (is (= [[:a 1] [:b 2] [:c 3]]
+         (vec (seq (assoc (array-map :a 1 :b 2) :c 3)))))
+  (is (= [[:a 1] [:c 3]]
+         (vec (seq (dissoc (array-map :a 1 :b 2 :c 3) :b))))))
 
 (deftest seq-to-map-for-destructuring-test
   (testing "empty and singleton sequences retain Clojure's keyword-argument shape"
@@ -42,6 +50,17 @@
     (is (thrown? python/ValueError
                  (seq-to-map-for-destructuring [:a 1 :b])))))
 
+(deftest destructure-public-contract-test
+  (testing "public destructure accepts a full binding vector and returns a vector"
+    (is (= '[x 1] (destructure '[x 1])))
+    (let [bindings (destructure
+                    '[[a b & more :as all] [1 2 3 4]
+                      {:keys [x y] :or {y 9} :as m} {:x 1}])]
+      (is (vector? bindings))
+      (is (even? (count bindings)))
+      (is (= [1 2 '(3 4) [1 2 3 4] 1 9 {:x 1}]
+             (eval (list 'let bindings '[a b more all x y m])))))))
+
 (deftest comparator-test
   (let [cmp (comparator <)]
     (is (= -1 (cmp 1 2)))
@@ -51,6 +70,20 @@
 (deftest line-seq-test
   (is (= '("one" "two")
          (line-seq (io/StringIO "one\ntwo\n")))))
+
+(deftest file-seq-test
+  (let [root (pathlib/Path (tempfile/mkdtemp ** :prefix "file-seq-test"))]
+    (try
+      (.write-text (.joinpath root "a.txt") "a")
+      (.mkdir (.joinpath root "dir"))
+      (.write-text (.joinpath root "dir" "b.txt") "b")
+      (is (= ["." "a.txt" "dir" "dir/b.txt"]
+             (sort
+              (map (fn [path]
+                     (.as-posix (.relative-to path root)))
+                   (file-seq root)))))
+      (finally
+        (shutil/rmtree root)))))
 
 (deftest xml-seq-test
   (let [root (etree/fromstring "<root><first/><second><third/></second></root>")]
@@ -62,7 +95,7 @@
         shortcut (symbol "alias-target")]
     (create-ns target)
     (alias shortcut target)
-    (is (= target (get (ns-aliases *ns*) shortcut)))
+    (is (= target (symbol (str (ns-name (get (ns-aliases *ns*) shortcut))))))
     (ns-unalias *ns* shortcut)
     (remove-ns target)))
 
@@ -95,9 +128,14 @@
     (is (nil? (merge)))
     (is (nil? (merge nil)))
     (is (= {:a 1} (merge nil {:a 1})))
+    (is (= {:a 1} (merge nil [:a 1])))
+    (is (= {:a 1} (merge nil (first {:a 1}))))
     (is (= {:a 2 :b nil} (merge {:a 1} nil {:a 2 :b nil})))
     (is (= {:foo "foo"} (merge {} [:foo "foo"])))
-    (is (= {:a 1} (merge {} {:a nil} [:a 1]))))
+    (is (= {:a 1} (merge {} {:a nil} [:a 1])))
+    (is (= {[:a 1] [:b 2]} (merge nil [[:a 1] [:b 2]])))
+    (is (= {\a "char" "a" :string}
+           (merge {} [\a "char"] ["a" :string]))))
 
   (testing "Clojure's undefined-but-observable first-argument reduction is preserved"
     (is (= [:foo] (merge [:foo])))
@@ -111,7 +149,15 @@
   (testing "map conj accepts only map entries, maps, nil, and vector-like pairs"
     (is (= {:a 1} (conj {} [:a 1])))
     (is (= {:a 1} (conj {} #py (:a 1))))
+    (is (= {:a 1} (conj {} (first {:a 1}))))
+    (is (= {} (conj {} nil)))
+    (is (= {} (conj {} {})))
+    (is (= {:a 1} (conj {} {:a 1})))
+    (is (= {[:a 1] [:b 2]} (conj {} [[:a 1] [:b 2]])))
+    (is (= {\a "char" "a" :string}
+           (conj {} [\a "char"] ["a" :string])))
     (is (thrown? python/ValueError (conj {} '(:a 1))))
+    (is (thrown? python/ValueError (conj {} (list [:a 1]))))
     (is (thrown? python/ValueError (conj {} "ab")))
     (is (thrown? python/ValueError (conj {} [:a])))
     (is (thrown? python/ValueError (conj {} [:a 1 2])))))
@@ -154,10 +200,65 @@
   (is (= :body (with-loading-context :body)))
   (is (nil? (with-loading-context)))
   (is (nil? (gen-class :name tests.basilisp.Generated)))
+  (is (= [nil nil nil nil]
+         [(gen-class :name tests.basilisp.GeneratedMain
+                     :main true
+                     :prefix "generated-")
+          (gen-class :name tests.basilisp.GeneratedExtends
+                     :extends Object
+                     :implements [Runnable])
+          (gen-class :name tests.basilisp.GeneratedMethods
+                     :methods [[run [] void]
+                               [withArgs [String int] String]])
+          (gen-class :name tests.basilisp.GeneratedFactory
+                     :factory make
+                     :exposes {toString exposedToString}
+                     :exposes-methods {hashCode exposedHashCode}
+                     :impl-ns tests.basilisp.generated.impl
+                     :load-impl-ns false)]))
+  (doseq [n (range 32)]
+    (let [class-name (symbol (str "tests.basilisp.GeneratedSeed" n))
+          opts       (cond-> [:name class-name
+                              :prefix (str "seed-" n "-")]
+                       (zero? (mod n 2))
+                       (conj :main true)
+
+                       (zero? (mod n 3))
+                       (conj :methods '[[m [] Object]
+                                        [n [String] String]])
+
+                       (zero? (mod n 4))
+                       (conj :constructors '{[] []
+                                             [String] [Object]})
+
+                       (zero? (mod n 5))
+                       (conj :state 'state
+                             :init 'init
+                             :post-init 'post-init)
+
+                       (zero? (mod n 6))
+                       (conj :factory 'make
+                             :load-impl-ns false))]
+      (is (nil? (eval (list* 'gen-class opts))))))
   (let [current-ns *ns*]
     (try
       (is (nil? (eval '(ns tests.basilisp.core.gen-class-clause
                          (:gen-class)))))
+      (is (nil? (eval '(ns tests.basilisp.core.gen-class-clause-options
+                         (:gen-class
+                          :name tests.basilisp.GeneratedNsNamed
+                          :main true
+                          :prefix "ns-generated-")))))
+      (is (nil? (eval '(ns tests.basilisp.core.gen-class-clause-extended
+                         (:gen-class
+                          :name tests.basilisp.GeneratedNsExtended
+                          :extends Object
+                          :implements [Runnable]
+                          :methods [[run [] void]]
+                          :constructors {[] []})))))
+      (is (thrown? basilisp.lang.compiler/CompilerException
+                   (eval '(ns tests.basilisp.core.gen-class-clause-invalid
+                            (:gen-class :name)))))
       (finally
         (in-ns (symbol (str (ns-name current-ns))))))))
 
@@ -189,8 +290,24 @@
 
 (deftest unsigned-bit-shift-right-test
   (is (= 9223372036854775807 (unsigned-bit-shift-right -1 1)))
+  (is (= -1 (unsigned-bit-shift-right -1 0)))
+  (is (= -1 (unsigned-bit-shift-right -1 64)))
+  (is (= 1 (unsigned-bit-shift-right -1 -1)))
+  (is (= 9223372036854775807 (unsigned-bit-shift-right -1 65)))
   (is (= 4611686018427387904
          (unsigned-bit-shift-right -9223372036854775808 1))))
+
+(deftest bit-shift-jvm-long-semantics-test
+  (is (= -9223372036854775808 (bit-shift-left 1 63)))
+  (is (= 1 (bit-shift-left 1 64)))
+  (is (= 2 (bit-shift-left 1 65)))
+  (is (= -9223372036854775808 (bit-shift-left 1 -1)))
+  (is (= -8 (bit-shift-right -8 64)))
+  (is (= -4 (bit-shift-right -8 65)))
+  (is (= -1 (bit-shift-right -8 -1)))
+  (is (= -9223372036854775807 (bit-set 1 -1)))
+  (is (= -9223372036854775807 (bit-flip 1 -1)))
+  (is (false? (bit-test 1 -1))))
 
 (deftest locking-test
   (let [lock (threading/Lock)]
@@ -238,7 +355,8 @@
 (deftest read-plus-string-test
   (let [stream (io/StringIO "  (+ 1 2)  :next")]
     (is (= ['(+ 1 2) "(+ 1 2)"] (read+string stream)))
-    (is (= [:next ":next"] (read+string stream)))))
+    (is (= [:next ":next"] (read+string stream))))
+  (is (= [:done ""] (read+string {:eof :done} (io/StringIO "")))))
 
 (deftest str-test
   (are [expected args] (= expected (apply str args))
@@ -454,6 +572,11 @@
   (is (= 1.25M (bigdec "1.25")))
   (is (= 1.1M (bigdec 1.1))))
 
+(deftest cast-test
+  (is (= "x" (cast python/str "x")))
+  (is (nil? (cast python/str nil)))
+  (is (thrown? python/TypeError (cast python/int "x"))))
+
 (deftest vary-meta-test
   (testing "with lists"
     (let [l  '(:list)
@@ -523,7 +646,11 @@
 
         (let [v2 (vary-meta v1 dissoc :vector)]
           (is (= v1 v2))
-          (is (= {:tag vector} (meta v2))))))))
+          (is (= {:tag vector} (meta v2))))))
+
+  (testing "clearing metadata"
+    (is (nil? (meta (with-meta ^:vector [:vec] nil))))
+    (is (nil? (meta (vary-meta ^:vector [:vec] (constantly nil))))))))
 
 (deftest compare-test
   (testing "nil"
@@ -813,6 +940,18 @@
               (is (= [10 10 15 22] [l1-l l1-el l1-c l1-ec]))
               (is (= [11 12 0 2] [l2-l l2-el l2-c l2-ec]))))))
 
+(deftest read-eof-and-reader-conditional-test
+  (is (= :done (read (io/StringIO "") false :done)))
+  (is (= :done (read {:eof :done} (io/StringIO ""))))
+  (is (= :done (read-string {:eof :done} "")))
+  (is (thrown? basilisp.lang.reader/SyntaxError
+               (read-string "#?(:lpy :ok)")))
+  (is (thrown? basilisp.lang.reader/SyntaxError
+               (read-string "[1 #?(:lpy :ok)]")))
+  (is (= :ok (read-string {:read-cond :allow} "#?(:lpy :ok)")))
+  (is (reader-conditional?
+       (read-string {:read-cond :preserve} "#?(:lpy :ok)"))))
+
 (deftest reader-eval-test
   (is (= 42 (read-string "#=(+ 20 22)")))
   (is (= [3 7] (read-string "[#=(+ 1 2) #=(+ 3 4)]")))
@@ -964,6 +1103,7 @@
     -2   -4/2
     3/2  1.5
     -3/2 -1.5
+    3333333333333333/10000000000000000 0.3333333333333333
     3/2  6/4
     -3/2 -6/4))
 

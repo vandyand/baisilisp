@@ -14,7 +14,14 @@
     (is (= "book" (xml/qname-local tag)))
     (is (xml/namespaced? tag))
     (is (= tag (xml/as-qname tag)))
-    (is (= "urn:example:catalog" (xml/symbol-uri (xml/uri-symbol "urn:example:catalog")))))
+    (is (= "urn:example:catalog" (xml/symbol-uri (xml/uri-symbol "urn:example:catalog"))))
+    (is (= "xmlns.urn+space" (str (xml/uri-symbol "urn space"))))
+    (is (= "urn space" (xml/symbol-uri (xml/uri-symbol "urn space"))))
+    (is (= "xmlns/urn+space.cljc" (xml/uri-file "urn space")))
+    (is (= (xml/qname "urn:example:catalog" "book")
+           (xml/parse-qname "{urn:example:catalog}book")))
+    (is (= "urn:example:catalog" (xml/qname-uri "{urn:example:catalog}book")))
+    (is (= "book" (xml/qname-local "{urn:example:catalog}book"))))
   (let [tree (xml/parse-str "<root xmlns='urn:example'><child a='1'>text</child></root>")]
     (is (= "urn:example" (xml/qname-uri (:tag tree))))
     (is (= "root" (xml/qname-local (:tag tree))))
@@ -40,6 +47,29 @@
       (is (= :child (:tag (first (:content prxml)))))
       (is (= "tail" (second (:content prxml)))))
     (is (thrown? Exception (xml/sexp-as-element [[:a] [:b]])))))
+
+(deftest element-star-and-namespace-helpers-match-data-xml-contracts
+  (let [el (xml/element* :root nil [nil "x"] {:m true})
+        raw-el (xml/element* :root nil [] {:clojure.data.xml/nss {"q" "urn:q"}})
+        xmlns-el (xml/element* :root
+                               {:xmlns/p "urn:p"
+                                (xml/qname "urn:attr" "id") "7"}
+                               [])
+        nss (xml/element-nss xmlns-el)
+        aggregate (xml/aggregate-xmlns
+                   (xml/element :root nil
+                                (xml/element (xml/qname "urn:child" "node")
+                                             {(xml/qname "urn:attr" "id") "1"})))]
+    (is (= {:tag :root :content ["x"]} el))
+    (is (= {:m true} (meta el)))
+    (is (= {"q" "urn:q"} (event/element-nss* raw-el)))
+    (is (= "urn:p" (get-in nss [:p->u "p"])))
+    (is (= "http://www.w3.org/XML/1998/namespace" (get-in nss [:p->u "xml"])))
+    (is (= "http://www.w3.org/2000/xmlns/" (get-in nss [:p->u "xmlns"])))
+    (is (= #{"" "http://www.w3.org/2000/xmlns/" "urn:attr"}
+           (set (xml/find-xmlns xmlns-el))))
+    (is (contains? (set (keys (:u->ps (event/element-nss* aggregate)))) "urn:child"))
+    (is (contains? (set (keys (:u->ps (event/element-nss* aggregate)))) "urn:attr"))))
 
 (deftest parser-rejects-expansion-input-and-respects-options
   (is (thrown? python/ValueError
@@ -68,14 +98,45 @@
     (is (instance? xml/EmptyElementEvent empty))
     (is (= :empty (.-tag empty)))
     (is (= :child (.-tag child)))
-    (is (instance? xml/CDataEvent cdata))
+    (is (instance? xml/CharsEvent cdata))
     (is (= "y < z" (.-str cdata)))
     (is (event/event-exit? child-exit))
+    (is (= :child (.-tag child-exit)))
     (is (xml/event-exit? root-exit))
     (is (= "x" (xml/event-node chars)))
-    (is (= (xml/cdata "y < z") (xml/event-node cdata)))
+    (is (= "y < z" (xml/event-node cdata)))
     (is (= {:tag :root :attrs {:a "1"}}
-           (xml/event-element root)))))
+           (xml/event-element root))))
+  (let [events (vec (xml/event-seq "<root><![CDATA[y < z]]></root>"
+                                   :coalescing false))]
+    (is (instance? xml/CDataEvent (second events)))
+    (is (= (xml/cdata "y < z") (xml/event-node (second events))))))
+
+(deftest map-event-constructors-and-end-events-match-public-record-shapes
+  (let [start (event/map->StartElementEvent {:tag :root
+                                             :attrs {:a "1"}
+                                             :nss {}
+                                             :location-info nil})
+        empty (event/map->EmptyElementEvent {:tag :empty
+                                             :attrs {}
+                                             :nss {}
+                                             :location-info nil})
+        chars (event/map->CharsEvent {:str "x"})
+        cdata (event/map->CDataEvent {:str "y"})
+        comment (event/map->CommentEvent {:str " note "})
+        qn (event/map->QNameEvent {:qn :name})
+        end (event/map->EndElementEvent {:tag :root
+                                         :nss {}
+                                         :location-info nil})]
+    (is (= :root (.-tag start)))
+    (is (= :empty (.-tag empty)))
+    (is (= "x" (.-str chars)))
+    (is (= "y" (.-str cdata)))
+    (is (= " note " (.-str comment)))
+    (is (= :name (.-qn qn)))
+    (is (= :root (.-tag end)))
+    (is (event/event-exit? end))
+    (is (event/event-exit? (xml/->EndElementEvent)))))
 
 (deftest event-seq-options-and-security-match-tree-parsing
   (let [without-comments (vec (xml/event-seq "<root><!-- hidden --></root>"))
@@ -105,7 +166,11 @@
     (is (instance? xml/CDataEvent (nth events 4)))
     (is (instance? xml/CommentEvent (nth events 5)))
     (is (xml/event-exit? (last events)))
-    (is (= {} (event/element-nss source))))
+    (is (= :root (.-tag (last events))))
+    (is (= "http://www.w3.org/XML/1998/namespace"
+           (get-in (event/element-nss source) [:p->u "xml"])))
+    (is (= "http://www.w3.org/2000/xmlns/"
+           (get-in (event/element-nss source) [:p->u "xmlns"]))))
   (let [events (vec (xml/flatten-elements [nil true false 42 :name]))]
     (is (= ["" "true" "false" "42"]
            (mapv #(.-str %) (take 4 events))))

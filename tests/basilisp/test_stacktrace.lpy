@@ -40,6 +40,16 @@
            "print-trace-element" "root-cause"}
          (set (map name (keys (ns-publics 'basilisp.stacktrace)))))))
 
+(deftest e-prints-root-cause-bound-to-*e*-test
+  (let [error (try
+                (throw (ex-info "probe" {:x 1}))
+                (catch python/Exception e
+                  e))
+        output (binding [*e error]
+                 (with-out-str (s/e)))]
+    (is (str/includes? output "probe"))
+    (is (str/includes? output ":x"))))
+
 (deftest python-context-does-not-affect-root-cause-test
   (testing "context only exception"
     (try

@@ -1,0 +1,2 @@
+(ns basilisp.test.check.clojure-test.assertions.cljs
+  "Empty source-compatible namespace for the ClojureScript assertion hook.")

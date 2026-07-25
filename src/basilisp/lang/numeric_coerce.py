@@ -86,11 +86,17 @@ def _signed(value: int, bits: int) -> int:
 def checked_integer(value: Any, bits: int, *, allow_character: bool = True) -> int:
     """Return a checked signed primitive integer conversion."""
 
-    result = _truncated(value, allow_character=allow_character)
+    numeric = _numeric(value, allow_character=allow_character)
     lower, upper = -(1 << (bits - 1)), (1 << (bits - 1)) - 1
-    if not lower <= result <= upper:
+    if isinstance(numeric, decimal.Decimal):
+        out_of_range = not numeric.is_nan() and not lower <= numeric <= upper
+    elif isinstance(numeric, float):
+        out_of_range = not math.isnan(numeric) and not lower <= numeric <= upper
+    else:
+        out_of_range = not lower <= numeric <= upper
+    if out_of_range:
         raise ValueError(f"Value out of range for signed {bits}-bit integer: {value!r}")
-    return result
+    return _truncated(numeric)
 
 
 def unchecked_integer(

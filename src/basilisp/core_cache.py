@@ -321,6 +321,11 @@ class TTLCacheQ(PersistentCache):
         del generation
         return item in self._inner and self._clock() - created < self._ttl_ms
 
+    def cache_lookup(self, item: Any, not_found: Any = _MISSING) -> Any:
+        if self.cache_has(item):
+            return self._inner.get(equivalence_key(item))
+        return None if not_found is _MISSING else not_found
+
     def _prune(self, now: int):
         queue = self._q
         keys = []

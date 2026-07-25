@@ -20,6 +20,11 @@
     (is (= :c (with-redefs [redeffable :c] redeffable)))
     (is (= :a redeffable)))
 
+  (testing "with-redefs accepts degenerate binding vectors like Clojure"
+    (is (= :body (with-redefs [] :body)))
+    (is (= :body (with-redefs [redeffable] :body)))
+    (is (= :a redeffable)))
+
   (testing "with-redefs resets to the original root even after an exception"
     (is (thrown? basilisp.lang.exception/ExceptionInfo
                  (with-redefs [redeffable :c]
@@ -83,6 +88,32 @@
 
   (is (nil? (ns-resolve *ns* 'if))))
 
+(deftest namespace-lifecycle-test
+  (let [ns-sym (gensym "namespace-lifecycle")]
+    (is (nil? (find-ns ns-sym)))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo (the-ns ns-sym)))
+    (let [created (create-ns ns-sym)]
+      (is (= ns-sym (symbol (str (ns-name created)))))
+      (is (= created (find-ns ns-sym)))
+      (is (= created (the-ns ns-sym)))
+      (is (some #(= ns-sym (symbol (str (ns-name %)))) (all-ns)))
+      (is (= created (remove-ns ns-sym)))
+      (is (nil? (find-ns ns-sym)))
+      (is (nil? (remove-ns ns-sym))))))
+
+(deftest ns-aliases-test
+  (let [target (gensym "namespace-alias-target")
+        shortcut (gensym "alias")]
+    (try
+      (let [target-ns (create-ns target)]
+        (alias shortcut target)
+        (is (= target-ns (get (ns-aliases *ns*) shortcut)))
+        (is (= target (symbol (str (ns-name (get (ns-aliases *ns*) shortcut)))))))
+      (finally
+        (ns-unalias *ns* shortcut)
+        (when (find-ns target)
+          (remove-ns target))))))
+
 (deftest intern-test
   (let [ns-sym (gensym "intern-test-ns")
         ns0 (create-ns ns-sym)]
@@ -113,4 +144,5 @@
         (is (= v (find-var (symbol (str ns0) (str sym))))))))
 
   (testing "ns-not-exists"
-    (is (thrown? python/AttributeError (intern 'ns-non-existant 'xyz)))))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo
+                 (intern 'ns-non-existant 'xyz)))))

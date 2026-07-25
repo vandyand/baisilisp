@@ -8,6 +8,10 @@ from basilisp.lang import runtime
 from basilisp.lang import symbol as sym
 
 
+def _ascii_repr(value):
+    return ascii(value)
+
+
 def _escape():
     importlib.import_module("basilisp.string")
     var = runtime.Var.find(sym.symbol("escape", ns="basilisp.string"))
@@ -22,7 +26,15 @@ def _escape():
 def test_escape_matches_per_character_replacement_model(s, cmap):
     escape = _escape()
 
-    assert escape(s, cmap) == "".join(cmap.get(ch, ch) for ch in s)
+    actual = escape(s, cmap)
+    expected = "".join(cmap.get(ch, ch) for ch in s)
+
+    if actual != expected:
+        pytest.fail(
+            "escape result differed from per-character replacement model: "
+            f"s={_ascii_repr(s)} cmap={_ascii_repr(cmap)} "
+            f"actual={_ascii_repr(actual)} expected={_ascii_repr(expected)}"
+        )
 
 
 def test_escape_retains_nil_mappings_and_stringifies_mapped_values():

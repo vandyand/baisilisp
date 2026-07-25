@@ -8,6 +8,15 @@
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
 
+#?(:lpy
+   (def basilisp-writer-extension-touch
+     [edn/EDNEncodeable
+      edn/write
+      edn/write*
+      edn/write-string])
+   :clj
+   (def basilisp-writer-extension-touch nil))
+
 (defn rejected? [f]
   (try
     (f)

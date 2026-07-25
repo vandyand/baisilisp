@@ -23,6 +23,8 @@
 (deftest read-csv-test
   (testing "string"
     (is (= '() (csv/read-csv "")))
+    (is (= [["a" "b"] [""] ["" "c"]]
+           (vec (csv/read-csv "a,b\n\n,c\n"))))
     (is (= '() (csv/rows->maps (csv/read-csv "id,name"))))
     (is (= (concat [test-csv-headers] test-csv-rows)
            (csv/read-csv test-csv-content)))
@@ -42,8 +44,9 @@
              (csv/rows->maps (csv/read-csv f)))))))
 
 (deftest write-csv-test
-  (is (thrown? basilisp.lang.exception/ExceptionInfo
-               (csv/write-csv (io/StringIO) [] :newline :wrong-nl)))
+  (with-open [f (io/StringIO)]
+    (csv/write-csv f [["x"]] :newline :wrong-nl)
+    (is (= "xnull" (.getvalue f))))
 
   (with-open [f (io/StringIO)]
     (csv/write-csv f [])
@@ -66,14 +69,18 @@
       (data-csv/write-csv out [["a" "b"]] :separator ";" :quote "'" :quote? #(= "b" %)
                           :newline :cr+lf)
       (is (= "a;'b'\r\n" (.getvalue out))))
+    (let [out (io/StringIO)]
+      (csv/write-csv out [["x"]] :separator "::" :quote "")
+      (is (= "x\n" (.getvalue out))))
     (is (thrown? python/ValueError
-                 (csv/write-csv (io/StringIO) [["x"]] :separator "::")))
+                 (csv/write-csv (io/StringIO) [["x" "y"]] :separator "::")))
     (is (thrown? python/ValueError
-                 (csv/write-csv (io/StringIO) [["x"]] :quote "")))))
+                 (csv/write-csv (io/StringIO) [["x"]] :quote "" :quote? (constantly true))))))
 
 (deftest data-csv-import-and-seeded-round-trip-test
   (is (= #{"Read-CSV-From" "read-csv" "read-csv-from" "write-csv"}
          (set (map name (keys (ns-publics 'basilisp.data.csv))))))
+  (is (some? data-csv/Read-CSV-From))
   (is (= [["a" "b"] ["c" "d"]]
          (vec (data-csv/read-csv-from "a,b\nc,d" (int \,) (int \")))))
   (is (= [["a" "b"] ["c" "d"]]
@@ -93,3 +100,25 @@
     (is (= "left;right\n" (.getvalue out)))
     (is (= [["left" "right"]]
            (vec (csv/read-csv (.getvalue out) :separator \; :quote \|))))))
+
+(deftest adversarial-data-csv-option-and-shape-test
+  (let [rows [[nil true false 42 :kw 'sym]
+              []
+              ["leading" "" "trailing"]
+              ["line\rbreak" "line\nbreak" "both\r\nbreak"]]
+        out  (io/StringIO)]
+    (data-csv/write-csv out rows)
+    (is (= ",true,false,42,:kw,sym\n\nleading,,trailing\n\"line\rbreak\",\"line\nbreak\",\"both\r\nbreak\"\n"
+           (.getvalue out)))
+    (is (= [["" "true" "false" "42" ":kw" "sym"]
+            [""]
+            ["leading" "" "trailing"]
+            ["line\rbreak" "line\nbreak" "both\r\nbreak"]]
+           (vec (data-csv/read-csv (.getvalue out))))))
+  (let [out (io/StringIO)]
+    (data-csv/write-csv out [["a" "b"] ["" "c"]] :quote? (constantly true))
+    (is (= "\"a\",\"b\"\n\"\",\"c\"\n" (.getvalue out))))
+  (let [out (io/StringIO)]
+    (data-csv/write-csv out [["has,comma" "has\"quote" "plain"]]
+                        :quote? (constantly false))
+    (is (= "has,comma,has\"quote,plain\n" (.getvalue out)))))

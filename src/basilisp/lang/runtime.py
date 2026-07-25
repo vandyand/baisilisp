@@ -1459,13 +1459,10 @@ def _rest_iseq(o: ISeq[T]) -> ISeq:
 
 def nthrest(coll, i: int):
     """Returns the nth rest sequence of coll, or coll if i is 0."""
-    while True:
-        if coll is None:
-            return None
-        if i <= 0:
-            return coll
+    while i > 0:
         i -= 1
         coll = rest(coll)
+    return coll
 
 
 def next_(o) -> ISeq | None:

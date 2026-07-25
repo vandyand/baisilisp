@@ -16,10 +16,27 @@ from basilisp.lang import character
 from basilisp.lang import reader as lreader
 
 
+def _contains_reader_conditional(form: Any) -> bool:
+    if isinstance(form, lreader.ReaderConditional):
+        return True
+    if isinstance(form, (str, bytes, bytearray)):
+        return False
+    if isinstance(form, dict):
+        return any(
+            _contains_reader_conditional(k) or _contains_reader_conditional(v)
+            for k, v in form.items()
+        )
+    if isinstance(form, (list, tuple, set, frozenset)):
+        return any(_contains_reader_conditional(v) for v in form)
+    if hasattr(form, "seq") and callable(form.seq):
+        return any(_contains_reader_conditional(v) for v in (form.seq() or ()))
+    return False
+
+
 class PushbackReader:
     """A stateful, optionally source-logging wrapper around a text stream."""
 
-    __slots__ = ("stream", "reader", "source_logging", "file_name")
+    __slots__ = ("stream", "reader", "source_logging", "file_name", "indexing")
 
     def __init__(
         self,
@@ -27,6 +44,7 @@ class PushbackReader:
         pushback_depth: int = 5,
         file_name: str | None = None,
         source_logging: bool = False,
+        indexing: bool = False,
         init_line: int | None = None,
         init_column: int | None = None,
     ) -> None:
@@ -44,6 +62,7 @@ class PushbackReader:
             init_column=init_column,
         )
         self.source_logging = source_logging
+        self.indexing = indexing or source_logging
         self.file_name = file_name if file_name is not None else self.reader.name
 
     def read_char(self) -> str | None:
@@ -81,21 +100,28 @@ class PushbackReader:
         resolver: Any,
         data_readers: Any,
         features: Any,
-        process_reader_cond: bool,
+        process_reader_cond: bool | None,
         default_data_reader_fn: Any,
+        reader_eval: Any = None,
         with_source: bool = False,
         process_tagged_literals: bool = True,
+        builtin_data_readers: Any = None,
+        edn: bool = False,
     ) -> Any:
         start = self._source_bounds()[0] if with_source else 0
+        reject_reader_cond = process_reader_cond is None
         ctx = lreader.ReaderContext(
             self.reader,
             resolver=resolver,
             data_readers=data_readers,
             eof=eof_value,
             features=features,
-            process_reader_cond=process_reader_cond,
+            process_reader_cond=bool(process_reader_cond),
             process_tagged_literals=process_tagged_literals,
             default_data_reader_fn=default_data_reader_fn,
+            reader_eval=reader_eval,
+            builtin_data_readers=builtin_data_readers,
+            edn=edn,
         )
         while True:
             form = lreader._read_next(ctx)  # pylint: disable=protected-access
@@ -103,6 +129,8 @@ class PushbackReader:
                 if eof_error:
                     raise EOFError
                 return (eof_value, "") if with_source else eof_value
+            if reject_reader_cond and _contains_reader_conditional(form):
+                raise ctx.syntax_error("Reader conditional not allowed")
             if form is lreader.COMMENT or isinstance(form, lreader.Comment):
                 continue
             if (
@@ -158,7 +186,12 @@ def input_stream_push_back_reader(
 def indexing_push_back_reader(
     reader: Any, buffer_length: int = 1, file_name: str | None = None
 ) -> PushbackReader:
-    return PushbackReader(reader, pushback_depth=buffer_length, file_name=file_name)
+    return PushbackReader(
+        reader,
+        pushback_depth=buffer_length,
+        file_name=file_name,
+        indexing=True,
+    )
 
 
 def indexing_push_back_reader_from_parts(
@@ -172,6 +205,7 @@ def indexing_push_back_reader_from_parts(
         reader,
         pushback_depth=buffer_length,
         file_name=file_name,
+        indexing=True,
         init_line=line,
         init_column=None if column is None else max(0, column - 1),
     )
@@ -185,6 +219,7 @@ def source_logging_push_back_reader(
         pushback_depth=buffer_length,
         file_name=file_name,
         source_logging=True,
+        indexing=True,
     )
 
 
@@ -200,6 +235,7 @@ def source_logging_push_back_reader_from_parts(
         pushback_depth=buffer_length,
         file_name=file_name,
         source_logging=True,
+        indexing=True,
         init_line=line,
         init_column=None if column is None else max(0, column - 1),
     )
@@ -220,7 +256,7 @@ def unread(reader: Any, char: Any = None) -> None:
 
 
 def indexing_reader(reader: Any) -> bool:
-    return isinstance(reader, PushbackReader)
+    return isinstance(reader, PushbackReader) and reader.indexing
 
 
 def source_logging_reader(reader: Any) -> bool:
@@ -248,7 +284,7 @@ def line_start(reader: Any) -> bool:
     return indexing_reader(reader) and reader.reader.col == 0
 
 
-def read_line(reader: Any) -> str | None:
+def read_line(reader: Any) -> str:
     reader = _as_pushback_reader(reader)
     chars: list[str] = []
     while (char := reader.read_char()) is not None:
@@ -256,7 +292,7 @@ def read_line(reader: Any) -> str | None:
             return "".join(chars)
         if char != "\r":
             chars.append(char)
-    return "".join(chars) if chars else None
+    return "".join(chars)
 
 
 def read_form(
@@ -268,7 +304,10 @@ def read_form(
     features: Any,
     process_reader_cond: bool,
     default_data_reader_fn: Any,
+    reader_eval: Any = None,
     process_tagged_literals: bool = True,
+    builtin_data_readers: Any = None,
+    edn: bool = False,
 ) -> Any:
     return _as_pushback_reader(reader).read_form(
         eof_error,
@@ -278,7 +317,10 @@ def read_form(
         features,
         process_reader_cond,
         default_data_reader_fn,
+        reader_eval,
         process_tagged_literals=process_tagged_literals,
+        builtin_data_readers=builtin_data_readers,
+        edn=edn,
     )
 
 
@@ -291,7 +333,10 @@ def read_form_with_source(
     features: Any,
     process_reader_cond: bool,
     default_data_reader_fn: Any,
+    reader_eval: Any = None,
     process_tagged_literals: bool = True,
+    builtin_data_readers: Any = None,
+    edn: bool = False,
 ) -> tuple[Any, str]:
     reader = _as_pushback_reader(reader)
     if not reader.source_logging:
@@ -304,9 +349,19 @@ def read_form_with_source(
         features,
         process_reader_cond,
         default_data_reader_fn,
+        reader_eval,
         process_tagged_literals=process_tagged_literals,
         with_source=True,
+        builtin_data_readers=builtin_data_readers,
+        edn=edn,
     )
+
+
+def read_symbol(reader: Any, initial_char: Any) -> Any:
+    reader = _as_pushback_reader(reader)
+    reader.unread(initial_char)
+    ctx = lreader.ReaderContext(reader.reader)
+    return lreader._read_sym(ctx)  # pylint: disable=protected-access
 
 
 def read_regex(reader: Any, _char: Any = None, _opts: Any = None, _pending: Any = None):

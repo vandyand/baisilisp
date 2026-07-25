@@ -1,0 +1,91 @@
+(ns tests.basilisp.java-classpath-test
+  (:require [clojure.java.classpath :as cp]
+            [clojure.test :refer [deftest is testing]])
+  (:import pathlib
+           sys
+           tempfile
+           zipfile))
+
+(defrecord URLLoader [entries])
+
+(extend-type URLLoader
+  cp/URLClasspath
+  (urls [loader] (:entries loader)))
+
+(defn- temp-root []
+  (pathlib/Path (tempfile/mkdtemp ** :prefix "java-classpath-test")))
+
+(defn- write-jar! [path entries]
+  (with-open [archive (zipfile/ZipFile path "w")]
+    (doseq [[name text] entries]
+      (.writestr archive name text)))
+  path)
+
+(deftest public-surface-and-protocol-boundaries
+  (is (= #{"URLClasspath"
+           "classpath"
+           "classpath-directories"
+           "classpath-jarfiles"
+           "filenames-in-jar"
+           "get-urls"
+           "jar-file?"
+           "loader-classpath"
+           "system-classpath"
+           "urls"}
+         (set (map name (keys (ns-publics 'clojure.java.classpath))))))
+  (is (nil? (cp/get-urls nil)))
+  (is (thrown? python/Exception (cp/urls nil)))
+  (let [root (temp-root)
+        dir  (pathlib/Path root "classes")
+        jar  (write-jar! (pathlib/Path root "fixture.jar")
+                         [["demo/core.clj" "(ns demo.core)"]])
+        _    (.mkdir dir ** :parents true :exist_ok true)
+        loader (->URLLoader [(.as_uri dir) (.as_uri jar)])]
+    (is (= [(.as_uri dir) (.as_uri jar)] (seq (cp/get-urls loader))))
+    (is (= (map str [(.resolve dir) (.resolve jar)])
+           (map str (cp/loader-classpath loader))))
+    (is (= (map str [(.resolve dir) (.resolve jar)])
+           (map str (cp/classpath loader))))))
+
+(deftest jar-file-and-entry-boundaries
+  (let [root  (temp-root)
+        jar   (write-jar! (pathlib/Path root "fixture.jar")
+                          [["alpha/core.cljc" "(ns alpha.core)"]
+                           ["alpha/nested/item.clj" "(ns alpha.nested.item)"]
+                           ["dir/" ""]])
+        upper (write-jar! (pathlib/Path root "fixture-upper.JAR")
+                          [["upper/core.clj" "(ns upper.core)"]])
+        txt   (pathlib/Path root "plain.txt")]
+    (.write_text txt "plain")
+    (is (cp/jar-file? jar))
+    (is (cp/jar-file? upper))
+    (is (not (cp/jar-file? txt)))
+    (is (not (cp/jar-file? (pathlib/Path root "missing.jar"))))
+    (is (= ["alpha/core.cljc" "alpha/nested/item.clj"]
+           (sort (cp/filenames-in-jar (zipfile/ZipFile jar)))))
+    (is (= ["upper/core.clj"]
+           (sort (cp/filenames-in-jar upper))))))
+
+(deftest sys-path-classpath-filters-are-isolated-and-deduplicated
+  (let [root (temp-root)
+        dir  (pathlib/Path root "classes")
+        jar  (write-jar! (pathlib/Path root "archive.jar")
+                         [["fixture/core.clj" "(ns fixture.core)"]
+                          ["fixture/data.txt" "data"]])
+        original (.copy sys/path)]
+    (.mkdir dir ** :parents true :exist_ok true)
+    (try
+      (.insert sys/path 0 (str jar))
+      (.insert sys/path 0 (str dir))
+      (.insert sys/path 0 (str dir))
+      (let [paths (map str (cp/classpath))
+            dirs  (set (map str (cp/classpath-directories)))
+            jar-entry-groups (map #(set (cp/filenames-in-jar %))
+                                  (cp/classpath-jarfiles))]
+        (is (= 1 (count (filter #(= (str (.resolve dir)) %) paths))))
+        (is (contains? dirs (str (.resolve dir))))
+        (is (some #(contains? % "fixture/core.clj") jar-entry-groups))
+        (is (some #(contains? % "fixture/data.txt") jar-entry-groups)))
+      (finally
+        (.clear sys/path)
+        (.extend sys/path original)))))

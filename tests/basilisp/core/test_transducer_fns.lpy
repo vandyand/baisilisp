@@ -55,8 +55,181 @@
                              (halt-when #(>= % 5)
                                         (fn [result _] result)))
                        +
-                       0
-                       (range)))))
+                      0
+                      (range)))))
+
+(defn recording-rf [events]
+  (fn
+    ([] (swap! events conj :init) [])
+    ([result] (swap! events conj :complete) (conj result :done))
+    ([result input]
+     (swap! events conj [:step input])
+     (conj result input))))
+
+(deftest transduce-completes-empty-and-reduced-inputs
+  (let [with-init-events (atom [])
+        with-init-rf (recording-rf with-init-events)
+        no-init-events (atom [])
+        no-init-rf (recording-rf no-init-events)
+        early-events (atom [])
+        early-rf (recording-rf early-events)]
+    (is (= [:done] (transduce (map inc) with-init-rf [] [])))
+    (is (= [:complete] @with-init-events))
+    (is (= [:done] (transduce (map inc) no-init-rf [])))
+    (is (= [:init :complete] @no-init-events))
+    (is (= [1 2 :done]
+           (transduce (comp (map inc) (take 2)) early-rf [] (range 5))))
+    (is (= [[:step 1] [:step 2] :complete] @early-events))))
+
+(defn logging-xf [events]
+  (fn [rf]
+    (fn
+      ([] (swap! events conj :init) (rf))
+      ([result]
+       (swap! events conj :complete)
+       (rf result))
+      ([result input]
+       (swap! events conj [:step input])
+       (rf result input)))))
+
+(deftest sequence-flushes-once-and-preserves-reduced-boundaries
+  (let [events (atom [])]
+    (is (= [] (vec (sequence (logging-xf events) []))))
+    (is (= [:complete] @events))
+    (reset! events [])
+    (is (= [1 2 3] (vec (sequence (logging-xf events) [1 2 3]))))
+    (is (= [[:step 1] [:step 2] [:step 3] :complete] @events)))
+  (is (= [0 1 2] (vec (sequence (halt-when #(= % 3)) (range 6)))))
+  (is (= [] (vec (sequence (take 0) (range 6)))))
+  (is (= [0 1 2] (vec (sequence (take 3) (range 6)))))
+  (is (= [[0 1] [2 3] [4]]
+         (vec (sequence (partition-all 2) (range 5)))))
+  (is (= [[:a 1] [:b 2]]
+         (vec (sequence (map vector) [:a :b :c] [1 2])))))
+
+(defn normalize-transducer-output [x]
+  (cond
+    (map? x) (into (sorted-map)
+                   (map (fn [[k v]] [k (normalize-transducer-output v)]) x))
+    (set? x) (vec (sort (map normalize-transducer-output x)))
+    (sequential? x) (vec (map normalize-transducer-output x))
+    :else x))
+
+(defn next-transducer-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(defn seeded-transducer-source [seed]
+  (loop [remaining (+ 3 (mod seed 6))
+         current seed
+         result []]
+    (if (zero? remaining)
+      result
+      (let [next (next-transducer-seed current)]
+        (recur (dec remaining)
+               next
+               (conj result (- (mod next 11) 5)))))))
+
+(defn adversarial-seeded-xform [seed]
+  (case (mod seed 10)
+    0 (map #(+ % (mod seed 5)))
+    1 (filter #(not (zero? (mod (+ % seed) 3))))
+    2 (keep #(when (odd? (+ % seed)) (* % 2)))
+    3 (map-indexed (fn [idx value] [idx value]))
+    4 (keep-indexed (fn [idx value] (when (even? idx) [idx value])))
+    5 (comp (drop (mod seed 4))
+            (take (+ 1 (mod seed 5))))
+    6 (comp (take-while #(< % (+ 3 (mod seed 5))))
+            (map unchecked-inc))
+    7 (partition-all (+ 1 (mod seed 3)))
+    8 (partition-by #(neg? %))
+    (comp (map #(- % (mod seed 3)))
+          (dedupe)
+          (take 5))))
+
+(deftest adversarial-transducer-composition-laws-test
+  (testing "stateful and completing transducers preserve Clojure boundaries"
+    (let [stateful-xf (comp (map-indexed (fn [idx value] [idx value]))
+                            (keep (fn [[idx value]]
+                                    (when-not (= value :skip)
+                                      [idx value])))
+                            (take-while #(not= [3 :stop] %)))]
+      (is (= [[0 :a] [2 :b]]
+             (vec (sequence stateful-xf [:a :skip :b :stop :c]))))
+      (is (= [[0 :a] [2 :b]]
+             (into [] stateful-xf [:a :skip :b :stop :c]))))
+    (let [events (atom [])
+          logging-xf (fn [rf]
+                       (fn
+                         ([] (swap! events conj :init) (rf))
+                         ([result]
+                          (swap! events conj :complete)
+                          (rf result))
+                         ([result input]
+                          (swap! events conj [:step input])
+                          (rf result input))))]
+      (is (= [] (vec (sequence logging-xf []))))
+      (is (= [:complete] @events))
+      (reset! events [])
+      (is (= [:a :b] (vec (take 2 (sequence logging-xf [:a :b :c :d])))))
+      (reset! events [])
+      (is (= [] (vec (sequence (comp logging-xf (take 0)) [:a :b :c])))))
+    (let [halt-events (atom [])
+          halt-rf (fn
+                    ([] (swap! halt-events conj :init) [])
+                    ([result]
+                     (swap! halt-events conj :complete)
+                     (conj result :done))
+                    ([result input]
+                     (swap! halt-events conj [:step input])
+                     (conj result input)))]
+      (is (= [1 2 :done [:halt 3]]
+             (transduce (halt-when #(= % 3)
+                                   (fn [result input]
+                                     (conj result [:halt input])))
+                        halt-rf
+                        []
+                        [1 2 3 4])))
+      (is (= [[:step 1] [:step 2] :complete] @halt-events))))
+
+  (testing "partitioning transducers emit completion output exactly once"
+    (is (= [[0 1 2] [3 4]]
+           (mapv vec (sequence (partition-all 3) [0 1 2 3 4]))))
+    (is (= [[0 1 2] [2 3 4] [4]]
+           (mapv vec (partition-all 3 2 [0 1 2 3 4]))))
+    (is (= [[1 3] [2 4] [5 7] [8]]
+           (mapv vec (sequence (partition-by odd?) [1 3 2 4 5 7 8]))))
+    (is (= [[0 1] [2 3]]
+           (mapv vec
+                 (sequence (comp (partition-all 2) (take 2))
+                           [0 1 2 3 4])))))
+
+  (testing "sequence, into, and transduce agree over generated transducer corpus"
+    (doseq [seed (take 512 (iterate next-transducer-seed 20260725))]
+      (let [source (seeded-transducer-source seed)
+            xf (adversarial-seeded-xform seed)
+            sequence-output (normalize-transducer-output (sequence xf source))
+            into-output (normalize-transducer-output (into [] xf source))
+            transduce-output (normalize-transducer-output
+                              (transduce xf conj [] source))]
+        (is (= sequence-output into-output transduce-output))))))
+
+(defn seeded-xform [seed]
+  (case (mod seed 7)
+    0 (map inc)
+    1 (filter even?)
+    2 (keep #(when (odd? %) (* % 10)))
+    3 (take (mod seed 5))
+    4 (drop (mod seed 4))
+    5 (comp (map inc) (filter odd?) (take 3))
+    (comp (partition-all 2) (map vec))))
+
+(deftest seeded-transducer-sequence-into-transduce-stress-test
+  (doseq [seed (range 192)]
+    (let [source (vec (range (mod seed 9)))
+          xf (seeded-xform seed)
+          expected (into [] xf source)]
+      (is (= expected (vec (sequence xf source))))
+      (is (= expected (transduce xf conj [] source))))))
 
 (deftest sequence-test
   (testing "single arity"

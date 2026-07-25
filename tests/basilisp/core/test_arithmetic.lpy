@@ -7,10 +7,14 @@
 
 (deftest numerator-denominator-test
   (are [expected input] (= expected [(numerator input) (denominator input)])
-    [0 1]  0
-    [3 1]  3
     [1 3]  1/3
-    [-1 3] -1/3))
+    [-1 3] -1/3)
+  (are [input] (thrown? python/TypeError (numerator input))
+    0
+    3)
+  (are [input] (thrown? python/TypeError (denominator input))
+    0
+    3))
 
 (deftest min-test
   (are [args] (NaN? (apply min args))
@@ -214,6 +218,57 @@
     0    1
     4.9  5.9
     -6.9 -5.9))
+
+(deftest checked-scalar-cast-boundary-test
+  (testing "checked integer casts range-check the original value before truncating"
+    (are [expected expr] (= expected expr)
+      -1 (byte -1.9)
+      -1 (short -1.9)
+      -1 (int -1.9)
+      -1 (long -1.9))
+    (are [expr] (thrown? python/ValueError expr)
+      (byte -128.000001)
+      (byte 127.000001)
+      (short -32768.000001)
+      (short 32767.000001)
+      (int -2147483648.000001)
+      (int 2147483647.000001)
+      (long -9223372036854775809N)
+      (long 9223372036854775808N)))
+
+  (testing "checked casts do not accept Python host string or collection coercions"
+    (are [expr] (thrown? python/TypeError expr)
+      (byte "0")
+      (short "0")
+      (int "0")
+      (long "0")
+      (float "0")
+      (double "0")
+      (byte [0])
+      (short [0])
+      (int [0])
+      (long [0])
+      (float [0])
+      (double [0]))))
+
+(deftest unchecked-arithmetic-test
+  (are [expected expr] (= expected expr)
+    3 (unchecked-add 1 2)
+    -9223372036854775808 (unchecked-add 9223372036854775807 1)
+    -2147483648 (unchecked-add-int 2147483647 1)
+    -1 (unchecked-subtract 1 2)
+    9223372036854775807 (unchecked-subtract -9223372036854775808 1)
+    2147483647 (unchecked-subtract-int -2147483648 1)
+    42 (unchecked-multiply 7 6)
+    0 (unchecked-multiply 4294967296 4294967296)
+    0 (unchecked-multiply-int 65536 65536)
+    3 (unchecked-divide-int 7 2)
+    -2147483648 (unchecked-inc-int 2147483647)
+    2147483647 (unchecked-dec-int -2147483648)
+    -9223372036854775808 (unchecked-inc 9223372036854775807)
+    9223372036854775807 (unchecked-dec -9223372036854775808)
+    -9223372036854775808 (unchecked-negate -9223372036854775808)
+    -2147483648 (unchecked-negate-int -2147483648)))
 
 (deftest mod-test
   (are [result x y] (= result (mod x y))

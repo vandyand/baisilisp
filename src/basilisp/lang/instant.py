@@ -116,7 +116,7 @@ def read_instant(cs: str) -> datetime.datetime:
     places are truncated. Leap seconds are rejected because ``datetime`` has no
     representable value for them.
     """
-    return parse_timestamp(validated(_construct_datetime), cs)
+    return parse_timestamp(validated(_construct_strict_datetime), cs)
 
 
 class InstantDateTime(datetime.datetime):
@@ -270,10 +270,12 @@ def _construct_datetime(
         days,
         hours,
         minutes,
-        seconds,
+        min(seconds, 59),
         nanoseconds // 1_000,
         tzinfo=datetime.timezone(offset),
     )
+    if seconds == 60:
+        value += datetime.timedelta(seconds=1)
     normalized = value.astimezone(_UTC)
     return InstantDateTime(
         normalized.year,
@@ -285,6 +287,34 @@ def _construct_datetime(
         normalized.microsecond,
         tzinfo=normalized.tzinfo,
         fold=normalized.fold,
+    )
+
+
+def _construct_strict_datetime(
+    years: int,
+    months: int,
+    days: int,
+    hours: int,
+    minutes: int,
+    seconds: int,
+    nanoseconds: int,
+    offset_sign: int,
+    offset_hours: int,
+    offset_minutes: int,
+) -> datetime.datetime:
+    if seconds == 60:
+        raise ValueError("leap seconds are not representable as Python datetimes")
+    return _construct_datetime(
+        years,
+        months,
+        days,
+        hours,
+        minutes,
+        seconds,
+        nanoseconds,
+        offset_sign,
+        offset_hours,
+        offset_minutes,
     )
 
 
@@ -314,7 +344,7 @@ def _construct_calendar(
         offset_sign, offset_hours, offset_minutes
     )
     return InstantCalendar(
-        datetime=datetime.datetime(
+        datetime=_normalize_local_datetime(
             years,
             months,
             days,
@@ -322,7 +352,7 @@ def _construct_calendar(
             minutes,
             seconds,
             nanoseconds // 1_000,
-            tzinfo=timezone,
+            timezone=timezone,
         ),
         nanoseconds=nanoseconds,
         offset_minutes=total_offset_minutes,
@@ -365,3 +395,28 @@ def _construct_timestamp(
         fold=normalized.fold,
         nanoseconds=nanoseconds,
     )
+
+
+def _normalize_local_datetime(
+    years: int,
+    months: int,
+    days: int,
+    hours: int,
+    minutes: int,
+    seconds: int,
+    microseconds: int,
+    timezone: datetime.tzinfo,
+) -> datetime.datetime:
+    value = datetime.datetime(
+        years,
+        months,
+        days,
+        hours,
+        minutes,
+        min(seconds, 59),
+        microseconds,
+        tzinfo=timezone,
+    )
+    if seconds == 60:
+        value += datetime.timedelta(seconds=1)
+    return value

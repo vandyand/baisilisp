@@ -58,17 +58,55 @@
             :fail (capture-out #(tap/print-tap-fail "direct fail"))
             :diagnostic (capture-out #(tap/print-tap-diagnostic "first\nsecond"))})
 
+(emit-case :adversarial-direct-printer-boundaries
+           {:blank-diagnostic (capture-out #(tap/print-tap-diagnostic ""))
+            :internal-and-trailing-blank-diagnostic
+            (capture-out #(tap/print-tap-diagnostic "first\n\nthird\n"))
+            :nil-plan (capture-out #(tap/print-tap-plan nil))
+            :empty-pass (capture-out #(tap/print-tap-pass ""))
+            :empty-fail (capture-out #(tap/print-tap-fail ""))})
+
 (emit-case :print-diagnostics
            {:pass (capture-out #(tap/print-diagnostics pass-report))
             :fail (capture-out #(tap/print-diagnostics fail-report))})
 
+(emit-case :adversarial-diagnostics
+           {:contexts (binding [t/*testing-contexts* (list "outer" "inner")]
+                        (capture-out #(tap/print-diagnostics
+                                       {:type :fail
+                                        :expected 'x
+                                        :actual 'y})))
+            :nil-message (capture-out #(tap/print-diagnostics
+                                        {:type :fail
+                                         :message nil
+                                         :expected 'x
+                                         :actual 'y}))
+            :string-actual (capture-out #(tap/print-diagnostics
+                                          {:type :fail
+                                           :message "string actual"
+                                           :expected "x"
+                                           :actual "line1\nline2"}))
+            :map-actual (capture-out #(tap/print-diagnostics
+                                       {:type :error
+                                        :message "map actual"
+                                        :expected (sorted-map :k :v)
+                                        :actual (sorted-map :a 1 :b [2 3])}))})
+
 (emit-case :tap-report
            {:pass (capture-test-out #(tap/tap-report pass-report))
             :fail (capture-test-out #(tap/tap-report fail-report))
+            :error (capture-test-out #(tap/tap-report {:type :error
+                                                       :message "error message"
+                                                       :expected 'ok
+                                                       :actual 'bad}))
             :summary (capture-test-out #(tap/tap-report {:type :summary
                                                          :pass 1
                                                          :fail 1
                                                          :error 1}))
+            :zero-summary (capture-test-out #(tap/tap-report {:type :summary
+                                                              :pass 0
+                                                              :fail 0
+                                                              :error 0}))
             :default (capture-test-out #(tap/tap-report (sorted-map :type :custom
                                                                      :value [1 2 3])))})
 

@@ -12,8 +12,11 @@
 (defn print-tap-diagnostic
   "Print ``data`` as one or more TAP diagnostic lines."
   [data]
-  (doseq [line (str/split-lines (str data))]
-    (println "#" line)))
+  (let [data (str data)]
+    (if (= "" data)
+      (println "#")
+      (doseq [line (str/split-lines data)]
+        (println "#" line)))))
 
 (defn print-tap-pass
   "Print a TAP ``ok`` line."

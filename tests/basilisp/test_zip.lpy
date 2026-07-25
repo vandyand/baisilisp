@@ -139,6 +139,19 @@
     (and (= tree (zip/root end-loc))
          (= (reverse ordered) (nodes-in-reverse-order (last-loc loc))))))
 
+(defn generated-tree
+  [depth seed]
+  (if (zero? depth)
+    seed
+    (case (mod (+ seed depth) 4)
+      0 seed
+      1 [(generated-tree (dec depth) (+ seed 1))]
+      2 [(generated-tree (dec depth) (+ seed 1))
+         (generated-tree (dec depth) (+ seed 3))]
+      [(generated-tree (dec depth) (+ seed 1))
+       [(generated-tree (dec depth) (+ seed 3))
+        (generated-tree (dec depth) (+ seed 5))]])))
+
 (deftest traversal-invariant-test
   (is (traversal-invariant? []))
   (is (traversal-invariant? [1]))
@@ -151,6 +164,42 @@
   (let [tree (vec (map (fn [n] [n [(* 2 n) [(* 3 n)]]]) (range 64)))]
     (is (traversal-invariant? tree))
     (is (= 385 (count (nodes-in-order (zip/vector-zip tree)))))))
+
+(deftest generated-left-make-node-and-xml-zip-stress-test
+  (doseq [seed (range 40)]
+    (let [tree (let [tree (generated-tree 4 seed)]
+                 (if (vector? tree) tree [tree]))
+          loc (zip/vector-zip tree)
+          child (zip/down loc)
+          right (zip/right child)]
+      (when right
+        (is (= (zip/node child) (zip/node (zip/left right))))
+        (is (= tree (zip/root (zip/left right)))))
+      (is (= [:replacement seed]
+             (zip/make-node loc (zip/node loc) [:replacement seed])))
+      (is (= (assoc tree 0 [:made seed])
+             (zip/root
+              (zip/replace child
+                           (zip/make-node child
+                                          (zip/node child)
+                                          [:made seed])))))))
+  (doseq [seed (range 40)]
+    (let [xml {:tag :root
+               :content [{:tag :left :content []}
+                         (str "text-" seed)
+                         {:tag :right :content []}]}
+          loc (zip/xml-zip xml)
+          text-loc (-> loc zip/down zip/right)
+          right-loc (zip/right text-loc)]
+      (is (not (zip/branch? text-loc)))
+      (is (= (:content xml) (vec (zip/children loc))))
+      (is (= {:tag :root
+              :content [{:tag :left :content []}
+                        (str "text-" seed)
+                        {:tag :right
+                         :content [{:tag :nested :seed seed}]}]}
+             (zip/root (zip/append-child right-loc
+                                         {:tag :nested :seed seed})))))))
 
 (deftest seq-and-xml-reconstruction-test
   (let [seq-tree (with-meta '((:a :b) :c) {:tag :seq-root})

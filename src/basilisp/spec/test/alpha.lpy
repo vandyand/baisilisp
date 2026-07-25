@@ -24,12 +24,37 @@
 (defn abbrev-result [x] x)
 
 (defn checkable-syms
-  ([] #{})
+  ([] (basilisp.lang.spec/checkable-syms))
   ([_opts] (checkable-syms)))
 
 (defn instrumentable-syms
-  ([] #{})
+  ([] (basilisp.lang.spec/instrumentable-syms))
   ([_opts] (instrumentable-syms)))
+
+(defn- check-options [opts]
+  (let [opts (or opts {})
+        test-check-opts (or (:clojure.spec.test.check/opts opts)
+                            (:basilisp.spec.test.alpha/opts opts)
+                            {})]
+    {:num-tests (or (:num-tests test-check-opts)
+                    (:num-tests opts)
+                    100)
+     :seed      (or (:seed test-check-opts)
+                    (:seed opts))}))
+
+(defn- result-pass-flag [result]
+  (or (:clojure.spec.test.check/pass? result)
+      (:basilisp.spec.test.alpha/pass? result)))
+
+(defn- result-failed? [result]
+  (or (some? (:failure result))
+      (some? (:basilisp.spec.test.alpha/failure result))))
+
+(defn- result-passed? [result]
+  (let [pass-flag (result-pass-flag result)]
+    (or (true? pass-flag)
+        (and (not (false? pass-flag))
+             (not (result-failed? result))))))
 
 (defn enumerate-namespace [ns-sym-or-syms]
   (let [nss (if (sequential? ns-sym-or-syms)
@@ -40,30 +65,42 @@
            [_ v] (ns-publics ns-sym)]
        (->sym v)))))
 
+(defn- push-instrument-disabled []
+  (basilisp.lang.spec/push-instrument-disabled))
+
+(defn- pop-instrument-disabled []
+  (basilisp.lang.spec/pop-instrument-disabled))
+
 (defmacro with-instrument-disabled [& body]
-  `(do ~@body))
+  `(do
+     (#'basilisp.spec.test.alpha/push-instrument-disabled)
+     (try
+       ~@body
+       (finally
+         (#'basilisp.spec.test.alpha/pop-instrument-disabled)))))
 
 (defn summarize-results
   ([check-results]
    (summarize-results check-results {}))
   ([check-results summary-result]
    (let [total (count check-results)]
+     (doseq [result check-results]
+       (println (abbrev-result result)))
      (cond-> (assoc summary-result :total total)
        (pos? total)
        (assoc :check-passed
-              (count (filter #(or (:clojure.spec.test.check/pass? %)
-                                  (:basilisp.spec.test.alpha/pass? %))
-                             check-results)))))))
+              (count (filter result-passed? check-results)))))))
 
 (defn check-fn
   ([f spec]
    (check-fn f spec {}))
-  ([f _spec opts]
-   (first
-    (basilisp.lang.spec/check (resolve-target f)
-                              **
-                              :num-tests (or (:num-tests opts) 100)
-                              :seed (:seed opts)))))
+  ([f spec opts]
+   (let [{:keys [num-tests seed]} (check-options opts)]
+     (basilisp.lang.spec/check-fspec (resolve-target f)
+                                     spec
+                                     **
+                                     :num-tests num-tests
+                                     :seed seed))))
 
 (defn instrument
   "Instrument registered Basilisp Vars, or the explicitly supplied Vars.
@@ -95,8 +132,10 @@
   ([] (basilisp.lang.spec/check))
   ([target & {:keys [num-tests seed] :as opts}]
    (if (map? target)
-     (basilisp.lang.spec/check ** :num-tests (or (:num-tests target) 100) :seed (:seed target))
-     (basilisp.lang.spec/check (resolve-target target)
-                               **
-                               :num-tests (or num-tests 100)
-                               :seed seed))))
+     (let [{:keys [num-tests seed]} (check-options target)]
+       (basilisp.lang.spec/check ** :num-tests num-tests :seed seed))
+     (let [{:keys [num-tests seed]} (check-options opts)]
+       (basilisp.lang.spec/check-targets (target-list target)
+                                         **
+                                         :num-tests num-tests
+                                         :seed seed)))))

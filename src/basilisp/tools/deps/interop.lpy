@@ -1,0 +1,26 @@
+(ns basilisp.tools.deps.interop
+  "Host-bound compatibility surface for ``clojure.tools.deps.interop``.")
+
+(defn- require-tool-selector!
+  [opts]
+  (when-not (or (contains? opts :tool-alias)
+                (contains? opts :tool-name))
+    (throw (ex-info "Either :tool-alias or :tool-name must be provided" {}))))
+
+(defn- require-fn-symbol!
+  [tool-fn]
+  (when-not (symbol? tool-fn)
+    (throw (ex-info (str ":fn should be a symbol " tool-fn) {}))))
+
+(defn invoke-tool
+  "Validate a Clojure tools.deps invocation map.
+
+  Basilisp cannot invoke Clojure CLI tools inside a Python runtime. Validation
+  follows Clojure for deterministic argument errors; a valid invocation raises a
+  clear host-bound error."
+  [opts]
+  (require-tool-selector! opts)
+  (let [tool-fn (:fn opts)]
+    (require-fn-symbol! tool-fn)
+    (throw (python/NotImplementedError
+            "clojure.tools.deps.interop/invoke-tool requires the Clojure CLI and JVM tools.deps runtime; Basilisp cannot invoke it from Python"))))

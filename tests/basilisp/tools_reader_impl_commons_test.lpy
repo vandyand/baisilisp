@@ -1,0 +1,114 @@
+(ns tests.basilisp.tools-reader-impl-commons-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader.impl.commons :as commons]
+            [clojure.tools.reader.reader-types :as rt])
+  (:import decimal fractions))
+
+(defn- rejected? [f]
+  (try
+    (f)
+    false
+    (catch python/Exception _ true)))
+
+(defn- normalize-number [value]
+  (cond
+    (nil? value) {:kind :nil}
+    (ratio? value) {:kind :ratio
+                    :value (str (numerator value) "/" (denominator value))}
+    (decimal? value) {:kind :decimal
+                      :value (str value)}
+    (float? value) {:kind :float
+                    :value (str value)}
+    (integer? value) {:kind :integer
+                      :value (str value)}
+    :else {:kind :other
+           :value (pr-str value)}))
+
+(deftest public-impl-commons-api-test
+  (is (boolean (find-ns 'basilisp.tools.reader.impl.commons)))
+  (doseq [sym '[float-pattern
+                int-pattern
+                match-number
+                number-literal?
+                parse-symbol
+                ratio-pattern
+                read-comment
+                read-past
+                skip-line
+                throwing-reader]]
+    (is (contains? (ns-publics 'basilisp.tools.reader.impl.commons)
+                   sym))))
+
+(deftest match-number-and-pattern-contracts
+  (is (re-matches commons/int-pattern "0x10"))
+  (is (re-matches commons/ratio-pattern "-10/4"))
+  (is (re-matches commons/float-pattern "1e3M"))
+  (is (= {:kind :integer :value "16"}
+         (normalize-number (commons/match-number "0x10"))))
+  (is (= {:kind :integer :value "8"}
+         (normalize-number (commons/match-number "010"))))
+  (is (= {:kind :integer :value "5"}
+         (normalize-number (commons/match-number "2r101"))))
+  (is (= {:kind :ratio :value "-5/2"}
+         (normalize-number (commons/match-number "-10/4"))))
+  (is (= {:kind :float :value "1000.0"}
+         (normalize-number (commons/match-number "1e3"))))
+  (is (= {:kind :decimal :value "1E+3"}
+         (normalize-number (commons/match-number "1e3M"))))
+  (is (= {:kind :nil}
+         (normalize-number (commons/match-number "09"))))
+  (is (= {:kind :nil}
+         (normalize-number (commons/match-number "not-number"))))
+  (doseq [source ["1/0" "2r2" "37r10"]]
+    (testing source
+      (is (rejected? #(commons/match-number source))))))
+
+(deftest parse-symbol-contracts
+  (is (= [nil "alpha"] (commons/parse-symbol "alpha")))
+  (is (= ["alpha" "beta"] (commons/parse-symbol "alpha/beta")))
+  (is (= [nil "/"] (commons/parse-symbol "/")))
+  (is (= ["foo" "/"] (commons/parse-symbol "foo//")))
+  (is (= [nil "1abc"] (commons/parse-symbol "1abc")))
+  (is (= ["alpha" "1"] (commons/parse-symbol "alpha/1")))
+  (doseq [source ["" "foo/bar/baz" "foo/" "/bar" "alpha/:"
+                  "alpha:/beta" "alpha:" "::kw" "kw:"]]
+    (testing source
+      (is (nil? (commons/parse-symbol source))))))
+
+(deftest reader-helper-boundaries
+  (is (true? (commons/number-literal?
+             (rt/string-push-back-reader "") \1)))
+  (is (true? (commons/number-literal?
+             (rt/string-push-back-reader "1") \+)))
+  (is (true? (commons/number-literal?
+             (rt/string-push-back-reader "1") \-)))
+  (is (false? (commons/number-literal?
+              (rt/string-push-back-reader "a") \+)))
+  (let [r (rt/string-push-back-reader "   abc")]
+    (is (= \a (commons/read-past #(= % \space) r)))
+    (is (= \b (rt/read-char r))))
+  (let [r (rt/string-push-back-reader "abc\nZ")]
+    (is (identical? r (commons/skip-line r)))
+    (is (= \Z (rt/read-char r))))
+  (let [r (rt/string-push-back-reader "abc")]
+    (is (identical? r (commons/skip-line r)))
+    (is (nil? (rt/read-char r))))
+  (let [r (rt/string-push-back-reader "comment\nZ")]
+    (is (identical? r (commons/read-comment r)))
+    (is (= \Z (rt/read-char r))))
+  (is (rejected? #((commons/throwing-reader "boom")
+                   (rt/string-push-back-reader "")))))
+
+(deftest seeded-number-corpus-stresses-match-number
+  (doseq [n (range 1 128)]
+    (testing (str n)
+      (is (= {:kind :integer :value (str n)}
+             (normalize-number (commons/match-number (str n)))))
+      (is (= {:kind :integer :value (str (- n))}
+             (normalize-number (commons/match-number (str "-" n)))))
+      (is (= {:kind :integer :value (str n)}
+             (normalize-number
+              (commons/match-number (str "16r" (.upper (format "%x" n)))))))
+      (is (= {:kind :ratio :value (str n "/" (inc n))}
+             (normalize-number
+              (commons/match-number (str n "/" (inc n)))))))))

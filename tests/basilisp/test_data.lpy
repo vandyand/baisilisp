@@ -2,7 +2,12 @@
   (:import datetime)
   (:require
    [basilisp.data :as data :refer [diff]]
-   [basilisp.test :refer [deftest are testing]]))
+   [basilisp.test :refer [deftest are is testing]]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]))
+
+(defrecord Pair [a b])
 
 (deftest public-surface-and-protocol-methods-test
   (let [publics (set (map name (keys (ns-publics 'basilisp.data))))]
@@ -292,3 +297,86 @@
       {:a 1 :b {:c '(1 2 3)}}  {:a 2 :b {:c [5 9 3 2 3 7]}} [{:a 1 :b {:c [1 2]}} {:a 2 :b {:c [5 9 nil 2 3 7]}} {:b {:c [nil nil 3]}}]
       {:a 1 :b {:c 2 :d 3}}    {:a 1 :b {:c 2 :e 5}}        [{:b {:d 3}} {:b {:e 5}} {:a 1 :b {:c 2}}]
       {:a {:e :f :g :h} :b :c} {:a {:e :z :g :h} :c :d}     [{:a {:e :f} :b :c} {:a {:e :z} :c :d} {:a {:g :h}}])))
+
+(defn next-diff-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(defn seeded-diff-scalar [seed]
+  (case (mod seed 6)
+    0 (mod seed 97)
+    1 (keyword (str "k" (mod seed 17)))
+    2 (str "s" (mod seed 23))
+    3 (zero? (mod seed 2))
+    4 nil
+    5 (symbol (str "sym" (mod seed 19)))))
+
+(defn seeded-diff-value [seed depth]
+  (if (zero? depth)
+    (seeded-diff-scalar seed)
+    (let [s1 (next-diff-seed seed)
+          s2 (next-diff-seed s1)
+          s3 (next-diff-seed s2)]
+      (case (mod seed 5)
+        0 (seeded-diff-scalar s1)
+        1 [(seeded-diff-value s1 (dec depth))
+           (seeded-diff-value s2 (dec depth))]
+        2 {:a (seeded-diff-value s1 (dec depth))
+           :b (seeded-diff-value s2 (dec depth))}
+        3 (set [(seeded-diff-scalar s1)
+                (seeded-diff-scalar s2)
+                (seeded-diff-scalar s3)])
+        4 [{:x (seeded-diff-value s1 (dec depth))}
+           (set [(seeded-diff-scalar s2)])]))))
+
+(deftest diff-identity-and-shared-structure-hold-under-seeded-fuzzing
+  (let [property (prop/for-all [seed (gen/choose 0 100000)
+                                depth (gen/choose 0 5)]
+                   (let [shared (seeded-diff-value seed depth)
+                         left (seeded-diff-value (next-diff-seed seed) depth)
+                         right (seeded-diff-value
+                                (next-diff-seed (next-diff-seed seed))
+                                depth)
+                         a {:left left
+                            :shared shared
+                            :nested [shared left]}
+                         b {:right right
+                            :shared shared
+                            :nested [shared right]}
+                         [same-a same-b same-both] (diff a a)
+                         [_only-a _only-b both] (diff a b)]
+                     (and (nil? same-a)
+                          (nil? same-b)
+                          (= a same-both)
+                          (= shared (:shared both))
+                          (= shared (get-in both [:nested 0])))))
+        result (tc/quick-check 160 property :seed 20260724 :max-size 60)]
+    (is (:pass? result))
+    (is (= 160 (:num-tests result)))))
+
+(deftest diff-false-empty-metadata-and-record-boundaries-test
+  (testing "false and empty collections remain visible shared values"
+    (are [a b expected] (= expected (diff a b))
+      {:a false :b 1} {:a false :b 2} '({:b 1} {:b 2} {:a false})
+      [false 1]       [false 2]       [[nil 1] [nil 2] [false]]
+      [1 false]       [2 false]       [[1] [2] [nil false]]
+      {:a [] :b 1}    {:a [] :b 2}    '({:b 1} {:b 2} {:a []})
+      {:a {} :b 1}    {:a {} :b 2}    '({:b 1} {:b 2} {:a {}})
+      {:a #{} :b 1}   {:a #{} :b 2}   '({:b 1} {:b 2} {:a #{}})))
+
+  (testing "metadata-insensitive equality keeps the left value like Clojure"
+    (let [[a b both] (diff ^{:left true} [1 2]
+                           ^{:right true} [1 2])]
+      (is (nil? a))
+      (is (nil? b))
+      (is (= [1 2] both))
+      (is (= {:left true} (meta both)))))
+
+  (testing "record/map equality does not bypass Clojure data's map diff shape"
+    (let [record->map (diff (->Pair 1 2) {:a 1 :b 2})
+          map->record (diff {:a 1 :b 2} (->Pair 1 2))
+          same-record (diff (->Pair 1 2) (->Pair 1 2))]
+      (is (seq? record->map))
+      (is (seq? map->record))
+      (is (= '(nil nil {:a 1 :b 2}) record->map))
+      (is (= '(nil nil {:a 1 :b 2}) map->record))
+      (is (= [nil nil (->Pair 1 2)] same-record)))))

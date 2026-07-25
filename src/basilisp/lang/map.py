@@ -35,6 +35,7 @@ from basilisp.lang.obj import (
     SURPASSED_PRINT_LEVEL,
     PrintSettings,
     lrepr,
+    meta_lrepr,
     process_lrepr_kwargs,
 )
 from basilisp.lang.reduced import Reduced
@@ -226,10 +227,10 @@ def map_lrepr(  # pylint: disable=too-many-locals
     seq_lrepr = MAP_PRINT_SEPARATOR.join(items + trailer)
 
     ns_prefix = ("#:" + ns_name_shared) if ns_name_shared else ""
-    if kwargs["print_meta"] and meta:
+    if (print_dup or (kwargs["print_meta"] and kwargs["print_readably"])) and meta:
         kwargs_meta = kwargs
         kwargs_meta["print_level"] = None
-        return f"^{lrepr(meta,**kwargs_meta)} {ns_prefix}{start}{seq_lrepr}{end}"
+        return f"^{meta_lrepr(meta, **kwargs_meta)} {ns_prefix}{start}{seq_lrepr}{end}"
 
     return f"{ns_prefix}{start}{seq_lrepr}{end}"
 
@@ -305,6 +306,12 @@ class PersistentMap(
 
     def __iter__(self):
         return (public_key(key) for key in self._inner)
+
+    def items(self):
+        return tuple(_public_items(self._inner.items()))
+
+    def values(self):
+        return tuple(self._inner.values())
 
     def __len__(self):
         return len(self._inner)
@@ -418,6 +425,140 @@ class PersistentMap(
     def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
         for k, v in self._inner.items():
             init = f(init, public_key(k), v)
+            if isinstance(init, Reduced):
+                return init.deref()
+        return init
+
+
+class PersistentArrayMap(PersistentMap[K, V]):
+    """A small persistent map retaining key insertion order for seq/reduce."""
+
+    __slots__ = ("_order",)
+
+    def __init__(
+        self,
+        members: Iterable[tuple[K, V]] = (),
+        meta: IPersistentMap | None = None,
+    ) -> None:
+        with _Map().mutate() as mutable:
+            order = []
+            for key, value in members:
+                storage_key = equivalence_key(key)
+                if storage_key not in mutable:
+                    order.append(storage_key)
+                mutable[storage_key] = value
+            self._inner = mutable.finish()
+        self._order = tuple(order)
+        self._meta = meta
+
+    def _ordered_storage_keys(self):
+        yielded = set()
+        for storage_key in self._order:
+            if storage_key in self._inner:
+                yielded.add(storage_key)
+                yield storage_key
+        for storage_key in self._inner:
+            if storage_key not in yielded:
+                yield storage_key
+
+    def _ordered_items(self):
+        for storage_key in self._ordered_storage_keys():
+            yield public_key(storage_key), self._inner[storage_key]
+
+    def __iter__(self):
+        return (key for key, _ in self._ordered_items())
+
+    def items(self):
+        return tuple(self._ordered_items())
+
+    def values(self):
+        return tuple(value for _, value in self._ordered_items())
+
+    def _lrepr(self, **kwargs: Unpack[PrintSettings]):
+        return map_lrepr(
+            self._ordered_items,
+            start="{",
+            end="}",
+            meta=self._meta,
+            **kwargs,
+        )
+
+    def _new(
+        self,
+        inner: "_Map[K, V]",
+        order: Iterable[Any] | None = None,
+        meta: IPersistentMap | None = None,
+    ):
+        result = object.__new__(PersistentArrayMap)
+        result._inner = inner
+        result._order = tuple(self._order if order is None else order)
+        result._meta = self._meta if meta is None else meta
+        return result
+
+    def with_meta(self, meta: IPersistentMap | None):
+        return self._new(self._inner, meta=meta)
+
+    def assoc(self, *kvs):
+        with self._inner.mutate() as mutable:
+            order = list(self._order)
+            for key, value in partition(kvs, 2):
+                storage_key = equivalence_key(key)
+                if storage_key not in mutable:
+                    order.append(storage_key)
+                mutable[storage_key] = value
+            return self._new(mutable.finish(), order)
+
+    def dissoc(self, *ks):
+        storage_keys = {equivalence_key(key) for key in ks}
+        with self._inner.mutate() as mutable:
+            for storage_key in storage_keys:
+                try:
+                    del mutable[storage_key]
+                except KeyError:
+                    pass
+            order = tuple(key for key in self._order if key not in storage_keys)
+            return self._new(mutable.finish(), order)
+
+    def cons(  # type: ignore[override, return]
+        self,
+        *elems: (
+            IPersistentMap[K, V]
+            | IMapEntry[K, V]
+            | IPersistentVector[K | V]
+            | Mapping[K, V]
+        ),
+    ) -> "PersistentArrayMap[K, V]":
+        result = self
+        try:
+            for elem in elems:
+                if isinstance(elem, (IPersistentMap, Mapping)):
+                    result = result.assoc(
+                        *tuple(item for pair in elem.items() for item in pair)
+                    )
+                elif isinstance(elem, IMapEntry):
+                    result = result.assoc(elem.key, elem.value)
+                elif elem is not None:
+                    entry: IMapEntry[K, V] = _entry_from_vector_arg(elem)
+                    result = result.assoc(entry.key, entry.value)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                "Argument to map conj must be another Map or castable to MapEntry"
+            ) from exc
+        return result
+
+    def empty(self):
+        return PersistentArrayMap((), meta=self._meta)
+
+    def seq(self) -> ISeq[IMapEntry[K, V]] | None:
+        if len(self._inner) == 0:
+            return None
+        return iterator_sequence(
+            MapEntry.of(key, value) for key, value in self._ordered_items()
+        )
+
+    def reduce_kv(self, f: ReduceKVFunction, init: T_reduce) -> T_reduce:
+        for key, value in self._ordered_items():
+            init = f(init, key, value)
             if isinstance(init, Reduced):
                 return init.deref()
         return init
@@ -654,6 +795,12 @@ class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
         for key, _ in self._sorted_items():
             yield key
 
+    def items(self):
+        return tuple(self._sorted_items())
+
+    def values(self):
+        return tuple(value for _, value in self._sorted_items())
+
     def _lrepr(self, **kwargs: Unpack[PrintSettings]):
         return map_lrepr(
             self._sorted_items,
@@ -799,3 +946,9 @@ def hash_map(*pairs) -> PersistentMap:
         raise ValueError(f"No value supplied for key: {pairs[-1]}")
     entries = pymap(lambda v: MapEntry.of(v[0], v[1]), partition(pairs, 2))
     return from_entries(entries)
+
+
+def array_map(*pairs) -> PersistentArrayMap:
+    if len(pairs) % 2:
+        raise ValueError(f"No value supplied for key: {pairs[-1]}")
+    return PersistentArrayMap(partition(pairs, 2))

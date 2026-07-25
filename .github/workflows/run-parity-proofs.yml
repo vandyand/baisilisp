@@ -1,0 +1,93 @@
+name: Run parity proofs
+
+on:
+  pull_request:
+    types: [ opened, synchronize, reopened ]
+  push:
+    branches: [ main ]
+  schedule:
+    - cron: "17 18 * * 0"
+
+concurrency:
+  group: ${{ github.ref }}-${{ github.workflow }}
+  cancel-in-progress: true
+
+jobs:
+  differential-conformance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      max-parallel: 8
+      matrix:
+        shard-index: [
+          0, 1, 2, 3, 4, 5, 6, 7,
+          8, 9, 10, 11, 12, 13, 14, 15,
+          16, 17, 18, 19, 20, 21, 22, 23,
+          24, 25, 26, 27, 28, 29, 30, 31
+        ]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+      - name: Install Tox
+        run: |
+          pip install -U pip
+          pip install tox
+      - name: Install package in Tox environment
+        run: |
+          tox exec -e py314 -- python -m pip install -e ".[pytest]"
+      - name: Run cache-disabled differential conformance shard
+        run: |
+          tox exec -e py314 -- python scripts/differential_conformance.py \
+            --disable-basilisp-ns-cache \
+            --shard-count 32 \
+            --shard-index ${{ matrix.shard-index }} \
+            --basilisp-command ".tox/py314/bin/basilisp run"
+
+  library-acceptance:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard-index: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.14'
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - uses: DeLaGuardo/setup-clojure@13.6.1
+        with:
+          cli: latest
+      - name: Install Tox
+        run: |
+          pip install -U pip
+          pip install tox
+      - name: Install package in Tox environment
+        run: |
+          tox exec -e py314 -- python -m pip install -e ".[pytest]"
+      - name: Run cache-disabled library acceptance shard
+        run: |
+          tox exec -e py314 -- python scripts/library_acceptance.py \
+            --all \
+            --disable-basilisp-ns-cache \
+            --shard-count 3 \
+            --shard-index ${{ matrix.shard-index }} \
+            --basilisp-command ".tox/py314/bin/basilisp run"

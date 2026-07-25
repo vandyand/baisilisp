@@ -1,0 +1,78 @@
+(ns basilisp.tools.namespace.move
+  "Textual namespace refactoring helpers for ``clojure.tools.namespace.move``.
+
+  These functions intentionally perform the same simple textual transformation
+  as upstream. They are destructive file operations; callers should use version
+  control or backups."
+  (:require [clojure.java.io :as io]
+            [clojure.string :as str])
+  (:import pathlib
+           re
+           shutil))
+
+(def ^:private symbol-regex
+  (re/compile "[a-zA-Z0-9$%*+=?!<>_-]['.a-zA-Z0-9$%*+=?!<>_-]*"))
+
+(defn- ns-path
+  [source-root sym]
+  (let [parts (vec (str/split (str/replace (str sym) "-" "_") #"\."))
+        filename (str (peek parts) ".clj")]
+    (apply pathlib/Path source-root (conj (pop parts) filename))))
+
+(defn- source-files
+  [dirs]
+  (->> dirs
+       (map io/file)
+       (filter #(.exists %))
+       (mapcat file-seq)
+       (filter #(and (.is_file %) (.endswith (.-name %) ".clj")))
+       (map #(.resolve %))
+       distinct))
+
+(defn- update-file
+  [file f & args]
+  (let [old (slurp file)
+        new (str (apply f old args))]
+    (when-not (= old new)
+      (spit file new))))
+
+(defn- prune-empty-parents!
+  [path stop]
+  (loop [dir (.-parent path)]
+    (when (and dir
+               (not= (.resolve dir) (.resolve (io/file stop)))
+               (.exists dir)
+               (empty? (vec (.iterdir dir))))
+      (.rmdir dir)
+      (recur (.-parent dir)))))
+
+(defn replace-ns-symbol
+  "Given Clojure source as a string, replace namespace symbol ``old-sym`` with
+  ``new-sym`` when it appears as a whole namespace-name token."
+  [source old-sym new-sym]
+  (let [old-name (str old-sym)
+        new-name (str new-sym)]
+    (symbol-regex/sub (fn [match]
+                        (let [text (.group match 0)]
+                          (if (= text old-name) new-name text)))
+                      source)))
+
+(defn move-ns-file
+  "Move the ``.clj`` source file for ``old-sym`` under ``source-path`` to the
+  path for ``new-sym``."
+  [old-sym new-sym source-path]
+  (let [source-root (io/file source-path)
+        old-file (ns-path source-root old-sym)
+        new-file (ns-path source-root new-sym)]
+    (.mkdir (.-parent new-file) ** :parents true :exist_ok true)
+    (shutil/copyfile old-file new-file)
+    (.unlink old-file)
+    (prune-empty-parents! old-file source-root)))
+
+(defn move-ns
+  "Move the namespace source file and textually rewrite occurrences of the old
+  namespace symbol in every ``.clj`` source file under ``dirs``."
+  [old-sym new-sym source-path dirs]
+  (move-ns-file old-sym new-sym source-path)
+  (doseq [file (source-files dirs)]
+    (update-file file replace-ns-symbol old-sym new-sym)))

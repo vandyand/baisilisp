@@ -1,0 +1,36 @@
+(ns basilisp.repl-deps
+  "Host-bound compatibility surface for ``clojure.repl.deps``.
+
+  Requiring ``clojure.repl.deps`` is supported through a namespace rewrite to
+  this module. Runtime dependency loading remains JVM/Clojure-CLI specific."
+  (:refer-clojure :exclude [sync-deps]))
+
+(defn- assert-repl!
+  []
+  (when-not *repl*
+    (throw (python/RuntimeError "add-libs is only available at the REPL"))))
+
+(defn- unavailable!
+  [name]
+  (throw (python/NotImplementedError
+          (str "clojure.repl.deps/" name
+               " requires Clojure CLI classpath mutation; Basilisp cannot mutate a JVM classpath from Python"))))
+
+(defn add-libs
+  "Validate REPL availability, then report the host-bound dependency boundary."
+  [lib-coords]
+  (assert-repl!)
+  (unavailable! "add-libs"))
+
+(defn add-lib
+  "Host-bound compatibility for Clojure's one- and two-arity dependency helper."
+  ([lib]
+   (unavailable! "add-lib"))
+  ([lib coord]
+   (add-libs {lib coord})))
+
+(defn sync-deps
+  "Host-bound compatibility for syncing deps.edn changes into a running REPL."
+  [& {:as opts}]
+  (assert-repl!)
+  (unavailable! "sync-deps"))

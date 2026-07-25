@@ -1,0 +1,47 @@
+(ns basilisp.java.browse
+  "Python-native compatibility for ``clojure.java.browse``.
+
+  Clojure tries a platform script, Java Desktop, then a Swing fallback. Basilisp
+  keeps the public API shape but uses Python process launching and
+  :external:py:mod:`webbrowser` for the host-specific browser action."
+  (:import subprocess
+           webbrowser))
+
+(def ^:dynamic *open-url-script*
+  "Atom containing a platform browser-opening script, ``nil``/``false`` to use
+  Python's webbrowser fallback, or ``:uninitialized`` before first use."
+  (atom :uninitialized))
+
+(defn- open-url-script-val
+  []
+  nil)
+
+(defn- open-url-with-script
+  [script url]
+  (try
+    (subprocess/Popen [script (str url)]
+                      **
+                      :stdout subprocess/DEVNULL
+                      :stderr subprocess/DEVNULL)
+    true
+    (catch python/Exception _
+      false)))
+
+(defn browse-url
+  "Open ``url`` in the default system browser.
+
+  Return true when a configured script process is launched successfully, the
+  URL when Python's browser fallback reports success, or nil when no supported
+  browser action succeeds."
+  [url]
+  (let [script @*open-url-script*
+        script (if (= :uninitialized script)
+                 (reset! *open-url-script* (open-url-script-val))
+                 script)]
+    (or (when script
+          (open-url-with-script script url))
+        (try
+          (when (webbrowser/open (str url))
+            (str url))
+          (catch python/Exception _
+            nil)))))

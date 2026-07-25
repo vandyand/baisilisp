@@ -121,6 +121,40 @@
     (is (thrown? basilisp.lang.exception/ExceptionInfo
                  (proxy-call-with-super identity (python/object) "describe-me")))))
 
+(deftest proxy-call-with-super-exact-mapping-restoration-test
+  (let [obj-proxy (proxy [DescribableType] [:original]
+                    (describe-me [] "I'm a proxy"))]
+    (init-proxy obj-proxy {"describe_me" nil})
+    (is (= {"describe_me" nil} (proxy-mappings obj-proxy)))
+    (is (= "I'm a type with :original"
+           (proxy-call-with-super #(.describe-me obj-proxy) obj-proxy 'describe-me)))
+    (is (= {"describe_me" nil} (proxy-mappings obj-proxy)))
+    (is (= "I'm a type with :original" (.describe-me obj-proxy)))
+    (is (thrown? python/ValueError
+                 (proxy-call-with-super
+                  (fn [] (throw (python/ValueError "broken callback")))
+                  obj-proxy
+                  "describe-me")))
+    (is (= {"describe_me" nil} (proxy-mappings obj-proxy)))))
+
+(deftest proxy-call-with-super-seeded-restoration-stress-test
+  (let [obj-proxy (proxy [DescribableType] [:seeded]
+                    (describe-me [] "initial"))]
+    (doseq [n (range 60)]
+      (let [override (when (not= 0 (mod n 3))
+                       (fn [_] (str "override-" n)))]
+        (init-proxy obj-proxy {"describe_me" override})
+        (let [before (proxy-mappings obj-proxy)
+              expected (if override
+                         (str "override-" n)
+                         "I'm a type with :seeded")]
+          (is (= "I'm a type with :seeded"
+                 (proxy-call-with-super #(.describe-me obj-proxy)
+                                        obj-proxy
+                                        (if (even? n) 'describe-me "describe-me"))))
+          (is (= before (proxy-mappings obj-proxy)))
+          (is (= expected (.describe-me obj-proxy))))))))
+
 (deftest proxy-test
   (testing "disallows duplicate method overrides"
     (is (thrown? basilisp.lang.compiler/CompilerException
