@@ -44,7 +44,14 @@ def test_run_tests_workflow_runs_bounded_pytest_publish_gate():
         "name: run-tests (${{ matrix.os }}, ${{ matrix.version }}, "
         "${{ matrix.tox-env }})"
     ) in workflow
-    assert 'tox run -e "${{ matrix.test-env }}" -- \\' in workflow
+    assert (
+        'tox run -e "${{ matrix.test-env }}" -- tests/basilisp/core_test.py '
+        "tests/basilisp/reader_test.py tests/basilisp/runtime_test.py "
+        "tests/basilisp/string_escape_test.py "
+        "tests/basilisp/core/test_core_fns.lpy "
+        "tests/basilisp/core/test_printing_fns.lpy -q"
+    ) in workflow
+    assert 'tox run -e "${{ matrix.test-env }}" -- \\' not in workflow
     assert "tests/basilisp/core_test.py" in workflow
     assert "tests/basilisp/reader_test.py" in workflow
     assert "tests/basilisp/runtime_test.py" in workflow
@@ -70,4 +77,5 @@ def test_run_tests_workflow_keeps_release_smoke_jobs_bounded():
     assert workflow.count("timeout-minutes: 60") >= 2
     assert "tests/basilisp/string_escape_test.py" in workflow
     assert "tests/basilisp/core/test_printing_fns.lpy" in workflow
-    assert "tox run -- \\" in workflow
+    assert "tox run -- tests/basilisp/core_test.py" in workflow
+    assert "tox run -- \\" not in workflow
