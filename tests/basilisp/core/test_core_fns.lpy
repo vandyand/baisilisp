@@ -72,7 +72,7 @@
          (line-seq (io/StringIO "one\ntwo\n")))))
 
 (deftest file-seq-test
-  (let [root (pathlib/Path (tempfile/mkdtemp ** :prefix "file-seq-test"))]
+  (let [root (.resolve (pathlib/Path (tempfile/mkdtemp ** :prefix "file-seq-test")))]
     (try
       (.write-text (.joinpath root "a.txt") "a")
       (.mkdir (.joinpath root "dir"))
@@ -80,7 +80,7 @@
       (is (= ["." "a.txt" "dir" "dir/b.txt"]
              (sort
               (map (fn [path]
-                     (.as-posix (.relative-to path root)))
+                     (.as-posix (.relative-to (.resolve path) root)))
                    (file-seq root)))))
       (finally
         (shutil/rmtree root)))))
