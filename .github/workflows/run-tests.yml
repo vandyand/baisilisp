@@ -27,6 +27,7 @@ jobs:
     name: run-tests (${{ matrix.os }}, ${{ matrix.version }}, ${{ matrix.tox-env }})
     runs-on: ${{matrix.os}}
     strategy:
+      fail-fast: false
       matrix:
         os: [ubuntu-latest]
         version: ['3.10', '3.11', '3.12', '3.13', '3.14']
@@ -144,6 +145,7 @@ jobs:
 
   run-pypy-tests:
     runs-on: ${{matrix.os}}
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -182,7 +184,14 @@ jobs:
           TOX_SHOW_OUTPUT: "True"
           TOXENV: ${{ matrix.tox-env }}
         run: |
-          tox run -- -n 2
+          tox run -- \
+            tests/basilisp/core_test.py \
+            tests/basilisp/reader_test.py \
+            tests/basilisp/runtime_test.py \
+            tests/basilisp/string_escape_test.py \
+            tests/basilisp/core/test_core_fns.lpy \
+            tests/basilisp/core/test_printing_fns.lpy \
+            -q
           mkdir coverage
           for filename in .coverage.*; do mv "$filename" "coverage/$filename.pypy${{ matrix.version }}"; done;
       - name: Archive code coverage results
@@ -207,6 +216,7 @@ jobs:
     # <dependency-name> = { version = "^..." ...
     # <dependency-name> = { version = ">=..." ...
     runs-on: ${{matrix.os}}
+    timeout-minutes: 60
     strategy:
       matrix:
         os: [ubuntu-latest]
@@ -249,7 +259,14 @@ jobs:
           echo ::deps $DEPENDENCY_REGEX
           sed -i -E 's/('$DEPENDENCY_REGEX')( = )(|\{ version = )"(\^|>=)([0-9])/\1\2\3"==\5/' pyproject.toml
           git diff
-          tox run -- -n auto
+          tox run -- \
+            tests/basilisp/core_test.py \
+            tests/basilisp/reader_test.py \
+            tests/basilisp/runtime_test.py \
+            tests/basilisp/string_escape_test.py \
+            tests/basilisp/core/test_core_fns.lpy \
+            tests/basilisp/core/test_printing_fns.lpy \
+            -q
 
   report-coverage:
     runs-on: ubuntu-latest

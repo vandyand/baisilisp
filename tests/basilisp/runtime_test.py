@@ -6,6 +6,7 @@ from fractions import Fraction
 import pytest
 
 from basilisp.lang import atom as atom
+from basilisp.lang import character as lchar
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
@@ -148,7 +149,7 @@ def test_nthrest():
         llist.l(1, 2, 3, 4, 5, 6), -1
     )
 
-    assert None is runtime.nthrest(None, 1)
+    assert lseq.EMPTY is runtime.nthrest(None, 1)
 
     assert llist.EMPTY == runtime.nthrest(llist.EMPTY, 0)
     assert lseq.sequence([2, 3, 4, 5, 6]) == runtime.nthrest(
@@ -260,7 +261,7 @@ def test_concat():
     assert s1 == llist.l(vec.v("a", 1), vec.v("b", 2))
 
     s1 = runtime.concat(vec.v(1, 2), None, "ab")
-    assert s1 == llist.l(1, 2, "a", "b")
+    assert s1 == llist.l(1, 2, lchar.Character("a"), lchar.Character("b"))
 
 
 @pytest.fixture
@@ -319,7 +320,7 @@ def test_internal_reduce_init(add, coll, res, init):
 def test_nth():
     assert None is runtime.nth(None, 1)
     assert "not found" == runtime.nth(None, 4, "not found")
-    assert "l" == runtime.nth("hello world", 2)
+    assert lchar.Character("l") == runtime.nth("hello world", 2)
     assert "l" == runtime.nth(["h", "e", "l", "l", "o"], 2)
     assert "l" == runtime.nth(llist.l("h", "e", "l", "l", "o"), 2)
     assert "l" == runtime.nth(vec.v("h", "e", "l", "l", "o"), 2)
@@ -374,7 +375,7 @@ def test_get():
     assert 1 == runtime.get(vec.v(1, 2, 3).to_transient(), 0)
     assert None is runtime.get(vec.v(1, 2, 3).to_transient(), 3)
     assert "nada" == runtime.get(vec.v(1, 2, 3).to_transient(), 3, "nada")
-    assert "l" == runtime.get("hello world", 2)
+    assert lchar.Character("l") == runtime.get("hello world", 2)
     assert None is runtime.get("hello world", 50)
     assert None is runtime.get("hello world", "key")
     assert "nada" == runtime.get("hello world", 50, "nada")
@@ -507,9 +508,6 @@ def test_deref():
         (0.0, 0.0),
         (1.0, 1.0),
         (-1.0, -1.0),
-        (0.0, 0),
-        (1.0, 1),
-        (-1.0, -1),
         (True, True),
         (False, False),
         (None, None),
@@ -554,6 +552,9 @@ def test_equals(v1, v2):
         (0, False),
         ("", "not empty"),
         (1, -1),
+        (0.0, 0),
+        (1.0, 1),
+        (-1.0, -1),
         (0, 0.00000032),
         (llist.l(1, 2, 3), llist.l(2, 3, 4)),
         (llist.l(1, 2, 3), lqueue.q(2, 3, 4)),

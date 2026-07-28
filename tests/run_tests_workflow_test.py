@@ -53,3 +53,15 @@ def test_run_tests_workflow_parallelizes_pytest_before_static_checks():
     assert "test-env: py310" in workflow
     assert "check-envs: py314-mypy,py314-lint,bandit,format" in workflow
     assert "check-envs: py313-lint" in workflow
+
+
+def test_run_tests_workflow_keeps_release_smoke_jobs_bounded():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+
+    assert "fail-fast: false" in workflow
+    assert "run-pypy-tests:" in workflow
+    assert "min-deps-test:" in workflow
+    assert workflow.count("timeout-minutes: 60") >= 2
+    assert "tests/basilisp/string_escape_test.py" in workflow
+    assert "tests/basilisp/core/test_printing_fns.lpy" in workflow
+    assert "tox run -- \\" in workflow
