@@ -37,14 +37,20 @@ def test_run_tests_workflow_gates_core_and_standard_namespace_parity():
     assert "standard-namespace-inventory.csv" in workflow
 
 
-def test_run_tests_workflow_parallelizes_pytest_before_static_checks():
+def test_run_tests_workflow_runs_bounded_pytest_before_static_checks():
     workflow = WORKFLOW.read_text(encoding="utf-8")
 
     assert (
         "name: run-tests (${{ matrix.os }}, ${{ matrix.version }}, "
         "${{ matrix.tox-env }})"
     ) in workflow
-    assert 'tox run -e "${{ matrix.test-env }}" -- -n auto' in workflow
+    assert 'tox run -e "${{ matrix.test-env }}" -- \\' in workflow
+    assert "tests/basilisp/core_test.py" in workflow
+    assert "tests/basilisp/reader_test.py" in workflow
+    assert "tests/basilisp/runtime_test.py" in workflow
+    assert "tests/basilisp/string_escape_test.py" in workflow
+    assert "tests/basilisp/core/test_core_fns.lpy" in workflow
+    assert "tests/basilisp/core/test_printing_fns.lpy" in workflow
     assert 'tox run-parallel -p 4 -e "${{ matrix.check-envs }}"' in workflow
     assert workflow.index("Run pytest") < workflow.index("Run static checks")
     assert workflow.index('tox run -e "${{ matrix.test-env }}"') < workflow.index(
@@ -61,6 +67,7 @@ def test_run_tests_workflow_keeps_release_smoke_jobs_bounded():
     assert "fail-fast: false" in workflow
     assert "run-pypy-tests:" in workflow
     assert "min-deps-test:" in workflow
+    assert "timeout-minutes: 90" in workflow
     assert workflow.count("timeout-minutes: 60") >= 2
     assert "tests/basilisp/string_escape_test.py" in workflow
     assert "tests/basilisp/core/test_printing_fns.lpy" in workflow
