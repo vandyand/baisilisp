@@ -57,8 +57,10 @@ def test_run_tests_workflow_runs_bounded_pytest_before_static_checks():
         'tox run-parallel -p 4 -e "${{ matrix.check-envs }}"'
     )
     assert "test-env: py310" in workflow
-    assert "check-envs: py314-mypy,py314-lint,bandit,format" in workflow
-    assert "check-envs: py313-lint" in workflow
+    assert "check-envs: py314-mypy,bandit,format" in workflow
+    assert 'check-envs: ""' in workflow
+    assert "if: matrix.check-envs != ''" in workflow
+    assert "py314-lint" not in workflow
 
 
 def test_run_tests_workflow_keeps_release_smoke_jobs_bounded():

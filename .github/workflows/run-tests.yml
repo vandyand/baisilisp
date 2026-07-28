@@ -34,37 +34,37 @@ jobs:
         version: ['3.10', '3.11', '3.12', '3.13', '3.14']
         include:
           - version: '3.10'
-            tox-env: py310,py310-mypy,py310-lint,bandit
+            tox-env: py310,py310-mypy,bandit
             test-env: py310
-            check-envs: py310-mypy,py310-lint,bandit
+            check-envs: py310-mypy,bandit
           - version: '3.11'
-            tox-env: py311,py311-mypy,py311-lint,bandit
+            tox-env: py311,py311-mypy,bandit
             test-env: py311
-            check-envs: py311-mypy,py311-lint,bandit
+            check-envs: py311-mypy,bandit
           - version: '3.12'
-            tox-env: py312,py312-mypy,py312-lint,bandit
+            tox-env: py312,py312-mypy,bandit
             test-env: py312
-            check-envs: py312-mypy,py312-lint,bandit
+            check-envs: py312-mypy,bandit
           - version: '3.13'
-            tox-env: py313,py313-mypy,py313-lint,bandit
+            tox-env: py313,py313-mypy,bandit
             test-env: py313
-            check-envs: py313-mypy,py313-lint,bandit
+            check-envs: py313-mypy,bandit
           - version: '3.14'
-            tox-env: py314,py314-mypy,py314-lint,bandit,format
+            tox-env: py314,py314-mypy,bandit,format
             test-env: py314
-            check-envs: py314-mypy,py314-lint,bandit,format
+            check-envs: py314-mypy,bandit,format
           - os: windows-latest
             # immutables does not yet ship a Windows wheel compatible with
             # CPython 3.14. Linux and macOS retain 3.14 coverage.
             version: '3.13'
-            tox-env: py313,py313-lint
+            tox-env: py313
             test-env: py313
-            check-envs: py313-lint
+            check-envs: ""
           - os: macos-latest
             version: '3.14'
-            tox-env: py314,py314-lint
+            tox-env: py314
             test-env: py314
-            check-envs: py314-lint
+            check-envs: ""
     steps:
       - uses: actions/checkout@v5
         with:
@@ -120,6 +120,7 @@ jobs:
             -q
           mkdir coverage
       - name: Run static checks
+        if: matrix.check-envs != ''
         env:
           TOX_PARALLEL_NO_SPINNER: 1
           TOX_SHOW_OUTPUT: "True"
