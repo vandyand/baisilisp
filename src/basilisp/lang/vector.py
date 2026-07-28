@@ -1,6 +1,6 @@
 from collections.abc import Iterable, Iterator, Sequence
 from functools import total_ordering
-from typing import Any, TypeVar, Union, cast, overload
+from typing import Any, Callable, TypeVar, Union, cast, overload
 
 from typing_extensions import Unpack
 
@@ -496,6 +496,86 @@ class PersistentVector(
         return init
 
 
+class PrimitiveVector(PersistentVector[T]):
+    """Persistent vector that preserves Clojure ``vector-of`` coercion on updates."""
+
+    __slots__ = ("_coerce", "_primitive_type")
+
+    def __init__(
+        self,
+        count: int,
+        shift: int,
+        root: VectorNode,
+        tail: Iterable[T],
+        primitive_type: str,
+        coerce: Callable[[Any], T],
+        meta: IPersistentMap | None = None,
+    ) -> None:
+        super().__init__(count, shift, root, tail, meta)
+        self._primitive_type = primitive_type
+        self._coerce = coerce
+
+    def _wrap_vector(self, v: PersistentVector[T]) -> "PrimitiveVector[T]":
+        return PrimitiveVector(
+            v._count,
+            v._shift,
+            v._root,
+            v._tail,
+            self._primitive_type,
+            self._coerce,
+            v.meta,
+        )
+
+    def __getitem__(self, item):
+        if isinstance(item, slice):
+            return primitive_vector(
+                (self._nth(index) for index in range(*item.indices(self._count))),
+                self._primitive_type,
+                self._coerce,
+            )
+        return self._nth(item)
+
+    def with_meta(self, meta: IPersistentMap | None) -> "PrimitiveVector[T]":
+        return PrimitiveVector(
+            self._count,
+            self._shift,
+            self._root,
+            self._tail,
+            self._primitive_type,
+            self._coerce,
+            meta,
+        )
+
+    def cons(self, *elems: T) -> "PrimitiveVector[T]":  # type: ignore[override]
+        result: PrimitiveVector[T] = self
+        for elem in elems:
+            result = result._append(elem)
+        return result
+
+    def _append(self, value: T) -> "PrimitiveVector[T]":
+        return self._wrap_vector(super()._append(self._coerce(value)))
+
+    def _assoc_one(self, index: int, value: T) -> "PrimitiveVector[T]":
+        return self._wrap_vector(super()._assoc_one(index, self._coerce(value)))
+
+    def assoc(self, *kvs: T) -> "PrimitiveVector[T]":
+        if len(kvs) % 2:
+            raise TypeError("assoc requires an even number of key/value arguments")
+        result: PrimitiveVector[T] = self
+        for key, value in cast(Iterable[tuple[int, T]], partition(kvs, 2)):
+            result = result._assoc_one(key, value)
+        return result
+
+    def empty(self) -> "PrimitiveVector[T]":
+        return primitive_vector((), self._primitive_type, self._coerce)
+
+    def pop(self) -> "PrimitiveVector[T]":
+        return self._wrap_vector(super().pop())
+
+    def to_transient(self) -> TransientVector[T]:
+        raise TypeError("Primitive vectors do not support transients")
+
+
 class MapEntry(IMapEntry[K, V], PersistentVector[Union[K, V]]):
     __slots__ = ()
 
@@ -535,6 +615,21 @@ def vector(
 ) -> PersistentVector[T]:
     """Create a persistent vector from ``members``."""
     result: PersistentVector[T] = EMPTY
+    for member in members:
+        result = result._append(member)
+    return result if meta is None else result.with_meta(meta)
+
+
+def primitive_vector(
+    members: Iterable[T],
+    primitive_type: str,
+    coerce: Callable[[Any], T],
+    meta: IPersistentMap | None = None,
+) -> PrimitiveVector[T]:
+    """Create a persistent vector that coerces future updates like ``vector-of``."""
+    result: PrimitiveVector[T] = PrimitiveVector(
+        0, BRANCH_BITS, EMPTY_NODE, (), primitive_type, coerce
+    )
     for member in members:
         result = result._append(member)
     return result if meta is None else result.with_meta(meta)

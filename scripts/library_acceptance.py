@@ -18,6 +18,7 @@ import subprocess
 import sys
 from dataclasses import replace
 from pathlib import Path
+from typing import Mapping
 
 from basilisp import portability
 from basilisp.lang import reader
@@ -35,16 +36,20 @@ _SUBSTITUTIONS = (
     "clojure.walk -> basilisp.walk",
 )
 _SUPPORTED_PYTHON = ("3.10", "3.11", "3.12", "3.13", "3.14")
+CLOJURE_VERSION = "1.12.4"
+DEFAULT_CLOJURE_SDEPS = (
+    f'{{:deps {{org.clojure/clojure {{:mvn/version \\"{CLOJURE_VERSION}\\"}}}}}}'
+)
 
 
 def _default_clojure_command() -> str:
     if configured := os.environ.get("CLOJURE_COMMAND"):
         return configured
     if shutil.which("clojure"):
-        return "clojure -M"
+        return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
     if os.name == "nt" and shutil.which("wsl"):
-        return "wsl -d Ubuntu-24.04 -- clojure -M"
-    return "clojure -M"
+        return f'wsl -d Ubuntu-24.04 -- clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
+    return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
 
 
 def _path_for_command(path: Path, command_prefix: str) -> str:
@@ -59,13 +64,24 @@ def _path_for_command(path: Path, command_prefix: str) -> str:
     return str(resolved)
 
 
-def _run(command_prefix: str, runner: Path, *, label: str) -> list[str]:
+def _run(
+    command_prefix: str,
+    runner: Path,
+    *,
+    label: str,
+    extra_env: Mapping[str, str] | None = None,
+) -> list[str]:
+    env = None
+    if extra_env:
+        env = os.environ.copy()
+        env.update(extra_env)
     try:
         result = subprocess.run(
             [*shlex.split(command_prefix), _path_for_command(runner, command_prefix)],
             cwd=ROOT,
             check=False,
             capture_output=True,
+            env=env,
             text=True,
         )
     except FileNotFoundError as exc:
@@ -186,12 +202,31 @@ def acceptance_library_roots(
     )
 
 
+def _shard_library_roots(
+    library_roots: list[Path], *, shard_count: int, shard_index: int
+) -> list[Path]:
+    """Return the stable modulo-selected acceptance-library shard."""
+
+    if shard_count < 1:
+        raise ValueError("shard_count must be greater than zero")
+    if shard_index < 0 or shard_index >= shard_count:
+        raise ValueError("shard_index must be between 0 and shard_count - 1")
+    if shard_count == 1:
+        return library_roots
+    return [
+        library_root
+        for index, library_root in enumerate(library_roots)
+        if index % shard_count == shard_index
+    ]
+
+
 def _accept_library(
     library_root: Path,
     manifest_path: Path,
     *,
     clojure_command: str,
     basilisp_command: str,
+    basilisp_env: Mapping[str, str] | None = None,
     show_output: bool = False,
     show_manifest: bool = False,
     write_manifest: bool = False,
@@ -205,7 +240,12 @@ def _accept_library(
     else:
         manifest = verify_manifest(library_root, manifest_path)
     clojure = _run(clojure_command, runner, label="Clojure")
-    basilisp = _run(basilisp_command, runner, label="Basilisp")
+    basilisp = _run(
+        basilisp_command,
+        runner,
+        label="Basilisp",
+        extra_env=basilisp_env,
+    )
     if clojure != basilisp:
         print("Portable-library acceptance mismatch", file=sys.stderr)
         print(f"library: {library_root}", file=sys.stderr)
@@ -218,7 +258,8 @@ def _accept_library(
         print(manifest, end="")
     print(
         f"accepted library={library_root.name} classification=portable "
-        f"summaries={len(basilisp)}"
+        f"summaries={len(basilisp)}",
+        flush=True,
     )
     return True
 
@@ -237,6 +278,27 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--clojure-command", default=_default_clojure_command())
     parser.add_argument("--basilisp-command", default="uv run basilisp run")
     parser.add_argument(
+        "--disable-basilisp-ns-cache",
+        action="store_true",
+        help=(
+            "run Basilisp acceptance libraries with "
+            "BASILISP_DO_NOT_CACHE_NAMESPACES=true; useful for proof runs that "
+            "should not depend on pre-existing .lpyc state"
+        ),
+    )
+    parser.add_argument(
+        "--shard-count",
+        type=int,
+        default=1,
+        help="split --all acceptance libraries into this many stable modulo shards",
+    )
+    parser.add_argument(
+        "--shard-index",
+        type=int,
+        default=0,
+        help="run only this zero-based --all shard index",
+    )
+    parser.add_argument(
         "--write-manifest",
         action="store_true",
         help="replace the checked-in manifest after its generated content is reviewed",
@@ -245,10 +307,23 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--show-manifest", action="store_true")
     args = parser.parse_args(argv)
 
+    basilisp_env = (
+        {"BASILISP_DO_NOT_CACHE_NAMESPACES": "true"}
+        if args.disable_basilisp_ns_cache
+        else None
+    )
+
     if args.all:
         if args.manifest is not None:
             parser.error("--manifest cannot be combined with --all")
-        roots = acceptance_library_roots()
+        try:
+            roots = _shard_library_roots(
+                acceptance_library_roots(),
+                shard_count=args.shard_count,
+                shard_index=args.shard_index,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
         if not roots:
             parser.error("no acceptance libraries found")
         for library_root in roots:
@@ -257,12 +332,16 @@ def main(argv: list[str] | None = None) -> int:
                 library_root.resolve() / DEFAULT_MANIFEST.name,
                 clojure_command=args.clojure_command,
                 basilisp_command=args.basilisp_command,
+                basilisp_env=basilisp_env,
                 show_output=args.show_output,
                 show_manifest=args.show_manifest,
                 write_manifest=args.write_manifest,
             ):
                 return 1
         return 0
+
+    if args.shard_count != 1 or args.shard_index != 0:
+        parser.error("--shard-count and --shard-index require --all")
 
     library_root = args.library_root.resolve()
     manifest_path = (
@@ -277,6 +356,7 @@ def main(argv: list[str] | None = None) -> int:
             manifest_path,
             clojure_command=args.clojure_command,
             basilisp_command=args.basilisp_command,
+            basilisp_env=basilisp_env,
             show_output=args.show_output,
             show_manifest=args.show_manifest,
             write_manifest=args.write_manifest,

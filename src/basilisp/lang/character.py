@@ -23,6 +23,7 @@ _NAMES = {
 _UTF16_MAX = 0xFFFF
 _SURROGATE_START = 0xD800
 _SURROGATE_END = 0xDFFF
+_END_SENTINEL = object()
 
 
 def _validate_code_unit(value: str) -> None:
@@ -67,15 +68,27 @@ def utf16_unit_at(value: str, index: int) -> str:
     return chr(int.from_bytes(encoded[offset : offset + 2], "little"))
 
 
-def utf16_substring(value: str, start: int, end: int | None = None) -> str:
+def _coerce_substring_index(value: Any, label: str) -> int:
+    """Coerce a substring index through Clojure's primitive int boundary."""
+
+    from basilisp.lang import numeric_coerce  # pylint: disable=import-outside-toplevel
+
+    try:
+        return numeric_coerce.checked_integer(value, 32, allow_character=False)
+    except TypeError as exc:
+        raise TypeError(f"substring {label} index must be numeric") from exc
+
+
+def utf16_substring(value: str, start: Any, end: Any = _END_SENTINEL) -> str:
     """Slice ``value`` with Clojure/JVM UTF-16 indexes and bounds checks."""
 
-    if not isinstance(start, int) or isinstance(start, bool):
-        raise TypeError("substring start index must be an integer")
-    if end is not None and (not isinstance(end, int) or isinstance(end, bool)):
-        raise TypeError("substring end index must be an integer")
+    start = _coerce_substring_index(start, "start")
     length = utf16_length(value)
-    actual_end = length if end is None else end
+    actual_end = (
+        length
+        if end is _END_SENTINEL
+        else _coerce_substring_index(end, "end")
+    )
     if start < 0 or actual_end < start or actual_end > length:
         raise IndexError(
             f"substring indexes {start} through {actual_end} out of bounds for length {length}"

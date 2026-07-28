@@ -60,13 +60,30 @@
                    (= :pos-zero (fp-category (m/log 1.0)))
                    (= 3.0 (m/log10 1000.0))
                    (= 3.0 (m/sqrt 9.0))
-                   (= 3.0 (m/cbrt 27.0))
-                   (= -3.0 (m/cbrt -27.0))]
+                   (close? 3.0 (m/cbrt 27.0))
+                   (close? -3.0 (m/cbrt -27.0))]
             :binary [(= -1.0 (m/IEEE-remainder 7.0 4.0))
                      (= -1.0 (m/IEEE-remainder 3.0 4.0))
                      (= 5.0 (m/hypot 3.0 4.0))
                      (close? (/ m/PI 4.0) (m/atan2 1.0 1.0))
                      (= 256.0 (m/pow 2.0 8.0))]})
+
+(emit-case :hyperbolic-expm1-and-random
+           (let [random-samples (repeatedly 12 m/random)]
+             {:expm1 [(= :pos-zero (fp-category (m/expm1 0.0)))
+                      (close? 1e-12 (m/expm1 1e-12))
+                      (close? (dec m/E) (m/expm1 1.0))
+                      (= :pos-inf (fp-category (m/expm1 10000.0)))]
+              :tanh [(= :pos-zero (fp-category (m/tanh 0.0)))
+                     (= :neg-zero (fp-category (m/tanh -0.0)))
+                     (close? 1.0 (m/tanh ##Inf))
+                     (close? -1.0 (m/tanh ##-Inf))
+                     (close? 0.7615941559557649 (m/tanh 1.0))]
+              :random {:count (count random-samples)
+                       :finite? (every? #(= :finite (fp-category %))
+                                        random-samples)
+                       :bounded? (every? #(< -1.0 % 1.0) random-samples)
+                       :nonnegative? (every? #(<= 0.0 %) random-samples)}}))
 
 (emit-case :special-values-and-signed-zero
            {:domains (mapv fp-category

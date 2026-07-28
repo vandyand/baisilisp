@@ -1,5 +1,5 @@
 (ns tests.basilisp.tools-namespace-test
-  (:import os pathlib sys zipfile)
+  (:import os pathlib sys tempfile zipfile)
   (:require [basilisp.test :as test :refer [deftest is testing]]
             [basilisp.test.fixtures :as fixtures :refer [*tempdir*]]
             [clojure.test.check :as tc]
@@ -10,6 +10,7 @@
             [clojure.tools.namespace.dir :as dir]
             [clojure.tools.namespace.file :as file]
             [clojure.tools.namespace.find :as find]
+            [clojure.tools.namespace.move :as move]
             [clojure.tools.namespace.parse :as parse]
             [clojure.tools.namespace.repl :as repl]
             [clojure.tools.namespace.reload :as reload]
@@ -23,6 +24,11 @@
     (.mkdir (.-parent path) ** :parents true :exist_ok true)
     (spit path source)
     path))
+
+(defn- write-path! [path source]
+  (.mkdir (.-parent path) ** :parents true :exist_ok true)
+  (spit path source)
+  path)
 
 (defn- var-value [namespace name]
   @(ns-resolve (the-ns namespace) name))
@@ -108,6 +114,57 @@
         (.clear sys/path)
         (.extend sys/path original-path)))))
 
+(deftest randomized-classpath-scanning-is-isolated-extension-aware-and-deduplicated
+  (let [entry-gen (gen/tuple (gen/elements [:dir :jar])
+                             (gen/elements [".lpy" ".cljc"])
+                             gen/boolean)
+        property
+        (prop/for-all [entries (gen/vector entry-gen 1 10)]
+          (let [root (pathlib/Path (tempfile/mkdtemp ** :dir (str *tempdir*)
+                                                    :prefix "classpath-generated-"))
+                archive (pathlib/Path root "archives" "sources.zip")
+                original-path (list sys/path)
+                expected (set (keep-indexed
+                               (fn [index [_ _ valid?]]
+                                 (when valid?
+                                   (symbol (str "classpath-generated.ns" index))))
+                               entries))]
+            (.mkdir (.-parent archive) ** :parents true :exist_ok true)
+            (doseq [[index [location extension valid?]] (map-indexed vector entries)]
+              (let [name (str "classpath-generated.ns" index)
+                    source (if valid?
+                             (str "(ns " name ")")
+                             "(def ignored true)")
+                    entry-name (str "generated/ns" index extension)
+                    ignored-entry (str "generated/ignored" index ".txt")]
+                (when (= :dir location)
+                  (write-path! (pathlib/Path root entry-name) source)
+                  (write-path! (pathlib/Path root ignored-entry)
+                               (str "(ns ignored.dir" index ")")))))
+            (with-open [jar (zipfile/ZipFile archive "w")]
+              (doseq [[index [location extension valid?]] (map-indexed vector entries)]
+                (when (= :jar location)
+                  (let [name (str "classpath-generated.ns" index)
+                        source (if valid?
+                                 (str "(ns " name ")")
+                                 "(def ignored true)")]
+                    (.writestr jar (str "generated/ns" index extension) source)
+                    (.writestr jar (str "generated/ignored" index ".txt")
+                               (str "(ns ignored.jar" index ")"))))))
+            (try
+              (.clear sys/path)
+              (.extend sys/path [(str root) (str archive) (str root) (str archive)])
+              (let [names (set (namespace/find-namespaces-on-classpath))
+                    decls (set (map second (namespace/find-ns-decls-on-classpath)))]
+                (and (= expected names)
+                     (= expected decls)))
+              (finally
+                (.clear sys/path)
+                (.extend sys/path original-path)))))
+        result (tc/quick-check 16 property :seed 20260724 :max-size 16)]
+    (is (:pass? result))
+    (is (= 16 (:num-tests result)))))
+
 (deftest refresh-all-reloads-dependencies-before-their-dependents
   (let [root (pathlib/Path *tempdir*)]
     (try
@@ -126,6 +183,37 @@
         (when (find-ns 'refresh.app) (reload/remove-lib 'refresh.app))
         (when (find-ns 'refresh.dep) (reload/remove-lib 'refresh.dep))
         (repl/clear)))))
+
+(deftest namespace-move-updates-files-and-prunes-empty-directories
+  (let [root (pathlib/Path *tempdir*)
+        src (pathlib/Path root "src")
+        old-file (pathlib/Path src "old" "core.clj")
+        use-file (pathlib/Path src "use" "site.clj")
+        new-file (pathlib/Path src "new" "core.clj")]
+    (write-path! old-file "(ns old.core)\n(def marker 'old.core)\n")
+    (write-path! use-file "(ns use.site (:require [old.core :as old]))\n")
+    (move/move-ns 'old.core 'new.core src [src])
+    (is (not (.exists old-file)))
+    (is (not (.exists (.-parent old-file))))
+    (is (.exists new-file))
+    (is (= "(ns new.core)\n(def marker 'new.core)\n" (slurp new-file)))
+    (is (= "(ns use.site (:require [new.core :as old]))\n"
+           (slurp use-file)))))
+
+(deftest randomized-namespace-symbol-replacement-respects-token-boundaries
+  (let [property
+        (prop/for-all [left (gen/elements ["" " " "(" "[" ":" "'"])
+                       right (gen/elements ["" " " ")" "]" "\n"])
+                       suffix (gen/elements ["-extra" "$" "?" ".more"])]
+          (let [token (str left "old.core" right)
+                near (str left "old.core" suffix right)
+                source (str token " " near)
+                replaced (move/replace-ns-symbol source 'old.core 'new.core)]
+            (and (not= -1 (.find replaced (str left "new.core" right)))
+                 (not= -1 (.find replaced near)))))
+        result (tc/quick-check 128 property :seed 20260725 :max-size 24)]
+    (is (:pass? result))
+    (is (= 128 (:num-tests result)))))
 
 (deftest randomized-acyclic-graphs-always-return-a-valid-topological-order
   ;; Edges only point from a lower-numbered node to a higher-numbered one, so
@@ -147,3 +235,48 @@
         result (tc/quick-check 250 property :seed 20260723 :max-size 40)]
     (is (:pass? result))
     (is (= 250 (:num-tests result)))))
+
+(deftest randomized-track-add-remove-preserves-reload-ordering
+  ;; Generated depmaps model a namespace chain with optional adjacent edges.
+  ;; Reload load order must place dependencies before dependents; unload order
+  ;; must reverse that relation, and removed namespaces must not be reloaded.
+  (let [property
+        (prop/for-all [bits (gen/vector (gen/choose 0 1) 8 8)
+                       remove-index (gen/choose 0 8)]
+          (let [nodes (vec (map #(symbol (str "tracker.generated.n" %))
+                                (range 9)))
+                edges (keep-indexed (fn [index bit]
+                                      (when (pos? bit)
+                                        [(nth nodes index)
+                                         (nth nodes (inc index))]))
+                                    bits)
+                depmap (into {}
+                             (for [[index node] (map-indexed vector nodes)]
+                               [node (set (keep (fn [[dependent dependency]]
+                                                  (when (= dependent node)
+                                                    dependency))
+                                                edges))]))
+                tracker (track/add (track/tracker) depmap)
+                removed-name (nth nodes remove-index)
+                removed (track/remove tracker [removed-name])
+                graph-known? (contains? (set (dependency/nodes (::track/deps tracker)))
+                                         removed-name)
+                load-order (vec (::track/load tracker))
+                unload-order (vec (::track/unload tracker))
+                remove-load (vec (::track/load removed))
+                load-pos (zipmap load-order (range))
+                unload-pos (zipmap unload-order (range))]
+            (and
+             (= (set nodes) (set load-order))
+             (= (set nodes) (set unload-order))
+             (every? (fn [[dependent dependency]]
+                       (< (load-pos dependency) (load-pos dependent)))
+                     edges)
+             (every? (fn [[dependent dependency]]
+                       (< (unload-pos dependent) (unload-pos dependency)))
+                     edges)
+             (or (not graph-known?)
+                 (not (contains? (set remove-load) removed-name))))))
+        result (tc/quick-check 40 property :seed 20260728 :max-size 32)]
+    (is (:pass? result))
+    (is (= 40 (:num-tests result)))))

@@ -24,7 +24,7 @@
   ;; must retry with their original argument list, rather than treating it as
   ;; a new argument to the supplied updater.
   (is (= [2 2] (force-contested-update swap!)))
-  (is (= [[2 1] 2] (force-contested-update swap-vals!))))
+  (is (= [[1 2] 2] (force-contested-update swap-vals!))))
 
 (deftest tap-test
   (let [tap-queue (var-get (find-var 'basilisp.core/tap-queue))

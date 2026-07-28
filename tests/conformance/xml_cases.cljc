@@ -3,7 +3,9 @@
 ;; :attrs/:content slots in its element struct maps; Basilisp omits empty keys,
 ;; so cases normalize both to explicit maps and vectors.
 
-(require '[clojure.xml :as xml])
+(require '[clojure.xml :as xml]
+         #?(:clj '[clojure.string :as str]
+            :lpy '[basilisp.string :as str]))
 
 #?(:clj (import 'java.io.ByteArrayInputStream))
 
@@ -65,6 +67,42 @@
              {:tag (xml/tag element)
               :attrs (xml/attrs element)
               :content (xml/content element)}))
+
+(emit-case :dynamic-parser-state-vars
+           {:current-boundary? #?(:clj (some? xml/*current*)
+                                  :lpy (nil? xml/*current*))
+            :sb-boundary? #?(:clj (some? xml/*sb*)
+                             :lpy (nil? xml/*sb*))
+            :stack-boundary? #?(:clj (some? xml/*stack*)
+                                :lpy (nil? xml/*stack*))
+            :state-boundary? #?(:clj (some? xml/*state*)
+                                :lpy (some? xml/*state*))})
+
+(emit-case :emit-helpers
+           (let [element (struct-map xml/element
+                                     :tag :root
+                                     :attrs {:b "2" :a "1"}
+                                     :content ["body" (struct-map xml/element
+                                                                  :tag :child
+                                                                  :attrs nil
+                                                                  :content nil)])
+                 emitted-element (with-out-str (xml/emit-element element))
+                 emitted (with-out-str (xml/emit element))
+                 roundtrip (normalize-element (parse-xml-text emitted-element))]
+             {:element? (str/includes? emitted-element "<root")
+              :has-declaration? (str/includes? emitted "<?xml")
+              :roundtrip {:tag (:tag roundtrip)
+                          :attrs (:attrs roundtrip)
+                          :text (str/trim (first (:content roundtrip)))
+                          :child-tag (:tag (second (:content roundtrip)))}}))
+
+(emit-case :sax-helper-boundaries
+           {:parser? (some? (xml/sax-parser))
+            :disabled? (some? (xml/disable-external-entities (xml/sax-parser)))
+            :content-handler? (some? xml/content-handler)
+            :startparse (normalize-element
+                         (parse-xml-text-with "<root><child/></root>"
+                                              xml/startparse-sax))})
 
 (emit-case :parse-startparse-safe
            (normalize-element

@@ -13,6 +13,7 @@ readme = "README.md"
 requires-python = ">=3.10"
 packages = [
     { include = "basilisp", from = "src" },
+    { include = "medley", from = "src" },
 ]
 classifiers = [
     # Trove classifiers
@@ -84,6 +85,7 @@ basilisp_test_runner = "basilisp.contrib.pytest.testrunner"
 manifest-path = "rust/Cargo.toml"
 module-name = "basilisp._lang"
 python-source = "src"
+python-packages = ["basilisp", "medley"]
 include = [{ path = "LICENSE", format = "sdist" }]
 
 [build-system]

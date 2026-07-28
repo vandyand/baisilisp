@@ -20,10 +20,74 @@
 (defn rendered [f]
   (normalize-newlines (with-out-str (f))))
 
+(defn rejected? [f]
+  (try
+    (f)
+    false
+    (catch #?(:clj Throwable :lpy Exception) _ true)))
+
+(defn with-pretty-writer-output [f]
+  (normalize-newlines
+   (with-out-str
+     (let [writer (pprint/get-pretty-writer *out*)]
+       (binding [*out* writer
+                 pprint/*print-pretty* true]
+         (f)
+         (.flush writer))))))
+
 (defn rendered-code [margin form]
   (binding [pprint/*print-right-margin* margin]
     (rendered #(pprint/with-pprint-dispatch pprint/code-dispatch
                  (pprint/pprint form)))))
+
+(defn rendered-write [form & opts]
+  (normalize-newlines
+   (with-out-str
+     (apply pprint/write form opts))))
+
+(defn direct-fresh-line-output []
+  (-> (with-out-str
+        (pprint/fresh-line)
+        (print "a")
+        (pprint/fresh-line)
+        (pprint/fresh-line)
+        (print "b"))
+      (str/replace "\r\n" "\n")))
+
+(defn pretty-writer-fresh-line-output []
+  (with-pretty-writer-output
+   #(do
+      (.write *out* "a")
+      (pprint/fresh-line)
+      (.write *out* "b"))))
+
+(defn indent-helper-output []
+  (with-pretty-writer-output
+   #(pprint/pprint-logical-block :prefix "[" :suffix "]"
+      (pprint/write-out :alpha)
+      (.write *out* " ")
+      (pprint/pprint-indent :block 2)
+      (pprint/pprint-newline :linear)
+      (pprint/write-out :beta))))
+
+(defn print-length-loop-output []
+  (binding [*print-length* 2]
+    (with-pretty-writer-output
+     #(pprint/pprint-logical-block :prefix "[" :suffix "]"
+        (pprint/print-length-loop [xs (seq [1 2 3])]
+          (when xs
+            (pprint/write-out (first xs))
+            (when (next xs)
+              (.write *out* " ")
+              (recur (next xs)))))))))
+
+(defn set-dispatch-result []
+  (let [old @#'pprint/*print-pprint-dispatch*]
+    (try
+      (pprint/set-pprint-dispatch pprint/simple-dispatch)
+      (ifn? @#'pprint/*print-pprint-dispatch*)
+      (finally
+        (pprint/set-pprint-dispatch old)))))
 
 (emit-case :basic-rendering
            {:vector (rendered #(pprint/pprint [1 2 (sorted-map :a [3 4] :b [:x :y])]))
@@ -35,6 +99,121 @@
                       (rendered #(pprint/pprint (range 10))))
             :level (binding [*print-level* 2]
                      (rendered #(pprint/pprint {:a {:b {:c 1}}})))})
+
+(emit-case :dynamic-vars-and-writer-helpers
+           {:dynamic-vars {:base (binding [pprint/*print-base* 16]
+                                   pprint/*print-base*)
+                           :radix (binding [pprint/*print-radix* true]
+                                    pprint/*print-radix*)
+                           :miser (binding [pprint/*print-miser-width* 4]
+                                    pprint/*print-miser-width*)
+                           :pretty (binding [pprint/*print-pretty* true]
+                                     pprint/*print-pretty*)
+                           :dispatch (ifn? pprint/*print-pprint-dispatch*)
+                           :suppress (binding [pprint/*print-suppress-namespaces* true]
+                                       pprint/*print-suppress-namespaces*)}
+            :helpers {:fresh (direct-fresh-line-output)
+                      :pretty-writer (pretty-writer-fresh-line-output)
+                      :tab-rejected (rejected? #(pprint/pprint-tab :line 5 1))
+                      :indent (indent-helper-output)
+                      :length-loop (print-length-loop-output)
+                      :pp (rendered #(pprint/pp))
+                      :set-dispatch (set-dispatch-result)}})
+
+#?(:lpy
+   (emit-case :basilisp-extension-writer-protocol-boundary
+              (let [block (pprint/LogicalBlock nil "[" nil "]" 0 0 false false)]
+                {:internal-dynamic-vars [(binding [pprint/*current-level* 7]
+                                           pprint/*current-level*)
+                                         (binding [pprint/*current-length* 3]
+                                           pprint/*current-length*)
+                                         (binding [pprint/*print-sort-keys* true]
+                                           pprint/*print-sort-keys*)]
+                 :token-constructors [(some? block)
+                                      (some? (pprint/StartBlock block 0 1))
+                                      (some? (pprint/EndBlock block 1 2))
+                                      (some? (pprint/Blob "x" 0 1))
+                                      (some? (pprint/Indent block :block 2 1 1))
+                                      (some? (pprint/Newline block :mandatory 1 1))]
+                 :pretty-writer-var (some? pprint/PrettyWriter)
+                 :direct-protocol-output (normalize-newlines
+                                          (with-out-str
+                                            (let [writer (pprint/get-pretty-writer *out* 12)]
+                                              (binding [*out* writer
+                                                        pprint/*print-pretty* true]
+                                                (pprint/start-block writer "[" nil "]")
+                                                (.write writer "alpha")
+                                                (pprint/pp-indent writer :block 2)
+                                                (pprint/pp-newline writer :mandatory)
+                                                (.write writer "beta")
+                                                (pprint/end-block writer)
+                                                (.flush writer)))))}))
+   :clj
+   (emit-case :basilisp-extension-writer-protocol-boundary
+              {:internal-dynamic-vars [7 3 true]
+               :token-constructors [true true true true true true]
+               :pretty-writer-var true
+               :direct-protocol-output "[alpha\n   beta]"}))
+
+(emit-case :write-contracts
+           {:base (with-out-str
+                    (pprint/write [31 32] :base 16 :radix true))
+            :suppress (with-out-str
+                        (pprint/write 'foo/bar :suppress-namespaces true))
+            :default (with-out-str
+                       (pprint/write [1 2 [3 4]]))
+            :pretty (normalize-newlines
+                     (with-out-str
+                       (pprint/write [1 2 [3 4]]
+                                     :pretty true
+                                     :right-margin 8)))})
+
+(emit-case :write-option-adversarial
+           {:pretty-false-margin (rendered-write [1 2 [3 4]]
+                                                 :pretty false
+                                                 :right-margin 4)
+            :length-level (rendered-write (sorted-map :a [1 2 3 4]
+                                                      :b (sorted-map :c [5 6]))
+                                          :pretty true
+                                          :right-margin 12
+                                          :length 1
+                                          :level 3)
+            :length-zero-map (rendered-write (sorted-map :a 1 :b 2)
+                                             :pretty true
+                                             :length 0)
+            :level-zero (rendered-write [1 [2 [3]]]
+                                        :pretty true
+                                        :level 0)
+            :base-radix-ratio (rendered-write [31 -31 3/2]
+                                              :base 16
+                                              :radix true)
+            :suppress-nested-namespaces (rendered-write ['foo/bar
+                                                         {:k 'alpha/beta}
+                                                         [:ns/name]]
+                                                        :pretty true
+                                                        :suppress-namespaces true)
+            :meta-on (rendered-write (with-meta [1 2] {:tag 'demo/tag})
+                                     :pretty true
+                                     :meta true)
+            :meta-off (binding [*print-meta* true]
+                        (rendered-write (with-meta [1 2] {:tag 'demo/tag})
+                                        :pretty true
+                                        :meta false))})
+
+(emit-case :nested-data-margin-corpus
+           (let [forms [(sorted-map :alpha [1 2 3]
+                                    :beta (sorted-map :gamma [4 5]))
+                        ['alpha (sorted-map :beta [1 2]) ['gamma ['delta]]]
+                        [[1 2] [3 [4 5]] (sorted-map :six 6)]
+                        (list 'let ['x 1 'y '(+ x 2)] '(+ x y))]
+                 margins [8 12 20 40]]
+             (mapv (fn [form]
+                     (mapv (fn [margin]
+                             [margin
+                              (binding [pprint/*print-right-margin* margin]
+                                (rendered #(pprint/pprint form)))])
+                           margins))
+                   forms)))
 
 (emit-case :code-dispatch
            {:defn (binding [pprint/*print-right-margin* 24]
@@ -149,6 +328,57 @@
                      [margin (rendered-code margin form)]))
                  (range 40)))
 
+(def exact-width-code-cases
+  [[12 :condp-do
+    '(condp = command
+       :start (do (prepare! system) (start! system))
+       :stop (do (stop! system) :stopped)
+       :restart (do (stop! system) (start! system))
+       :unknown)]
+   [16 :condp-do
+    '(condp = command
+       :start (do (prepare! system) (start! system))
+       :stop (do (stop! system) :stopped)
+       :restart (do (stop! system) (start! system))
+       :unknown)]
+   [22 :condp-vector-test
+    '(condp some? (lookup env key)
+       nil :missing
+       false :disabled
+       (vector :a :b) (handle-vector env key)
+       :default)]
+   [18 :if-not-body
+    '(if-not (ready? (state system))
+       (do
+         (prepare! system)
+         (start! system)
+         (await-ready system))
+       (report-ready system))]
+   [20 :when-not-body
+    '(when-not (ready? (state system))
+       (prepare! system)
+       (start! system)
+       (await-ready system))]
+   [22 :locking-body
+    '(locking lock
+       (swap! state assoc :phase :running)
+       (snapshot state)
+       (notify! watchers))]
+   [24 :nested-body
+    '(when-not (ready? system)
+       (condp = command
+         :start (start! system)
+         :stop (stop! system)
+         :unknown)
+       (if-not (healthy? system)
+         (restart! system)
+         (report-ready system)))]])
+
+(emit-case :code-dispatch-exact-width-adversarial
+           (mapv (fn [[margin kind form]]
+                   [margin kind (rendered-code margin form)])
+                 exact-width-code-cases))
+
 (emit-case :print-table
            {:inferred (rendered #(pprint/print-table [(sorted-map :a 1 :b "two")
                                                       (sorted-map :a 300 :b "four")]))
@@ -156,6 +386,22 @@
                                                      [{:a 1 :b "two"}
                                                       {:a 300 :b "four"}]))
             :empty (rendered #(pprint/print-table [:a :b] []))})
+
+(emit-case :print-table-adversarial
+           {:missing-and-nil-cells
+            (rendered #(pprint/print-table [:a :b :c]
+                                           [(sorted-map :a 1 :b nil)
+                                            (sorted-map :a 222 :c "see")
+                                            (sorted-map :b "bee" :c nil)]))
+            :inferred-keys-ignore-later-only-columns
+            (rendered #(pprint/print-table [(sorted-map :alpha "x" :beta 22)
+                                            (sorted-map :alpha "longer" :gamma nil)]))
+            :mixed-width-values
+            (rendered #(pprint/print-table [:k :v]
+                                           [(sorted-map :k :short :v 1)
+                                            (sorted-map :k :much-longer-key
+                                                        :v "wide text")
+                                            (sorted-map :k nil :v :keyword)]))})
 
 (emit-case :cl-format-core
            {:numbers [(pprint/cl-format nil "~D ~:D ~@D" 12 1234567 12)
@@ -165,6 +411,67 @@
             :conditional (pprint/cl-format nil "~[zero~;one~;two~:;many~]" 3)
             :plural (pprint/cl-format nil "~D file~:P copied" 2)
             :fresh-line (normalize-newlines (pprint/cl-format nil "a~&b~%c"))})
+
+(emit-case :cl-format-control-flow-adversarial
+           {:nested-iteration (pprint/cl-format nil "~{(~{~A~^,~})~^;~}"
+                                                [[1 2] [:a :b :c]])
+            :case-conversion (pprint/cl-format nil
+                                               "~:@(~A~) ~:(~A~) ~@(~A~) ~(~A~)"
+                                               "hello world"
+                                               "hello world"
+                                               "hello world"
+                                               "HELLO")
+            :argument-jumps (pprint/cl-format nil "~A ~:*~A ~2:*~A ~A"
+                                              :a :b :c)
+            :escape-in-iteration (pprint/cl-format nil "~{~A~^|~}" [:a :b :c])
+            :remaining-conditional (pprint/cl-format nil
+                                                     "~#[none~;one=~A~;two=~A/~A~:;many~]"
+                                                     :x :y :z)
+            :out-of-range-conditional (pprint/cl-format nil
+                                                       "~[zero~;one~;two~]"
+                                                       5)
+            :plural-boundaries (pprint/cl-format nil "~:P|~P|~@P|~:@P"
+                                                 1 2 1 2)})
+
+(emit-case :cl-format-english-roman-boundaries
+           (mapv (fn [n]
+                   [n (pprint/cl-format nil "~R|~:R|~@R|~:@R" n n n n)])
+                 [4 9 19 44 99 944]))
+
+(emit-case :cl-format-error-boundaries
+           {:non-consuming-iteration (rejected?
+                                      #(pprint/cl-format nil
+                                                         "~{~#[Z~;O=~A~;T=~A/~A~:;M~]~^;~}"
+                                                         [[:a] [:b :c] [:d :e :f]]))
+             :missing-argument (rejected? #(pprint/cl-format nil "~A ~A" :only-one))
+            :bad-directive (rejected? #(pprint/cl-format nil "~Q" :x))
+            :standalone-conditional-newline (rejected?
+                                             #(pprint/cl-format nil "a~_b"))})
+
+(emit-case :cl-format-directive-adversarial
+           {:radix [(pprint/cl-format nil "~B|~O|~D|~X"
+                                      10 10 10 10)
+                    (pprint/cl-format nil "~:B|~:O|~:D|~:X"
+                                      1234567 1234567 1234567 1234567)
+                    (pprint/cl-format nil "~@B|~@O|~@D|~@X"
+                                      10 10 10 10)]
+            :characters (pprint/cl-format nil "~C|~:C|~@C|~:@C"
+                                          \A \space \newline \tab)
+            :strings (pprint/cl-format nil "~A|~S|~10A|~10S|~10@A|~10@S"
+                                       "x y" "x y" "x" "x" "x" "x")
+            :justification (pprint/cl-format nil "~10<~A~>|~10:@<~A~>"
+                                             "abc" "abc")
+            :indirection [(pprint/cl-format nil "~?" "~A/~A" [:x :y])
+                          (pprint/cl-format nil "~@?" "~A/~A" :x :y)]
+            :tabulation [(pprint/cl-format nil
+                                           "a~5Tz|a~5,2Tz|a~5@Tz|a~5,2@Tz")
+                         (pprint/cl-format nil
+                                           "~5@Tz|ab~5,2@Tz|abc~5,2@Tz|abcd~5,2@Tz")]
+            :fresh-line (mapv #(normalize-newlines (pprint/cl-format nil %))
+                               ["~&a"
+                                "a~&b"
+                                "a~%~&b"
+                                "a~2&b"])})
 
 (emit-case :cl-format-ratio-numeric-directives
            (let [formats ["~D" "~10D"

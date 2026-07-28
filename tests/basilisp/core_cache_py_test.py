@@ -102,6 +102,7 @@ def test_ttl_boundary_and_stale_queue_pruning_with_manual_clock():
     cache = cache.cache_miss("first", 1)
     now[0] += 10
     assert not cache.cache_has("first")  # expiry is strict at the boundary
+    assert cache.cache_lookup("first", "expired") == "expired"
     assert dict(cache.items()) == {"first": 1}  # lookup does not mutate the cache
     now[0] += 1
     cache = cache.cache_miss("second", 2)

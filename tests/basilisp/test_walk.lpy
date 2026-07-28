@@ -1,7 +1,10 @@
 (ns tests.basilisp.test-walk
   (:require
    [basilisp.test :refer [deftest is testing]]
-   [basilisp.walk :as walk]))
+   [basilisp.walk :as walk]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]))
 
 (deftest postwalk-replace-test
   (is (= [:c :d] (walk/postwalk-replace {:a 1 :b 2} [:c :d])))
@@ -138,6 +141,33 @@
       (is (= sorted-set walked-set))
       (is (sorted? walked-set))
       (is (= {:seed seed} (meta walked-set))))))
+
+(defn walk-node-count [form]
+  (let [counter (atom 0)]
+    (walk/postwalk (fn [x]
+                     (swap! counter inc)
+                     x)
+                   form)
+    @counter))
+
+(deftest generated-walk-invariants-hold-under-seeded-fuzzing
+  (let [property (prop/for-all [seed (gen/choose 0 100000)
+                                depth (gen/choose 0 6)]
+                   (let [form (generated-walk-form depth seed)
+                         postwalked (walk/postwalk identity form)
+                         prewalked (walk/prewalk identity form)
+                         keywordized (walk/keywordize-keys form)
+                         stringified (walk/stringify-keys keywordized)]
+                     (and (= form postwalked)
+                          (= form prewalked)
+                          (= (walk-node-count form)
+                             (walk-node-count postwalked)
+                             (walk-node-count prewalked))
+                          (= (walk-node-count keywordized)
+                             (walk-node-count stringified)))))
+        result (tc/quick-check 160 property :seed 20260724 :max-size 60)]
+    (is (:pass? result))
+    (is (= 160 (:num-tests result)))))
 
 (defmacro plus [n1 n2]
   `(+ ~n1 ~n2))

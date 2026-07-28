@@ -30,6 +30,7 @@
    [basilisp.io :as bio]
    [basilisp.string :as str])
   (:import contextlib
+           io
            os
            pathlib
            subprocess))
@@ -308,7 +309,10 @@
      Communication directly with the process streams introduces the possibility of
      deadlocks. Users may use :lpy:fn:`communicate` as a safe alternative."
   [process]
-  (.-stderr process))
+  (or (.-stderr process)
+      (if (python/getattr process "encoding" nil)
+        (io/StringIO "")
+        (io/BytesIO #b""))))
 
 (defn stdin
   "Return the ``stdin`` stream from the external process.
@@ -328,7 +332,10 @@
      Communication directly with the process streams introduces the possibility of
      deadlocks. Users may use :lpy:fn:`communicate` as a safe alternative."
   [process]
-  (.-stdout process))
+  (or (.-stdout process)
+      (if (python/getattr process "encoding" nil)
+        (io/StringIO "")
+        (io/BytesIO #b""))))
 
 (defn communicate
   "Communicate with a subprocess, optionally sending data to the process stdin stream

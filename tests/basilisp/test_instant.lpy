@@ -2,7 +2,10 @@
   (:require
    [clojure.instant :as clj-instant]
    [basilisp.instant :as instant]
-   [basilisp.test :refer [deftest is]]))
+   [basilisp.test :refer [deftest is]]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]))
 
 (deftest public-instant-api-test
   (is (= [2024 1 1 0 0 0 0 0 0 0]
@@ -28,3 +31,69 @@
     (is (= -450 (.-offset-minutes calendar))))
   (is (= (inst-ms (instant/read-instant-timestamp "2024-02-03T04:05:06.7-07:30"))
          (inst-ms (clj-instant/read-instant-timestamp "2024-02-03T04:05:06.7-07:30")))))
+
+(deftest leap-second-and-offset-boundary-test
+  (is (= [2024 1 1 23 0 0 0 1 2 0]
+         (instant/parse-timestamp vector "2024-01-01T23+02:00")))
+  (is (= [2024 1 1 23 59 0 0 1 2 0]
+         (instant/parse-timestamp vector "2024-01-01T23:59+02:00")))
+  (is (= [2024 1 1 23 59 60 999999999 0 0 0]
+         (instant/parse-timestamp vector "2024-01-01T23:59:60.999999999123Z")))
+  (is (= (inst-ms (clj-instant/read-instant-date "2024-01-01T23:59:60Z"))
+         (inst-ms (instant/read-instant-date "2024-01-01T23:59:60Z"))))
+  (is (= (inst-ms (clj-instant/read-instant-date "2024-01-01T23:59:60.999999999Z"))
+         (inst-ms (instant/read-instant-date "2024-01-01T23:59:60.999999999Z"))))
+  (let [calendar (instant/read-instant-calendar "2024-01-01T23:59:60.999999999-02:30")]
+    (is (= 2024 (.-year calendar)))
+    (is (= 1 (.-month calendar)))
+    (is (= 2 (.-day calendar)))
+    (is (= 0 (.-hour calendar)))
+    (is (= 0 (.-minute calendar)))
+    (is (= 0 (.-second calendar)))
+    (is (= 999 (.-millisecond calendar)))
+    (is (= -150 (.-offset-minutes calendar))))
+  (let [timestamp (instant/read-instant-timestamp "2024-01-01T23:59:60.999999999Z")]
+    (is (= 1704153600999 (inst-ms timestamp)))
+    (is (= 999999999 (.-nanoseconds timestamp))))
+  (is (thrown? python/Exception
+               (instant/read-instant-date "2024-01-01T23:58:60Z")))
+  (is (thrown? python/Exception
+               (instant/read-instant-date "2024-01-01T00:00:60Z"))))
+
+(defn- pad2 [n]
+  (let [s (str n)]
+    (if (= 1 (count s)) (str "0" s) s)))
+
+(defn- seeded-instant-source [seed]
+  (let [year (+ 1970 (mod seed 80))
+        month (inc (mod (quot seed 3) 12))
+        day (inc (mod (quot seed 5) 28))
+        hour (mod (quot seed 7) 24)
+        minute (mod (quot seed 11) 60)
+        second (mod (quot seed 13) 60)
+        nanos (mod (* seed 1103515245) 1000000000)
+        offset-hour (mod (quot seed 17) 13)
+        offset-minute (mod (quot seed 19) 60)
+        sign (if (zero? (mod seed 2)) "+" "-")]
+    (str year "-"
+         (pad2 month) "-"
+         (pad2 day) "T"
+         (pad2 hour) ":"
+         (pad2 minute) ":"
+         (pad2 second) "."
+         nanos
+         sign
+         (pad2 offset-hour) ":"
+         (pad2 offset-minute))))
+
+(deftest read-instant-apis-agree-under-seeded-fuzzing
+  (let [property (prop/for-all [seed (gen/choose 1 1000000)]
+                   (let [source (seeded-instant-source seed)
+                         instant-ms (inst-ms (instant/read-instant source))
+                         date-ms (inst-ms (instant/read-instant-date source))
+                         timestamp (instant/read-instant-timestamp source)]
+                     (and (= instant-ms date-ms (inst-ms timestamp))
+                          (<= 0 (.-nanoseconds timestamp) 999999999))))
+        result (tc/quick-check 160 property :seed 20260724 :max-size 80)]
+    (is (:pass? result))
+    (is (= 160 (:num-tests result)))))

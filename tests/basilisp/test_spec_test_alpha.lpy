@@ -40,14 +40,83 @@
   (let [result (first (st/check (var typed-identity) :num-tests 10 :seed 5))]
     (is (:basilisp.spec.test.alpha/pass? result))))
 
+(deftest generated-function-check-options-and-failures-test
+  (let [keyword-result (first (st/check 'tests.basilisp.test-spec-test-alpha/typed-identity
+                                        :num-tests 5
+                                        :seed 3))
+        map-result (first (st/check (var typed-identity)
+                                    {:clojure.spec.test.check/opts
+                                     {:num-tests 5
+                                      :seed 3}}))
+        vector-results (st/check [(var typed-identity) (var increment)]
+                                 {:clojure.spec.test.check/opts
+                                  {:num-tests 5
+                                   :seed 3}})
+        failure-result (first (st/check (var invalid-return)
+                                        :num-tests 5
+                                        :seed 3))]
+    (is (:basilisp.spec.test.alpha/pass? keyword-result))
+    (is (:basilisp.spec.test.alpha/pass? map-result))
+    (is (= 2 (count vector-results)))
+    (is (every? :basilisp.spec.test.alpha/pass? vector-results))
+    (is (false? (:basilisp.spec.test.alpha/pass? failure-result)))
+    (is (contains? failure-result :basilisp.spec.test.alpha/failure))))
+
+(deftest check-fn-uses-explicit-fspec-test
+  (let [pass-result (st/check-fn typed-identity
+                                 (s/fspec :args (s/cat :value int?)
+                                          :ret int?)
+                                 {:clojure.spec.test.check/opts
+                                  {:num-tests 5
+                                   :seed 11}})
+        failure-result (st/check-fn invalid-return
+                                    (s/fspec :args (s/cat :value int?)
+                                             :ret int?)
+                                    {:num-tests 5
+                                     :seed 11})]
+    (is (:basilisp.spec.test.alpha/pass? pass-result))
+    (is (false? (:basilisp.spec.test.alpha/pass? failure-result)))
+    (is (contains? failure-result :basilisp.spec.test.alpha/failure))))
+
+(deftest instrument-discovery-and-disabled-scope-test
+  (is (contains? (st/checkable-syms)
+                 'tests.basilisp.test-spec-test-alpha/typed-identity))
+  (is (contains? (st/checkable-syms {})
+                 'tests.basilisp.test-spec-test-alpha/typed-identity))
+  (is (contains? (st/instrumentable-syms)
+                 'tests.basilisp.test-spec-test-alpha/typed-identity))
+  (is (contains? (st/instrumentable-syms {})
+                 'tests.basilisp.test-spec-test-alpha/typed-identity))
+  (st/instrument (var typed-identity))
+  (try
+    (is (thrown? basilisp.lang.exception/ExceptionInfo (typed-identity "bad")))
+    (is (= "bad" (st/with-instrument-disabled (typed-identity "bad"))))
+    (is (thrown? basilisp.lang.exception/ExceptionInfo (typed-identity "bad")))
+    (finally
+      (st/unstrument (var typed-identity)))))
+
+(deftest summarize-results-prints-and-counts-clojure-style-passes-test
+  (let [summary-result (atom nil)
+        output (with-out-str
+                 (reset! summary-result
+                         (st/summarize-results [{:sym 'tests.basilisp.test-spec-test-alpha/typed-identity
+                                                 :failure nil}])))
+        summary @summary-result]
+    (is (= 1 (:total summary)))
+    (is (= 1 (:check-passed summary)))
+    (is (pos? (count output)))))
+
 (deftest public-spec-test-compatibility-surface-test
   (doseq [sym '[->sym
                 abbrev-result
+                check
                 check-fn
                 checkable-syms
                 enumerate-namespace
+                instrument
                 instrumentable-syms
                 summarize-results
+                unstrument
                 with-instrument-disabled]]
     (is (contains? (ns-publics 'basilisp.spec.test.alpha) sym)))
   (is (= 'tests.basilisp.test-spec-test-alpha/typed-identity

@@ -19,6 +19,7 @@
     nil   ""
     nil   "strang"
     nil   "--13.6"
+    nil   "1_000"
     0.0   "0"
     0.0   "0.0"
     14.0  " 14"
@@ -45,11 +46,17 @@
     nil   "strang"
     nil   "--13"
     nil   "0.0"
+    nil   " 14"
+    nil   "  83     "
+    nil   "-15    "
+    nil   "1_000"
+    nil   "9223372036854775808"
+    nil   "-9223372036854775809"
     0     "0"
-    14    " 14"
-    83    "  83     "
-    -15   " -15"
-    -15   "-15    "))
+    1     "+1"
+    -15   "-15"
+    9223372036854775807 "9223372036854775807"
+    -9223372036854775808 "-9223372036854775808"))
 
 (deftest parse-boolean-test
   (are [x] (thrown? python/TypeError (parse-boolean x))
@@ -94,9 +101,11 @@
     nil                                          "1"
     nil                                          "strang"
     #uuid "529f77ae-bf6e-43e0-92a4-798e3ce4d35e" "529f77ae-bf6e-43e0-92a4-798e3ce4d35e"
-    nil                                          "529f77ae-bf6e-43e0-92a4-798e3ce4d35"
-    nil                                          "529f77ae-bf6-43e0-92a4-798e3ce4d35e"
+    nil                                          "529f77aebf6e43e092a4798e3ce4d35e"
+    nil                                          "{529f77ae-bf6e-43e0-92a4-798e3ce4d35e}"
+    nil                                          "urn:uuid:529f77ae-bf6e-43e0-92a4-798e3ce4d35e"
+    #uuid "529f77ae-bf6e-43e0-92a4-0798e3ce4d35" "529f77ae-bf6e-43e0-92a4-798e3ce4d35"
+    #uuid "529f77ae-0bf6-43e0-92a4-798e3ce4d35e" "529f77ae-bf6-43e0-92a4-798e3ce4d35e"
     #uuid "67209b54-9668-4656-8cf9-94ee70ed6ba8" "67209B54-9668-4656-8CF9-94EE70ED6BA8"
-    nil                                          "67209B54-9668-4656-8CF9-94EE70ED6BA"
-    nil                                          "67209B5-9668-4656-8CF9-94EE70ED6BA8"))
-
+    #uuid "67209b54-9668-4656-8cf9-094ee70ed6ba" "67209B54-9668-4656-8CF9-94EE70ED6BA"
+    #uuid "067209b5-9668-4656-8cf9-94ee70ed6ba8" "67209B5-9668-4656-8CF9-94EE70ED6BA8"))

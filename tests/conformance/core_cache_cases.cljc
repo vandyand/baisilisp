@@ -25,6 +25,26 @@
                     :value-c (c/lookup lirs :c)
                     :count (count lirs)}))
 
+(emit-case :direct-shared-api
+           (let [base (c/basic-cache-factory {:a 1 :b 2})
+                 evicted (c/evict base :a)
+                 ttl (c/ttl-cache-factory {:ttl-key 7} :ttl 2000)
+                 wrapped (c/through-cache
+                           (c/basic-cache-factory {})
+                           :wrapped
+                           (fn [f item] [:wrapped (f item) item])
+                           (fn [item] (name item)))]
+             {:cache-protocol? (some? c/CacheProtocol)
+              :evicted evicted
+              :ttl-lookup (c/lookup ttl :ttl-key)
+              :through-cache wrapped}))
+
+(emit-case :ttl-zero-expiry
+           (let [ttl (c/ttl-cache-factory {:expired 9} :ttl 0)]
+             {:has? (c/has? ttl :expired)
+              :lookup (c/lookup ttl :expired :not-found)
+              :physical-entries (vec ttl)}))
+
 (emit-case :public-constructors
            (let [basic (c/->BasicCache {:a 1})
                  fn-cache (c/->FnCache {:a 2} inc)
@@ -46,6 +66,43 @@
               :ttl (c/lookup ttl :a)
               :lu (c/lookup (c/hit lu :a) :a)
               :lirs (c/lookup lirs :a)}))
+
+(emit-case :host-native-type-aliases
+           #?(:clj true
+              :lpy (every? some? [c/BasicCache c/FnCache c/FIFOCache
+                                  c/LRUCache c/TTLCacheQ c/LUCache c/LIRSCache])))
+
+(emit-case :jvm-soft-cache-boundaries
+           {:soft-cache-factory-unavailable?
+            #?(:clj true
+               :lpy (try
+                      (c/soft-cache-factory {})
+                      false
+                      (catch Exception _ true)))
+            :soft-constructor-unavailable?
+            #?(:clj true
+               :lpy (try
+                      (c/->SoftCache {} {} nil)
+                      false
+                      (catch Exception _ true)))
+            :make-reference-boundary?
+            #?(:clj true
+               :lpy (try
+                      (c/make-reference :value nil)
+                      false
+                      (catch Exception _ true)))
+            :clear-soft-cache-boundary?
+            #?(:clj true
+               :lpy (try
+                      (c/clear-soft-cache! {} {} nil)
+                      false
+                      (catch Exception _ true)))
+            :defcache-boundary?
+            #?(:clj true
+               :lpy (try
+                      (macroexpand '(c/defcache FixtureCache [cache]))
+                      false
+                      (catch Exception _ true)))})
 
 (emit-case :soft-cache-boundary
            (every? #(contains? (ns-publics #?(:clj 'clojure.core.cache

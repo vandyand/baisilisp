@@ -99,6 +99,24 @@
                   "2024-02-03T04:05:06.123456789123Z"
                   "2024-02-03T04:05:06.7-07:30"]))
 
+(emit-case :read-instant-extension-and-validated
+           (let [validating-vector (instant/validated vector)]
+             {:read-instant-ms #?(:clj (mapv #(inst-ms (instant/read-instant-date %))
+                                             ["2024"
+                                              "2024-02-03T04:05:06.123456789123Z"
+                                              "2024-02-03T04:05:06.7-07:30"])
+                                   :lpy (mapv #(inst-ms (instant/read-instant %))
+                                             ["2024"
+                                              "2024-02-03T04:05:06.123456789123Z"
+                                              "2024-02-03T04:05:06.7-07:30"]))
+              :validated-ok (validating-vector 2024 2 29 23 59 60
+                                               123456789 -1 7 30)
+              :validated-errors [(errors? #(validating-vector 2024 13 1 0 0 0 0 0 0 0))
+                                 (errors? #(validating-vector 2023 2 29 0 0 0 0 0 0 0))
+                                 (errors? #(validating-vector 2024 1 1 24 0 0 0 0 0 0))
+                                 (errors? #(validating-vector 2024 1 1 0 0 0
+                                                              1000000000 0 0 0))]}))
+
 (emit-case :read-instant-calendar-components
            (mapv #(calendar-summary (instant/read-instant-calendar %))
                  ["2024"
@@ -113,6 +131,36 @@
                  ["2024"
                   "2024-02-03T04:05:06.123456789123Z"
                   "2024-02-03T04:05:06.7-07:30"]))
+
+(emit-case :adversarial-time-offset-and-leap-boundaries
+           {:parse-offsets (mapv #(instant/parse-timestamp vector %)
+                                 ["2024-01-01T23+02:00"
+                                  "2024-01-01T23:59+02:00"
+                                  "2024-01-01T23:59:59.123456789123456Z"
+                                  "2024-01-01T23:59:60.999999999Z"
+                                  "2024-01-01T23:59:60+23:59"
+                                  "2024-01-01T23:59:60-23:59"])
+            :leap-date-ms (mapv #(inst-ms (instant/read-instant-date %))
+                                 ["2024-01-01T23:59:60Z"
+                                  "2024-01-01T00:59:60Z"
+                                  "2024-01-01T23:59:60+02:30"
+                                  "2024-01-01T23:59:60-02:30"
+                                  "2024-01-01T23:59:60.999999999Z"])
+            :leap-calendar (mapv #(calendar-summary (instant/read-instant-calendar %))
+                                  ["2024-01-01T23:59:60Z"
+                                   "2024-01-01T00:59:60Z"
+                                   "2024-01-01T23:59:60+02:30"
+                                   "2024-01-01T23:59:60-02:30"
+                                   "2024-01-01T23:59:60.999999999Z"])
+            :leap-timestamp (mapv (fn [source]
+                                    (let [value (instant/read-instant-timestamp source)]
+                                      {:inst-ms (inst-ms value)
+                                       :nanos (timestamp-nanos value)}))
+                                  ["2024-01-01T23:59:60Z"
+                                   "2024-01-01T23:59:60.999999999Z"])
+            :invalid-leap (mapv #(errors? (fn [] (instant/read-instant-date %)))
+                                ["2024-01-01T23:58:60Z"
+                                 "2024-01-01T00:00:60Z"])})
 
 (emit-case :reader-invalid-calendar
            (mapv #(errors? (fn [] (read-string %)))

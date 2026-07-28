@@ -1,0 +1,93 @@
+(ns basilisp.java.classpath
+  "Python-hosted compatibility for ``clojure.java.classpath``.
+
+  Clojure reports JVM ``File`` and ``JarFile`` values from Java classloaders and
+  ``java.class.path``. Basilisp maps the portable shape onto Python's import
+  search path: classpath entries are :external:py:class:`pathlib.Path` values
+  and jar files are :external:py:class:`zipfile.ZipFile` objects."
+  (:require [clojure.java.io :as io])
+  (:import pathlib
+           sys
+           urllib.parse
+           zipfile))
+
+(defprotocol URLClasspath
+  (urls [loader]
+    "Returns a sequence of URL-like objects representing locations which this
+  loader will search for modules and resources."))
+
+(defn get-urls
+  "Returns a sequence of URL-like objects used by this loader, or nil when the
+  loader does not satisfy ``URLClasspath``."
+  [loader]
+  (when (satisfies? URLClasspath loader)
+    (urls loader)))
+
+(defn- path-entry
+  [entry]
+  (-> (pathlib/Path (if (= "" (str entry)) "." (str entry)))
+      (.resolve)))
+
+(defn- file-url-path
+  [url]
+  (let [parsed (urllib.parse/urlparse (str url))]
+    (when (= "file" (.-scheme parsed))
+      (let [path (urllib.parse/unquote (.-path parsed))]
+        (path-entry #?(:windows (if (.startswith path "/")
+                                  (subs path 1)
+                                  path)
+                       :default path))))))
+
+(defn- as-classpath-file
+  [entry]
+  (or (file-url-path entry)
+      (io/as-file entry)))
+
+(defn jar-file?
+  "Returns true if ``f`` is a normal file with a ``.jar`` or ``.JAR`` extension."
+  [f]
+  (let [file (io/file f)
+        name (str (.-name file))]
+    (and (.is_file file)
+         (or (.endswith name ".jar")
+             (.endswith name ".JAR")))))
+
+(defn filenames-in-jar
+  "Returns a sequence of strings naming the non-directory entries in ``jar-file``."
+  [jar-file]
+  (let [archive (if (python/isinstance jar-file zipfile/ZipFile)
+                  jar-file
+                  (zipfile/ZipFile jar-file))]
+    (doall (remove #(.endswith % "/") (.namelist archive)))))
+
+(defn system-classpath
+  "Returns a sequence of path entries from Python's import search path."
+  []
+  (map path-entry sys/path))
+
+(defn loader-classpath
+  "Returns a sequence of path entries from a ``URLClasspath`` loader."
+  [loader]
+  (map as-classpath-file (get-urls loader)))
+
+(defn classpath
+  "Returns a sequence of path entries on Basilisp's import search path.
+
+  The one-argument arity accepts values satisfying ``URLClasspath``. The
+  no-argument arity falls back to Python's process import search path, matching
+  Clojure's fallback from classloader URLs to ``java.class.path``."
+  ([classloader]
+   (distinct (loader-classpath classloader)))
+  ([]
+   (distinct (system-classpath))))
+
+(defn classpath-directories
+  "Returns path entries for directories on the classpath."
+  []
+  (filter #(.is_dir %) (classpath)))
+
+(defn classpath-jarfiles
+  "Returns ``ZipFile`` objects for jar files on the classpath."
+  []
+  (map #(zipfile/ZipFile %)
+       (filter jar-file? (classpath))))

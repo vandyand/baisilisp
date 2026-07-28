@@ -4,6 +4,7 @@
 
 (defn encode-uri [uri] (backend/encode_uri uri))
 (defn decode-uri [uri] (backend/decode_uri uri))
+(defn parse-qname [name] (backend/parse_qname name))
 (defn qname
   ([local] (backend/qname local))
   ([uri local] (backend/qname uri local))
@@ -13,12 +14,28 @@
 (defn namespaced? [name] (not= "" (qname-uri name)))
 (defn as-qname [name] (qname (qname-uri name) (qname-local name)))
 (defn uri-symbol [uri] (symbol (str "xmlns." (encode-uri uri))))
+(defn uri-file [uri]
+  (str (.replace (name (uri-symbol uri)) "." "/") ".cljc"))
+(defn print-uri-file-command! [uri]
+  (println (str "echo \"(ns " (uri-symbol uri) ")\" > " (uri-file uri))))
 (defn symbol-uri [symbol]
   (let [name (str symbol)]
     (if (.startswith name "xmlns.")
       (decode-uri (subs name 6))
       (throw (ex-info "Uri symbol not valid" {:sym symbol})))))
+(defn alias-uri
+  [& alias-nss]
+  (loop [[a n & more :as pairs] alias-nss]
+    (when (seq pairs)
+      (let [xmlns-ns (uri-symbol n)
+            alias-sym (symbol (if (keyword? a) (name a) (str a)))]
+        (create-ns xmlns-ns)
+        (alias alias-sym xmlns-ns)
+        (recur more)))))
 
+(defn element*
+  ([tag attrs content] (backend/element tag attrs content))
+  ([tag attrs content meta] (backend/element tag attrs content meta)))
 (defn element
   ([tag] (backend/element tag))
   ([tag attrs] (backend/element tag attrs))
@@ -54,8 +71,36 @@
 (defn ->CDataEvent [s] (backend/CDataEvent s))
 (defn ->CommentEvent [s] (backend/CommentEvent s))
 (defn ->QNameEvent [name] (backend/QNameEvent name))
-(defn ->EndElementEvent [] end-element-event)
+(defn ->EndElementEvent
+  ([] end-element-event)
+  ([tag nss location-info] (backend/EndElementEvent tag nss location-info)))
 (defn element-nss [element] (backend/element_nss element))
+(defn element-nss* [element] (backend/element_nss_raw element))
+(defn find-xmlns [element]
+  (letfn [(visit [node acc]
+            (if (map? node)
+              (let [tag-uri (qname-uri (:tag node))
+                    acc (conj acc tag-uri)
+                    acc (reduce (fn [s [attr _]]
+                                  (let [uri (qname-uri attr)]
+                                    (conj s uri)))
+                                acc
+                                (:attrs node))]
+                (reduce #(visit %2 %1) acc (:content node)))
+              acc))]
+    (visit element #{})))
+(defn aggregate-xmlns [element]
+  (let [uris (remove #{""} (find-xmlns element))
+        p->u (into {"xml" "http://www.w3.org/XML/1998/namespace"
+                    "xmlns" "http://www.w3.org/2000/xmlns/"}
+                   (map-indexed (fn [idx uri]
+                                  [(str (char (+ 97 idx))) uri])
+                                uris))
+        u->ps (reduce (fn [m [p u]]
+                        (update m u (fnil conj []) p))
+                      {}
+                      p->u)]
+    (with-meta element {:clojure.data.xml/nss {:p->u p->u :u->ps u->ps}})))
 
 (declare sexps-as-fragment)
 

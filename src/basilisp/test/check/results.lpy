@@ -1,5 +1,17 @@
 (ns basilisp.test.check.results
   (:import [basilisp.test.check._impl :as impl]))
 
-(def pass? impl/pass_q)
-(def result-data impl/result_data)
+(defprotocol Result
+  (pass? [result]
+    "A boolean indicating if the result passed.")
+  (result-data [result]
+    "A map of data about the trial."))
+
+(extend-protocol Result
+  python/object
+  (pass? [result] (impl/pass_q result))
+  (result-data [result] (impl/result_data result))
+
+  nil
+  (pass? [result] false)
+  (result-data [result] nil))

@@ -1,0 +1,426 @@
+(ns basilisp.main-compat
+  "Portable compatibility surface for ``clojure.main``.
+
+  This namespace intentionally does not use ``basilisp.main`` as its backing
+  implementation because that name is already occupied by Basilisp's Python CLI
+  module. ``clojure.main`` requires are rewritten here and then globally aliased
+  back to the requested Clojure namespace name."
+  (:refer-basilisp :exclude [with-bindings])
+  (:require [basilisp.core.server :as core-server]
+            [basilisp.pprint :as pprint]
+            [basilisp.repl :as repl]
+            [basilisp.spec.alpha :as spec]
+            [basilisp.stacktrace :as stacktrace]
+            [basilisp.tools.reader :as tools-reader]
+            [basilisp.tools.reader.reader-types :as reader-types])
+  (:import os
+           pathlib
+           tempfile
+           traceback))
+
+(declare main)
+
+(defn demunge
+  "Return a reader-facing name for a munged implementation name."
+  [fn-name]
+  (repl/demunge fn-name))
+
+(defn root-cause
+  "Return the deepest explicit cause of exception ``throwable``."
+  [throwable]
+  (stacktrace/root-cause throwable))
+
+(defn stack-element-str
+  "Return a printable location string for a Python traceback/frame summary."
+  [el]
+  (repl/stack-element-str el))
+
+(defn- consume-lf-after-cr
+  [reader]
+  (let [c (reader-types/read-char reader)]
+    (when-not (or (nil? c)
+                  (= \newline c))
+      (reader-types/unread reader c))))
+
+(defn- consume-comment-line
+  [reader]
+  (loop [c (reader-types/read-char reader)]
+    (cond
+      (nil? c)       nil
+      (= \newline c) nil
+      (= \return c)  (consume-lf-after-cr reader)
+      :else          (recur (reader-types/read-char reader)))))
+
+(defn repl-prompt
+  "Default REPL prompt, matching Clojure's ``<namespace>=> `` shape."
+  []
+  (print (str (ns-name *ns*) "=> ")))
+
+(defn skip-if-eol
+  "Consume one newline from ``reader`` if present.
+
+  Return ``:line-start`` for a consumed newline, ``:stream-end`` at EOF, or
+  ``:body`` after pushing back a non-newline character."
+  [reader]
+  (let [c (reader-types/read-char reader)]
+    (cond
+      (= \newline c) :line-start
+      (= \return c)  (do
+                       (consume-lf-after-cr reader)
+                       :line-start)
+      (nil? c)       :stream-end
+      :else          (do
+                       (reader-types/unread reader c)
+                       :body))))
+
+(defn- whitespace?
+  [c]
+  (and c
+       (or (= \space c)
+           (= \tab c)
+           (= \formfeed c))))
+
+(defn skip-whitespace
+  "Skip non-newline whitespace, commas, and one semicolon comment.
+
+  Return Clojure's reader sentinels: ``:line-start``, ``:stream-end``, or
+  ``:body``."
+  [reader]
+  (loop [c (reader-types/read-char reader)]
+    (cond
+      (= \newline c) :line-start
+      (= \return c)  (do
+                       (consume-lf-after-cr reader)
+                       :line-start)
+      (nil? c)       :stream-end
+      (= \; c)       (do
+                       (consume-comment-line reader)
+                       :line-start)
+      (or (= \, c)
+          (whitespace? c))
+      (recur (reader-types/read-char reader))
+      :else          (do
+                       (reader-types/unread reader c)
+                       :body))))
+
+(defn renumbering-read
+  "Read one form from ``reader``.
+
+  Clojure re-reads captured source to normalize JVM line numbers. Basilisp's
+  portable reader already carries source metadata through its Python reader
+  state, so the public helper preserves value behavior and accepts the same
+  three-argument shape."
+  [opts reader _line-number]
+  (tools-reader/read opts reader))
+
+(defn repl-read
+  "Default ``:read`` hook for ``repl``.
+
+  Skips whitespace, requests a prompt at a fresh line, exits at EOF, otherwise
+  returns the next form and consumes one following newline if present."
+  [request-prompt request-exit]
+  (or ({:line-start request-prompt
+        :stream-end request-exit}
+       (skip-whitespace *in*))
+      (let [input (renumbering-read {:read-cond :allow
+                                     :eof       request-exit}
+                                    *in*
+                                    1)]
+        (skip-if-eol *in*)
+        input)))
+
+(defn repl-exception
+  "Default ``:caught`` exception normalizer."
+  [throwable]
+  (root-cause throwable))
+
+(defn- basename
+  [path]
+  (when path
+    (str (.-name (pathlib/Path (str path))))))
+
+(defn- exception-class-symbol
+  [e]
+  (let [t (python/type e)]
+    (symbol (str (.-__module__ t) "." (.-__qualname__ t)))))
+
+(defn- exception-message
+  [e]
+  (or (ex-message e) (str e)))
+
+(defn- simple-class-name
+  [class]
+  (let [class-name (name (or class ""))]
+    (if (seq class-name)
+      (last (.split class-name "."))
+      class-name)))
+
+(defn- cause-type
+  [class]
+  (let [simple (simple-class-name class)]
+    (if (or (not (seq simple))
+            (= "Exception" simple)
+            (= "RuntimeException" simple))
+      ""
+      (str " (" simple ")"))))
+
+(defn- loc-str
+  [{:clojure.error/keys [path source line column]}]
+  (str (or path source "REPL")
+       ":"
+       (or line 1)
+       (when column (str ":" column))))
+
+(defn- nullable-str
+  [x]
+  (if (nil? x) "null" (str x)))
+
+(defn- map-triage-input?
+  [datafied-throwable]
+  (or (contains? datafied-throwable :clojure.error/phase)
+      (contains? datafied-throwable :clojure.error/source)
+      (contains? datafied-throwable :clojure.error/path)
+      (contains? datafied-throwable :clojure.error/line)
+      (contains? datafied-throwable :clojure.error/column)
+      (contains? datafied-throwable :clojure.error/symbol)
+      (contains? datafied-throwable :clojure.error/class)
+      (contains? datafied-throwable :clojure.error/cause)
+      (contains? datafied-throwable :clojure.error/spec)))
+
+(defn ex-triage
+  "Return Clojure-shaped triage data for a datafied throwable map.
+
+  Basilisp accepts the already-triaged ``:clojure.error/*`` map shape directly
+  and also handles the subset of Clojure's ``Throwable->map`` data that is
+  portable across host runtimes."
+  [datafied-throwable]
+  (if (map-triage-input? datafied-throwable)
+    (assoc datafied-throwable
+           :clojure.error/phase
+           (:clojure.error/phase datafied-throwable :execution))
+    (let [{:keys [via trace phase] :or {phase :execution}} datafied-throwable
+          last-via  (last via)
+          top-data  (:data (first via))
+          data      (:data last-via)
+          type      (:type last-via)
+          message   (:message last-via)
+          trace-top (first trace)
+          source    (or (:clojure.error/source top-data)
+                        (nth trace-top 2 nil))
+          line      (or (:clojure.error/line top-data)
+                        (nth trace-top 3 nil))
+          symbol    (:clojure.error/symbol top-data)]
+      (cond-> {:clojure.error/phase phase}
+        source  (assoc :clojure.error/source (basename source)
+                       :clojure.error/path (str source))
+        line    (assoc :clojure.error/line line)
+        symbol  (assoc :clojure.error/symbol symbol)
+        type    (assoc :clojure.error/class type)
+        message (assoc :clojure.error/cause message)
+        data    (assoc :clojure.error/data data)))))
+
+(defn ex-str
+  "Return Clojure-shaped phase and cause text from triage data."
+  [{:clojure.error/keys [phase symbol class cause spec]
+    :as triage-data}]
+  (let [loc        (loc-str triage-data)
+        cause      (str cause)
+        cause-type (cause-type class)
+        symbol-at  (if symbol (str symbol " ") "")]
+    (case phase
+      :read-source
+      (str "Syntax error reading source at (" loc ").\n" cause "\n")
+
+      :macro-syntax-check
+      (str "Syntax error macroexpanding " symbol-at "at (" loc ").\n"
+           (if spec (with-out-str (pprint/pprint spec)) (str cause "\n")))
+
+      :macroexpansion
+      (str "Unexpected error" cause-type " macroexpanding " symbol-at
+           "at (" loc ").\n" cause "\n")
+
+      :compile-syntax-check
+      (str "Syntax error" cause-type " compiling " symbol-at
+           "at (" loc ").\n" cause "\n")
+
+      :compilation
+      (str "Unexpected error" cause-type " compiling " symbol-at
+           "at (" loc ").\n" cause "\n")
+
+      :read-eval-result
+      (str "Error reading eval result" cause-type " at " (nullable-str symbol)
+           " (" loc ").\n"
+           cause "\n")
+
+      :print-eval-result
+      (str "Error printing return value" cause-type " at " (nullable-str symbol)
+           " (" loc ").\n"
+           cause "\n")
+
+      :execution
+      (if spec
+        (str "Execution error - invalid arguments to " symbol
+             " at (" loc ").\n"
+             (with-out-str (pprint/pprint spec)))
+        (str "Execution error" cause-type " at " symbol-at
+             "(" loc ").\n" cause "\n"))
+
+      (str "Unexpected error" cause-type " at (" loc ").\n" cause "\n"))))
+
+(defn err->msg
+  "Return a Clojure-shaped error message string from a Python exception."
+  [e]
+  (ex-str {:clojure.error/phase :execution
+           :clojure.error/class (exception-class-symbol e)
+           :clojure.error/cause (exception-message e)}))
+
+(defn repl-caught
+  "Default ``:caught`` hook for ``repl``."
+  [e]
+  (binding [*out* *err*]
+    (print (err->msg e))
+    (flush)))
+
+(def
+  ^{:doc "A sequence of lib specs that are applied to `require` by default when a new command-line REPL is started."}
+  repl-requires
+  '[[clojure.repl :refer (source apropos dir pst doc find-doc)]
+    [clojure.java.javadoc :refer (javadoc)]
+    [clojure.pprint :refer (pp pprint)]
+    [clojure.repl.deps :refer (add-libs add-lib sync-deps)]])
+
+(defmacro with-read-known
+  "Evaluate body with ``*read-eval*`` bound to true when it is ``:unknown``."
+  [& body]
+  `(binding [*read-eval* (if (= :unknown *read-eval*) true *read-eval*)]
+     ~@body))
+
+(defmacro with-bindings
+  "Evaluate body with Clojure's usual command-line REPL dynamic Vars rebound."
+  [& body]
+  `(binding [*ns*                   *ns*
+             *warn-on-reflection*   *warn-on-reflection*
+             *math-context*         *math-context*
+             *print-meta*           *print-meta*
+             *print-length*         *print-length*
+             *print-level*          *print-level*
+             *print-namespace-maps* true
+             *data-readers*         *data-readers*
+             *default-data-reader-fn* *default-data-reader-fn*
+             *compile-path*         *compile-path*
+             *command-line-args*    *command-line-args*
+             *unchecked-math*       *unchecked-math*
+             *assert*               *assert*
+             spec/*explain-out*     spec/*explain-out*
+             *1                     nil
+             *2                     nil
+             *3                     nil
+             *e                     nil]
+     ~@body))
+
+(defn repl
+  "Run a generic REPL over ``*in*`` and ``*out*``.
+
+  Options are keyword/value pairs matching Clojure's portable hooks: ``:init``,
+  ``:need-prompt``, ``:prompt``, ``:flush``, ``:read``, ``:eval``, ``:print``,
+  and ``:caught``. With no options this delegates to Basilisp's host REPL,
+  which provides the interactive terminal/session behavior."
+  [& options]
+  (if-not (seq options)
+    (core-server/repl)
+    (let [{:keys [init need-prompt prompt flush read eval print caught]
+           :or   {init        (fn [] nil)
+                  need-prompt (fn [] true)
+                  prompt      repl-prompt
+                  flush       flush
+                  read        repl-read
+                  eval        eval
+                  print       prn
+                  caught      repl-caught}} (apply hash-map options)
+          request-prompt (python/object)
+          request-exit   (python/object)]
+      (with-bindings
+        (init)
+        (loop []
+          (when (need-prompt)
+            (prompt)
+            (flush))
+          (let [input (try
+                        (read request-prompt request-exit)
+                        (catch python/Exception e
+                          (repl/mark-exception e)
+                          (caught e)
+                          request-prompt))]
+            (cond
+              (identical? input request-exit)
+              nil
+
+              (identical? input request-prompt)
+              (recur)
+
+              :else
+              (do
+                (try
+                  (let [value (eval input)]
+                    (repl/mark-repl-result value)
+                    (print value))
+                  (catch python/Exception e
+                    (repl/mark-exception e)
+                    (caught e)))
+                (recur)))))))))
+
+(defn load-script
+  "Load and evaluate the file at ``path``."
+  [path]
+  (load-file (str path)))
+
+(defn report-error
+  "Create and output an exception report for ``t``.
+
+  ``:target`` accepts ``\"stderr\"``, ``\"file\"`` (default), or ``\"none\"``.
+  The report data is Clojure-shaped while traceback contents remain
+  Python-hosted."
+  [t & {:keys [target] :or {target "file"}}]
+  (when-not (= target "none")
+    (let [triage     (ex-triage {:clojure.error/phase :execution
+                                 :clojure.error/class (exception-class-symbol t)
+                                 :clojure.error/cause (exception-message t)})
+          message    (ex-str triage)
+          trace      (traceback/format_exception (python/type t)
+                                                 t
+                                                 (.-__traceback__ t))
+          report     {:clojure.main/message message
+                      :clojure.main/triage  triage
+                      :clojure.main/trace   trace}
+          report-str (with-out-str
+                       (binding [*print-namespace-maps* false]
+                         (pprint/pprint report)))
+          err-path   (when (= target "file")
+                       (try
+                         (let [f (tempfile/NamedTemporaryFile **
+                                                           :mode "w"
+                                                           :encoding "utf-8"
+                                                           :prefix "clojure-"
+                                                           :suffix ".edn"
+                                                           :delete false)]
+                           (try
+                             (.write f report-str)
+                             (.write f os/linesep)
+                             (finally
+                               (.close f)))
+                           (.-name f))
+                         (catch python/Exception _
+                           nil)))]
+      (binding [*out* *err*]
+        (if err-path
+          (println (str message os/linesep "Full report at:" os/linesep err-path))
+          (println (str report-str os/linesep message)))))))
+
+(defn main
+  "Portable placeholder for Clojure's JVM CLI entry point.
+
+  Use Basilisp's Python CLI (`basilisp run`, `basilisp repl`, or
+  `basilisp nrepl-server`) for process entrypoint behavior."
+  [& _args]
+  (throw (python/NotImplementedError
+          "Use Basilisp's Python CLI for clojure.main/main process semantics")))

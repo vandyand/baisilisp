@@ -119,8 +119,9 @@ def test_validated_rejects_invalid_calendar_values_and_read_instant_normalizes_u
     ) == datetime.datetime(2024, 2, 28, 22, 32, 3, 123456, tzinfo=datetime.timezone.utc)
     with pytest.raises(ValueError, match="second"):
         instant.read_instant("2024-01-01T00:00:60Z")
-    with pytest.raises(ValueError, match="second"):
-        instant.read_instant("2024-01-01T00:59:60Z")
+    assert instant.read_instant("2024-01-01T00:59:60Z") == datetime.datetime(
+        2024, 1, 1, 1, 0, 0, tzinfo=datetime.timezone.utc
+    )
 
 
 def test_read_instant_exposes_exact_timestamp_seconds():

@@ -1,0 +1,8 @@
+(ns basilisp.test.check.impl
+  "Small implementation helpers exposed by ``clojure.test.check.impl``."
+  (:import time))
+
+(defn get-current-time-millis
+  "Return the current wall-clock time in milliseconds."
+  []
+  (quot (time/time_ns) 1000000))

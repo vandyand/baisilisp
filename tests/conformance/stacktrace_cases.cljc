@@ -70,6 +70,12 @@
               :has-location-delimiters (and (str/includes? line "(")
                                             (str/includes? line ")"))}))
 
+(emit-case :e-root-cause-output
+           (let [e (capture-chain 2)]
+             (output-summary
+              (binding [*e e]
+                (with-out-str (st/e))))))
+
 (emit-case :seeded-root-cause-depths
            (mapv (fn [depth]
                    (let [e (capture-chain depth)]

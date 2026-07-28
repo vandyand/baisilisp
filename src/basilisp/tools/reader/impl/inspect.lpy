@@ -1,0 +1,65 @@
+(ns basilisp.tools.reader.impl.inspect
+  "Portable compatibility helpers for `clojure.tools.reader.impl.inspect`.")
+
+(declare inspect*)
+
+(defn- inspect*-col [truncate col start end]
+  (let [n        (count col)
+        l        (if truncate 0 (min 10 n))
+        elements (map #(inspect* true %) (take l col))
+        content  (apply str (interpose " " elements))
+        suffix   (when (< l n) "...")]
+    (str start content suffix end)))
+
+(defn- type-name [x]
+  (if (nil? x)
+    "nil"
+    (let [t (type x)]
+      (or (.-__name__ t)
+          (str t)))))
+
+(defn inspect*
+  [truncate x]
+  (cond
+    (nil? x)
+    "nil"
+
+    (string? x)
+    (let [n      (if truncate 5 20)
+          length (count x)
+          suffix (if (> length n) "...\"" "\"")]
+      (str "\"" (subs x 0 (min n length)) suffix))
+
+    (or (keyword? x)
+        (number? x)
+        (symbol? x)
+        (= x true)
+        (= x false))
+    (str x)
+
+    (vector? x)
+    (inspect*-col truncate x "[" "]")
+
+    (list? x)
+    (inspect*-col truncate x "(" ")")
+
+    (map? x)
+    (let [n       (count x)
+          n-shown (if truncate 0 n)
+          contents (apply concat (take n-shown x))
+          suffix  (if (> n n-shown) "...}" "}")]
+      (inspect*-col truncate contents "{" suffix))
+
+    (set? x)
+    (inspect*-col truncate x "#{" "}")
+
+    (seq? x)
+    "<seq>"
+
+    :else
+    (str "<" (type-name x) ">")))
+
+(defn inspect
+  "Return a string description of `x`, optionally using a terse truncated form."
+  ([x] (inspect* false x))
+  ([truncate x] (inspect* truncate x)))

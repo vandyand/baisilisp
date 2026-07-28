@@ -35,7 +35,10 @@ def test_event_seq_consumes_only_the_input_needed_for_each_event():
         kw.keyword("child"), xml.lmap.EMPTY, xml.lmap.EMPTY
     )
     assert reader.read_calls == 3
-    assert next(events) is xml.end_element_event
+    end = next(events)
+    assert isinstance(end, xml.EndElementEvent)
+    assert end.tag == kw.keyword("root")
+    assert end.nss == xml.lmap.EMPTY
     assert reader.read_calls == 4
     assert list(reader.fragments) == ["<ignored/>"]
 
@@ -68,9 +71,10 @@ def test_event_seq_preserves_namespace_qualified_tags_and_attributes():
     assert root.attrs[xml.qname("urn:attr", "id")] == "7"
 
 
-def test_event_exit_is_specific_to_the_canonical_singleton():
+def test_event_exit_accepts_any_end_element_event_record():
     assert xml.event_exit(xml.end_element_event)
-    assert not xml.event_exit(xml.EndElementEvent())
+    assert xml.event_exit(xml.EndElementEvent())
+    assert xml.event_exit(xml.EndElementEvent(kw.keyword("root"), xml.lmap.EMPTY, None))
 
 
 class CountingContents:
@@ -99,7 +103,7 @@ def test_flatten_elements_is_lazy_through_element_content():
     events = xml.flatten_elements([source])
 
     assert next(events) == xml.StartElementEvent(
-        kw.keyword("root"), xml.lmap.EMPTY, xml.lmap.EMPTY
+        kw.keyword("root"), xml.lmap.EMPTY, xml.element_nss(source)
     )
     assert contents.next_calls == 1
     assert next(events) == xml.CharsEvent("first")
@@ -125,7 +129,8 @@ def test_event_tree_handles_deep_input_without_python_recursion():
     assert len(flattened) == depth * 2 - 1
     assert isinstance(flattened[0], xml.StartElementEvent)
     assert isinstance(flattened[depth - 1], xml.EmptyElementEvent)
-    assert flattened[-1] is xml.end_element_event
+    assert xml.event_exit(flattened[-1])
+    assert flattened[-1].tag == kw.keyword("node")
 
 
 def test_event_tree_rejects_malformed_boundaries_and_accepts_leaf_nodes():

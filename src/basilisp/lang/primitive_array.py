@@ -304,8 +304,7 @@ def aset(array: Any, index: int, value: Any) -> Any:
     return value
 
 
-def vector_of(type_: Any, values: Iterable[Any]) -> list[Any]:
-    """Coerce values using Clojure ``vector-of``'s checked primitive semantics."""
+def _vector_of_coercer(type_: Any) -> tuple[str, type[_PrimitiveList]]:
     name = getattr(type_, "name", str(type_).lstrip(":"))
     constructors = {
         "boolean": BooleanArray,
@@ -321,6 +320,31 @@ def vector_of(type_: Any, values: Iterable[Any]) -> list[Any]:
         array_type = constructors[name]
     except KeyError as exc:
         raise ValueError(f"Unrecognized vector-of type: {type_!r}") from exc
+    return name, array_type
+
+
+def _vector_of_value_coercer(type_: Any):
+    _, array_type = _vector_of_coercer(type_)
+    if array_type is BooleanArray:
+        return bool
+    if array_type is ByteArray:
+        return lambda value: _signed(array_type._assignment(value), 8)
+    return array_type._assignment
+
+
+def vector_of(type_: Any, values: Iterable[Any]) -> list[Any]:
+    """Coerce values using Clojure ``vector-of``'s checked primitive semantics."""
+    _, array_type = _vector_of_coercer(type_)
+    if array_type is BooleanArray:
+        return [bool(value) for value in values]
     if array_type is ByteArray:
         return [_signed(array_type._assignment(value), 8) for value in values]
     return [array_type._assignment(value) for value in values]
+
+
+def primitive_vector_of(type_: Any, values: Iterable[Any]):
+    """Return a persistent vector preserving ``vector-of`` coercion on updates."""
+    from basilisp.lang import vector as vec
+
+    name, _ = _vector_of_coercer(type_)
+    return vec.primitive_vector(values, name, _vector_of_value_coercer(type_))

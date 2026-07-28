@@ -1,0 +1,207 @@
+(ns basilisp.inspector
+  "Non-graphical compatibility surface for ``clojure.inspector``.
+
+  Clojure's namespace builds Swing UI objects. Basilisp preserves the public
+  data traversal and model APIs using Python-hosted proxy objects with the same
+  method names, but does not open graphical windows."
+  (:refer-clojure :exclude [atom?]))
+
+(definterface ^:private TreeModelLike
+  (getRoot [])
+  (addTreeModelListener [treeModelListener])
+  (getChild [parent index])
+  (getChildCount [parent])
+  (isLeaf [node])
+  (valueForPathChanged [path newValue])
+  (getIndexOfChild [parent child])
+  (removeTreeModelListener [treeModelListener]))
+
+(definterface ^:private TableModelLike
+  (addTableModelListener [tableModelListener])
+  (getColumnClass [columnIndex])
+  (getColumnCount [])
+  (getColumnName [columnIndex])
+  (getRowCount [])
+  (getValueAt [rowIndex columnIndex])
+  (isCellEditable [rowIndex columnIndex])
+  (removeTableModelListener [tableModelListener]))
+
+(defn atom?
+  "Return true when ``x`` is not a collection."
+  [x]
+  (not (coll? x)))
+
+(defn collection-tag
+  "Classify a value using Clojure inspector's traversal categories."
+  [x]
+  (cond
+    (nil? x)       :atom
+    (map-entry? x) :entry
+    (map? x)       :seqable
+    (set? x)       :seqable
+    (sequential? x) :seq
+    (string? x)    :atom
+    (seqable? x)   :seqable
+    :else          :atom))
+
+(defmulti is-leaf collection-tag)
+(defmulti get-child (fn [parent index] (collection-tag parent)))
+(defmulti get-child-count collection-tag)
+
+(defmethod is-leaf :default [node]
+  (atom? node))
+
+(defmethod get-child :default [parent index]
+  (nth parent index))
+
+(defmethod get-child-count :default [parent]
+  (count parent))
+
+(defmethod is-leaf :entry [e]
+  (is-leaf (val e)))
+
+(defmethod get-child :entry [e index]
+  (get-child (val e) index))
+
+(defmethod get-child-count :entry [e]
+  (count (val e)))
+
+(defmethod is-leaf :seqable [_parent]
+  false)
+
+(defmethod get-child :seqable [parent index]
+  (nth (seq parent) index))
+
+(defmethod get-child-count :seqable [parent]
+  (count (seq parent)))
+
+(defn tree-model
+  "Return a Python-hosted TreeModel-like proxy for hierarchical data."
+  [data]
+  (proxy [TreeModelLike] []
+    (getRoot [] data)
+    (addTreeModelListener [_treeModelListener] nil)
+    (getChild [parent index]
+      (get-child parent index))
+    (getChildCount [parent]
+      (get-child-count parent))
+    (isLeaf [node]
+      (is-leaf node))
+    (valueForPathChanged [_path _newValue] nil)
+    (getIndexOfChild [_parent _child] -1)
+    (removeTreeModelListener [_treeModelListener] nil)))
+
+(defn- row-values
+  [row]
+  (if (map? row)
+    (vals row)
+    row))
+
+(defn old-table-model
+  "Return a TableModel-like proxy over regular row data."
+  [data]
+  (let [row1  (first data)
+        cols  (count row1)
+        rows  (count data)
+        map?* (map? row1)]
+    (proxy [TableModelLike] []
+      (addTableModelListener [_tableModelListener] nil)
+      (getColumnClass [_columnIndex] python/object)
+      (getColumnCount [] cols)
+      (getColumnName [columnIndex]
+        (if map?*
+          (name (nth (keys row1) columnIndex))
+          (str columnIndex)))
+      (getRowCount [] rows)
+      (getValueAt [rowIndex columnIndex]
+        (nth (row-values (nth data rowIndex)) columnIndex))
+      (isCellEditable [_rowIndex _columnIndex] false)
+      (removeTableModelListener [_tableModelListener] nil))))
+
+(defn inspect-tree
+  "Return a non-graphical tree model for ``data``.
+
+  Clojure opens a Swing frame. Basilisp returns the model so Python-hosted tools
+  can render or inspect it without a GUI dependency."
+  [data]
+  (tree-model data))
+
+(defn inspect-table
+  "Return a non-graphical table model for regular row data."
+  [data]
+  (old-table-model data))
+
+(defn- class-label
+  [x]
+  (let [typ (type x)]
+    (str (python/getattr typ "__module__")
+         "."
+         (python/getattr typ "__qualname__"))))
+
+(defmulti list-provider
+  "Return a provider map consumed by ``list-model``."
+  (fn [x]
+    (cond
+      (map? x)        :map
+      (sequential? x) :list
+      :else           :default)))
+
+(defmethod list-provider :default [x]
+  {:nrows 1
+   :get-value (fn [_i] x)
+   :get-label (fn [_i] (class-label x))})
+
+(defmethod list-provider :list [c]
+  (let [v (vec c)]
+    {:nrows (count v)
+     :get-value (fn [i] (v i))
+     :get-label (fn [i] i)}))
+
+(defmethod list-provider :map [c]
+  (let [v (vec (sort (map (fn [[k v]] [k v]) c)))]
+    {:nrows (count v)
+     :get-value (fn [i] ((v i) 1))
+     :get-label (fn [i] ((v i) 0))}))
+
+(defn list-model
+  "Return a two-column TableModel-like proxy for a list-provider map."
+  [provider]
+  (let [{:keys [nrows get-value get-label]} provider]
+    (proxy [TableModelLike] []
+      (addTableModelListener [_tableModelListener] nil)
+      (getColumnClass [_columnIndex] python/object)
+      (getColumnCount [] 2)
+      (getColumnName [columnIndex] (str columnIndex))
+      (getRowCount [] nrows)
+      (getValueAt [rowIndex columnIndex]
+        (cond
+          (= 0 columnIndex) (get-label rowIndex)
+          (= 1 columnIndex) (pr-str (get-value rowIndex))))
+      (isCellEditable [_rowIndex _columnIndex] false)
+      (removeTableModelListener [_tableModelListener] nil))))
+
+(defmulti table-model
+  "Return a table model for a value."
+  class)
+
+(defmethod table-model :default [x]
+  (proxy [TableModelLike] []
+    (addTableModelListener [_tableModelListener] nil)
+    (getColumnClass [_columnIndex] python/object)
+    (getColumnCount [] 2)
+    (getColumnName [columnIndex] (str columnIndex))
+    (getRowCount [] 1)
+    (getValueAt [_rowIndex columnIndex]
+      (if (zero? columnIndex)
+        (type x)
+        x))
+    (isCellEditable [_rowIndex _columnIndex] false)
+    (removeTableModelListener [_tableModelListener] nil)))
+
+(defn inspect
+  "Return a non-graphical list model for ``x``.
+
+  This preserves the inspectable data model while leaving graphical rendering to
+  Python-native tools."
+  [x]
+  (list-model (list-provider x)))

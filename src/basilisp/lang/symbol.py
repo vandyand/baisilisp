@@ -10,7 +10,7 @@ from basilisp.lang.interfaces import (
     IPersistentSet,
     IWithMeta,
 )
-from basilisp.lang.obj import PrintSettings, lrepr
+from basilisp.lang.obj import PrintSettings, meta_lrepr
 from basilisp.lang.util import munge
 
 
@@ -28,14 +28,16 @@ class Symbol(ILispObject, INamed, IWithMeta):
 
     def _lrepr(self, **kwargs: Unpack[PrintSettings]) -> str:
         print_meta = kwargs["print_meta"]
+        print_dup = kwargs["print_dup"]
+        print_readably = kwargs["print_readably"]
 
         if self._ns is not None:
             sym_repr = f"{self._ns}/{self._name}"
         else:
             sym_repr = self._name
 
-        if print_meta and self._meta:
-            return f"^{lrepr(self._meta, **kwargs)} {sym_repr}"
+        if (print_dup or (print_meta and print_readably)) and self._meta:
+            return f"^{meta_lrepr(self._meta, **kwargs)} {sym_repr}"
         return sym_repr
 
     @property

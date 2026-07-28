@@ -2,7 +2,8 @@
 ;; observable data, metadata, sorted collection preservation, traversal order,
 ;; and generated nested data rather than host class names.
 
-(require '[clojure.walk :as walk])
+(require '[clojure.string :as str]
+         '[clojure.walk :as walk])
 
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
@@ -73,6 +74,37 @@
             :stringify (walk/stringify-keys {:a 1
                                              "b" {:c 3}
                                              :nested [{:d 4}]})})
+
+(emit-case :walk-inner-outer-contracts
+           (let [events (atom [])
+                 result (walk/walk (fn [x]
+                                     (swap! events conj [:inner x])
+                                     (if (= x :a) :A x))
+                                   (fn [x]
+                                     (swap! events conj [:outer x])
+                                     (if (vector? x) (conj x :done) x))
+                                   [:a [:b]])]
+             {:result result
+              :events @events}))
+
+(emit-case :walk-demo-output
+           (let [pre-output (with-out-str (walk/prewalk-demo [:a [:b]]))
+                 post-output (with-out-str (walk/postwalk-demo [:a [:b]]))]
+             {:pre-lines (vec (remove empty? (str/split-lines pre-output)))
+              :post-lines (vec (remove empty? (str/split-lines post-output)))}))
+
+#?(:lpy
+   (emit-case :basilisp-walk-extension-hooks
+              (let [extension-result (walk/walk* [:a]
+                                                 #(if (= % :a) :A %)
+                                                 #(if (vector? %) (conj % :done) %))]
+                {:extension-surface [(some? walk/IWalkable)
+                                     (some? walk/walk*)]
+                 :normalized-extension-result (= [:A :done] extension-result)}))
+   :clj
+   (emit-case :basilisp-walk-extension-hooks
+              {:extension-surface [true true]
+               :normalized-extension-result true}))
 
 (emit-case :metadata-and-sorted-preservation
            (let [sorted-map-result (walk/postwalk identity

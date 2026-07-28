@@ -36,6 +36,8 @@
 (deftest demunge-and-apropos-contract-test
   (testing "Basilisp's reader-facing identifier spelling is restored"
     (is (= "alpha+beta?" (repl/demunge "alpha__PLUS__beta__Q__")))
+    (is (= "alpha+beta!" (repl/demunge "alpha_PLUS_beta_BANG_")))
+    (is (= "foo-bar?" (repl/demunge "foo_bar_QMARK_")))
     (is (= "unchanged--UNKNOWN--token" (repl/demunge "unchanged__UNKNOWN__token"))))
 
   (testing "apropos accepts strings and compiled patterns without importing namespaces"
@@ -77,6 +79,10 @@
   (testing "source lookup is safe for both source-backed and host builtin values"
     (let [source (repl/source-fn (var repl-source-fixture))]
       (is (str/includes? source "repl-source-fixture"))
+      (is (str/includes? (repl/source-fn 'repl-source-fixture) "repl-source-fixture"))
+      (is (= "Source not found"
+             (str/trim-newline
+              (with-out-str (repl/source definitely-missing-repl-symbol)))))
       (is (nil? (repl/source-fn python/len)))
       (is (= source (with-out-str (repl/print-source (var repl-source-fixture)))))
       (is (= "" (with-out-str (repl/print-source python/len))))))

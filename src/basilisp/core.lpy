@@ -97,9 +97,7 @@
        :arglists '([o meta])}
   with-meta
   (fn* with-meta [o meta]
-       (if meta
-         (.with-meta o meta)
-         o)))
+       (.with-meta o meta)))
 
 (def ^:macro ^:redef let
   (fn* let [&env &form & decl]
@@ -365,7 +363,8 @@
   ^{:doc      "Construct a map from pairs of input arguments."
     :arglists '([& kvs])}
   array-map
-  hash-map)
+  (fn array-map [& kvs]
+    (apply basilisp.lang.map/array-map kvs)))
 
 (def
   ^{:doc      "Build a map from a sequence as described by Clojure keyword arguments."
@@ -939,9 +938,9 @@
      (ex-info "bindings take the form [name expr]"
               {:bindings binding}))
     nil)
-  `(let* [expr# (first ~(second binding))]
-     (if expr#
-       (let [~(first binding) expr#]
+  `(let* [seq# (seq ~(second binding))]
+     (if seq#
+       (let [~(first binding) (first seq#)]
          ~@body)
        nil)))
 
@@ -1128,9 +1127,12 @@
 
 (defn distinct?
   "Return ``true`` if no two arguments are equal."
-  [& args]
-  (= (count (vec args))
-     (count (set args))))
+  ([x] true)
+  ([x y] (not= x y))
+  ([x y & args]
+   (let [args (cons y (cons x args))]
+     (= (count (vec args))
+        (count (set args))))))
 
 ;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 ;; State Management Functions ;;
@@ -1165,11 +1167,11 @@
 
 (defn reset-vals!
   "Reset the value of an atom to ``v`` without regard to the previous value. Return a
-  vector containing the new value and the old value in that order."
+  vector containing the old value and the new value in that order."
   [atom v]
   (let [current (deref atom)]
     (if (compare-and-set! atom current v)
-      [v current]
+      [current v]
       (recur atom v))))
 
 (defn swap!
@@ -1190,14 +1192,14 @@
 (defn swap-vals!
   "Atomically swap the value of an atom to the return value of ``(apply f
   current-value args)``. The function ``f`` may be called multiple times while
-  swapping, so should be free of side effects. Return a vector containing the new
-  value and the old value in that order."
+  swapping, so should be free of side effects. Return a vector containing the old
+  value and the new value in that order."
   [atom f & args]
   (loop []
     (let [current (deref atom)
           new-val (apply f current args)]
       (if (compare-and-set! atom current new-val)
-        [new-val current]
+        [current new-val]
         (recur)))))
 
 (defn atom
@@ -1375,7 +1377,7 @@
     (list error)))
 
 (defn ^:inline error-mode [agent]
-  (.get-error-mode agent))
+  (keyword (.get-error-mode agent)))
 
 (defn ^:inline error-handler [agent]
   (.get-error-handler agent))
@@ -1605,10 +1607,12 @@
   ([agent]
    (.restart agent))
   ([agent state]
-   (.restart agent state))
+   (.restart agent state)
+   state)
   ([agent state & kwargs]
    (let [opts (apply hash-map kwargs)]
-     (.restart agent state (:clear-actions opts)))))
+     (.restart agent state (:clear-actions opts))
+     state)))
 
 (defn set-error-mode! [agent mode]
   (.set-error-mode agent (name mode))
@@ -1794,12 +1798,16 @@
 (defn ^:inline numerator
   "Return the numerator of a Fraction."
   [frac]
-  (.-numerator frac))
+  (if (instance? fractions/Fraction frac)
+    (.-numerator frac)
+    (throw (python/TypeError #f"Expected a ratio: {frac}"))))
 
 (defn ^:inline denominator
   "Return the denominator of a Fraction."
   [frac]
-  (.-denominator frac))
+  (if (instance? fractions/Fraction frac)
+    (.-denominator frac)
+    (throw (python/TypeError #f"Expected a ratio: {frac}"))))
 
 (defn rationalize
   "Return the lowest ratio of ``num``.
@@ -1809,11 +1817,16 @@
   If ``max-denominator`` is not ``nil``, return an approximate rationalization for
   ``num`` with denominator at most ``max-denominator``. Default is 1000000."
   ([num]
-   (rationalize num 1000000))
+   (rationalize num nil))
   ([num max-denominator]
-   (let [frac (if max-denominator
-                (.limit-denominator (fractions/Fraction num) max-denominator)
-                (fractions/Fraction num))]
+   (let [frac (cond
+                (instance? fractions/Fraction num) num
+                (float? num) (fractions/Fraction (str num))
+                (instance? decimal/Decimal num) (fractions/Fraction (str num))
+                :else (fractions/Fraction num))
+         frac (if max-denominator
+                (.limit-denominator frac max-denominator)
+                frac)]
      (if #?(:lpy312+ (.is-integer frac) :lpy311- (= (denominator frac) 1))
        (python/int frac)
        frac))))
@@ -1917,7 +1930,8 @@
 (defn ^:inline counted?
   "Return ``true`` if ``x`` can be counted in constant time."
   [x]
-  (instance? basilisp.lang.interfaces/ICounted x))
+  (or (instance? basilisp.lang.interfaces/ICounted x)
+      (instance? basilisp.lang.interfaces/IPersistentList x)))
 
 (defn ^:no-inline decimal?
   "Return ``true`` if ``x`` is a :external:py:class:`decimal.Decimal`\\."
@@ -2217,7 +2231,8 @@
 (defn cast
   "Throws a ``TypeError`` if ``x`` is not a ``cls``\\. Otherwise, return ``x``\\."
   [cls x]
-  (when-not (instance? cls x)
+  (when-not (or (nil? x)
+                (instance? cls x))
     (throw (python/TypeError
             (str "Cannot cast object of type " (python/type x) " to " cls))))
   x)
@@ -2412,72 +2427,70 @@
                                   :arglists (list 'quote (:arglists orig-var-meta)))]
      `(def ~vname ~var))))
 
-(defcopy unchecked-add
-  "Same as :lpy:fn:`+`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  +)
-(defcopy unchecked-add-int
-  "Same as :lpy:fn:`+`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  +)
-(defcopy unchecked-subtract
-  "Same as :lpy:fn:`-`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  -)
-(defcopy unchecked-subtract-int
-  "Same as :lpy:fn:`-`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  -)
-(defcopy unchecked-multiply
-  "Same as :lpy:fn:`*`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  *)
-(defcopy unchecked-multiply-int
-  "Same as :lpy:fn:`*`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  *)
-(defcopy unchecked-divide-int
-  "Same as :lpy:fn:`/`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  /)
+(defn unchecked-add
+  "Return the signed 64-bit unchecked sum of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (+ x y) 64))
 
-(defcopy unchecked-inc
-  "Same as :lpy:fn:`inc`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  inc)
-(defcopy unchecked-inc-int
-  "Same as :lpy:fn:`inc`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  inc)
-(defcopy unchecked-dec
-  "Same as :lpy:fn:`dec`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  dec)
-(defcopy unchecked-dec-int
-  "Same as :lpy:fn:`dec`. Python integers are unlimited precision, so unchecked
-  arithmetic is only provided for compatibility with platforms without unlimited
-  precision integers."
-  dec)
+(defn unchecked-add-int
+  "Return the signed 32-bit unchecked sum of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (+ x y) 32))
+
+(defn unchecked-subtract
+  "Return the signed 64-bit unchecked difference of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (- x y) 64))
+
+(defn unchecked-subtract-int
+  "Return the signed 32-bit unchecked difference of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (- x y) 32))
+
+(defn unchecked-multiply
+  "Return the signed 64-bit unchecked product of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (* x y) 64))
+
+(defn unchecked-multiply-int
+  "Return the signed 32-bit unchecked product of ``x`` and ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (* x y) 32))
+
+(defn unchecked-divide-int
+  "Return the signed 32-bit unchecked truncating quotient of ``x`` divided by ``y``."
+  [x y]
+  (basilisp.lang.numeric_coerce/unchecked-integer (quot x y) 32))
+
+(defn unchecked-inc
+  "Return the signed 64-bit unchecked increment of ``x``."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer (inc x) 64))
+
+(defn unchecked-inc-int
+  "Return the signed 32-bit unchecked increment of ``x``."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer (inc x) 32))
+
+(defn unchecked-dec
+  "Return the signed 64-bit unchecked decrement of ``x``."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer (dec x) 64))
+
+(defn unchecked-dec-int
+  "Return the signed 32-bit unchecked decrement of ``x``."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer (dec x) 32))
 
 (defn unchecked-negate
-  "Return the negation of ``x``\\.
-
-  Same as ``(- x)``\\. Python integers are unlimited precision so unchecked arithmetic
-  is only provided for compatibility with platforms without unlimited precision
-  integers."
+  "Return the signed 64-bit unchecked negation of ``x``\\."
   [x]
-  (- x))
-(defcopy unchecked-negate-int unchecked-negate)
+  (basilisp.lang.numeric_coerce/unchecked-integer (- x) 64))
+
+(defn unchecked-negate-int
+  "Return the signed 32-bit unchecked negation of ``x``\\."
+  [x]
+  (basilisp.lang.numeric_coerce/unchecked-integer (- x) 32))
 
 (defn unchecked-byte
   "Coerce ``x`` to a byte. Value may be truncated or rounded."
@@ -2521,7 +2534,9 @@
 (defn ^:inline to-array
   "Return a Python list with the contents of ``coll``\\."
   [coll]
-  (python/list coll))
+  (if (nil? coll)
+    #py []
+    (python/list coll)))
 
 (defn ^:inline to-array-2d
   "Return a two-dimensional Python list from the contents of ``coll``\\.
@@ -2530,7 +2545,8 @@
   be ragged (in the Java sense of the word) if the inner collections of the input are
   ragged."
   [coll]
-  (python/list (python/map python/list coll)))
+  (python/list
+   (python/map #(if (nil? %) #py [] (python/list %)) coll)))
 
 (defn into-array
   "Returns a Python list with the values from ``aseq``\\.
@@ -2654,7 +2670,7 @@
   using its ordinary persistent vector representation rather than JVM specialized
   vector classes."
   [type & values]
-  (vec (basilisp.lang.primitive_array/vector_of type values)))
+  (basilisp.lang.primitive_array/primitive_vector_of type values))
 
 (defn aclone
   "Return a clone of the array, retaining primitive-array coercion semantics."
@@ -2771,62 +2787,68 @@
 
 (def bool-array boolean-array)
 
-(defn ^:inline booleans
-  "Dummy cast to a Python list of booleans.
+(defn- primitive-array-cast
+  [array-type cast-name x]
+  (if (instance? array-type x)
+    x
+    (throw (python/TypeError
+            (str cast-name " cannot cast " (type x) " to a primitive array")))))
+
+(defn booleans
+  "Cast ``x`` to a boolean array.
 
   This function is provided for Clojure compatibility."
   [x]
-  x)
+  (primitive-array-cast basilisp.lang.primitive_array/BooleanArray "booleans" x))
 
-(defn ^:inline bytes
-  "Dummy cast to a Python list of bytes (distinct from Python's ``bytarray`` and
-  ``bytes`` types).
-
-  This function is provided for Clojure compatibility."
-  [x]
-  x)
-
-(defn ^:inline chars
-  "Dummy cast to a Python list of chars.
+(defn bytes
+  "Cast ``x`` to a byte array.
 
   This function is provided for Clojure compatibility."
   [x]
-  x)
+  (primitive-array-cast basilisp.lang.primitive_array/ByteArray "bytes" x))
 
-(defn ^:inline doubles
-  "Dummy cast to a Python list of doubles.
-
-  This function is provided for Clojure compatibility."
-  [x]
-  x)
-
-(defn ^:inline floats
-  "Dummy cast to a Python list of floats.
+(defn chars
+  "Cast ``x`` to a char array.
 
   This function is provided for Clojure compatibility."
   [x]
-  x)
+  (primitive-array-cast basilisp.lang.primitive_array/CharArray "chars" x))
 
-(defn ^:inline ints
-  "Dummy cast to a Python list of integers.
-
-  This function is provided for Clojure compatibility."
-  [x]
-  x)
-
-(defn ^:inline longs
-  "Dummy cast to a Python list of longs.
+(defn doubles
+  "Cast ``x`` to a double array.
 
   This function is provided for Clojure compatibility."
   [x]
-  x)
+  (primitive-array-cast basilisp.lang.primitive_array/DoubleArray "doubles" x))
 
-(defn ^:inline shorts
-  "Dummy cast to a Python list of shorts.
+(defn floats
+  "Cast ``x`` to a float array.
 
   This function is provided for Clojure compatibility."
   [x]
-  x)
+  (primitive-array-cast basilisp.lang.primitive_array/FloatArray "floats" x))
+
+(defn ints
+  "Cast ``x`` to an int array.
+
+  This function is provided for Clojure compatibility."
+  [x]
+  (primitive-array-cast basilisp.lang.primitive_array/IntArray "ints" x))
+
+(defn longs
+  "Cast ``x`` to a long array.
+
+  This function is provided for Clojure compatibility."
+  [x]
+  (primitive-array-cast basilisp.lang.primitive_array/LongArray "longs" x))
+
+(defn shorts
+  "Cast ``x`` to a short array.
+
+  This function is provided for Clojure compatibility."
+  [x]
+  (primitive-array-cast basilisp.lang.primitive_array/ShortArray "shorts" x))
 
 ;;;;;;;;;;;;;;;;
 ;; Exceptions ;;
@@ -2888,25 +2910,41 @@
     (recur (operator/or- x (first args)) rest-arg)
     (operator/or- x (first args))))
 
+(def ^:private ^:const int64-mask 18446744073709551615)
+(def ^:private ^:const int64-sign 9223372036854775808)
+(def ^:private ^:const int64-modulus 18446744073709551616)
+
+(defn ^:private long-shift-count [n]
+  (bit-and n 63))
+
+(defn ^:private int64 [x]
+  (let [x (bit-and x int64-mask)]
+    (if (>= x int64-sign)
+      (- x int64-modulus)
+      x)))
+
 (defn ^:inline bit-not
   "Invert the bits of ``x``\\."
   [x]
   (operator/invert x))
 
-(defn ^:inline bit-shift-left
+(defn bit-shift-left
   "Return ``x`` shifted left ``n`` bits."
   [x n]
-  (operator/lshift x n))
+  (int64 (operator/lshift (int64 x) (long-shift-count n))))
 
-(defn ^:inline bit-shift-right
+(defn bit-shift-right
   "Return ``x`` shifted right ``n`` bits."
   [x n]
-  (operator/rshift x n))
+  (operator/rshift (int64 x) (long-shift-count n)))
 
-(defn ^:inline unsigned-bit-shift-right
+(defn unsigned-bit-shift-right
   "Return the 64-bit unsigned value of ``x`` shifted right ``n`` bits."
   [x n]
-  (bit-shift-right (bit-and x (dec (bit-shift-left 1 64))) n))
+  (let [n (long-shift-count n)]
+    (if (zero? n)
+      (int64 x)
+      (operator/rshift (bit-and x int64-mask) n))))
 
 (defn bit-xor
   "Return the bitwise xor of ``x`` and ``args``\\."
@@ -3290,9 +3328,9 @@
 (defn assoc!
   "Associate keys to values in the transient associative data structure ``m``\\."
   ([m k v]
-   (.assoc-transient m k v))
+   ((python/getattr m "assoc_transient") k v))
   ([m k v & kvs]
-   (apply (.-assoc-transient m) k v kvs)))
+   (apply (python/getattr m "assoc_transient") k v kvs)))
 
 (defn conj!
   "Conjoin ``xs`` to the transient collection ```coll``\\. New elements may be added in
@@ -3300,24 +3338,24 @@
   type as ``coll``\\."
   ([] (transient []))
   ([coll] coll)
-  ([coll & xs]
-   (apply (.-cons-transient coll) xs)))
+  ([coll x]
+   ((python/getattr coll "cons_transient") x)))
 
 (defn disj!
   "Return a new version of the transient set ``s`` without the given elements. If the
   elements don't exist in ``s``\\, they are ignored."
   ([s] s)
   ([s elem]
-   (.disj-transient s elem))
+   ((python/getattr s "disj_transient") elem))
   ([s elem & elems]
-   (apply (.-disj-transient s) elem elems)))
+   (apply (python/getattr s "disj_transient") elem elems)))
 
 (defn dissoc!
   "Return a new version of the transient associative collection ``m`` without the
   given keys. If the keys don't exist in ``m``\\, they are ignored."
-  ([m k] (.dissoc-transient m k))
+  ([m k] ((python/getattr m "dissoc_transient") k))
   ([m k & ks]
-   (apply (.-dissoc-transient m) k ks)))
+   (apply (python/getattr m "dissoc_transient") k ks)))
 
 (defn ^:inline pop!
   "Return a new transient vector without the last element of ``coll``\\. If ``coll`` is
@@ -3937,8 +3975,10 @@
 
 (defn list*
   "Create a list from all arguments, splicing the final argument as a sequence."
-  [& args]
-  (apply list (concat (butlast args) (last args))))
+  [arg & args]
+  (if (seq args)
+    (cons arg (apply list* args))
+    (seq arg)))
 
 (defn split-at
   "Split a collection at the ``n`` th item. Returns a vector of
@@ -4290,7 +4330,7 @@
    (when (and (sequential? v) (seq v))
      (let [e (first v)
            r (rest v)]
-       (if (or (seq? e) (seqable? e))
+       (if (sequential? e)
          (concat (flatten e) (flatten r))
          (cons e (flatten r)))))))
 
@@ -4307,24 +4347,30 @@
 (defn min-key
   "Return the arg for which ``(k arg)`` is the smallest number. If multiple values
   return the same number, return the last."
-  [k & args]
-  (reduce* (fn [cur nxt]
-             (if (<= (k nxt) (k cur))
-               nxt
-               cur))
-           (first args)
-           (rest args)))
+  ([k x]
+   x)
+  ([k x y]
+   (if (<= (k y) (k x))
+     y
+     x))
+  ([k x y & more]
+   (reduce* #(min-key k %1 %2)
+            (min-key k x y)
+            more)))
 
 (defn max-key
   "Return the arg for which ``(k arg)`` is the largest number. If multiple values
   return the same number, return the last."
-  [k & args]
-  (reduce* (fn [cur nxt]
-             (if (>= (k nxt) (k cur))
-               nxt
-               cur))
-           (first args)
-           (rest args)))
+  ([k x]
+   x)
+  ([k x y]
+   (if (>= (k y) (k x))
+     y
+     x))
+  ([k x y & more]
+   (reduce* #(max-key k %1 %2)
+            (max-key k x y)
+            more)))
 
 (defn sort-by
   "Return a sorted sequence of the elements from ``coll`` using the ``cmp`` comparator
@@ -5236,11 +5282,9 @@
   ``with-redefs`` will throw an Exception if directly linked Vars are given in the
   bindings."
   [bindings & body]
-  (when-not (and (vector? bindings)
-                 (even? (count bindings))
-                 (pos? (count bindings)))
+  (when-not (vector? bindings)
     (throw
-     (ex-info "Expected an even number of bindings"
+     (ex-info "with-redefs requires a vector for its bindings"
               {:bindings bindings})))
   (let [var-bindings (reduce* (fn [v pair]
                                 (let [vvar (first pair)
@@ -5484,10 +5528,9 @@
   "Return a seq of :external:py:class:`pathlib.Path` objects for all files and
   subdirectories of ``dir``\\."
   [dir]
-  (-> (pathlib/Path dir)
-      (.resolve)
-      (.rglob "*")
-      (seq)))
+  (let [root (.resolve (pathlib/Path dir))]
+    (concat (list root)
+            (iterator-seq (.rglob root "*")))))
 
 ;;;;;;;;;;;;;;;;;;;;;;
 ;; Output Utilities ;;
@@ -5545,7 +5588,13 @@
 (defn ^:inline read-line
   "Read the next line from the buffer currently bound to :lpy:var:`*in*`."
   []
-  (.rstrip (.readline *in*)))
+  (let [line (.readline *in*)]
+    (when (not= "" line)
+      (cond
+        (.endswith line "\r\n") (subs line 0 (- (count line) 2))
+        (.endswith line "\n")   (subs line 0 (dec (count line)))
+        (.endswith line "\r")   (subs line 0 (dec (count line)))
+        :else                   line))))
 
 (defn ^:inline flush
   "Flush the buffer currently bound to :lpy:var:`*out*`."
@@ -5791,6 +5840,32 @@
     *reader-resolver*
     *resolver*))
 
+(defn- reader-conditional-form?
+  "Return true if ``form`` contains a preserved reader conditional."
+  [form]
+  (cond
+    (instance? basilisp.lang.reader/ReaderConditional form)
+    true
+
+    (map? form)
+    (some (fn [entry]
+            (or (reader-conditional-form? (first entry))
+                (reader-conditional-form? (second entry))))
+          form)
+
+    (and (coll? form) (not (string? form)))
+    (some reader-conditional-form? form)
+
+    :else
+    false))
+
+(defn- reject-reader-conditional
+  "Raise if ``form`` contains a reader conditional when not explicitly allowed."
+  [form]
+  (when (reader-conditional-form? form)
+    (throw (basilisp.lang.reader/SyntaxError "Conditional read not allowed")))
+  form)
+
 (defn read-seq
   "Create an lazy sequence that will contain each form from the
   ``stream``\\. If no stream is specified, uses the value currently
@@ -5817,20 +5892,25 @@
   ([stream]
    (read-seq {} stream))
   ([opts stream]
-   (let [read (:read opts basilisp.lang.reader/read)]
-     (iterator-seq (read stream
-                         (reader-resolver-fn)
-                         *data-readers*
-                         (:eof opts)
-                         (= (:eof opts) :eofthrow)
-                         (:features opts)
-                         (not= :preserve (:read-cond opts))
-                         *default-data-reader-fn*
-                         (reader-eval-fn)
-                         **
-                         :init-line (:init-line opts)
-                         :init-column (:init-column opts)
-                         :process-tagged-literals (not *suppress-read*))))))
+   (let [read       (:read opts basilisp.lang.reader/read)
+         read-cond  (:read-cond opts)
+         disallow?  (not (contains? opts :read-cond))
+         forms      (read stream
+                          (reader-resolver-fn)
+                          *data-readers*
+                          (:eof opts)
+                          (= (:eof opts) :eofthrow)
+                          (:features opts)
+                          (= :allow read-cond)
+                          *default-data-reader-fn*
+                          (reader-eval-fn)
+                          **
+                          :init-line (:init-line opts)
+                          :init-column (:init-column opts)
+                          :process-tagged-literals (not *suppress-read*))]
+     (iterator-seq (if disallow?
+                     (python/map reject-reader-conditional forms)
+                     forms)))))
 
 (defn read-string
   "Read a string of Basilisp code.
@@ -5844,7 +5924,10 @@
   ([s]
    (read-string {:eof :eofthrow} s))
   ([opts s]
-   (first (read-seq (assoc opts :read basilisp.lang.reader/read-str) s))))
+   (let [forms (read-seq (assoc opts :read basilisp.lang.reader/read-str) s)]
+     (if (seq forms)
+       (first forms)
+       (:eof opts)))))
 
 (defn read
   "Read the next form from the ``stream``\\. If no stream is specified, uses the value
@@ -5863,9 +5946,15 @@
   ([stream]
    (read stream true nil))
   ([opts stream]
-   (first (read-seq opts stream)))
+   (let [forms (read-seq opts stream)]
+     (if (seq forms)
+       (first forms)
+       (:eof opts))))
   ([stream eof-error? eof-value]
-   (first (read-seq {:eof (if eof-error? :eofthrow eof-value)} stream))))
+   (let [forms (read-seq {:eof (if eof-error? :eofthrow eof-value)} stream)]
+     (if (seq forms)
+       (first forms)
+       eof-value))))
 
 (defn read+string
   "Read one form from a seekable stream and return ``[form source]``.
@@ -5888,8 +5977,10 @@
                  (:init-line opts)
                  (:init-column opts)
                  (not *suppress-read*))]
-     (when result
-       (vec result)))))
+     (if result
+       (vec result)
+       (when (contains? opts :eof)
+         [eof ""])))))
 
 (defn eval
   "Evaluate a form (not a string) and return its result.
@@ -5906,6 +5997,20 @@
                                                      namespace))
      form)))
 
+(defn- load-reader-with-opts
+  "Implementation helper for reader-backed loading."
+  [opts reader]
+  (let [src (some-> (python/getattr reader "name" nil)
+                    (pathlib/Path)
+                    (.resolve)
+                    (python/str))
+        ctx (basilisp.lang.compiler.CompilerContext. (or src "<Load Input>"))]
+    (last
+     (for [form (read-seq opts reader)]
+       (basilisp.lang.compiler/compile-and-exec-form form
+                                                     ctx
+                                                     *ns*)))))
+
 (defn load-reader
   "Read and evaluate the set of forms in the :external:py:class:`io.TextIOBase` instance
   ``reader``.
@@ -5918,16 +6023,7 @@
   Note that unlike ``require``\\, files loaded by ``load-reader`` will not be cached and
   will thus incur compilation time on subsequent loads."
   [reader]
-  (let [src (some-> (python/getattr reader "name" nil)
-                    (pathlib/Path)
-                    (.resolve)
-                    (python/str))
-        ctx (basilisp.lang.compiler.CompilerContext. (or src "<Load Input>"))]
-    (last
-     (for [form (read-seq {} reader)]
-       (basilisp.lang.compiler/compile-and-exec-form form
-                                                     ctx
-                                                     *ns*)))))
+  (load-reader-with-opts {} reader))
 
 (defn load-file
   "Read and evaluate the set of forms contained in the file located at ``path``.
@@ -5943,7 +6039,7 @@
   ;; Clojure source is UTF-8. Relying on the host default corrupts ordinary
   ;; Unicode source on Windows code pages before the reader sees it.
   (with-open [f (python/open path ** :mode "r" :encoding "utf-8")]
-    (load-reader f)))
+    (load-reader-with-opts {:read-cond :allow} f)))
 
 (defn- resolve-load-path
   "Resolve load ``path`` relative to the current namespace, or, if it
@@ -6183,7 +6279,11 @@
   [v]
   (cond
     (symbol? v)
-    (.get basilisp.lang.runtime/Namespace v)
+    (if-let [ns (.get basilisp.lang.runtime/Namespace v)]
+      ns
+      (throw
+       (ex-info "No namespace found"
+                {:value v})))
 
     (instance? basilisp.lang.runtime/Namespace v)
     v
@@ -6233,8 +6333,8 @@
   [ns]
   (reduce* (fn [m entry]
              (let [alias     (key entry)
-                   namespace (symbol (name (val entry)))]
-               (if (= alias namespace)
+                   namespace (val entry)]
+               (if (= alias (symbol (str (ns-name namespace))))
                  m
                  (assoc m alias namespace))))
            {}
@@ -6412,6 +6512,16 @@
                   nil)]
     `(eval '~form  *ns*)))
 
+(def ^:private clojure-namespace-rewrites
+  {"clojure.main" "basilisp.main-compat"
+   "clojure.repl.deps" "basilisp.repl-deps"})
+
+(defn ^:private plain-clojure-reflect-java-resource?
+  [ns-name libspec]
+  (and (= "clojure.reflect.java" ns-name)
+       (= #{:namespace} (set (keys libspec)))
+       (some? (find-ns 'clojure.reflect))))
+
 (defn ^:private rewrite-clojure-libspec
   "Rewrite libspecs which point to namespaces starting with 'clojure.' to use a
   Basilisp alternative when a matching Basilisp namespace exists, or when the
@@ -6421,15 +6531,21 @@
   namespace name."
   [libspec]
   (let [ns-name          (name (:namespace libspec))
-        basilisp-ns-name (str (.replace ns-name "clojure" "basilisp" 1))
+        basilisp-ns-name (get clojure-namespace-rewrites
+                              ns-name
+                              (str (.replace ns-name "clojure" "basilisp" 1)))
         find-spec        (fn [candidate]
                            (try
                              (importlib.util/find-spec (basilisp.lang.util/munge candidate))
                              (catch python/ModuleNotFoundError _
                                nil)))]
-    (if (and (.startswith ns-name "clojure.")
-             (or (find-spec basilisp-ns-name)
-                 (not (find-spec ns-name))))
+    (cond
+      (plain-clojure-reflect-java-resource? ns-name libspec)
+      (assoc libspec :source-resource true)
+
+      (and (.startswith ns-name "clojure.")
+           (or (find-spec basilisp-ns-name)
+               (not (find-spec ns-name))))
       ;; Add the original name as an alias if no alias was given.
       ;;
       ;; If an `:as` alias is not given, we'll just use that. Otherwise, we use
@@ -6439,6 +6555,8 @@
                      :namespace (symbol basilisp-ns-name)
                      :original-namespace (symbol ns-name))
         (not (:as libspec)) (assoc :as (symbol ns-name)))
+
+      :else
       libspec)))
 
 (defn ^:private require-libspec
@@ -6502,43 +6620,45 @@
   "Require the library described by ``libspec`` into the Namespace ``requiring-ns``\\
   subject to the provided ``flags``."
   [requiring-ns libspec flags]
-  (let [required-ns-sym  (:namespace libspec)
-        existing-ns      (find-ns required-ns-sym)]
-    (cond
-      #?@(:lpy39+
-          [(and existing-ns (contains? flags :reload-all))
-           (.reload-all (the-ns required-ns-sym))])
+  (if (:source-resource libspec)
+    (set! *ns* requiring-ns)
+    (let [required-ns-sym  (:namespace libspec)
+          existing-ns      (find-ns required-ns-sym)]
+      (cond
+        #?@(:lpy39+
+            [(and existing-ns (contains? flags :reload-all))
+             (.reload-all (the-ns required-ns-sym))])
 
-      (and existing-ns (contains? flags :reload))
-      (.reload (the-ns required-ns-sym))
+        (and existing-ns (contains? flags :reload))
+        (.reload (the-ns required-ns-sym))
 
-      :else
-      (do
-        ;; In order to enable direct linking of Vars as Python variables, required
-        ;; namespaces must be `require*`ed into the namespace. That's not possible
-        ;; to do without a macro, so we're using this hacky approach to eval the
-        ;; code directly (which will effectively add it to the root namespace module).
-        (eval (list 'require*
-                    (if-let [ns-alias (:as libspec)]
-                      [required-ns-sym :as ns-alias]
-                      required-ns-sym))
-              requiring-ns)))
-    ;; Add a special alias for the original namespace (e.g. `clojure.*`), if we
-    ;; rewrote the namespace on require.
-    (when-let [original-ns (:original-namespace libspec)]
-      (.add-alias requiring-ns (the-ns required-ns-sym) original-ns)
-      (basilisp.lang.runtime.Namespace/add-namespace-alias original-ns required-ns-sym))
-    ;; If an `:as-alias` is requested, apply that as well.
-    (when-let [as-alias (:as-alias libspec)]
-      (.add-alias requiring-ns (the-ns required-ns-sym) as-alias))
-    ;; Ensure explicit aliases are present even when the namespace was already
-    ;; loaded or when a rewritten clojure.* namespace also needs its original
-    ;; fully-qualified alias.
-    (when-let [ns-alias (:as libspec)]
-      (.add-alias requiring-ns (the-ns required-ns-sym) ns-alias))
-    ;; Reset the namespace to the requiring namespace, since it was likely changed
-    ;; during the require process
-    (set! *ns* requiring-ns)))
+        :else
+        (do
+          ;; In order to enable direct linking of Vars as Python variables, required
+          ;; namespaces must be `require*`ed into the namespace. That's not possible
+          ;; to do without a macro, so we're using this hacky approach to eval the
+          ;; code directly (which will effectively add it to the root namespace module).
+          (eval (list 'require*
+                      (if-let [ns-alias (:as libspec)]
+                        [required-ns-sym :as ns-alias]
+                        required-ns-sym))
+                requiring-ns)))
+      ;; Add a special alias for the original namespace (e.g. `clojure.*`), if we
+      ;; rewrote the namespace on require.
+      (when-let [original-ns (:original-namespace libspec)]
+        (.add-alias requiring-ns (the-ns required-ns-sym) original-ns)
+        (basilisp.lang.runtime.Namespace/add-namespace-alias original-ns required-ns-sym))
+      ;; If an `:as-alias` is requested, apply that as well.
+      (when-let [as-alias (:as-alias libspec)]
+        (.add-alias requiring-ns (the-ns required-ns-sym) as-alias))
+      ;; Ensure explicit aliases are present even when the namespace was already
+      ;; loaded or when a rewritten clojure.* namespace also needs its original
+      ;; fully-qualified alias.
+      (when-let [ns-alias (:as libspec)]
+        (.add-alias requiring-ns (the-ns required-ns-sym) ns-alias))
+      ;; Reset the namespace to the requiring namespace, since it was likely changed
+      ;; during the require process
+      (set! *ns* requiring-ns))))
 
 (defn ^:private refer-filtered-interns
   "Return a map of symbols to interned Vars in the Namespace ``referred-ns`` subject
@@ -6650,28 +6770,29 @@
 
           ;; Add refers and apply any requested local renames through the same
           ;; filtering path used by `refer` and `use`.
-          (let [new-ns    (the-ns (:namespace libspec))
-                refer-opt (:refer libspec)]
-            (cond
-              (= :all refer-opt)
-              (if (or (seq (:exclude libspec))
-                      (seq (:rename libspec)))
-                (refer-lib current-ns libspec)
-                (.refer-all current-ns new-ns))
+          (when-not (:source-resource libspec)
+            (let [new-ns    (the-ns (:namespace libspec))
+                  refer-opt (:refer libspec)]
+              (cond
+                (= :all refer-opt)
+                (if (or (seq (:exclude libspec))
+                        (seq (:rename libspec)))
+                  (refer-lib current-ns libspec)
+                  (.refer-all current-ns new-ns))
 
-              (seq refer-opt)
-              (do
-                ;; Preserve the established error when an explicit `:refer`
-                ;; names a missing Var before applying its possible rename.
-                (doseq [var-sym refer-opt]
-                  (when-not (get (ns-interns new-ns) var-sym)
-                    (throw
-                     (ex-info "Cannot find Var in the given namespace"
-                              {:namespace new-ns
-                               :var       var-sym}))))
-                (refer-lib current-ns libspec))
+                (seq refer-opt)
+                (do
+                  ;; Preserve the established error when an explicit `:refer`
+                  ;; names a missing Var before applying its possible rename.
+                  (doseq [var-sym refer-opt]
+                    (when-not (get (ns-interns new-ns) var-sym)
+                      (throw
+                       (ex-info "Cannot find Var in the given namespace"
+                                {:namespace new-ns
+                                 :var       var-sym}))))
+                  (refer-lib current-ns libspec))
 
-              :else nil)))))
+                :else nil))))))
     nil))
 
 (defn refer
@@ -6760,6 +6881,12 @@
   []
   @*loaded-libs*)
 
+(defn- validate-ns-gen-class-options
+  [options]
+  (when (odd? (count options))
+    (throw (ex-info "gen-class namespace clause requires paired options"
+                    {:options (vec options)}))))
+
 (defmacro ns
   "Use this namespace pre-amble at the top of every namespace to declare the namespace
   name and import necessary Python modules and require Basilisp namespaces.
@@ -6821,6 +6948,8 @@
                               (when-not (keyword? opt-name)
                                 (throw (ex-info "Namespace option must be a keyword"
                                                 {:option opt-name})))
+                              (when (= :gen-class opt-name)
+                                (validate-ns-gen-class-options options))
                               (assoc m opt-name (vec options))))
                           {}
                           opts)
@@ -7693,7 +7822,7 @@
           final))
       fn-decl)))
 
-(defn destructure
+(defn ^:private destructure-pair
   "Take a ``[binding expr]`` pair (as from a ``let`` block) and produce all of the
   replacement bindings for the binding which perform destructuring on the initial
   expression.
@@ -7716,11 +7845,19 @@
                     (destructure-binding ddef))]
     (apply list orig-name expr bindings)))
 
+(defn destructure
+  "Take a binding vector and produce a flat vector of non-destructuring bindings.
+
+  This mirrors ``clojure.core/destructure``: callers pass the full ``let``-style
+  binding vector, and the result can be spliced into a lower-level ``let*``."
+  [bindings]
+  (vec (mapcat destructure-pair (partition 2 bindings))))
+
 (defmacro ^:no-warn-on-redef let
   ":lpy:form:`let` bindings with :ref:`destructuring` support."
   [bindings & body]
   `(let* [~@(->> (partition 2 bindings)
-                 (mapcat destructure))]
+                 (mapcat destructure-pair))]
      ~@body))
 
 (defmacro letfn
@@ -7812,10 +7949,15 @@
   This function will throw a ``TypeError`` for non-string types."
   [s]
   (if (string? s)
-    (try
-      (python/float s)
-      (catch python/ValueError _ nil))
+    (if (re/search "_" s)
+      nil
+      (try
+        (python/float s)
+        (catch python/ValueError _ nil)))
     (throw (parsing-error s))))
+
+(def ^:private parse-long-pattern
+  (re/compile "[+-]?\\d+"))
 
 (defn parse-long
   "Parse the string argument ``s`` as an integer (base 10) as by Python's builtin
@@ -7825,9 +7967,11 @@
   This function will throw a ``TypeError`` for non-string types."
   [s]
   (if (string? s)
-    (try
-      (python/int s)
-      (catch python/ValueError _ nil))
+    (if (re/fullmatch parse-long-pattern s)
+      (let [value (python/int s)]
+        (when (<= -9223372036854775808 value 9223372036854775807)
+          value))
+      nil)
     (throw (parsing-error s))))
 
 (defn parse-boolean
@@ -7840,6 +7984,13 @@
     (get {"true" true "false" false} s)
     (throw (parsing-error s))))
 
+(def ^:private uuid-part-widths [8 4 4 4 12])
+
+(defn ^:private uuid-part?
+  [part width]
+  (and (<= 1 (count part) width)
+       (re/fullmatch (re/compile "[0-9a-fA-F]+") part)))
+
 (defn parse-uuid
   "Parse the string argument ``s`` as a :external:py:class:`uuid.UUID`, returning the
   UUID if the string contains one, or ``nil`` otherwise.
@@ -7847,9 +7998,18 @@
   This function will throw a ``TypeError`` for non-string types."
   [s]
   (if (string? s)
-    (try
-      (uuid/UUID s)
-      (catch python/ValueError _ nil))
+    (let [parts (.split s "-")]
+      (when (and (= 5 (count parts))
+                 (every? identity (map uuid-part? parts uuid-part-widths)))
+        (let [[p0 p1 p2 p3 p4] parts]
+          (try
+            (uuid/UUID
+             ** :int (+ (operator/lshift (python/int p0 16) 96)
+                        (operator/lshift (python/int p1 16) 80)
+                        (operator/lshift (python/int p2 16) 64)
+                        (operator/lshift (python/int p3 16) 48)
+                        (python/int p4 16)))
+            (catch python/ValueError _ nil)))))
     (throw (parsing-error s))))
 
 ;;;;;;;;;;;;;;;;
@@ -8418,8 +8578,9 @@
 (defn extends?
   "Return ``true`` ``if`` type extends protocol ``proto``\\."
   [{:keys [interface impls] :as proto} type]
-  (or (python/issubclass type interface)
-      (contains? impls type)))
+  (let [type (if (nil? type) (python/type nil) type)]
+    (or (python/issubclass type interface)
+        (contains? impls type))))
 
 (defn satisfies?
   "Return true if ``x`` satisfies protocol ``proto``\\."
@@ -8770,11 +8931,11 @@
   [call this meth]
   (let [m           (proxy-mappings this)
         method-name (munge (if (symbol? meth) (name meth) meth))]
-    (update-proxy this (assoc m method-name nil))
+    (init-proxy this (assoc m method-name nil))
     (try
       (call)
       (finally
-        (update-proxy this m)))))
+        (init-proxy this m)))))
 
 (defmacro proxy
   "Create a new proxy class instance.
@@ -9072,12 +9233,13 @@
 
               :else
               (recur r# new-rec#))))
-         (~'contains [~this-gs ~key-gs]
-          (or (~field-kw-set ~key-gs)
-              (contains? ~'_recmap ~key-gs)))
-         (~'entry [~this-gs ~key-gs]
-          (when-let [val# (.val-at ~this-gs ~key-gs)]
-            (map-entry ~key-gs val#)))
+          (~'contains [~this-gs ~key-gs]
+           (boolean
+            (or (contains? ~field-kw-set ~key-gs)
+                (contains? ~'_recmap ~key-gs))))
+          (~'entry [~this-gs ~key-gs]
+           (when (.contains ~this-gs ~key-gs)
+             (map-entry ~key-gs (.val-at ~this-gs ~key-gs))))
          (~'val-at [~this-gs ~key-gs ~'& args#]
           (let [[default#] args#]
             (cond
@@ -9382,13 +9544,19 @@
    (halt-when pred (fn [_ input] (reduced input))))
   ([pred retf]
    (fn [rf]
-     (fn
-       ([] (rf))
-       ([result] (rf result))
-       ([result input]
-        (if (pred input)
-          (ensure-reduced (retf result input))
-          (rf result input)))))))
+     (let [halted? (volatile! false)]
+       (fn
+         ([] (rf))
+         ([result]
+          (if @halted?
+            result
+            (rf result)))
+         ([result input]
+          (if (pred input)
+            (do
+              (vreset! halted? true)
+              (ensure-reduced (retf (rf result) input)))
+            (rf result input))))))))
 
 (defn sequence
   "Coerces ``coll`` to a possibly empty sequence. If ``coll`` is ``nil``\\, return
@@ -9414,12 +9582,13 @@
         create-sequence (fn create-sequence
                           [coll]
                           (lazy-seq
-                           (let [result (when (seq coll)
-                                          (let [elem (xf (xf) (first coll))]
-                                            (if (reduced? elem)
-                                              @elem
-                                              (concat elem (create-sequence (rest coll))))))]
-                             (xf (unreduced result)))))]
+                           (if (seq coll)
+                             (let [elem (xf (queue) (first coll))]
+                               (if (reduced? elem)
+                                 (when (seqable? @elem)
+                                   (seq @elem))
+                                 (concat elem (create-sequence (rest coll)))))
+                             (seq (xf (queue))))))]
      (create-sequence coll)))
   ([xform coll & colls]
    (let[xf (xform (fn
@@ -9431,12 +9600,15 @@
         create-sequence (fn create-sequence
                           [coll & colls]
                           (lazy-seq
-                           (let [result (when (and (seq coll) (every? seq colls))
-                                          (let [elem (apply xf (xf) (first coll) (map first colls))]
-                                            (if (reduced? elem)
-                                              @elem
-                                              (concat elem (apply create-sequence (rest coll) (map rest colls))))))]
-                             (xf (unreduced result)))))]
+                           (if (and (seq coll) (every? seq colls))
+                             (let [elem (apply xf (queue) (first coll) (map first colls))]
+                               (if (reduced? elem)
+                                 (when (seqable? @elem)
+                                   (seq @elem))
+                                 (concat elem (apply create-sequence
+                                                     (rest coll)
+                                                     (map rest colls)))))
+                             (seq (xf (queue))))))]
      (apply create-sequence coll colls))))
 
 (defn transduce
@@ -9454,14 +9626,12 @@
    (transduce xform f (f) coll))
   ([xform f init coll]
    (let [xf (xform f)]
-     (if (seq coll)
-       (loop [result init
-              coll   (seq coll)]
-         (cond
-           (reduced? result) (xf @result)
-           (seq coll)        (recur (xf result (first coll)) (rest coll))
-           :else             (xf result)))
-       init))))
+     (loop [result init
+            coll   (seq coll)]
+       (cond
+         (reduced? result) (xf @result)
+         (seq coll)        (recur (xf result (first coll)) (rest coll))
+         :else             (xf result))))))
 
 (defn into
   "Return a new collection created by adding all of the elements of ``from`` to the
@@ -9562,10 +9732,11 @@
     (when (nil? description)
       (throw (python/ValueError
               "resultset-seq requires an executed DB-API cursor with description")))
-    (let [keys (map (fn [column]
-                      (keyword (.lower (first column))))
-                    description)]
-      (when-not (apply distinct? keys)
+    (let [keys (vec (map (fn [column]
+                           (keyword (.lower (first column))))
+                         description))]
+      (when (and (seq keys)
+                 (not (apply distinct? keys)))
         (throw (python/ValueError "ResultSet must have unique column labels")))
       ;; `apply` represents an empty sequence as nil. Construct the basis
       ;; directly so a valid zero-column DB-API cursor remains an empty struct.
@@ -9732,23 +9903,23 @@
        ([] (rf))
        ([result] (rf result))
        ([result input]
-        (->> (if-let [newv (get smap input)]
-               newv
+        (->> (if (contains? smap input)
+               (get smap input)
                input)
              (rf result))))))
   ([smap coll]
    (if (vector? coll)
      (persistent!
       (reduce (fn [res v]
-                (->> (if-let [newv (get smap v)]
-                       newv
+                (->> (if (contains? smap v)
+                       (get smap v)
                        v)
                      (conj! res)))
               (transient [])
               coll))
      (map (fn [v]
-            (if-let [newv (get smap v)]
-              newv
+            (if (contains? smap v)
+              (get smap v)
               v))
           coll))))
 

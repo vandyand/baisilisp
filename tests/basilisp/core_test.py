@@ -823,10 +823,15 @@ class TestBitManipulation:
     def test_bit_shift_left(self):
         assert 1024 == core.bit_shift_left(1, 10)
         assert 360 == core.bit_shift_left(45, 3)
+        assert -9_223_372_036_854_775_808 == core.bit_shift_left(1, 63)
+        assert 1 == core.bit_shift_left(1, 64)
+        assert -9_223_372_036_854_775_808 == core.bit_shift_left(1, -1)
 
     def test_bit_shift_right(self):
         assert 1 == core.bit_shift_right(1024, 10)
         assert 5 == core.bit_shift_right(45, 3)
+        assert -8 == core.bit_shift_right(-8, 64)
+        assert -1 == core.bit_shift_right(-8, -1)
 
     def test_bit_xor(self):
         assert 5 == core.bit_xor(12, 9)
@@ -842,7 +847,7 @@ class TestBitManipulation:
 
     def test_bit_set(self):
         assert 15 == core.bit_set(11, 2)
-        assert 9_223_372_036_854_775_808 == core.bit_set(0, 63)
+        assert -9_223_372_036_854_775_808 == core.bit_set(0, 63)
 
     def test_bit_test(self):
         assert core.bit_test(9, 0)

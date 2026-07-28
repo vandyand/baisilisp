@@ -389,6 +389,7 @@ class ReaderContext:
 
     __slots__ = (
         "_data_readers",
+        "_builtin_data_readers",
         "_default_data_reader_fn",
         "_features",
         "_process_reader_cond",
@@ -400,6 +401,7 @@ class ReaderContext:
         "_syntax_quoted",
         "_gensym_env",
         "_eof",
+        "_edn",
     )
 
     def __init__(  # pylint: disable=too-many-arguments
@@ -413,8 +415,15 @@ class ReaderContext:
         default_data_reader_fn: DefaultDataReaderFn | None = None,
         reader_eval: ReaderEvalFn | None = None,
         process_tagged_literals: bool = True,
+        builtin_data_readers: DataReaders | None = None,
+        edn: bool = False,
     ) -> None:
         self._data_readers = lmap.EMPTY if data_readers is None else data_readers
+        self._builtin_data_readers = (
+            ReaderContext._DATA_READERS
+            if builtin_data_readers is None
+            else builtin_data_readers
+        )
         self._default_data_reader_fn = (
             _raise_unknown_tag
             if default_data_reader_fn is None
@@ -438,10 +447,15 @@ class ReaderContext:
         self._syntax_quoted: collections.deque[bool] = collections.deque([])
         self._gensym_env: collections.deque[GenSymEnvironment] = collections.deque([])
         self._eof = eof
+        self._edn = edn
 
     @property
     def data_readers(self) -> DataReaders:
         return self._data_readers
+
+    @property
+    def builtin_data_readers(self) -> DataReaders:
+        return self._builtin_data_readers
 
     @property
     def default_data_reader_fn(self) -> DefaultDataReaderFn:
@@ -466,6 +480,10 @@ class ReaderContext:
     @property
     def reader_eval(self) -> ReaderEvalFn | None:
         return self._reader_eval
+
+    @property
+    def is_edn(self) -> bool:
+        return self._edn
 
     def resolve(self, sym: sym.Symbol) -> sym.Symbol:
         return self._resolve(sym)
@@ -681,7 +699,12 @@ def _read_namespaced(
                 has_ns = True
                 ns = name
                 name = []
-        elif _is_ns_name_char(char) or (name and char == "'") or char == "#":
+        elif (
+            _is_ns_name_char(char)
+            or (name and char == "'")
+            or (ctx.is_edn and char == "'" and not has_ns)
+            or char == "#"
+        ):
             if has_ns and name == ["/"]:
                 raise ctx.syntax_error("Found word character after trailing '/'")
             reader.next_char()
@@ -1231,6 +1254,8 @@ def _read_kw(ctx: ReaderContext) -> kw.Keyword:
     start = ctx.reader.advance()
     assert start == ":"
     if ctx.reader.peek() == ":":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Auto-resolved keywords are not valid EDN")
         ctx.reader.advance()
         should_autoresolve = True
     else:
@@ -1784,8 +1809,8 @@ def _resolve_tagged_literal(
     data_reader = None
     if s in ctx.data_readers:
         data_reader = ctx.data_readers[s]
-    elif s in ReaderContext._DATA_READERS:
-        data_reader = ReaderContext._DATA_READERS[s]
+    elif s in ctx.builtin_data_readers:
+        data_reader = ctx.builtin_data_readers[s]
 
     if data_reader is not None:
         try:
@@ -1814,10 +1839,14 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
         # meaning as the modern ``^`` spelling.
         return _read_meta(ctx)
     elif char == "(":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Anonymous function reader macro is not valid EDN")
         return _read_function(ctx)
     elif char == ":":
         return _read_namespaced_map(ctx)
     elif char == "'":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Var quote reader macro is not valid EDN")
         ctx.reader.advance()
         char_next = ctx.reader.peek()
         if char_next == "~":
@@ -1826,6 +1855,8 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
             s = _read_sym(ctx)
         return llist.l(_VAR, s)
     elif char == '"':
+        if ctx.is_edn:
+            raise ctx.syntax_error("Regex reader macro is not valid EDN")
         return _read_regex(ctx)
     elif char == "_":
         ctx.reader.advance()
@@ -1834,6 +1865,8 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
     elif char == "!":
         return _read_comment(ctx)
     elif char == "=":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Reader eval is not valid EDN")
         ctx.reader.advance()
         if ctx.reader_eval is None:
             raise ctx.syntax_error("Reader eval (#=) is disabled")
@@ -1842,6 +1875,8 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
             raise ctx.eof_error("Unexpected EOF after reader eval (#=)")
         return ctx.reader_eval(form)
     elif char == "?":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Reader conditionals are not valid EDN")
         try:
             return _read_reader_conditional(ctx)
         except SyntaxError as e:
@@ -1851,7 +1886,7 @@ def _read_reader_macro(ctx: ReaderContext) -> LispReaderForm:
     elif ns_name_chars.match(char):
         s = _read_sym(ctx, is_reader_macro_sym=True)
         assert isinstance(s, sym.Symbol)
-        if s.ns is None:
+        if s.ns is None and not ctx.is_edn:
             if s.name == "b":
                 return _read_byte_str(ctx)
             elif s.name == "f":
@@ -1920,6 +1955,8 @@ def _read_next(ctx: ReaderContext) -> LispReaderForm:  # noqa: C901
     elif char == '"':
         return _read_str(ctx)
     elif char == "'":
+        if ctx.is_edn:
+            return _read_sym(ctx)
         return _read_quoted(ctx)
     elif char == "\\":
         return _read_character(ctx)
@@ -1932,10 +1969,16 @@ def _read_next(ctx: ReaderContext) -> LispReaderForm:  # noqa: C901
     elif char == ";":
         return _read_comment(ctx)
     elif char == "`":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Syntax quote is not valid EDN")
         return _read_syntax_quoted(ctx)
     elif char == "~":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Unquote is not valid EDN")
         return _read_unquote(ctx)
     elif char == "@":
+        if ctx.is_edn:
+            raise ctx.syntax_error("Deref is not valid EDN")
         return _read_deref(ctx)
     elif char == "":
         return ctx.eof

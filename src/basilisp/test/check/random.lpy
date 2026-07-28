@@ -3,6 +3,8 @@
 
 (def IRandom impl/RNG)
 (def JavaUtilSplittableRandom impl/RNG)
+(defn ->JavaUtilSplittableRandom [_gamma state]
+  (impl/RNG state))
 (def make-random impl/make_random)
 (def make-java-util-splittable-random impl/make_random)
 (def rand-long impl/rand_long)

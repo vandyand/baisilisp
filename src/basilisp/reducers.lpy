@@ -39,6 +39,15 @@
   "A collection that can participate in :lpy:fn:`fold`."
   (coll-fold [coll n combinef reducef]))
 
+(extend-protocol CollFold
+  nil
+  (coll-fold [_coll _n combinef _reducef]
+    (combinef))
+
+  python/object
+  (coll-fold [coll _n combinef reducef]
+    (reduce reducef (combinef) coll)))
+
 (defn fold
   "Reduce ``coll`` with ``reducef`` and an associative ``combinef``.
 

@@ -11,11 +11,33 @@
 (def ^:dynamic *default-data-reader-fn* nil)
 (def ^:dynamic *suppress-read* false)
 (def ^:dynamic *alias-map* nil)
-(def ^:dynamic *read-delim* nil)
-(def ^:dynamic resolve-symbol runtime/resolve-alias)
+(def ^:dynamic *read-delim* false)
 (def default-data-readers basilisp.lang.reader.ReaderContext/_DATA_READERS)
 
-(declare read-symbol)
+(defn- standard-core-symbol [s]
+  (if (= "basilisp.core" (namespace s))
+    (symbol "clojure.core" (name s))
+    s))
+
+(defn ^:dynamic resolve-symbol [s]
+  (if-let [ns-str (namespace s)]
+    (if-let [aliased (get *alias-map* (symbol ns-str))]
+      (symbol (str aliased) (name s))
+      (standard-core-symbol (runtime/resolve-alias s)))
+    (standard-core-symbol (runtime/resolve-alias s))))
+
+(defn- reader-eval-fn []
+  (cond
+    (= :unknown *read-eval*)
+    (throw (python/PermissionError
+            "*read-eval* is :unknown; bind it to true or false before reading"))
+
+    *read-eval*
+    (fn [form]
+      (let [ctx (basilisp.lang.compiler.CompilerContext. "<Reader Eval Input>")]
+        (basilisp.lang.compiler/compile-and-exec-form form ctx *ns*)))
+
+    :else nil))
 
 (defn map-func
   "Decide which map constructor symbol to use for ``coll``."
@@ -23,6 +45,12 @@
   (if (>= (count coll) 16)
     'clojure.core/hash-map
     'clojure.core/array-map))
+
+(defn- read-cond-mode [opts]
+  (case (:read-cond opts)
+    :allow true
+    :preserve false
+    nil))
 
 (defn- read* [opts stream]
   (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
@@ -32,8 +60,9 @@
                        resolve-symbol
                        *data-readers*
                        (:features opts)
-                       (not= :preserve (:read-cond opts))
+                       (read-cond-mode opts)
                        *default-data-reader-fn*
+                       (reader-eval-fn)
                        (not *suppress-read*))))
 
 (defn read
@@ -41,8 +70,8 @@
   ([stream] (read stream true nil))
   ([opts stream] (read* opts stream))
   ([stream eof-error? eof-value]
-   (backend/read_form stream eof-error? eof-value resolve-symbol *data-readers* nil true
-                      *default-data-reader-fn* (not *suppress-read*))))
+   (backend/read_form stream eof-error? eof-value resolve-symbol *data-readers* nil nil
+                      *default-data-reader-fn* (reader-eval-fn) (not *suppress-read*))))
 
 (defn read-string
   ([s] (read-string {} s))
@@ -55,17 +84,40 @@
   ([stream] (read+string stream true nil))
   ([stream eof-error? eof-value]
    (vec (backend/read_form_with_source stream eof-error? eof-value resolve-symbol *data-readers*
-                                       nil true *default-data-reader-fn* (not *suppress-read*))))
+                                       nil nil *default-data-reader-fn* (reader-eval-fn)
+                                       (not *suppress-read*))))
   ([opts stream]
    (let [eof (if (contains? opts :eof) (:eof opts) :eofthrow)]
      (vec (backend/read_form_with_source stream (= eof :eofthrow) eof resolve-symbol
                                          *data-readers* (:features opts)
-                                         (not= :preserve (:read-cond opts))
+                                         (read-cond-mode opts)
                                          *default-data-reader-fn*
+                                         (reader-eval-fn)
                                          (not *suppress-read*))))))
 
 (defn read-regex [reader char opts pending-forms]
   (backend/read_regex reader char opts pending-forms))
+
+(defn- read-symbol-meta [reader value]
+  (if (symbol? value)
+    (if-let [m (meta value)]
+      (let [line     (:basilisp.lang.reader/line m)
+            column   (:basilisp.lang.reader/col m)
+            end-line (:basilisp.lang.reader/end-line m)
+            end-col  (:basilisp.lang.reader/end-col m)
+            file     (reader-types/get-file-name reader)]
+        (with-meta value
+          (cond-> {}
+            file     (assoc :file file)
+            line     (assoc :line line)
+            column   (assoc :column (inc column))
+            end-line (assoc :end-line end-line)
+            end-col  (assoc :end-column (inc end-col)))))
+      value)
+    value))
+
+(defn read-symbol [reader char]
+  (read-symbol-meta reader (backend/read_symbol reader char)))
 
 (defmacro syntax-quote [form]
   (backend/syntax_quote form resolve-symbol *data-readers* nil true *default-data-reader-fn*))

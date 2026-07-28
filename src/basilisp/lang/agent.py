@@ -298,6 +298,8 @@ class Agent(RefBase[T], Generic[T]):
             with self._condition:
                 self._active = False
                 if self._error_mode == "continue":
+                    if handler_error is None:
+                        self._error = None
                     try:
                         scheduled = self._schedule_next()
                     except BaseException as exc:

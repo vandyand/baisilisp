@@ -1,7 +1,10 @@
 (ns tests.basilisp.test-string
   (:require
    [basilisp.string :as str]
-   [basilisp.test :refer [deftest is are testing]]))
+   [basilisp.test :refer [deftest is are testing]]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]))
 
 (deftest alpha?-test
   (are [x] (not (str/alpha? x))
@@ -146,9 +149,9 @@
   (testing "from an index"
     (are [sub start i] (= i (str/last-index-of "Chris is thrice my favorite" sub start))
       "hri" 5  1
-      "hri" 1 nil
+      "hri" 1  1
       "is"  5  3
-      "is"  3 nil)))
+      "is"  3  3)))
 
 (deftest join-test
   (are [coll s] (= s (str/join coll))
@@ -169,12 +172,12 @@
   (testing "split on regex patterns"
     (are [s pat coll] (= coll (str/split s (re-pattern pat)))
       "Basilisp is awesome!" " "    ["Basilisp" "is" "awesome!"]
-      "q1w2e3r4t5y6u7i8o9p0" "\\d+" ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p", ""]
+      "q1w2e3r4t5y6u7i8o9p0" "\\d+" ["q", "w", "e", "r", "t", "y", "u", "i", "o", "p"]
       " q1w2 "               ""     [" ", "q", "1", "w", "2", " "]
       "a"                    "b"    ["a"]
       ""                     "b"    [""]
-      ""                     ""     []
-      "a"                    "a"    ["" ""])
+      ""                     ""     [""]
+      "a"                    "a"    [])
 
     (is (= ["q", "w", "e", "r", "t5y6u7i8o9p0"]
            (str/split "q1w2e3r4t5y6u7i8o9p0" (re-pattern "\\d+") 5))))
@@ -185,15 +188,20 @@
       " q1w2 "               ""  [" ", "q", "1", "w", "2", " "]
       "a"                    "b" ["a"]
       ""                     "b" [""]
-      ""                     ""  []
-      "a"                    "a" ["" ""])))
+      ""                     ""  [""]
+      "a"                    "a" [])
+    (are [s pat limit coll] (= coll (str/split s pat limit))
+      "a,b," "," 0 ["a" "b"]
+      "a,b," "," 2 ["a" "b,"]
+      "abc"  ""  2 ["a" "bc"])))
 
 (deftest split-lines-test
   (are [s coll] (= coll (str/split-lines s))
     ""                              []
     "Hello, my name is Chris."      ["Hello, my name is Chris."]
     "Hello,\n my name is Chris."    ["Hello," " my name is Chris."]
-    "Hello,\n my name \r is Chris." ["Hello," " my name " " is Chris."]))
+    "Hello,\n my name \r is Chris." ["Hello," " my name \r is Chris."]
+    "a\nb\r\nc\r"                  ["a" "b" "c\r"]))
 
 (deftest lpad-test
   (testing "default pad"
@@ -228,6 +236,10 @@
          (str/replace "The color is red" #"[aeiou]" #(str % %))))
   (is (= "1 2 1"
          (str/replace "a b a" #"[ab]" {"a" "1" "b" "2"})))
+  (is (= "1:a 22:b"
+         (str/replace "a1 b22" #"([a-z])(\d+)" "$2:$1")))
+  (is (= "a$b"
+         (str/replace "a$b" #"\$" (str/re-quote-replacement "$"))))
   (is (= "Unchanged"
          (str/replace "Unchanged" #"Different" "Not the same"))))
 
@@ -275,3 +287,23 @@
     "Chris Crink\n"   "Chris Crink"
     "Chris Crink\r\n" "Chris Crink"
     "Chris Crink\n\r" "Chris Crink"))
+
+(deftest extension-pad-trim-predicate-helpers-hold-under-seeded-fuzzing
+  (let [small-string (gen/fmap (fn [chars] (apply str chars))
+                               (gen/vector gen/char-alphanumeric 0 24))
+        property (prop/for-all [s small-string
+                                width (gen/choose 0 40)]
+                   (let [left (str/lpad s width "0")
+                         right (str/rpad s width "0")
+                         newline-suffix (str s "\r\n\n")]
+                     (and (= (max width (count s)) (count left))
+                          (= (max width (count s)) (count right))
+                          (str/ends-with? left s)
+                          (str/starts-with? right s)
+                          (= s (str/trim-newlines newline-suffix))
+                          (= (.isalpha s) (str/alpha? s))
+                          (= (.isalnum s) (str/alphanumeric? s))
+                          (= (.isdigit s) (str/digits? s)))))
+        result (tc/quick-check 180 property :seed 20260724 :max-size 60)]
+    (is (:pass? result))
+    (is (= 180 (:num-tests result)))))

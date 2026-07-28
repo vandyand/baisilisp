@@ -28,7 +28,7 @@ PRINT_DUP = False
 PRINT_LENGTH: PrintCountSetting = None
 PRINT_LEVEL: PrintCountSetting = None
 PRINT_META = False
-PRINT_NAMESPACE_MAPS = False
+PRINT_NAMESPACE_MAPS = True
 PRINT_READABLY = True
 SEQ_PRINT_SEPARATOR = " "
 MAP_PRINT_SEPARATOR = ", "
@@ -58,6 +58,19 @@ def process_lrepr_kwargs(**kwargs: Unpack[PrintSettings]) -> PrintSettings:
     return cast(
         PrintSettings, dict(kwargs, print_level=_dec_print_level(kwargs["print_level"]))
     )
+
+
+def meta_lrepr(meta: Any, **kwargs: Unpack[PrintSettings]) -> str:
+    """Render printable metadata, using Clojure's single ``:tag`` shorthand."""
+
+    try:
+        if len(meta) == 1:
+            for k, v in meta.items():
+                if getattr(k, "name", None) == "tag" and getattr(k, "ns", None) is None:
+                    return lrepr(v, **kwargs)
+    except (AttributeError, TypeError):
+        pass
+    return lrepr(meta, **kwargs)
 
 
 class LispObject(ABC):
@@ -124,8 +137,10 @@ def seq_lrepr(
     seq_lrepr = SEQ_PRINT_SEPARATOR.join(items + trailer)
 
     print_meta = kwargs["print_meta"]
-    if print_meta and meta:
-        return f"^{lrepr(meta, **kwargs)} {start}{seq_lrepr}{end}"
+    print_dup = kwargs["print_dup"]
+    print_readably = kwargs["print_readably"]
+    if (print_dup or (print_meta and print_readably)) and meta:
+        return f"^{meta_lrepr(meta, **kwargs)} {start}{seq_lrepr}{end}"
 
     return f"{start}{seq_lrepr}{end}"
 

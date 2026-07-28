@@ -1,0 +1,23 @@
+(ns basilisp.java.basis.impl
+  "Implementation state for :lpy:ns:`basilisp.java.basis`.
+
+  The shape mirrors Clojure's public implementation vars: an initial basis
+  delay, a delayed atom containing the current basis, and an update helper."
+  (:refer-clojure :exclude [update-basis!]))
+
+(def init-basis
+  "Delay containing Basilisp's initial dependency basis.
+
+  Clojure initializes this from the ``clojure.basis`` JVM system property. There
+  is no equivalent Python process-wide classpath basis, so the portable default
+  is ``nil``."
+  (delay nil))
+
+(def the-basis
+  "Delay containing the mutable current basis atom."
+  (delay (atom @init-basis)))
+
+(defn update-basis!
+  "Apply ``f`` and ``args`` to the current basis and store the result."
+  [f & args]
+  (apply swap! @the-basis f args))

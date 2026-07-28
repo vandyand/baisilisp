@@ -6,7 +6,9 @@ import base64
 from collections.abc import Mapping
 from typing import Any, BinaryIO
 
-_DECODE_TABLE = [0] * 256
+_DECODE_TABLE = [0] * (
+    max(b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/") + 1
+)
 for _value, _byte in enumerate(
     b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
 ):
@@ -101,10 +103,10 @@ def _decode_bytes(data: bytes) -> bytearray:
     output_index = 0
     while output_index < decoded_length:
         bits = (
-            (_DECODE_TABLE[data[input_index]] << 18)
-            | (_DECODE_TABLE[data[input_index + 1]] << 12)
-            | (_DECODE_TABLE[data[input_index + 2]] << 6)
-            | _DECODE_TABLE[data[input_index + 3]]
+            (_decode_value(data[input_index]) << 18)
+            | (_decode_value(data[input_index + 1]) << 12)
+            | (_decode_value(data[input_index + 2]) << 6)
+            | _decode_value(data[input_index + 3])
         )
         input_index += 4
         output[output_index] = (bits >> 16) & 0xFF
@@ -116,6 +118,13 @@ def _decode_bytes(data: bytes) -> bytearray:
             output[output_index] = bits & 0xFF
             output_index += 1
     return output
+
+
+def _decode_value(encoded_byte: int) -> int:
+    try:
+        return _DECODE_TABLE[encoded_byte]
+    except IndexError as exc:
+        raise ValueError("base64 input byte exceeds decoder table") from exc
 
 
 def _read_fully(stream: BinaryIO, size: int) -> bytes:

@@ -13,7 +13,19 @@
 
 (emit-case :keyfn-and-comparator
            {:descending (vec (pm/priority-map-by > :a 1 :b 3 :c 2))
-            :keyfn (vec (pm/priority-map-keyfn first :a [2 :apple] :b [1 :banana]))})
+            :keyfn (vec (pm/priority-map-keyfn first :a [2 :apple] :b [1 :banana]))
+            :keyfn-by (vec (pm/priority-map-keyfn-by
+                             first
+                             >
+                             :a [2 :apple]
+                             :b [1 :banana]
+                             :c [3 :carrot]))
+            :keyfn-by-assoc (vec (assoc (pm/priority-map-keyfn-by
+                                          first
+                                          >
+                                          :a [2 :apple]
+                                          :b [1 :banana])
+                                    :c [3 :carrot]))})
 
 (let [p (pm/priority-map :a 2 :b 1 :c 3)]
   (emit-case :bounds {:subseq (vec (pm/subseq p < 3))

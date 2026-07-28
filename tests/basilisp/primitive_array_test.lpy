@@ -3,8 +3,8 @@
   (:require [basilisp.test :refer [deftest is]]))
 
 (defn- signed [value bits]
-  (let [modulus (bit-shift-left 1 bits)
-        sign    (bit-shift-left 1 (dec bits))
+  (let [modulus (python/pow 2 bits)
+        sign    (python/pow 2 (dec bits))
         wrapped (mod value modulus)]
     (if (>= wrapped sign)
       (- wrapped modulus)
@@ -60,10 +60,28 @@
   (let [values (short-array 1)]
     (is (thrown? Exception (aset values 0 "bad")))))
 
+(deftest primitive-array-casts-require-matching-array-type
+  (is (= [true false] (vec (booleans (boolean-array [true false])))))
+  (is (= [-1 0 127] (vec (bytes (byte-array [-1 0 127])))))
+  (is (= [(char 97) (char 90)] (vec (chars (char-array "aZ")))))
+  (is (= [-1 2] (vec (shorts (short-array [-1 2])))))
+  (is (= [1 2] (vec (ints (int-array [1 2])))))
+  (is (= [1 2] (vec (longs (long-array [1 2])))))
+  (is (= [1.0 2.5] (vec (floats (float-array [1 2.5])))))
+  (is (= [1.0 2.5] (vec (doubles (double-array [1 2.5])))))
+  (is (thrown? Exception (booleans 3)))
+  (is (thrown? Exception (bytes [1 2])))
+  (is (thrown? Exception (chars "az")))
+  (is (thrown? Exception (shorts (int-array [1]))))
+  (is (thrown? Exception (ints (long-array [1]))))
+  (is (thrown? Exception (longs (int-array [1]))))
+  (is (thrown? Exception (floats (double-array [1.0]))))
+  (is (thrown? Exception (doubles (float-array [1.0])))))
+
 (deftest seeded-fixed-width-fuzzing-and-binary-roundtrips
   (let [rng (random/Random 147209)]
     (dotimes [_ 800]
-      (let [raw     (.randint rng (- (bit-shift-left 1 70)) (bit-shift-left 1 70))
+      (let [raw     (.randint rng (- (python/pow 2 70)) (python/pow 2 70))
             bytes   (byte-array [raw])
             shorts  (short-array [raw])
             ints    (int-array [raw])

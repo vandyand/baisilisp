@@ -14,6 +14,7 @@ from typing import Any
 from basilisp.lang import keyword as kw
 from basilisp.lang import list as llist
 from basilisp.lang import map as lmap
+from basilisp.lang import set as lset
 from basilisp.lang import symbol as sym
 from basilisp.lang import vector as vec
 from basilisp.lang.exception import ExceptionInfo
@@ -23,6 +24,8 @@ from basilisp.lang.util import munge
 
 INVALID = kw.keyword("invalid", ns="basilisp.spec.alpha")
 _PROBLEMS = kw.keyword("problems", ns="basilisp.spec.alpha")
+_SPEC = kw.keyword("spec", ns="basilisp.spec.alpha")
+_VALUE = kw.keyword("value", ns="basilisp.spec.alpha")
 _PATH = kw.keyword("path")
 _PRED = kw.keyword("pred")
 _VAL = kw.keyword("val")
@@ -33,6 +36,7 @@ _FUNCTION_SPECS: dict[Any, "_FSpec"] = {}
 _INSTRUMENTED: dict[Var, "_Instrumented"] = {}
 _REGISTRY_LOCK = threading.RLock()
 _MISSING = object()
+_INSTRUMENT_DISABLED = threading.local()
 
 _CALL_ARGS = kw.keyword("args")
 _CALL_RET = kw.keyword("ret")
@@ -479,6 +483,22 @@ def get_fspec(target: Any) -> _FSpec | None:
         return _FUNCTION_SPECS.get(target)
 
 
+def function_spec_symbols() -> IPersistentSet:
+    """Return symbols for Vars with registered function specs."""
+    with _REGISTRY_LOCK:
+        return lset.set(_var_symbol_value(target) for target in _FUNCTION_SPECS)
+
+
+def checkable_syms() -> IPersistentSet:
+    """Return registered fdef symbols eligible for generated checking."""
+    return function_spec_symbols()
+
+
+def instrumentable_syms() -> IPersistentSet:
+    """Return registered fdef symbols eligible for instrumentation."""
+    return function_spec_symbols()
+
+
 def instrument(*targets: Var) -> tuple[Var, ...]:
     """Instrument registered, non-dynamic Basilisp Vars in place.
 
@@ -504,6 +524,27 @@ def unstrument(*targets: Var) -> tuple[Var, ...]:
         return tuple(selected)
 
 
+def push_instrument_disabled() -> int:
+    """Disable instrumented call validation in the current thread."""
+    depth = getattr(_INSTRUMENT_DISABLED, "depth", 0) + 1
+    _INSTRUMENT_DISABLED.depth = depth
+    return depth
+
+
+def pop_instrument_disabled() -> int:
+    """Restore the previous instrumented call validation state."""
+    depth = getattr(_INSTRUMENT_DISABLED, "depth", 0)
+    if depth <= 0:
+        raise RuntimeError("instrument disable scope underflow")
+    depth -= 1
+    _INSTRUMENT_DISABLED.depth = depth
+    return depth
+
+
+def instrument_disabled_q() -> bool:
+    return getattr(_INSTRUMENT_DISABLED, "depth", 0) > 0
+
+
 def check(
     *targets: Var, num_tests: int = 100, seed: int | None = None
 ) -> tuple[IPersistentMap, ...]:
@@ -520,6 +561,13 @@ def check(
     with _REGISTRY_LOCK:
         selected = targets or tuple(_FUNCTION_SPECS)
         return tuple(_check_function(target, num_tests, seed) for target in selected)
+
+
+def check_targets(
+    targets: Iterable[Var], *, num_tests: int = 100, seed: int | None = None
+) -> tuple[IPersistentMap, ...]:
+    """Run generated checks for an iterable of registered function Vars."""
+    return check(*tuple(targets), num_tests=num_tests, seed=seed)
 
 
 def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersistentMap:
@@ -540,6 +588,60 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
     if not callable(callable_target):
         raise TypeError("can only generate checks for Vars with callable roots")
 
+    return _check_callable(
+        callable_target,
+        function_spec,
+        num_tests,
+        seed,
+        target_label=_var_symbol_value(target),
+        validation_target=target,
+    )
+
+
+def check_fspec(
+    target: Any,
+    function_spec: _FSpec,
+    *,
+    num_tests: int = 100,
+    seed: int | None = None,
+) -> IPersistentMap:
+    """Run generated checks for an explicit ``s/fspec`` and callable target."""
+    if isinstance(num_tests, bool) or not isinstance(num_tests, int) or num_tests < 1:
+        raise ValueError("num_tests must be a positive integer")
+    if seed is not None and (isinstance(seed, bool) or not isinstance(seed, int)):
+        raise TypeError("seed must be an integer or None")
+    if isinstance(target, Var):
+        callable_target = target.root
+        target_label = _var_symbol_value(target)
+    else:
+        callable_target = target
+        target_label = target
+    if not callable(callable_target):
+        raise TypeError("check-fn targets must be callable or Basilisp Vars")
+    if not isinstance(function_spec, _FSpec):
+        raise TypeError("check-fn requires an s/fspec value")
+    if function_spec.args is None:
+        raise ValueError("cannot generate checks without an fspec :args spec")
+    return _check_callable(
+        callable_target,
+        function_spec,
+        num_tests,
+        seed,
+        target_label=target_label,
+        validation_target=target if isinstance(target, Var) else None,
+    )
+
+
+def _check_callable(
+    callable_target: Callable[..., Any],
+    function_spec: _FSpec,
+    num_tests: int,
+    seed: int | None,
+    *,
+    target_label: Any,
+    validation_target: Var | None = None,
+) -> IPersistentMap:
+    argument_strategy = _strategy_for_regex(function_spec.args)
     try:
         from hypothesis import given
         from hypothesis import seed as hypothesis_seed
@@ -559,14 +661,20 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
             raise AssertionError(explain_str(function_spec.args, call_args))
         result = callable_target(*call_args)
         if function_spec.ret is not None:
-            _validate_function_value(target, ":ret", function_spec.ret, result)
+            if validation_target is not None:
+                _validate_function_value(
+                    validation_target, ":ret", function_spec.ret, result
+                )
+            else:
+                _assert_function_value(":ret", function_spec.ret, result)
         if function_spec.fn is not None:
-            _validate_function_value(
-                target,
-                ":fn",
-                function_spec.fn,
-                lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: result}),
-            )
+            fn_value = lmap.map({_CALL_ARGS: conformed_args, _CALL_RET: result})
+            if validation_target is not None:
+                _validate_function_value(
+                    validation_target, ":fn", function_spec.fn, fn_value
+                )
+            else:
+                _assert_function_value(":fn", function_spec.fn, fn_value)
 
     if seed is not None:
         check_one = hypothesis_seed(seed)(check_one)
@@ -576,7 +684,7 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
     except Exception as exc:  # Hypothesis reraises the minimized failure.
         return lmap.map(
             {
-                _CALL_TARGET: _var_symbol(target),
+                _CALL_TARGET: target_label,
                 _CHECK_PASS: False,
                 _CHECK_NUM_TESTS: num_tests,
                 _CHECK_FAILURE: exc,
@@ -584,7 +692,7 @@ def _check_function(target: Var, num_tests: int, seed: int | None) -> IPersisten
         )
     return lmap.map(
         {
-            _CALL_TARGET: _var_symbol(target),
+            _CALL_TARGET: target_label,
             _CHECK_PASS: True,
             _CHECK_NUM_TESTS: num_tests,
         }
@@ -709,6 +817,52 @@ def _strategy_for_value(spec: Any) -> Any:
         return strategies.binary()
     if spec is type(None):
         return strategies.none()
+    if callable(spec):
+        return _strategy_for_predicate_value(spec)
+    raise TypeError(f"cannot generate values for {spec!r}; wrap it with with-gen")
+
+
+def _strategy_for_predicate_value(spec: Any) -> Any:
+    strategies = _hypothesis_strategies()
+    name = _callable_name(spec)
+    simple: dict[str, Any] = {
+        "any__Q__": strategies.one_of(
+            strategies.none(),
+            strategies.booleans(),
+            strategies.integers(),
+            strategies.floats(allow_nan=False),
+            strategies.text(),
+            strategies.binary(),
+        ),
+        "boolean__Q__": strategies.booleans(),
+        "bytes__Q__": strategies.binary(),
+        "double__Q__": strategies.floats(allow_nan=False),
+        "float__Q__": strategies.floats(allow_nan=False),
+        "int__Q__": strategies.integers(),
+        "integer__Q__": strategies.integers(),
+        "number__Q__": strategies.one_of(
+            strategies.integers(), strategies.floats(allow_nan=False)
+        ),
+        "string__Q__": strategies.text(),
+    }
+    if name in simple:
+        return simple[name]
+    if name == "some__Q__":
+        return simple["any__Q__"].filter(bool)
+    if name == "nil__Q__":
+        return strategies.none()
+    if name == "true__Q__":
+        return strategies.just(True)
+    if name == "false__Q__":
+        return strategies.just(False)
+    if name == "zero__Q__":
+        return strategies.just(0)
+    if name == "pos_int__Q__":
+        return strategies.integers(min_value=1)
+    if name == "neg_int__Q__":
+        return strategies.integers(max_value=-1)
+    if name == "nat_int__Q__":
+        return strategies.integers(min_value=0)
     raise TypeError(f"cannot generate values for {spec!r}; wrap it with with-gen")
 
 
@@ -1172,8 +1326,13 @@ def _base_regex_generator(
     blocked: frozenset[kw.Keyword],
 ) -> Any:
     impl = _test_check_impl()
+    overridden = _generator_override(spec, overrides, path)
+    if overridden is not None:
+        return _regex_context_generator(spec, overridden)
     if isinstance(spec, _WithGen):
-        return _resolve_test_check_generator(spec.generator)
+        return _regex_context_generator(
+            spec.spec, _resolve_test_check_generator(spec.generator)
+        )
     if isinstance(spec, kw.Keyword):
         return _base_generator_for_value(spec, overrides, path, blocked)
     if isinstance(spec, _Cat):
@@ -1398,9 +1557,11 @@ def _regex_generator(
     impl = _test_check_impl()
     overridden = _generator_override(spec, overrides, path)
     if overridden is not None:
-        return overridden
+        return _regex_context_generator(spec, overridden)
     if isinstance(spec, _WithGen):
-        return _resolve_test_check_generator(spec.generator)
+        return _regex_context_generator(
+            spec.spec, _resolve_test_check_generator(spec.generator)
+        )
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         if resolved is None:
@@ -1422,8 +1583,9 @@ def _regex_generator(
             for tag, child in spec.branches
         )
     if isinstance(spec, _Repeat):
-        repeated = impl.vector(
-            _regex_generator(spec.spec, overrides, path, seen), spec.minimum
+        child = _regex_generator(spec.spec, overrides, path, seen)
+        repeated = impl.sized(
+            lambda size: impl.vector(child, spec.minimum, max(spec.minimum, size))
         )
         return impl.fmap(
             lambda values: vec.v(*_flatten_generated_values(values)), repeated
@@ -1452,6 +1614,17 @@ def _regex_generator(
 
 def _callable_name(value: Any) -> str | None:
     return getattr(value, "__name__", None)
+
+
+def _regex_context_generator(spec: Any, generator: Any) -> Any:
+    impl = _test_check_impl()
+    if isinstance(spec, kw.Keyword):
+        resolved = get_spec(spec)
+        if regex_q(resolved):
+            return generator
+    if regex_q(spec):
+        return generator
+    return impl.fmap(lambda value: vec.v(value), generator)
 
 
 def _generator_for_predicate(spec: Any) -> Any:
@@ -1663,6 +1836,9 @@ def _validate_call(
     args: tuple[Any, ...],
     kwargs: dict[str, Any],
 ) -> Any:
+    if instrument_disabled_q():
+        return original(*args, **kwargs)
+
     function_spec = _FUNCTION_SPECS.get(target)
     if function_spec is None:
         return original(*args, **kwargs)
@@ -1710,8 +1886,19 @@ def _validate_function_value(target: Var, role: str, contract: Any, value: Any) 
     )
 
 
+def _assert_function_value(role: str, contract: Any, value: Any) -> Any:
+    conformed = conform(contract, value)
+    if conformed is not INVALID:
+        return conformed
+    raise AssertionError(explain_str(contract, value))
+
+
 def _var_symbol(target: Var) -> str:
     return f"{target.ns.name}/{target.name.name}"
+
+
+def _var_symbol_value(target: Var) -> sym.Symbol:
+    return sym.symbol(target.name.name, ns=target.ns.name)
 
 
 def valid(spec: Any, value: Any) -> bool:
@@ -1735,6 +1922,11 @@ def unform(spec: Any, value: Any) -> Any:
         return value
     if isinstance(spec, _Merge):
         return _merge_maps(unform(child, value) for child in reversed(spec.specs))
+    if isinstance(spec, _And):
+        unformed = value
+        for child in reversed(spec.specs):
+            unformed = unform(child, unformed)
+        return unformed
     if isinstance(spec, kw.Keyword):
         resolved = get_spec(spec)
         return value if resolved is None else unform(resolved, value)
@@ -1750,7 +1942,7 @@ def explain_data(spec: Any, value: Any) -> IPersistentMap | None:
     problems: list[IPersistentMap] = []
     if _conform(spec, value, (), (), (), problems) is not INVALID:
         return None
-    return lmap.map({_PROBLEMS: vec.v(*problems)})
+    return lmap.map({_PROBLEMS: vec.v(*problems), _SPEC: spec, _VALUE: value})
 
 
 def form(spec_: Any) -> Any:
@@ -2179,19 +2371,25 @@ def _match_regex_all(spec, values, position, path, via, location, problems):
         return
     if isinstance(spec, _Alt):
         for tag, child in spec.branches:
-            matched = _match_regex(child, values, position, path, via, location, None)
+            child_path = (*path, tag)
+            matched = _match_regex(
+                child, values, position, child_path, via, location, None
+            )
             if matched is not None:
                 conformed, next_position = matched
                 yield vec.v(tag, conformed), next_position
                 return
         if problems is not None:
-            for _tag, child in spec.branches:
-                _match_regex(child, values, position, path, via, location, problems)
+            for tag, child in spec.branches:
+                _match_regex(
+                    child, values, position, (*path, tag), via, location, problems
+                )
         if position >= len(values):
             _invalid(spec, None, path, via, (*location, position), problems)
         return
     if isinstance(spec, _Repeat):
         matches = []
+        positions = [position]
         while True:
             matched = _match_regex(
                 spec.spec, values, position, path, via, location, None
@@ -2203,11 +2401,13 @@ def _match_regex_all(spec, values, position, path, via, location, problems):
                 raise ValueError("a repeated regex spec must consume an input value")
             matches.append(conformed)
             position = next_position
+            positions.append(position)
         if len(matches) < spec.minimum:
             if problems is not None:
                 _match_regex(spec.spec, values, position, path, via, location, problems)
             return
-        yield vec.v(*matches), position
+        for count in range(len(matches), spec.minimum - 1, -1):
+            yield vec.v(*matches[:count]), positions[count]
         return
     if isinstance(spec, _Maybe):
         matched = _match_regex(spec.spec, values, position, path, via, location, None)
@@ -2248,7 +2448,13 @@ def _match_cat(spec, values, position, path, via, location, problems):
             return
         tag, child = branches[index]
         for conformed, next_position in _match_regex_all(
-            child, values, current_position, path, via, location, problems
+            child,
+            values,
+            current_position,
+            (*path, tag),
+            via,
+            location,
+            problems,
         ):
             yield from step(index + 1, next_position, {**result, tag: conformed})
 

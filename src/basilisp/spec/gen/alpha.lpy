@@ -46,21 +46,26 @@
           (throw (ex-info "Named var is not a generator" {:name s})))))))
 
 ;; These macros are public in Clojure (though documented as implementation
-;; details).  Since Basilisp's test.check is always present, eager forwarding is
-;; equivalent while retaining their useful expansion behavior.
+;; details).  Preserve their expansion contract: each macro defines a function
+;; in the caller namespace which lazily resolves the matching test.check
+;; generator Var the first time it is used.
 (defmacro lazy-combinator [s]
-  `(def ~s (deref (resolve '~(clojure.core/symbol "basilisp.test.check.generators"
-                                                  (name s))))))
+  (let [fqn (clojure.core/symbol "basilisp.test.check.generators" (name s))]
+    `(let [g# (clojure.core/delay (deref (resolve '~fqn)))]
+       (defn ~s [& args#]
+         (apply @g# args#)))))
 
 (defmacro lazy-combinators [& syms]
-  `(do ~@(map (fn [s] `(lazy-combinator ~s)) syms)))
+  `(do ~@(vec (map (fn [s] `(lazy-combinator ~s)) syms))))
 
 (defmacro lazy-prim [s]
-  `(def ~s (deref (resolve '~(clojure.core/symbol "basilisp.test.check.generators"
-                                                  (name s))))))
+  (let [fqn (clojure.core/symbol "basilisp.test.check.generators" (name s))]
+    `(let [g# (clojure.core/delay (deref (resolve '~fqn)))]
+       (defn ~s [& _#]
+         @g#))))
 
 (defmacro lazy-prims [& syms]
-  `(do ~@(map (fn [s] `(lazy-prim ~s)) syms)))
+  `(do ~@(vec (map (fn [s] `(lazy-prim ~s)) syms))))
 
 ;; Generator combinators and primitive generators ---------------------------
 

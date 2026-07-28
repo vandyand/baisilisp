@@ -33,6 +33,53 @@ def test_checked_integer_enforces_exact_signed_width(bits, value):
             coerce.checked_integer(value, bits)
 
 
+@given(bits=st.sampled_from([8, 16, 32, 64]))
+def test_checked_integer_rejects_fractional_values_outside_original_range(bits):
+    lower = -(1 << (bits - 1))
+    upper = (1 << (bits - 1)) - 1
+
+    values = [
+        decimal.Decimal(lower) - decimal.Decimal("0.000001"),
+        decimal.Decimal(upper) + decimal.Decimal("0.000001"),
+        Fraction(lower * 10 - 1, 10),
+        Fraction(upper * 10 + 1, 10),
+    ]
+    if bits < 64:
+        values.extend((lower - 0.000001, upper + 0.000001))
+
+    for value in values:
+        with pytest.raises(ValueError):
+            coerce.checked_integer(value, bits)
+
+
+@given(
+    bits=st.sampled_from([8, 16, 32, 64]),
+    offset=st.integers(min_value=1, max_value=1000),
+    divisor=st.integers(min_value=2, max_value=1000),
+)
+def test_checked_integer_truncates_only_after_original_range_passes(
+    bits, offset, divisor
+):
+    lower = -(1 << (bits - 1))
+    upper = (1 << (bits - 1)) - 1
+
+    fraction = Fraction(offset, offset + divisor)
+    low_value = lower + fraction
+    high_value = upper - fraction
+
+    assert coerce.checked_integer(low_value, bits) == int(low_value)
+    assert coerce.checked_integer(high_value, bits) == int(high_value)
+
+
+@given(bits=st.sampled_from([8, 16, 32, 64]))
+def test_checked_integer_preserves_nan_zero_and_infinity_rejection(bits):
+    assert coerce.checked_integer(math.nan, bits) == 0
+    with pytest.raises(ValueError):
+        coerce.checked_integer(math.inf, bits)
+    with pytest.raises(ValueError):
+        coerce.checked_integer(-math.inf, bits)
+
+
 @pytest.mark.parametrize("bits", [8, 16, 32, 64])
 def test_integer_coercions_truncate_numeric_values_and_treat_nan_like_the_jvm(bits):
     assert coerce.checked_integer(Fraction(-19, 10), bits) == -1

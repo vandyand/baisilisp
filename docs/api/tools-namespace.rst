@@ -18,10 +18,10 @@ The deprecated root helpers ``find-ns-decls-on-classpath`` and
 ZIP/JAR archives and use the Basilisp ``:lpy`` platform, so ``.lpy`` and
 portable ``.cljc`` sources are discovered.
 
-The source-moving refactoring API from upstream is deliberately not exposed:
-it is labelled alpha upstream, is destructive, and has no safe cross-platform
-text-rewrite contract. The discovery and reload APIs are non-destructive apart
-from their normal in-process namespace reload effects.
+The source-moving refactoring API from upstream is exposed for source
+compatibility. It is labelled alpha upstream, is destructive, and performs a
+pure textual rewrite; use it only in version-controlled or disposable source
+trees.
 
 .. autonamespace:: basilisp.tools.namespace.parse
    :members:
@@ -45,4 +45,7 @@ from their normal in-process namespace reload effects.
    :members:
 
 .. autonamespace:: basilisp.tools.namespace.repl
+   :members:
+
+.. autonamespace:: basilisp.tools.namespace.move
    :members:

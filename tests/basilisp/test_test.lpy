@@ -62,11 +62,11 @@
       (is (= '(1 2 3 4 3 2 1) @events))))
 
   (testing "nesting fixtures"
-    (with-fixtures [(fn []
-                      (with-fixtures [(fn []
+    (with-fixtures [(fn [run]
+                      (with-fixtures [(fn [inner]
                                         (binding [*state* 1]
-                                          (yield)))]
-                        (yield)))]
+                                          (inner)))]
+                        (run)))]
       (is (= 1 *state*))))
 
   (testing "Clojure-style thunk fixtures"
@@ -86,6 +86,22 @@
                                       (index-fixture events 3)])]
         (swap! events conj 4))
       (is (= '(1 2 3 4 3 2 1) @events)))))
+
+(deftest clojure-style-fixture-composition-accepts-test-thunks
+  (let [events (atom [])
+        f1 (fn [run]
+             (swap! events conj :f1-before)
+             (run)
+             (swap! events conj :f1-after))
+        f2 (fn [run]
+             (swap! events conj :f2-before)
+             (run)
+             (swap! events conj :f2-after))]
+    ((join-fixtures [f1 f2]) #(swap! events conj :joined-body))
+    ((compose-fixtures f1 f2) #(swap! events conj :composed-body))
+    (is (= [:f1-before :f2-before :joined-body :f2-after :f1-after
+            :f1-before :f2-before :composed-body :f2-after :f1-after]
+           @events))))
 
 (deftest portable-thrown-assertion-test
   ;; This matches clojure-test-suite's ``p/thrown?`` assertion form. ``p`` is

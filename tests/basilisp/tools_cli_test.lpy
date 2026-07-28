@@ -3,7 +3,7 @@
             [basilisp.tools.cli :as cli]))
 
 (defn parse-int [value]
-  (int value))
+  (python/int value))
 
 (deftest parse-opts-upstream-contract-test
   (let [result (cli/parse-opts ["-abp80" "-v" "--no-daemon"]
@@ -43,3 +43,40 @@
                           :default 80 :desc "Port"}])))
   (is (= {:verbose false}
          (first (cli/cli ["--no-verbose"] ["--[no-]verbose"])))))
+
+(deftest tools-cli-1-4-subcommand-and-default-boundaries-test
+  (is (= {:options {:alpha true}
+          :arguments ["serve" "--beta" "x"]
+          :errors nil}
+         (select-keys (cli/parse-opts ["--alpha" "serve" "--beta" "x"]
+                                      [["-a" "--alpha"]
+                                       ["-b" "--beta"]]
+                                      :subcommand :explicit)
+                      [:options :arguments :errors])))
+  (is (= {:options {}
+          :arguments ["--unknown" "tail" "-a"]
+          :errors nil}
+         (select-keys (cli/parse-opts ["--unknown" "tail" "-a"]
+                                      [["-a" "--alpha"]]
+                                      :subcommand :implicit)
+                      [:options :arguments :errors])))
+  (is (thrown? basilisp.lang.exception/ExceptionInfo
+               (cli/parse-opts ["-a"]
+                               [["-a" "--alpha"]]
+                               :in-order true
+                               :subcommand :explicit)))
+  (is (= {:host "example.com" :port 443 :quiet true}
+         (:options (cli/parse-opts ["--host" "example.com"]
+                                   [["-H" "--host HOST"
+                                     :default "localhost"]
+                                    ["-p" "--port PORT"
+                                     :default-fn (fn [opts]
+                                                   (if (= "localhost" (:host opts))
+                                                     80
+                                                     443))]
+                                    ["-q" "--quiet"
+                                     :default true]]))))
+  (is (= ["Required value missing"]
+         (:errors (cli/parse-opts []
+                                  [[nil "--required VALUE"
+                                    :missing "Required value missing"]])))))

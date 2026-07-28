@@ -49,6 +49,20 @@
     (is (= {:a 1 :b 2}
            (wrapped/miss wrapped-cache :b 2)))))
 
+(deftest through-cache-and-ttl-factory-retain-upstream-contract
+  (let [base (cache/basic-cache-factory {:a 1 :b 2})
+        evicted (cache/evict base :a)
+        ttl (cache/ttl-cache-factory {:ttl-key 7} :ttl 0)
+        wrapped (cache/through-cache
+                 (cache/basic-cache-factory {})
+                 :wrapped
+                 (fn [f item] [:wrapped (f item) item])
+                 (fn [item] (name item)))]
+    (is (some? cache/CacheProtocol))
+    (is (= {:b 2} evicted))
+    (is (= :expired (cache/lookup ttl :ttl-key :expired)))
+    (is (= {:wrapped [:wrapped "wrapped" :wrapped]} wrapped))))
+
 (deftest soft-cache-is-explicitly-unavailable
   (is (contains? (ns-publics 'basilisp.core.cache) '->SoftCache))
   (is (contains? (ns-publics 'basilisp.core.cache) 'make-reference))

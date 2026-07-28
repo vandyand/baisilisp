@@ -14,13 +14,32 @@
     :else                                 (throw (python/ValueError
                                                   (str option " must be a single-character string")))))
 
+(defn- csv-write-character [option value]
+  (cond
+    (char? value)                         (str value)
+    (and (string? value) (= 1 (count value))) value
+    (integer? value)                      (str (char value))
+    :else                                 (throw (python/ValueError
+                                                  (str option " must be coercible to a CSV character")))))
+
+(defn- csv-character= [option ch]
+  (cond
+    (char? option)                         (= (str option) (str ch))
+    (and (string? option) (= 1 (count option))) (= option (str ch))
+    (integer? option)                      (= option (int ch))
+    :else                                  false))
+
 (defprotocol Read-CSV-From
   (read-csv-from [input sep quote]))
 
 (defn- csv-rows-seq [rows]
   (lazy-seq
    (when-some [row (python/next rows nil)]
-     (cons (vec row) (csv-rows-seq rows)))))
+     (cons (let [row (vec row)]
+             (if (empty? row)
+               [""]
+               row))
+           (csv-rows-seq rows)))))
 
 (defn- read-csv-from-reader [reader sep quote]
   (let [separator (csv-character ":separator" sep)
@@ -62,15 +81,17 @@
     (map #(zipmap header %) (rest rows))))
 
 (defn- default-quote? [separator quote value]
-  (some #(or (= separator (str %))
-             (= quote (str %))
+  (some #(or (csv-character= separator %)
+             (csv-character= quote %)
              (= "\r" (str %))
              (= "\n" (str %)))
         value))
 
 (defn- write-cell [writer value separator quote quote?]
   (let [value      (str value)
-        must-quote (quote? value)]
+        must-quote (quote? value)
+        quote      (when must-quote
+                     (csv-write-character ":quote" quote))]
     (when must-quote
       (.write writer quote))
     (.write writer (if must-quote
@@ -84,7 +105,7 @@
          first? true]
     (when cells
       (when-not first?
-        (.write writer separator))
+        (.write writer (csv-write-character ":separator" separator)))
       (write-cell writer (first cells) separator quote quote?)
       (recur (next cells) false))))
 
@@ -103,15 +124,13 @@
        ``:cr+lf``)"
   [writer data & {:keys [separator quote quote? newline]
                   :or {separator "," quote "\"" newline :lf}}]
-  (let [separator (csv-character ":separator" separator)
-        quote     (csv-character ":quote" quote)
+  (let [separator (or separator ",")
+        quote     (or quote "\"")
         quote?    (or quote? #(default-quote? separator quote %))
         nl        (cond
-             (= newline :lf)    "\n"
-             (= newline :cr+lf) "\r\n"
-             :else              (throw
-                                 (ex-info "newline must be one of: :lf or :cr+lf"
-                                          {:newline newline})))]
+             (or (nil? newline) (= newline :lf)) "\n"
+             (= newline :cr+lf)                  "\r\n"
+             :else                               "null")]
     (doseq [row data]
       (write-record writer row separator quote quote?)
       (.write writer nl))))

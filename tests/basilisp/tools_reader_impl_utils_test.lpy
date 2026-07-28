@@ -1,0 +1,95 @@
+(ns tests.basilisp.tools-reader-impl-utils-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader.impl.utils :as utils]))
+
+(defn- rejected? [f]
+  (try
+    (f)
+    false
+    (catch python/Exception _ true)))
+
+(deftest public-impl-utils-api-test
+  (is (boolean (find-ns 'basilisp.tools.reader.impl.utils)))
+  (doseq [sym '[<=clojure-1-7-alpha5
+                char
+                compile-when
+                desugar-meta
+                ex-info?
+                make-var
+                namespace-keys
+                newline?
+                numeric?
+                second'
+                whitespace?]]
+    (is (contains? (ns-publics 'basilisp.tools.reader.impl.utils)
+                   sym))))
+
+(deftest predicate-and-char-contracts
+  (is (false? utils/<=clojure-1-7-alpha5))
+  (is (nil? (utils/char nil)))
+  (is (nil? (utils/char false)))
+  (is (= "A" (str (utils/char 65))))
+  (is (= "Z" (str (utils/char \Z))))
+  (is (rejected? #(utils/char "A")))
+  (is (rejected? #(utils/char -1)))
+  (is (nil? (utils/whitespace? nil)))
+  (is (utils/whitespace? \space))
+  (is (utils/whitespace? \tab))
+  (is (utils/whitespace? \,))
+  (is (not (utils/whitespace? \a)))
+  (is (nil? (utils/numeric? nil)))
+  (is (utils/numeric? \0))
+  (is (utils/numeric? \7))
+  (is (not (utils/numeric? \a)))
+  (is (not (utils/numeric? \space)))
+  (is (utils/newline? nil))
+  (is (utils/newline? \newline))
+  (is (not (utils/newline? \return)))
+  (is (not (utils/newline? \a))))
+
+(deftest metadata-namespace-and-second-contracts
+  (is (= {:private true} (utils/desugar-meta :private)))
+  (is (= {:tag 'String} (utils/desugar-meta 'String)))
+  (is (= {:tag "String"} (utils/desugar-meta "String")))
+  (is (= {:param-tags '[String Long]}
+         (utils/desugar-meta '[String Long])))
+  (is (= {:a 1} (utils/desugar-meta {:a 1})))
+  (is (= 42 (utils/desugar-meta 42)))
+  (is (= '[demo/a :demo/b c :d x/y :x/y "s" 1]
+         (vec (utils/namespace-keys
+               "demo"
+               ['a :b '_/c :_/d 'x/y :x/y "s" 1]))))
+  (is (nil? (utils/second' [])))
+  (is (= 2 (utils/second' [nil 2])))
+  (is (= 2 (utils/second' [false 2])))
+  (is (nil? (utils/second' [1 2])))
+  (is (false? (utils/second' [nil false]))))
+
+(deftest compile-when-make-var-and-ex-info-contracts
+  (is (= [:compiled 1]
+         (utils/compile-when true [:compiled 1])))
+  (is (nil? (utils/compile-when false [:not-compiled])))
+  (is (= :modern
+         (utils/compile-when
+          (not utils/<=clojure-1-7-alpha5)
+          :modern)))
+  (is (utils/ex-info? (ex-info "x" {:a 1})))
+  (is (not (utils/ex-info? (python/Exception "x"))))
+  (is (not (utils/ex-info? nil)))
+  (let [v (utils/make-var)]
+    (is (var? v))
+    (is (not (thread-bound? v)))
+    (is (not (rejected? #(var-get v))))
+    (is (rejected? #(var-set v 1)))))
+
+(deftest seeded-character-corpus-stresses-predicates
+  (doseq [codepoint (range 0 128)]
+    (let [ch (utils/char codepoint)
+          s (str ch)]
+      (testing (str codepoint)
+        (is (= (or (.isspace s) (= "," s))
+               (boolean (utils/whitespace? ch))))
+        (is (= (.isdigit s)
+               (boolean (utils/numeric? ch))))
+        (is (= (or (= "\n" s) (nil? ch))
+               (boolean (utils/newline? ch))))))))

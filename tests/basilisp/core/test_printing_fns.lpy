@@ -46,6 +46,9 @@
       (is (= "(0 1 2 3 ...)" (pr-str (range 5))))))
 
   (testing "with *print-namespace-maps*"
+    (is (= true *print-namespace-maps*))
+    (is (= "#:a{:x 1, :y 2}" (pr-str (sorted-map :a/x 1 :a/y 2))))
+
     (is (= "#py {:a/x 5}" (binding [*print-namespace-maps* false] (pr-str #py {:a/x 5}))))
     (is (= "#py #:a{:x 5}" (binding [*print-namespace-maps* true] (pr-str #py {:a/x 5}))))
 
@@ -71,6 +74,24 @@
       "^{:m 1} #:a{:x 5}"    ^{:m 1} {:a/x 5}   true  true
       "^#:l{:m 1} #:a{:x 5}" ^{:l/m 1} {:a/x 5} true  true)
 
+    (testing "*print-meta* is suppressed when *print-readably* is false"
+      (are [expected form] (= expected form)
+        "[1]" (binding [*print-meta* true
+                        *print-readably* false]
+                (pr-str (with-meta [1] {:tag 'kind})))
+        "{:a 1}" (binding [*print-meta* true
+                           *print-readably* false]
+                   (pr-str (with-meta (sorted-map :a 1) {:tag 'kind})))
+        "^kind [1]" (binding [*print-meta* false
+                              *print-readably* false
+                              *print-dup* true]
+                     (pr-str (with-meta [1] {:tag 'kind})))
+        "^kind {:a 1}" (binding [*print-meta* false
+                                 *print-readably* false
+                                 *print-dup* true]
+                        (pr-str (with-meta (sorted-map :a 1)
+                                  {:tag 'kind})))))
+
     (are [res m pl] (= res (binding [*print-namespace-maps* true
                                      *print-meta*           true
                                      *print-level* pl]
@@ -79,6 +100,110 @@
       "^{:m 1} #:a{:x 5}"                ^{:m 1} {:a/x 5}                1
       "^{:m 1} #:a{:x #}"                ^{:m 1} {:a/x ^{:x 22} {:b 36}} 1
       "^{:m 1} #:a{:x ^{:x 22} {:b 36}}" ^{:m 1} {:a/x ^{:x 22} {:b 36}} 2)))
+
+(defn next-print-seed [seed]
+  (mod (+ (* seed 1103515245) 12345) 2147483648))
+
+(defn generated-printable-value [seed depth]
+  (let [choice (mod seed 10)]
+    (cond
+      (zero? depth) (case (mod seed 5)
+                      0 seed
+                      1 (keyword "k" (str "v" (mod seed 7)))
+                      2 (symbol "s" (str "v" (mod seed 7)))
+                      3 (str "s" (mod seed 11))
+                      nil)
+      (= choice 0) [(generated-printable-value (next-print-seed seed)
+                                               (dec depth))
+                    (generated-printable-value (next-print-seed (next-print-seed seed))
+                                               (dec depth))]
+      (= choice 1) (list (generated-printable-value (next-print-seed seed)
+                                                    (dec depth))
+                         (generated-printable-value (next-print-seed (next-print-seed seed))
+                                                    (dec depth)))
+      (= choice 2) (sorted-set (mod seed 17)
+                               (mod (next-print-seed seed) 17)
+                               (mod (next-print-seed (next-print-seed seed)) 17))
+      (= choice 3) (sorted-map :a (generated-printable-value (next-print-seed seed)
+                                                             (dec depth))
+                               :b (generated-printable-value
+                                   (next-print-seed (next-print-seed seed))
+                                   (dec depth)))
+      (= choice 4) (with-meta [(mod seed 9)] {:tag 'generated})
+      (= choice 5) (str "text-" (mod seed 13))
+      (= choice 6) (keyword "generated" (str "k" (mod seed 19)))
+      (= choice 7) (case (mod seed 4)
+                     0 \a
+                     1 \space
+                     2 \newline
+                     \tab)
+      (= choice 8) (tagged-literal 'generated/value
+                                   [(mod seed 7)
+                                    (generated-printable-value
+                                     (next-print-seed seed)
+                                     (dec depth))])
+      :else (sorted-map :a/x (generated-printable-value
+                              (next-print-seed seed)
+                              (dec depth))
+                        :a/y (generated-printable-value
+                              (next-print-seed (next-print-seed seed))
+                              (dec depth))))))
+
+(deftest adversarial-print-source-resource-boundaries-test
+  (let [sample-escaped-string (str "a" \newline "b" \tab "\\" "c")
+        tagged (tagged-literal 'foo/bar [1 2])
+        tagged-map (tagged-literal 'foo/bar {:a [1]})]
+    (is (= ["\\a" "\\space" " " "\n"]
+           [(pr-str \a)
+            (pr-str \space)
+            (print-str \space)
+            (binding [*print-readably* false]
+              (pr-str \newline))]))
+    (is (= ["\"a\\nb\\t\\\\c\"" "a\nb\t\\c"]
+           [(pr-str sample-escaped-string)
+            (binding [*print-readably* false]
+              (pr-str sample-escaped-string))]))
+    (is (= ["#foo/bar [1 2]" "#foo/bar [1 ...]" "#foo/bar {:a #}"]
+           [(pr-str tagged)
+            (binding [*print-length* 1]
+              (pr-str tagged))
+            (binding [*print-level* 1]
+              (pr-str tagged-map))]))
+    (is (= ["#:a{:x 1, ...}" "#:a{:x #, :y #}" "^#:a{:m 1} #:a{:x 1, :y 2}"]
+           [(binding [*print-namespace-maps* true
+                      *print-length* 1]
+              (pr-str (sorted-map :a/x 1 :a/y 2)))
+            (binding [*print-namespace-maps* true
+                      *print-level* 1]
+              (pr-str (sorted-map :a/x [1]
+                                  :a/y {:z 2})))
+            (binding [*print-namespace-maps* true
+                      *print-meta* true]
+              (pr-str
+               (with-meta
+                 (sorted-map :a/x 1 :a/y 2)
+                 {:a/m 1})))]))
+    (is (= ["#{1 2 ...}" "#"]
+           [(binding [*print-length* 2]
+              (pr-str (sorted-set 1 2 3)))
+            (binding [*print-level* 0]
+              (pr-str (sorted-set 1 2 3)))]))))
+
+(deftest adversarial-generated-printing-test
+  (testing "generated printable values obey metadata and truncation invariants"
+    (doseq [seed (take 200 (iterate next-print-seed 20260725))]
+      (let [value (generated-printable-value seed 3)
+            plain (pr-str value)
+            limited (binding [*print-length* 2
+                              *print-level* 2]
+                      (pr-str value))
+            unreadable-meta (binding [*print-meta* true
+                                      *print-readably* false]
+                              (pr-str value))]
+        (is (string? plain))
+        (is (string? limited))
+        (is (string? unreadable-meta))
+        (is (not (str/includes? unreadable-meta "^")))))))
 
 (deftest prn-str-test
   (is (= os/linesep (prn-str)))

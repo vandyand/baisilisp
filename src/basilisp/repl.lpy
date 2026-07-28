@@ -140,13 +140,16 @@
            (.join "")))))
 
 (defn source-fn
-  "Return source text for a Basilisp Var or inspectable Python object.
+  "Return source text for a symbol, Basilisp Var, or inspectable Python object.
 
   Return ``nil`` when source is unavailable, matching REPL inspection behavior
   for builtins and dynamically-created Python objects rather than leaking a
   host ``OSError`` or ``TypeError`` into an interactive session."
   [o]
   (cond
+    (symbol? o)
+    (some-> o resolve source-fn)
+
     (var? o)
     (format-source o)
 
@@ -170,7 +173,9 @@
 
   ``v`` must be a symbol which resolves to a Var."
   [s]
-  `(print-source (resolve (quote ~s))))
+  `(if-let [source# (source-fn (quote ~s))]
+     (print source#)
+     (println "Source not found")))
 
 (defn root-cause
   "Return the deepest explicit cause of exception ``exc``."

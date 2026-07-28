@@ -1,0 +1,210 @@
+(ns basilisp.test.junit
+  "JUnit-compatible XML reporting for ``basilisp.test``."
+  (:require [basilisp.stacktrace :as stack]
+            [basilisp.string :as str]
+            [basilisp.test :as t]))
+
+(def ^:dynamic *var-context* nil)
+(def ^:dynamic *depth* nil)
+
+(def ^:private escape-xml-map
+  {\& "&amp;"
+   \< "&lt;"
+   \> "&gt;"
+   \" "&quot;"
+   \' "&apos;"})
+
+(defn- escape-xml
+  [text]
+  (apply str (map #(get escape-xml-map % %) (str text))))
+
+(defn- ordered-attrs
+  [attrs]
+  (let [preferred [:name :classname :package :message]
+        preferred-entries (keep #(when (contains? attrs %)
+                                   [% (get attrs %)])
+                                preferred)
+        rest-entries      (sort-by #(name (key %))
+                                   (remove #(contains? (set preferred) (key %))
+                                           attrs))]
+    (concat preferred-entries rest-entries)))
+
+(defn indent
+  "Print indentation for the current XML depth."
+  []
+  (dotimes [_ (* *depth* 4)]
+    (print " ")))
+
+(defn start-element
+  "Print an opening XML element."
+  [tag pretty & [attrs]]
+  (when pretty
+    (indent))
+  (print (str "<" tag))
+  (when (seq attrs)
+    (doseq [[key value] (ordered-attrs attrs)]
+      (print (str " " (name key) "=\"" (escape-xml value) "\""))))
+  (print ">")
+  (when pretty
+    (println))
+  (set! *depth* (inc *depth*)))
+
+(defn element-content
+  "Print escaped XML element content."
+  [content]
+  (print (escape-xml content)))
+
+(defn finish-element
+  "Print a closing XML element."
+  [tag pretty]
+  (set! *depth* (dec *depth*))
+  (when pretty
+    (indent))
+  (print (str "</" tag ">"))
+  (when pretty
+    (println)))
+
+(defn test-name
+  "Return the dotted JUnit test name for the current nested Var context."
+  [vars]
+  (apply str (interpose "." (reverse (map #(:name (meta %)) vars)))))
+
+(defn package-class
+  "Split a qualified class name into ``[package class]``."
+  [name]
+  (let [name (str name)
+        i    (.rfind name ".")]
+    (if (< i 0)
+      [nil name]
+      [(subs name 0 i) (subs name (inc i))])))
+
+(defn start-case
+  "Print a JUnit ``testcase`` start element."
+  [name classname]
+  (start-element 'testcase true (array-map :name name :classname classname)))
+
+(defn finish-case
+  "Print a JUnit ``testcase`` end element."
+  []
+  (finish-element 'testcase true))
+
+(defn suite-attrs
+  "Return JUnit testsuite attributes for ``package`` and ``classname``."
+  [package classname]
+  (if package
+    (array-map :name classname :package package)
+    (array-map :name classname)))
+
+(defn start-suite
+  "Print a JUnit ``testsuite`` start element."
+  [name]
+  (let [[package classname] (package-class name)]
+    (start-element 'testsuite true (suite-attrs package classname))))
+
+(defn finish-suite
+  "Print a JUnit ``testsuite`` end element."
+  []
+  (finish-element 'testsuite true))
+
+(defn message-el
+  "Print a JUnit failure/error child element."
+  [tag message expected-str actual-str]
+  (indent)
+  (start-element tag false (if message {:message message} {}))
+  (element-content
+   (let [[file line] (t/file-position 5)
+         detail      (apply str
+                            (interpose "\n"
+                                       [(str "expected: " expected-str)
+                                        (str "  actual: " actual-str)
+                                        (str "      at: " file ":" line)]))]
+     (if message
+       (str message "\n" detail)
+       detail)))
+  (finish-element tag false)
+  (println))
+
+(defn failure-el
+  "Print a JUnit ``failure`` element."
+  [message expected actual]
+  (message-el 'failure message (pr-str expected) (pr-str actual)))
+
+(defn error-el
+  "Print a JUnit ``error`` element."
+  [message expected actual]
+  (message-el 'error
+              message
+              (pr-str expected)
+              (if (instance? python/BaseException actual)
+                (with-out-str (stack/print-cause-trace actual t/*stack-trace-depth*))
+                (pr-str actual))))
+
+(defmulti ^:dynamic junit-report :type)
+
+(defmethod junit-report :begin-test-ns
+  [m]
+  (t/with-test-out
+   (start-suite (name (ns-name (:ns m))))))
+
+(defmethod junit-report :end-test-ns
+  [_]
+  (t/with-test-out
+   (finish-suite)))
+
+(defmethod junit-report :begin-test-var
+  [m]
+  (t/with-test-out
+   (let [v (:var m)]
+     (binding [*var-context* (conj *var-context* v)]
+       (start-case (test-name *var-context*) (name (ns-name (:ns (meta v)))))))))
+
+(defmethod junit-report :end-test-var
+  [_]
+  (t/with-test-out
+   (finish-case)))
+
+(defmethod junit-report :pass
+  [m]
+  (t/with-test-out
+   (t/record-report! m)
+   (t/inc-report-counter :pass)))
+
+(defmethod junit-report :fail
+  [m]
+  (t/with-test-out
+   (t/record-report! m)
+   (t/inc-report-counter :fail)
+   (failure-el (:message m)
+               (:expected m)
+               (:actual m))))
+
+(defmethod junit-report :failure
+  [m]
+  (junit-report (assoc m :type :fail)))
+
+(defmethod junit-report :error
+  [m]
+  (t/with-test-out
+   (t/record-report! m)
+   (t/inc-report-counter :error)
+   (error-el (:message m)
+             (:expected m)
+             (:actual m))))
+
+(defmethod junit-report :default
+  [_])
+
+(defmacro with-junit-output
+  "Execute body with JUnit-compatible XML reporting."
+  [& body]
+  `(binding [t/report junit-report
+             t/*test-output* false
+             *var-context* (list)
+             *depth* 1]
+     (t/with-test-out
+      (println "<?xml version=\"1.0\" encoding=\"UTF-8\"?>")
+      (println "<testsuites>"))
+     (let [result# (do ~@body)]
+       (t/with-test-out
+        (println "</testsuites>"))
+       result#)))

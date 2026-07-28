@@ -403,6 +403,43 @@
   `(case :val
      ~(seq [:val]) :found))
 
+(defn generated-case-form
+  [seed]
+  (case (mod seed 12)
+    0 `(case ~seed ~seed :int ~(double seed) :double :default)
+    1 `(case ~(double seed) ~seed :int ~(double seed) :double :default)
+    2 `(case ~(bigdec seed) ~seed :int ~(bigdec seed) :decimal :default)
+    3 `(case ~(/ seed (inc seed))
+         ~(double (/ seed (inc seed))) :double
+         ~(/ seed (inc seed)) :ratio
+         :default)
+    4 `(case ~(mod seed 5)
+         (0 1) :low
+         (2 3) :mid
+         4 :high
+         :default)
+    5 `(case ~(double (mod seed 5))
+         (0 1) :int-group
+         (0.0 1.0) :double-low
+         (2.0 3.0) :double-mid
+         4.0 :double-high
+         :default)
+    6 `(case ~(bigdec (mod seed 5))
+         (0 1) :int-group
+         (0M 1M) :decimal-low
+         (2M 3M) :decimal-mid
+         4M :decimal-high
+         :default)
+    7 `(case ~(/ (inc (mod seed 5)) 2)
+         (1/2 2/2) :ratio-low
+         (3/2 4/2) :ratio-mid
+         5/2 :ratio-high
+         :default)
+    8 `(case ~(- seed) ~seed :positive ~(- seed) :negative :default)
+    9 `(case ~(str "s" seed) ~(symbol (str "s" seed)) :symbol ~(str "s" seed) :string :default)
+    10 `(case ~(keyword (str "k" seed)) ~(keyword (str "k" seed)) :keyword ~(str "k" seed) :string :default)
+    `(case ~[(mod seed 3) (mod seed 5)] ~[(mod seed 3) (mod seed 5)] :vector :default)))
+
 (deftest case-test
   (is (= "yes" (case :a :b "nope" :c "mega nope" :a "yes" "nerp")))
   (is (= "nope" (case :b :b "nope" :c "mega nope" :a "yes" "nerp")))
@@ -421,6 +458,26 @@
                             :default)))
   (is (= 0 (case 1 0)))
   (is (= :found (case-with-seq)))
+  (are [expected actual] (= expected actual)
+    :int (case 0 0 :int 0.0 :double 0M :decimal :default)
+    :double (case 0.0 0 :int 0.0 :double 0M :decimal :default)
+    :decimal (case 0M 0 :int 0.0 :double 0M :decimal :default)
+    :ratio (case 0/1 0/1 :ratio 0.0 :double 0M :decimal :default)
+    :zero-float (case -0.0 0 :int -0.0 :zero-float :default)
+    :default (case ##NaN ##NaN :nan 0 :zero :default)
+    :int (case 2 2 :int 2.0 :double 2M :decimal :default)
+    :double (case 2.0 2 :int 2.0 :double 2M :decimal :default)
+    :decimal (case 2M 2 :int 2.0 :double 2M :decimal :default)
+    :ratio (case 2/1 2/1 :ratio 2.0 :double 2M :decimal :default)
+    :ratio (case 1/2 0.5 :double 0.5M :decimal 1/2 :ratio :default)
+    :ints (case 1 (1 2 3) :ints (1.0 2.0 3.0) :doubles :default)
+    :doubles (case 1.0 (1 2 3) :ints (1.0 2.0 3.0) :doubles :default)
+    :decimals (case 2M (1 2 3) :ints (1M 2M 3M) :decimals :default)
+    :ratios (case 3/2 (1/2 3/2 5/2) :ratios (1.0 2.0 3.0) :doubles :default)
+    :default (case ##NaN (##NaN) :nan-group ##NaN :nan-single :default))
+  (is (= [:double :decimal :ratio :high :double-low :decimal-low :ratio-mid :negative
+          :string :keyword :vector :int]
+         (mapv #(eval (generated-case-form %)) (range 1 13))))
   (letfn [(throws? [form]
             (try
               (eval form)
@@ -430,12 +487,18 @@
     (are [form] (throws? form)
       '(case 1 1 :int 1N :bigint :default)
       '(case 1 1 :int 1/1 :ratio :default)
-      '(case :a (:a :b) :group :a :single :default))
+      '(case :a (:a :b) :group :a :single :default)
+      '(case -0.0 -0.0 :negative-zero 0.0 :positive-zero :default))
     (are [form] (not (throws? form))
       '(case 1 1 :int 1.0 :double :default)
       '(case 1 1 :int 1.0M :decimal :default)
       '(case \a \a :char-a (a b) :symbol-group :default)
-      '(case ##NaN ##NaN :first ##NaN :second :default)))
+      '(case ##NaN ##NaN :first ##NaN :second :default)
+      '(case 1 (0 1N 2) :group 3 :other :default)
+      '(case 1 (0 1/1 2) :group 3 :other :default)
+      '(case 1.0 1.0 :double 2 :other :default)
+      '(case 1M 1M :decimal 2 :other :default)
+      '(case ##NaN ##NaN :nan ##NaN :other :default)))
   (let [out* (atom [])]
     (is (= 2 (case :2
                :1 (do (swap! out* conj 1) 1)
@@ -654,8 +717,10 @@
 (deftest when-first-test
   (is (= :a (when-first [a [:a false nil]] a)))
   (is (= 2 (when-first [a [1 false nil]] (inc a))))
+  (is (= [:ran false] (when-first [a [false :tail]] [:ran a])))
+  (is (= [:ran nil] (when-first [a [nil :tail]] [:ran a])))
   (is (nil? (when-first [a []] a)))
-  (is (nil? (when-first [a (map odd? [2 3 5])] a)))
+  (is (= false (when-first [a (map odd? [2 3 5])] a)))
 
   ;; ExceptionInfo is thrown and wrapped in a CompilerException
   ;; during macroexpansion
@@ -845,7 +910,25 @@
            (.append 3)))))
 
 (deftest with-in-str-test
-  (is (= "Hi I'm a string" (with-in-str "\"Hi I'm a string\"" (read)))))
+  (is (= "Hi I'm a string" (with-in-str "\"Hi I'm a string\"" (read))))
+  (is (= ["alpha " "" "omega" nil]
+         (with-in-str "alpha \n\nomega"
+           [(read-line)
+            (read-line)
+            (read-line)
+            (read-line)])))
+  (is (= ["crlf" "last" nil]
+         (with-in-str "crlf\r\nlast\r\n"
+           [(read-line)
+            (read-line)
+            (read-line)])))
+  (is (= [nil] (with-in-str "" [(read-line)])))
+  (is (= ["outer" ["inner" nil] nil]
+         (with-in-str "outer\n"
+           [(read-line)
+            (with-in-str "inner\n"
+              [(read-line) (read-line)])
+            (read-line)]))))
 
 (deftest with-out-str-test
   (is (= "Hello, Chris!"

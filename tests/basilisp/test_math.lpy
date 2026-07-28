@@ -6,6 +6,9 @@
 (defn close? [expected actual]
   (< (abs (- expected actual)) 1e-12))
 
+(defn loose-close? [expected actual]
+  (< (abs (- expected actual)) 1e-9))
+
 (defn nan? [x] (not (= x x)))
 
 (deftest constants-and-elementary-functions-test
@@ -83,3 +86,22 @@
   (is (= 1024 (math/get-exponent ##Inf)))
   (is (= 1.0000000000000002 (math/next-after 1.0 2.0)))
   (is (and (<= 0.0 (math/random)) (< (math/random) 1.0))))
+
+(deftest expm1-tanh-and-random-stress-test
+  (doseq [x [-20.0 -10.0 -3.0 -1.0 -0.5 -1e-12 0.0 1e-12 0.5 1.0 3.0 10.0 20.0]]
+    (let [t (math/tanh x)
+          nt (math/tanh (- x))]
+      (is (<= -1.0 t 1.0))
+      (is (loose-close? t (- nt)))))
+  (doseq [x [-20.0 -10.0 -3.0 -1.0 -0.5 0.0 0.5 1.0 3.0 10.0 20.0]]
+    (is (loose-close? (- (math/exp x) 1.0)
+                      (math/expm1 x))))
+  (doseq [x [-1e-12 0.0 1e-12]]
+    (is (loose-close? x (math/expm1 x))))
+  (is (= ##Inf (math/expm1 10000.0)))
+  (let [samples (repeatedly 256 math/random)]
+    (is (= 256 (count samples)))
+    (is (every? #(and (not (nan? %))
+                      (<= 0.0 %)
+                      (< % 1.0))
+                samples))))

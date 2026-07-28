@@ -19,20 +19,24 @@ from typing import Iterable, Pattern, Sequence
 from basilisp.lang import reader
 
 ROOT = Path(__file__).resolve().parents[1]
+CLOJURE_VERSION = "1.12.4"
 
 DEFAULT_CLOJURE_SDEPS = (
-    '{:deps {org.clojure/data.csv {:mvn/version "1.1.0"} '
+    f'{{:deps {{org.clojure/clojure {{:mvn/version "{CLOJURE_VERSION}"}} '
+    'org.clojure/data.csv {:mvn/version "1.1.0"} '
+    'org.clojure/data.xml {:mvn/version "0.2.0-alpha11"} '
     'org.clojure/data.json {:mvn/version "2.5.1"} '
     'org.clojure/data.codec {:mvn/version "0.1.1"} '
     'org.clojure/data.priority-map {:mvn/version "1.2.0"} '
     'org.clojure/core.cache {:mvn/version "1.1.234"} '
     'org.clojure/core.memoize {:mvn/version "1.1.266"} '
     'org.clojure/core.rrb-vector {:mvn/version "0.2.0"} '
+    'org.clojure/java.classpath {:mvn/version "1.1.0"} '
     'org.clojure/tools.macro {:mvn/version "0.2.0"} '
     'org.clojure/tools.namespace {:mvn/version "1.5.0"} '
     'org.clojure/tools.logging {:mvn/version "1.3.0"} '
     'org.clojure/tools.reader {:mvn/version "1.5.2"} '
-    'org.clojure/tools.cli {:mvn/version "1.1.230"} '
+    'org.clojure/tools.cli {:mvn/version "1.4.256"} '
     'org.clojure/test.check {:mvn/version "1.1.1"} '
     'org.clojure/math.combinatorics {:mvn/version "0.3.0"}}}'
 )
@@ -44,16 +48,19 @@ class NamespacePair:
 
     clojure_ns: str
     basilisp_ns: str
-    allowed_missing: tuple[Pattern[str], ...] = ()
+    non_portable_artifacts: tuple[Pattern[str], ...] = ()
 
 
 TOOLS_LOGGING_PROXY_VAR = re.compile(
     r"^clojure\.tools\.logging\.proxy\$java\.io\.ByteArrayOutputStream\$[0-9a-f]+$"
 )
-JVM_REFLECT_VAR = re.compile(
-    r"^(->AsmReflector|->Constructor|->Field|->JavaReflector|->Method|"
-    r"ClassResolver|flag-descriptors|map->Constructor|map->Field|"
-    r"map->Method|resolve-class)$"
+
+TOOLS_READER_THREAD_LOCAL_PROXY_VAR = re.compile(
+    r"^clojure\.tools\.reader\.default_data_readers\.proxy\$java\.lang\.ThreadLocal\$[0-9a-f]+$"
+)
+
+TEST_CHECK_RANDOM_THREAD_LOCAL_PROXY_VAR = re.compile(
+    r"^clojure\.test\.check\.random\.proxy\$java\.lang\.ThreadLocal\$[0-9a-f]+$"
 )
 
 STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
@@ -69,21 +76,29 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.data.csv", "basilisp.data.csv"),
     NamespacePair("clojure.data.json", "basilisp.data.json"),
     NamespacePair("clojure.data.priority-map", "basilisp.data.priority-map"),
+    NamespacePair("clojure.data.xml", "basilisp.data.xml"),
+    NamespacePair("clojure.data.xml.event", "basilisp.data.xml.event"),
+    NamespacePair("clojure.data.xml.tree", "basilisp.data.xml.tree"),
     NamespacePair("clojure.datafy", "basilisp.datafy"),
     NamespacePair("clojure.edn", "basilisp.edn"),
+    NamespacePair("clojure.inspector", "basilisp.inspector"),
     NamespacePair("clojure.instant", "basilisp.instant"),
+    NamespacePair("clojure.java.basis", "basilisp.java.basis"),
+    NamespacePair("clojure.java.basis.impl", "basilisp.java.basis.impl"),
+    NamespacePair("clojure.java.browse", "basilisp.java.browse"),
+    NamespacePair("clojure.java.browse-ui", "basilisp.java.browse-ui"),
+    NamespacePair("clojure.java.classpath", "basilisp.java.classpath"),
     NamespacePair("clojure.java.io", "basilisp.java.io"),
+    NamespacePair("clojure.java.javadoc", "basilisp.java.javadoc"),
     NamespacePair("clojure.java.process", "basilisp.java.process"),
     NamespacePair("clojure.java.shell", "basilisp.java.shell"),
+    NamespacePair("clojure.main", "basilisp.main-compat"),
     NamespacePair("clojure.math", "basilisp.math"),
     NamespacePair("clojure.math.combinatorics", "basilisp.math.combinatorics"),
     NamespacePair("clojure.pprint", "basilisp.pprint"),
-    NamespacePair(
-        "clojure.reflect",
-        "basilisp.reflect",
-        allowed_missing=(JVM_REFLECT_VAR,),
-    ),
+    NamespacePair("clojure.reflect", "basilisp.reflect"),
     NamespacePair("clojure.repl", "basilisp.repl"),
+    NamespacePair("clojure.repl.deps", "basilisp.repl-deps"),
     NamespacePair("clojure.set", "basilisp.set"),
     NamespacePair("clojure.spec.alpha", "basilisp.spec.alpha"),
     NamespacePair("clojure.spec.gen.alpha", "basilisp.spec.gen.alpha"),
@@ -92,14 +107,40 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.string", "basilisp.string"),
     NamespacePair("clojure.template", "basilisp.template"),
     NamespacePair("clojure.test", "basilisp.test"),
+    NamespacePair("clojure.test.check", "basilisp.test.check"),
+    NamespacePair(
+        "clojure.test.check.clojure-test",
+        "basilisp.test.check.clojure-test",
+    ),
+    NamespacePair(
+        "clojure.test.check.clojure-test.assertions",
+        "basilisp.test.check.clojure-test.assertions",
+    ),
+    NamespacePair(
+        "clojure.test.check.clojure-test.assertions.cljs",
+        "basilisp.test.check.clojure-test.assertions.cljs",
+    ),
+    NamespacePair("clojure.test.check.generators", "basilisp.test.check.generators"),
+    NamespacePair("clojure.test.check.impl", "basilisp.test.check.impl"),
+    NamespacePair("clojure.test.check.properties", "basilisp.test.check.properties"),
+    NamespacePair(
+        "clojure.test.check.random",
+        "basilisp.test.check.random",
+        non_portable_artifacts=(TEST_CHECK_RANDOM_THREAD_LOCAL_PROXY_VAR,),
+    ),
+    NamespacePair("clojure.test.check.results", "basilisp.test.check.results"),
+    NamespacePair("clojure.test.check.rose-tree", "basilisp.test.check.rose-tree"),
+    NamespacePair("clojure.test.junit", "basilisp.test.junit"),
     NamespacePair("clojure.test.tap", "basilisp.test.tap"),
     NamespacePair("clojure.tools.cli", "basilisp.tools.cli"),
+    NamespacePair("clojure.tools.deps.interop", "basilisp.tools.deps.interop"),
     NamespacePair(
         "clojure.tools.logging",
         "basilisp.tools.logging",
-        allowed_missing=(TOOLS_LOGGING_PROXY_VAR,),
+        non_portable_artifacts=(TOOLS_LOGGING_PROXY_VAR,),
     ),
     NamespacePair("clojure.tools.logging.impl", "basilisp.tools.logging.impl"),
+    NamespacePair("clojure.tools.logging.readable", "basilisp.tools.logging.readable"),
     NamespacePair("clojure.tools.macro", "basilisp.tools.macro"),
     NamespacePair("clojure.tools.namespace", "basilisp.tools.namespace"),
     NamespacePair(
@@ -108,10 +149,34 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.tools.namespace.dir", "basilisp.tools.namespace.dir"),
     NamespacePair("clojure.tools.namespace.file", "basilisp.tools.namespace.file"),
     NamespacePair("clojure.tools.namespace.find", "basilisp.tools.namespace.find"),
+    NamespacePair("clojure.tools.namespace.move", "basilisp.tools.namespace.move"),
     NamespacePair("clojure.tools.namespace.parse", "basilisp.tools.namespace.parse"),
     NamespacePair("clojure.tools.namespace.reload", "basilisp.tools.namespace.reload"),
+    NamespacePair("clojure.tools.namespace.repl", "basilisp.tools.namespace.repl"),
     NamespacePair("clojure.tools.namespace.track", "basilisp.tools.namespace.track"),
     NamespacePair("clojure.tools.reader", "basilisp.tools.reader"),
+    NamespacePair(
+        "clojure.tools.reader.default-data-readers",
+        "basilisp.tools.reader.default-data-readers",
+        non_portable_artifacts=(TOOLS_READER_THREAD_LOCAL_PROXY_VAR,),
+    ),
+    NamespacePair("clojure.tools.reader.edn", "basilisp.tools.reader.edn"),
+    NamespacePair(
+        "clojure.tools.reader.impl.commons",
+        "basilisp.tools.reader.impl.commons",
+    ),
+    NamespacePair(
+        "clojure.tools.reader.impl.errors",
+        "basilisp.tools.reader.impl.errors",
+    ),
+    NamespacePair(
+        "clojure.tools.reader.impl.inspect",
+        "basilisp.tools.reader.impl.inspect",
+    ),
+    NamespacePair(
+        "clojure.tools.reader.impl.utils",
+        "basilisp.tools.reader.impl.utils",
+    ),
     NamespacePair(
         "clojure.tools.reader.reader-types",
         "basilisp.tools.reader.reader-types",
@@ -166,6 +231,8 @@ def _run_publics(
         check=False,
         capture_output=True,
         text=True,
+        encoding="utf-8",
+        errors="replace",
     )
     if result.returncode:
         raise RuntimeError(
@@ -192,14 +259,16 @@ def _status(
     *,
     clojure_publics: set[str],
     basilisp_publics: set[str],
-    allowed_missing: tuple[Pattern[str], ...],
+    non_portable_artifacts: tuple[Pattern[str], ...],
 ) -> str:
     in_clojure = symbol in clojure_publics
     in_basilisp = symbol in basilisp_publics
     if in_clojure and in_basilisp:
         return "shared"
-    if in_clojure and any(pattern.fullmatch(symbol) for pattern in allowed_missing):
-        return "classified-missing-in-basilisp"
+    if in_clojure and any(
+        pattern.fullmatch(symbol) for pattern in non_portable_artifacts
+    ):
+        return "non-portable-artifact"
     if in_clojure:
         return "missing-in-basilisp"
     return "basilisp-extension"
@@ -221,7 +290,7 @@ def _rows(
                 symbol,
                 clojure_publics=clojure_publics,
                 basilisp_publics=basilisp_publics,
-                allowed_missing=pair.allowed_missing,
+                non_portable_artifacts=pair.non_portable_artifacts,
             ),
         }
 
@@ -280,7 +349,8 @@ def main() -> int:
         "--clojure-command",
         help=(
             "command prefix used to evaluate Clojure; defaults to clojure with "
-            "the audited contrib dependencies, or WSL on Windows"
+            f"Clojure {CLOJURE_VERSION} plus audited contrib dependencies, or WSL "
+            "on Windows"
         ),
     )
     parser.add_argument(

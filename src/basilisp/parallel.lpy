@@ -1,0 +1,208 @@
+(ns basilisp.parallel
+  "Sequential compatibility layer for legacy ``clojure.parallel``.
+
+  Clojure's bundled namespace wraps obsolete ``jsr166y`` ParallelArray classes
+  and no longer loads in the verified Clojure baseline without external legacy
+  classes. Basilisp preserves the public API and collection-transform semantics
+  deterministically, but does not promise parallel execution."
+  (:refer-clojure :exclude [pmap]))
+
+(defrecord ParallelArray [coll ops])
+
+(def ^:private no-previous-value
+  (python/object))
+
+(defn- parallel-array?
+  [x]
+  (instance? ParallelArray x))
+
+(defn- ensure-parallel-array
+  [coll]
+  (if (parallel-array? coll)
+    coll
+    (->ParallelArray (vec coll) [])))
+
+(defn- validate-op!
+  [op]
+  (when-not (contains? #{:bound
+                        :filter
+                        :filter-with
+                        :filter-index
+                        :map
+                        :map-with
+                        :map-index}
+                       op)
+    (throw (python/Exception (str "Unsupported par op: " op)))))
+
+(defn par
+  "Create a realized-operation plan over ``coll``.
+
+  Supported operation pairs match Clojure's legacy API: ``:bound``,
+  ``:filter``, ``:filter-index``, ``:filter-with``, ``:map``, ``:map-index``,
+  and ``:map-with``. Operations are applied in supplied order when realized."
+  ([coll]
+   (ensure-parallel-array coll))
+  ([coll & ops]
+   (reduce (fn [pa [op args]]
+             (validate-op! op)
+             (assoc pa :ops (conj (:ops pa) [op args])))
+           (ensure-parallel-array coll)
+           (partition 2 ops))))
+
+(defn- indexed
+  [coll]
+  (vec (map-indexed vector coll)))
+
+(declare pvec)
+
+(defn- other-values
+  [coll]
+  (pvec coll))
+
+(defn- realize-items
+  [pa]
+  (loop [items (indexed (:coll pa))
+         ops   (:ops pa)]
+    (if-not (seq ops)
+      items
+      (let [[[op args] & more] ops]
+        (recur
+         (case op
+           :bound
+           (let [[start end] args]
+             (subvec (vec items) start end))
+
+           :filter
+           (vec (filter (fn [[_idx value]]
+                          (boolean (args value)))
+                        items))
+
+           :filter-index
+           (vec (filter (fn [[idx value]]
+                          (boolean (args value idx)))
+                        items))
+
+           :filter-with
+           (let [[pred other] args
+                 values       (other-values other)]
+             (vec (filter (fn [[idx value]]
+                            (boolean (pred value (nth values idx))))
+                          items)))
+
+           :map
+           (mapv (fn [[idx value]]
+                   [idx (args value)])
+                 items)
+
+           :map-index
+           (mapv (fn [[idx value]]
+                   [idx (args value idx)])
+                 items)
+
+           :map-with
+           (let [[f other] args
+                 values    (other-values other)]
+             (mapv (fn [[idx value]]
+                     [idx (f value (nth values idx))])
+                   items)))
+         more)))))
+
+(defn- realized-values
+  [coll]
+  (mapv second (realize-items (ensure-parallel-array coll))))
+
+(defn pvec
+  "Return the realized contents of a parallel plan as a vector."
+  [pa]
+  (realized-values pa))
+
+(defn pany
+  "Return one realized element, or nil for an empty realization.
+
+  Clojure's legacy ParallelArray may choose any matching element. Basilisp is
+  deterministic and returns the first realized value."
+  [coll]
+  (first (pvec coll)))
+
+(defn pmax
+  "Return the maximum realized element."
+  ([coll]
+   (apply max (pvec coll)))
+  ([coll comp]
+   (last (sort comp (pvec coll)))))
+
+(defn pmin
+  "Return the minimum realized element."
+  ([coll]
+   (apply min (pvec coll)))
+  ([coll comp]
+   (first (sort comp (pvec coll)))))
+
+(defn- first-index-of
+  [value xs]
+  (loop [idx 0
+         xs  (seq xs)]
+    (cond
+      (nil? xs) nil
+      (= value (first xs)) idx
+      :else (recur (inc idx) (next xs)))))
+
+(defn psummary
+  "Return summary statistics for the realized values."
+  ([coll]
+   (let [xs      (pvec coll)
+         min-val (apply min xs)
+         max-val (apply max xs)]
+     {:min min-val
+      :max max-val
+      :size (count xs)
+      :min-index (first-index-of min-val xs)
+      :max-index (first-index-of max-val xs)}))
+  ([coll comp]
+   (let [xs      (pvec coll)
+         sorted  (sort comp xs)
+         min-val (first sorted)
+         max-val (last sorted)]
+     {:min min-val
+      :max max-val
+      :size (count xs)
+      :min-index (first-index-of min-val xs)
+      :max-index (first-index-of max-val xs)})))
+
+(defn preduce
+  "Reduce realized values with ``f`` and ``base``."
+  [f base coll]
+  (reduce f base (pvec coll)))
+
+(defn pdistinct
+  "Return distinct realized values as a vector."
+  [coll]
+  (vec (distinct (pvec coll))))
+
+(defn psort
+  "Return sorted realized values as a vector."
+  ([coll]
+   (vec (sort (pvec coll))))
+  ([coll comp]
+   (vec (sort comp (pvec coll)))))
+
+(defn pfilter-nils
+  "Return realized non-nil values as a vector."
+  [coll]
+  (vec (remove nil? (pvec coll))))
+
+(defn pfilter-dupes
+  "Return realized values with consecutive duplicates removed."
+  [coll]
+  (loop [xs   (seq (pvec coll))
+         prev no-previous-value
+         out  []]
+    (if-not xs
+      out
+      (let [x (first xs)]
+        (recur (next xs)
+               x
+               (if (and (not (identical? prev no-previous-value))
+                        (= prev x))
+                 out
+                 (conj out x)))))))

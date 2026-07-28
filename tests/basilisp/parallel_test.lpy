@@ -1,0 +1,188 @@
+(ns tests.basilisp.parallel-test
+  (:require
+   [clojure.parallel :as parallel]
+   [basilisp.test :refer [deftest is testing]]))
+
+(def ^:private expected-publics
+  #{"pany"
+    "par"
+    "pdistinct"
+    "pfilter-dupes"
+    "pfilter-nils"
+    "pmax"
+    "pmin"
+    "preduce"
+    "psort"
+    "psummary"
+    "pvec"})
+
+(def ^:private expected-arglists
+  '{par ([coll] [coll & ops])
+    pany ([coll])
+    pmax ([coll] [coll comp])
+    pmin ([coll] [coll comp])
+    psummary ([coll] [coll comp])
+    preduce ([f base coll])
+    pvec ([pa])
+    pdistinct ([coll])
+    psort ([coll] [coll comp])
+    pfilter-nils ([coll])
+    pfilter-dupes ([coll])})
+
+(deftest clojure-parallel-public-surface-test
+  (is (every? #(contains? (ns-publics 'clojure.parallel) %)
+              (map symbol expected-publics)))
+  (is (= (find-ns 'basilisp.parallel) (find-ns 'clojure.parallel)))
+  (is (every? (fn [[sym arglists]]
+                (= arglists
+                   (:arglists (meta (ns-resolve 'clojure.parallel sym)))))
+              expected-arglists)))
+
+(deftest parallel-operation-pipeline-test
+  (testing "empty par is a deterministic realization plan"
+    (is (= [1 2 3] (parallel/pvec (parallel/par [1 2 3]))))
+    (is (= [1 2 3] (parallel/pvec [1 2 3]))))
+
+  (testing "legacy operation order is preserved"
+    (is (= [22 6]
+           (parallel/pvec
+            (parallel/par [11 2 3 2]
+                          :filter-with [(fn [x y] (> y x)) [110 2 33 2]]
+                          :map #(* % 2)))))
+    (is (= [2]
+           (parallel/pvec
+            (parallel/par [11 2 3 2]
+                          :filter-index (fn [x i] (> i x))))))
+    (is (= [0 4 16]
+           (parallel/pvec
+            (parallel/par (range 5)
+                           :bound [0 5]
+                           :filter even?
+                           :map-index *)))))
+
+  (testing "unsupported and malformed operations fail explicitly"
+    (is (thrown-with-msg? python/Exception
+                          #"Unsupported par op"
+                          (parallel/par [1 2] :unknown identity)))
+    (is (= [1 2]
+           (parallel/pvec (parallel/par [1 2] :map))))))
+
+(deftest parallel-aggregate-operations-test
+  (let [plan (parallel/par [3 nil 1 2 2 1 nil]
+                           :filter some?
+                           :map identity)]
+    (is (= 3 (parallel/pany plan)))
+    (is (= 3 (parallel/pmax plan)))
+    (is (= 1 (parallel/pmin plan)))
+    (is (= {:min 1 :max 3 :size 5 :min-index 1 :max-index 0}
+           (parallel/psummary plan)))
+    (is (= 9 (parallel/preduce + 0 plan)))
+    (is (= [3 1 2] (parallel/pdistinct plan)))
+    (is (= [1 1 2 2 3] (parallel/psort plan)))
+    (is (= [3 1 2 2 1] (parallel/pfilter-nils [3 nil 1 2 2 1 nil])))
+    (is (= [3 1 2 1] (parallel/pfilter-dupes plan)))))
+
+(deftest parallel-consecutive-dupe-sentinel-regression-test
+  (is (= [:basilisp.parallel/none 1 :basilisp.parallel/none]
+         (parallel/pfilter-dupes
+          [:basilisp.parallel/none
+           :basilisp.parallel/none
+           1
+           :basilisp.parallel/none]))))
+
+(defn- sample-vector
+  [seed]
+  (vec (map (fn [idx]
+              (- (mod (+ (* seed 31) (* idx 17)) 21) 10))
+            (range (mod seed 32)))))
+
+(deftest parallel-generated-map-filter-reduce-test
+  (doseq [seed (range 180)
+          offset [-3 -1 0 1 3]]
+    (let [xs       (sample-vector seed)
+          expected (->> xs
+                        (filter even?)
+                        (map #(+ % offset))
+                        (vec))
+          plan     (parallel/par xs
+                                 :filter even?
+                                 :map #(+ % offset))]
+      (is (= expected (parallel/pvec plan)))
+      (is (= (reduce + 0 expected)
+             (parallel/preduce + 0 plan)))
+      (is (= (vec (distinct expected))
+             (parallel/pdistinct plan))))))
+
+(deftest parallel-generated-indexed-operations-test
+  (doseq [seed (range 220)]
+    (let [xs       (sample-vector seed)
+          expected (vec (keep-indexed
+                         (fn [idx value]
+                           (when (even? idx)
+                             (* value idx)))
+                         xs))
+          plan     (parallel/par xs
+                                 :filter-index
+                                 (fn [_value idx] (even? idx))
+                                 :map-index *)]
+      (is (= expected (parallel/pvec plan))))))
+
+(defn- expected-pipeline
+  [xs ys start end offset]
+  (->> xs
+       (map-indexed vector)
+       (drop start)
+       (take (- end start))
+       (filter (fn [[_idx value]] (even? value)))
+       (filter (fn [[idx _value]] (not= 0 (mod idx 3))))
+       (filter (fn [[idx value]] (< value (nth ys idx))))
+       (map (fn [[idx value]] [idx (* value idx)]))
+       (map (fn [[idx value]] [idx (+ value offset)]))
+       (map (fn [[idx value]] (+ value (nth ys idx))))
+       vec))
+
+(deftest parallel-bound-index-and-with-composition-test
+  (doseq [seed (range 320)]
+    (let [xs       (sample-vector (+ 373 seed))
+          ys       (vec (map #(+ 50 %) (range (count xs))))
+          n        (count xs)
+          start    (if (zero? n) 0 (mod seed n))
+          width    (if (zero? n) 0 (mod (quot seed 7) (inc (- n start))))
+          end      (+ start width)
+          offset   (- (mod seed 9) 4)
+          expected (expected-pipeline xs ys start end offset)
+          plan     (parallel/par xs
+                                 :bound [start end]
+                                 :filter even?
+                                 :filter-index
+                                 (fn [_value idx] (not= 0 (mod idx 3)))
+                                 :filter-with
+                                 [(fn [x y] (< x y)) ys]
+                                 :map-index *
+                                 :map #(+ % offset)
+                                 :map-with [+ ys])]
+      (is (= expected (parallel/pvec plan))))))
+
+(deftest parallel-adversarial-empty-and-error-boundaries-test
+  (is (= [] (parallel/pvec [])))
+  (is (= [] (parallel/pvec nil)))
+  (is (nil? (parallel/pany [])))
+  (is (= [] (parallel/pfilter-nils nil)))
+  (is (= [nil 1 nil 2]
+         (parallel/pfilter-dupes [nil nil 1 1 nil nil 2])))
+  (is (= [1 2 3] (parallel/pvec (parallel/par [1 2 3] :map))))
+  (is (thrown-with-msg? python/Exception
+                        #"Unsupported par op"
+                        (parallel/par [1 2 3] :explode identity)))
+  (is (thrown? Exception
+               (parallel/pvec
+                (parallel/par [1 2 3] :map-with [+ [10]])))))
+
+(deftest parallel-aggregate-comparator-boundaries-test
+  (let [xs       [3 -10 2 -4]
+        abs-comp (fn [a b] (compare (abs a) (abs b)))]
+    (is (= [2 3 -4 -10] (parallel/psort xs abs-comp)))
+    (is (= 2 (parallel/pmin xs abs-comp)))
+    (is (= -10 (parallel/pmax xs abs-comp)))
+    (is (= {:min 2 :max -10 :size 4 :min-index 2 :max-index 1}
+           (parallel/psummary xs abs-comp)))))

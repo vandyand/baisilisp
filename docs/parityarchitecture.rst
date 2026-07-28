@@ -101,7 +101,11 @@ Standard Libraries
 ``basilisp.pprint`` provides ``code-dispatch``, ``:fill`` newlines, and the
 portable ``cl-format`` surface. Formatter compatibility is protected with
 upstream-derived directive tests; Basilisp character values and Python streams
-replace JVM character and writer objects.
+replace JVM character and writer objects. The public helper boundary follows
+Clojure where it is observable: direct ``fresh-line`` fallback behavior,
+``write`` option rendering without a trailing ``pprint`` newline, and
+``pprint-tab``'s direct-call rejection are covered by shared fixtures, while
+tabulation remains an internal formatter service for ``~T``.
 
 ``basilisp.spec.alpha`` provides portable validation, conforming, explain-data,
 opt-in function-spec instrumentation, and bounded Hypothesis-backed checking.
@@ -394,7 +398,11 @@ history and error behavior; ``:repl/quit`` and EOF end a connection. It defaults
 to loopback binding and daemon threads, rejects duplicate names without leaking a
 bound socket, and accepts Clojure-style EDN property entries. ``repl-read``
 cannot reproduce the JVM reader's line-start prompt sentinel, but otherwise
-provides the standard callback and quit semantics.
+provides the standard callback and quit semantics. The semantic-depth follow-up
+directly covers every audited ``clojure.core.server`` public Var while keeping
+live TCP server object identity in local tests. ``repl-read`` uses an explicit
+EOF sentinel so EOF exits like Clojure without conflating EOF with the readable
+``nil`` form.
 
 ``with-local-vars``
 ~~~~~~~~~~~~~~~~~~~
@@ -426,7 +434,12 @@ returns a handler that raises ``KeyboardInterrupt`` in the calling thread, and
 JVM debugger, arbitrary thread-stopping, or Java ``StackTraceElement``
 compatibility: those behavior families are host services, not portable Clojure
 contracts. Namespace scans are read-only and source lookup is safe for Python
-builtins and dynamically-created objects that lack recoverable source text.
+builtins and dynamically-created objects that lack recoverable source text. The
+semantic-depth follow-up covers every audited REPL public Var directly, while
+normalizing host-shaped output for documentation/source/tracebacks. ``source``
+now reports unresolved symbols like Clojure, ``source-fn`` accepts symbols as
+well as Basilisp Vars/Python objects, and ``demunge`` recognizes both Clojure's
+standard munged tokens and Basilisp's internal double-underscore tokens.
 
 The evaluator boundary is a small Python service rather than a network handler:
 ``evaluate_form(session, form, context, emit) -> outcome``. ``session`` owns
@@ -518,13 +531,14 @@ margins, nested blocks, reader macros, and default data-printing behavior.
 
 ``code-dispatch`` is a separate multimethod layered over the same writer. It
 handles generic code lists and symbols, reader macros, definition and binding
-forms, ``cond``/``case`` pairs, ``try``/``catch``/``finally`` clauses, and
-``ns``/``require`` declarations. The dispatch table also covers Clojure's
-portable hold-first and binding families, including ``def``/``defonce``, member
-access forms, ``if``/``if-not``, ``when``/``when-not``, ``condp``,
-``with-local-vars``, ``locking``, ``struct``/``struct-map``, and readable
-``fn*`` anonymous-function expansions. It falls back to ordinary list printing
-for incomplete or unrecognized forms; golden tests cover the structured forms.
+forms, ``cond``/``case`` pairs, and ``ns``/``require`` declarations. The
+dispatch table also covers Clojure's portable hold-first and binding families,
+including ``def``/``defonce``, member access forms, ``if``/``if-not``,
+``when``/``when-not``, ``condp``, ``with-local-vars``, ``locking``,
+``struct``/``struct-map``, and readable ``fn*`` anonymous-function expansions.
+It falls back to ordinary list printing for incomplete or unrecognized forms,
+including ``try``/``catch``/``finally`` forms that Clojure does not
+special-case; golden tests cover the structured forms.
 
 ``cl-format`` is implemented as a source-derived portability layer rather
 than a wrapper around Python's unrelated ``format`` mini-language. It retains
@@ -535,18 +549,33 @@ The public print functions use the Clojure-compatible ``print-method`` and
 ``print-dup`` multimethods. Custom methods receive the active writer and apply
 to nested values as well as top-level arguments, while the underlying renderer
 continues to enforce ``*print-length*``, ``*print-level*``, and metadata
-settings for ordinary collections.
+settings for ordinary collections. Basilisp's root
+``*print-namespace-maps*`` value intentionally matches Clojure's default
+``true``; callers that need fully qualified keys bind it to ``false``.
 
 The shared differential fixture now covers the portable rendered contract for
 ordinary data printing, sorted maps, ``print-table``, stable ``code-dispatch``
 definition, ``case``, threading forms, the added formatter-table families, a
 deterministic generated code-dispatch corpus across margins, ``cl-format``
 numeric/iteration/conditional/plural/newline directives, formatter functions,
-and custom ``:fill`` logical-block dispatch. Map entries and record maps use
-Clojure's comma separators, and ``print-table`` uses Clojure's vertical outside
-divider bars. Exact XP width-decision heuristics around deeply nested
-``condp``/body forms remain a follow-up and should enter the fixture only as
-concrete Clojure/Basilisp mismatches with stable margins.
+custom ``:fill`` logical-block dispatch, combined ``write`` controls, and
+radix-prefixed integer/ratio printing. The ``cl-format`` directive layer is
+also locked for radix/comma/sign variants, character names, ``~A``/``~S``
+padding, justification, recursive ``~?`` indirection, fresh-line boundaries,
+standalone ``~_`` rejection, and absolute/relative ``~T`` tabulation. Map
+entries and record maps use Clojure's comma separators, ``print-table`` uses
+Clojure's vertical outside divider bars, and simple-dispatch numeric rendering
+now matches Clojure's non-decimal negative-integer source shape while keeping
+ratio denominators unprefixed. The core print-helper fixture separately locks
+metadata/readability suppression, print-dup metadata preservation, default and
+bound namespace-map rendering, escaped strings, characters, tagged literals,
+set truncation, and deterministic generated printable values. ``pprint``
+flushes the pretty-writer buffer before writing its trailing newline so
+platform line-ending width does not affect object layout; the fixture locks
+the formerly divergent exact-margin nested-map case. The exact XP
+width-decision follow-up now ports Clojure's recursive section processing and
+locks concrete ``condp``/body-form boundary cases, including exact-width
+``if``/``when`` predicate/body layouts and ``:fill`` subsection boundaries.
 
 Compiler Correctness And Diagnostics
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -615,10 +644,15 @@ explanation is added. ``fspec``/``fdef`` descriptors and Var-only
 instrumentation validate ``:args``, ``:ret``, and ``:fn`` at an explicit call
 boundary; they do not patch arbitrary Python callables or existing references
 to an original callable. ``basilisp.spec.test.alpha/check`` uses Hypothesis
-shrinking for known portable descriptor domains and returns structured pass or
-failure data. Arbitrary predicates require ``with-gen`` with an explicit
-strategy; Hypothesis is an optional test adapter, not the implementation of the
-spec contract.
+shrinking for known portable descriptor and predicate domains and returns
+structured pass or failure data. ``checkable-syms`` and
+``instrumentable-syms`` report the registered ``fdef`` symbols, ``check``
+accepts Clojure-style test.check option maps and target collections, and
+``check-fn`` generated-checks an explicit ``fspec`` against a callable or Var.
+``with-instrument-disabled`` is a thread-local dynamic validation bypass for
+already instrumented calls. Arbitrary predicates still require ``with-gen`` with
+an explicit strategy; Hypothesis is an optional test adapter, not the
+implementation of the spec contract.
 
 The spec public-surface tranche closes the remaining audited
 ``clojure.spec.alpha``, ``clojure.spec.test.alpha``, and
@@ -626,8 +660,20 @@ The spec public-surface tranche closes the remaining audited
 as ``Spec``, ``Specize``, ``conform*``, ``explain-data*``, ``specize*``,
 ``registry``, and the ``*-impl`` constructors are available as compatibility
 entrypoints backed by the descriptor engine. ``spec.test.alpha`` exposes
-``->sym``, namespace enumeration, summary, and instrumentability helper names
-without claiming JVM classpath-wide instrumentation. The generator now handles
+``->sym``, namespace enumeration, discovery, instrumentation, summary, ``check``,
+and ``check-fn`` helper names without claiming JVM classpath-wide
+instrumentation or Clojure/test.check's JVM-specific shrink result internals.
+The semantic-depth tranche for ``spec.alpha`` directly compares portable
+contracts across core spec creation, registry lookup, composition,
+collections, regex specs, numeric and instant ranges, assertion/explain
+behavior, generators, ``fspec``/``exercise-fn``, protocol helpers, and safe
+implementation-helper entrypoints. It also locks ``s/abbrev`` to Clojure's
+observable symbol/list dequalification behavior. The adversarial follow-up
+locks Clojure's chained conformer/unformer behavior for ``s/and``, repeat
+backtracking across later regex branches, first-match branch order, ``keys*``
+permutation round trips, and tagged regex explain paths, while leaving
+JVM-specific internal representation details outside the compatibility claim.
+The generator now handles
 recursively-defined keyword specs when a nonrecursive base branch is available,
 using size-bounded recursion and falling back to base branches at small sizes.
 It also generates Clojure-style ``multi-spec`` values by enumerating a
@@ -635,8 +681,15 @@ multimethod's registered methods and applying keyword or function retagging to
 the generated branch value. ``fspec`` generation now produces invokable values
 for descriptors with an ``:args`` spec, validates generated-function calls
 against those args, and emits conforming return values from ``:ret`` when
-present. Recursive specs with no base branch and Python model adapters remain
-design tasks rather than surface-name tasks.
+present. The semantic-depth tranche for ``spec.gen.alpha`` directly compares
+primitive generators, combinators, lazy generator construction, named/predicate
+generator lookup, and property-check result shapes; it also locks in generated
+character representation, ``gen/not-empty`` filtering, and persistent-map
+iteration for edge keys such as ``##NaN``. The follow-up extends that boundary
+through ``s/gen`` named/path overrides, invalid override filtering,
+``with-gen`` values embedded in regex specs, and Clojure-style variable repeat
+generation for ``s/*`` and ``s/+``. Recursive specs with no base branch and
+Python model adapters remain design tasks rather than surface-name tasks.
 
 Python interoperability should remain direct rather than imitate Java
 interoperability. The next native layer should add narrow, explicit adapters for
@@ -664,8 +717,10 @@ separate policies for aliases, defaults, unknown fields, coercion, and error
 translation. Hypothesis belongs in ``basilisp.spec.test`` as an optional
 generator adapter after descriptors are stable; it must not decide what
 ``conform`` or ``explain-data`` means. ``basilisp.spec.test.alpha`` now
-supplies explicit Var wrapping, ``unstrument`` restoration, and bounded
-generated checks, never monkey-patching arbitrary Python callables.
+supplies explicit Var wrapping, ``unstrument`` restoration, thread-local
+instrument disable scopes, discovery of registered function specs, explicit
+``fspec`` checking through ``check-fn``, and bounded generated checks, never
+monkey-patching arbitrary Python callables.
 
 The adapter policy is deliberately conservative because the three model systems
 do not mean the same thing by validation. Dataclasses primarily describe field
@@ -709,6 +764,15 @@ namespace work should now be chosen from semantic-depth failures, missing
 third-party-library facades, and explicitly Java-hosted namespaces rather than
 simple public-name gaps in the audited set.
 
+The semantic-depth follow-up for ``clojure.string`` keeps the Clojure-facing
+surface independent from Python convenience helpers. ``split`` follows
+Clojure's trailing-empty and positive-limit rules, ``split-lines`` splits only
+``\n`` and ``\r\n`` boundaries, ``last-index-of`` treats ``from-index`` as an
+inclusive start position, and regex replacement strings use Clojure/Java-style
+``$1`` group references and ``re-quote-replacement`` quoting. The Python
+interop boundary remains explicit: ``escape`` accepts Python string-keyed maps
+without losing non-BMP Python codepoints.
+
 The same audit also closed the portable constructor/protocol layer for
 ``clojure.core.cache``, ``clojure.core.memoize``,
 ``clojure.core.protocols``, and ``clojure.core.reducers``. The first three now
@@ -724,20 +788,77 @@ vectors, scalars, and map entries. Map ``conj`` still accepts maps, map entries,
 nil, and vector-like pairs, but rejects arbitrary sequential pairs such as lists
 and strings to match Clojure's map-entry boundary.
 
+The same fixture now exercises transducer completion boundaries directly.
+``transduce`` must invoke reducing-function completion even when the input is
+empty or reduction has already short-circuited. ``sequence`` must initialize the
+transducer once, emit terminal completion output such as ``partition-all``'s
+final chunk, preserve normal ``halt-when`` output, and support multi-collection
+mapping without treating scalar reduced values as seqable output. Custom
+``halt-when`` return functions observe the completed reducing result before
+receiving the halting input, and reduced short-circuiting must not run that
+completion a second time. Generated fixture rows compare ``sequence``, ``into``,
+and ``transduce`` over stateful, filtering, partitioning, and early-terminating
+transducer compositions.
+
 The tools.reader follow-up closed the remaining portable public surface for
-``clojure.tools.reader`` and ``clojure.tools.reader.reader-types``. Reader-type
+``clojure.tools.reader``, ``clojure.tools.reader.default-data-readers``,
+``clojure.tools.reader.edn``, ``clojure.tools.reader.impl.commons``,
+``clojure.tools.reader.impl.errors``, ``clojure.tools.reader.impl.inspect``,
+``clojure.tools.reader.impl.utils``, and ``clojure.tools.reader.reader-types``. Reader-type
 constructors and coercers create Basilisp's Python-backed stateful readers,
 while public character APIs return Basilisp ``Character`` values rather than
 one-character strings. Raw positional constructor fields that only affect JVM
 implementation details are accepted only to the extent they map to source
-position and file metadata.
+position and file metadata. Plain pushback readers are not indexing readers;
+only indexing and source-logging reader constructors expose line/column/file
+metadata, matching the observed tools.reader boundary. The semantic-depth follow-up exercises root reader
+contracts directly: repeated reads and EOF handling, ``read+string`` source
+boundaries, regex literals, tagged/default reader bindings, suppressed tagged
+literals, reader conditionals, ``read-symbol`` delimiter and source metadata
+behavior, ``resolve-symbol`` alias handling, and ``*read-eval*`` enforcement.
+The compatibility boundary deliberately emits standard ``clojure.core`` symbols
+from ``resolve-symbol`` even though the implementation delegates to
+``basilisp.core`` internally. ``tools.reader`` intentionally differs from the
+lower-level Basilisp reader default for reader conditionals: source-compatible
+``tools.reader/read`` and ``read-string`` reject ``#?``/``#?@`` unless callers
+explicitly pass ``:read-cond :allow`` or ``:read-cond :preserve``. The EDN
+namespace uses the same stateful reader backend with an EDN mode that allows the
+upstream ``inst``/``uuid`` default tags plus caller-provided ``:readers`` and
+``:default`` handlers, while rejecting the non-EDN reader macros rejected by
+upstream and Basilisp host-extension tags by default. Leading apostrophes in
+EDN tokens and metadata are accepted to match ``tools.reader.edn``.
+``tools.reader.default-data-readers`` delegates timestamp parsing and validation
+to Basilisp's instant implementation: Date-like reads produce timezone-aware UTC
+Python datetimes, Calendar-like reads produce Basilisp's offset-preserving
+``InstantCalendar`` value, Timestamp-like reads preserve parsed nanoseconds in
+``InstantTimestamp``, and UUID reads produce Python ``uuid.UUID`` values. The
+JVM namespace's generated ``ThreadLocal`` proxy Var is classified as a
+non-portable artifact. ``tools.reader.impl.commons`` is exposed as a portable
+source-compatibility namespace for upstream helper callers; its regex,
+number-matching, symbol-token parsing, line/comment skipping, and throwing
+reader helpers operate over Basilisp's Python-backed reader types while
+preserving the observed Clojure return-value boundaries. ``tools.reader.impl.utils``
+exposes the adjacent character/predicate, metadata, namespace-key,
+``make-var``, ``ex-info?``, ``second'``, version-guard, and ``compile-when``
+helpers with the same observed nil/false and macro-expansion boundaries.
+``tools.reader.impl.inspect`` exposes the upstream ``inspect``/``inspect*``
+surface for portable scalar, string, collection, and truncation rendering.
+JVM-specific internal seq class labels, such as vector/map/lazy seq placeholder
+names, are treated as host-specific diagnostics rather than portable values.
+``tools.reader.impl.errors`` exposes the upstream ``ex-info`` helper surface for
+reader errors, EOF errors, illegal-argument errors, and the reader-specific
+Unicode, octal, metadata, namespace-map, delimiter, and reader-tag throw
+helpers. Error data uses Clojure's portable ``:type :reader-exception`` and
+``:ex-kind`` keys, adding ``:file``, ``:line``, and ``:col`` only when the input
+reader is indexing-capable.
 
 The tools.logging follow-up closed ``clojure.tools.logging.impl`` public
-surface parity and the meaningful root logging Vars. The runtime uses Python's
-``logging`` package as its backend; Java-specific SLF4J, Commons Logging, JUL,
-and Log4j factory selectors return ``nil``. The only remaining root-surface
-delta is an upstream generated proxy class Var, which is a JVM implementation
-artifact rather than a portable logging API.
+surface parity, ``clojure.tools.logging.readable`` public surface parity, and
+the meaningful root logging Vars. The runtime uses Python's ``logging`` package
+as its backend; Java-specific SLF4J, Commons Logging, JUL, and Log4j factory
+selectors return ``nil``. The only remaining root-surface delta is an upstream
+generated proxy class Var, which is a JVM implementation artifact rather than a
+portable logging API.
 
 The standard namespace surface audit is now executable rather than prose-only.
 ``scripts/standard_namespace_surface_matrix.py`` runs each configured
@@ -745,10 +866,53 @@ Clojure/Basilisp namespace pair in one process per runtime, emits a CSV matrix,
 and fails when a Clojure public Var is missing from Basilisp without an explicit
 classification. The audit intentionally reports Basilisp extensions separately
 instead of treating them as parity failures, because many are documented
-Python-hosted additions. Its classified missing items are JVM-hosted
-implementation artifacts: the generated ``clojure.tools.logging`` proxy class
-Var and Java reflection constructors, records, resolver, and flag descriptors
-from ``clojure.reflect``.
+Python-hosted additions. Its non-portable artifact classification is reserved
+for JVM-hosted implementation details that are not portable APIs: currently the
+generated ``clojure.tools.logging`` proxy class Var.
+
+Bundled Clojure source resources that intentionally do not create independent
+public namespaces are audited by ``scripts/standard_namespace_inventory.py``.
+``--verify-source-omissions`` reads the exact resource path from the Clojure
+jar, verifies that the file enters its owning namespace with ``in-ns``, requires
+the resource namespace, and checks that no independent ``find-ns`` entry is
+created. ``--verify-discovered-resources`` separately enumerates
+``clojure/*.clj`` and ``clojure/*.cljc`` resources from the active Clojure
+runtime jar, normalizes resource paths to namespace names, rejects path-to-name
+collisions, and fails on any discovered namespace without a classification.
+Together these checks prevent an omitted implementation file or newly added
+runtime namespace from silently becoming an unmodeled public namespace in a
+future Clojure baseline.
+
+Once a namespace reaches public-surface parity, the next audit layer is direct
+semantic fixture coverage. ``scripts/semantic_fixture_coverage.py`` scans shared
+``tests/conformance`` fixtures for explicit ``alias/public-var`` calls against
+the audited namespace matrix. It is a conservative triage tool, not a proof:
+quoted public-surface lists and indirect calls are not counted. Low-coverage
+rows should drive future tranches toward behavioral fixtures before more
+compatibility shims are added.
+
+``clojure.core`` uses a separate semantic coverage audit because most portable
+core usage is unqualified. ``scripts/core_semantic_fixture_coverage.py`` compares
+the pinned ``clojure.core``/``basilisp.core`` public sets, then scans the shared
+conformance fixtures for explicit qualified core references, ``clojure.core``
+aliases, unqualified call heads, and narrow value references for dynamic Vars.
+The output is an intentionally conservative weak-coverage map for choosing the
+next core behavior tranche; it is not treated as a 100% gate yet because locals,
+macros, quoted forms, and runtime ``resolve`` calls require human review.
+
+Full-corpus differential verification must also be reproducible as an
+engineering gate, not just as an ad hoc local loop. ``scripts/differential_conformance.py``
+therefore supports Basilisp-only ``BASILISP_DO_NOT_CACHE_NAMESPACES=true``
+execution and stable modulo fixture sharding. Its default Clojure command pins
+the JVM runtime to Clojure 1.12.4 plus the audited contrib dependencies, so
+proof output cannot drift with a Clojure CLI default-version change.
+Cache-disabled shards are the preferred proof mode when validating broad
+namespace parity after many local edits, because they avoid dependence on stale
+or oversized ``.lpyc`` artifacts while preserving identical fixture source for
+Clojure and Basilisp. CI shards remain one-fixture-per-process so fixture
+isolation stays identical to local diagnostic runs; the shard count should be
+increased rather than batching fixtures when cache-disabled proof jobs become
+too slow.
 
 ``datafy``
 ~~~~~~~~~~
@@ -780,7 +944,9 @@ Malformed numbers, duplicate map/set entries, invalid keywords, unclosed
 strings, bad escapes, unknown tags, and malformed built-in tags remain rejection
 boundaries. ``write`` and ``write-string`` are Basilisp extensions for emitting
 the EDN subset and are covered by local round-trip tests rather than Clojure
-namespace parity.
+namespace parity. The semantic-depth follow-up directly touches the
+Basilisp-only writer protocol and functions under reader conditionals, raising
+the audit row to full coverage without treating writers as JVM Clojure APIs.
 
 ``instant``
 ~~~~~~~~~~~
@@ -832,6 +998,23 @@ functions pass an explicit portability check. It must neither create global
 worker pools nor promise speedup. The implementation remains internal and
 protocol-based; no third-party package supplies Clojure's fold/reduced contract.
 
+``clojure.test``
+~~~~~~~~~~~~~~~~
+
+``basilisp.test`` keeps Basilisp's PyTest integration as a host adapter, but
+the Clojure-facing namespace follows ``clojure.test``'s report-driven contract.
+Shared fixtures now exercise every audited public Var directly: dynamic test
+Vars, ``assert-any``/``assert-predicate`` generated code, custom ``report``
+methods, ``inc-report-counter``, ``try-expr``, metadata-backed tests from
+``deftest-``/``with-test``/``set-test``, context string helpers, fixture
+composition, low-level runner returns, summary runners, and direct
+``test-ns-hook`` calls. ``test-vars`` and ``test-all-vars`` are side-effecting
+low-level entrypoints that return ``nil`` like Clojure, while ``test-ns``,
+``run-test-var``, ``run-test``, ``run-tests``, and ``run-all-tests`` preserve
+summary maps for callers. ``compose-fixtures`` and ``join-fixtures`` accept
+Clojure-style thunk fixtures; Basilisp's generator-fixture form remains a
+``with-fixtures`` extension rather than part of the shared contract.
+
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
@@ -854,10 +1037,13 @@ Clojure/Basilisp fixtures lock the public surface, direct printers,
 seeded diagnostics corpus; ``tap.py`` and ``pytest-tap`` remain useful
 interoperability checks rather than dependencies.
 
-``clojure.test.junit`` is intentionally omitted. Its contract is tied to JUnit
-classes and XML/reporting conventions already covered by Python test runners.
-Pytest's JUnit XML option and ``unittest`` are host-level integrations, so a
-Basilisp alias would add a familiar name without compatible behavior.
+``basilisp.test.junit`` exposes the standard ``clojure.test.junit`` XML reporter
+surface. The implementation uses Basilisp's dynamic ``clojure.test/report``
+hook, ``*test-out*`` writer, and report counters, while suppressing Basilisp's
+human runner output inside ``with-junit-output`` so the XML stream remains
+valid. It preserves Clojure's public element helpers and JUnit attribute order,
+and escapes assertion text deterministically. Stack traces and source locations
+remain Python-hosted.
 
 ``core.specs.alpha``
 ~~~~~~~~~~~~~~~~~~~~
@@ -882,9 +1068,9 @@ load without inventing a Python-specific UUID API under a Clojure name.
 Java-hosted helper namespaces
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-``clojure.java.io``, ``clojure.java.shell``, ``clojure.java.process``,
-``clojure.java.browse``, ``clojure.java.javadoc``, JDBC helpers, classpath
-mutation, and Java bean/reflection helpers need individual classification.
+``clojure.java.io``, ``clojure.java.shell``, ``clojure.java.process``, JDBC
+helpers, classpath mutation, and Java bean/reflection helpers need individual
+classification.
 Existing ``basilisp.io``, ``shell``, ``process``, ``reflect``, and ``url``
 namespaces are Python-native ports where their data contract is useful. Further
 work should extend those namespaces with standard-library values such as
@@ -902,9 +1088,45 @@ The alias exports only Clojure's public names; Basilisp-only helpers such as
 locks the public surface, captured stdout, environment replacement/merge,
 ``exit-ref`` timeout behavior, ``io-task`` dynamic binding capture, and a seeded
 ``exec`` corpus.
-Do not extend that exception to Java classloader changes, JDBC result-set sequences,
-browser/Javadoc wrappers, or Java-bean coercion. Those APIs expose services that
-Python already models differently.
+Do not extend that exception to Java classloader changes, JDBC result-set
+sequences, or Java-bean coercion. Those APIs expose services that Python
+already models differently.
+
+``clojure.java.browse`` is a small Python-native UI adapter. Its public surface
+matches Clojure's two Vars: ``*open-url-script*`` is an atom with the standard
+``:uninitialized`` initial state, and ``browse-url`` launches a configured
+script with the URL argument or falls back to Python's ``webbrowser`` module.
+``clojure.java.browse-ui`` has no public Vars in Clojure, so
+``basilisp.java.browse-ui`` is intentionally empty and exists to preserve the
+require path without inventing a Swing replacement.
+
+``clojure.java.javadoc`` is ported as a REPL helper over the browse adapter.
+The public Vars ``*feeling-lucky-url*``, ``*feeling-lucky*``,
+``*local-javadocs*``, ``*core-java-api*``, and ``*remote-javadocs*`` retain
+Clojure's source shape, while ``add-local-javadoc`` and
+``add-remote-javadoc`` update Basilisp atoms rather than JVM refs.
+``javadoc`` resolves the class of Python values to a Python-style qualified
+name, searches configured local/remote prefixes, and delegates the final URL to
+``browse-url``. It does not promise JVM ``Class`` module discovery.
+
+``clojure.java.basis`` and ``clojure.java.basis.impl`` are available as small
+state facades for Clojure CLI basis-aware tooling. ``init-basis`` is a delay,
+``the-basis`` is a delayed atom, and ``update-basis!`` follows Clojure's
+``swap!`` shape so portable probes and test harnesses can observe/update the
+current basis. Basilisp does not synthesize a Maven/JVM classpath basis; the
+default initial basis is ``nil`` unless application code explicitly provides
+one.
+
+``clojure.java.classpath`` is available as a Python-hosted classpath
+introspection facade. Its public names match ``org.clojure/java.classpath``:
+``URLClasspath``, ``urls``, ``get-urls``, ``loader-classpath``,
+``system-classpath``, ``classpath``, ``classpath-directories``,
+``classpath-jarfiles``, ``jar-file?``, and ``filenames-in-jar``. The portable
+contract is classpath shape, protocol dispatch, path/jar filtering, and archive
+entry enumeration. Returned entries are Python ``pathlib.Path`` and
+``zipfile.ZipFile`` values rather than JVM ``File`` and ``JarFile`` objects,
+and the default process classpath is Python's ``sys.path`` rather than
+``java.class.path``.
 
 Rewritten standard namespaces must be visible by their requested
 ``clojure.*`` names after ``require``. Basilisp still loads the backing
@@ -915,14 +1137,82 @@ symbols such as ``clojure.string``, ``clojure.core.server``,
 aliases rather than real duplicate namespaces, so ``all-ns`` continues to
 report the concrete loaded namespaces.
 
+``clojure.main`` is a special rewrite rather than a plain ``clojure`` to
+``basilisp`` prefix replacement. ``basilisp.main`` is Basilisp's Python CLI
+module, not a Lisp namespace, so ``clojure.main`` loads
+``basilisp.main-compat`` and records the requested Clojure namespace name as
+an alias. The compatibility namespace exposes the full Clojure public surface,
+delegates portable traceback/name helpers to Basilisp's REPL and stacktrace
+libraries, implements the reader sentinel and ``repl-read`` helpers with
+``clojure.tools.reader`` pushback readers, supports Clojure's portable
+option-driven ``repl`` hooks, and formats deterministic ``:clojure.error/*``
+triage maps like Clojure. Actual process entrypoint semantics remain
+host-specific: users should invoke Basilisp through its Python CLI rather than
+through ``clojure.main/main``. The semantic-depth follow-up directly exercises
+every audited public Var, normalizing default namespace names and host exception
+classes while proving the portable helper contracts.
+
+``clojure.repl.deps`` is another special rewrite because ``basilisp.repl`` is
+already the standard REPL helper namespace. Requires of ``clojure.repl.deps``
+load ``basilisp.repl-deps`` and preserve Clojure's three public names:
+``add-lib``, ``add-libs``, and ``sync-deps``. The namespace keeps Clojure's
+non-REPL guard for deterministic calls, but successful dynamic dependency
+loading remains a JVM Clojure CLI capability and raises an explicit
+``NotImplementedError`` in Basilisp.
+
+``clojure.tools.deps.interop`` exposes ``invoke-tool`` for source
+compatibility. It validates the required tool selector and ``:fn`` symbol using
+Clojure-compatible messages, then raises a host-bound error rather than
+spawning a Clojure CLI tool inside the Python runtime.
+
+``clojure.inspector`` is provided as a non-graphical inspector model layer.
+Clojure's traversal helpers (``collection-tag``, ``is-leaf``, ``get-child``,
+and ``get-child-count``) are portable data operations and are implemented
+directly. ``tree-model``, ``old-table-model``, ``list-model``, and
+``table-model`` return Python-hosted proxy objects with the same Java-style
+read methods used by Clojure's Swing models. ``inspect``, ``inspect-tree``, and
+``inspect-table`` return those models instead of opening windows, leaving
+rendering to Python-native tools.
+
+``clojure.parallel`` is treated as a legacy source-audited namespace rather
+than a JVM-verified namespace. The bundled Clojure 1.12.4 source imports
+obsolete ``jsr166y`` ForkJoin classes and fails during ``require`` in the
+verified baseline. ``basilisp.parallel`` therefore preserves the public
+collection API with a sequential operation plan: ``par`` records bounds,
+filters, and maps; ``pvec`` realizes them; aggregates and collection-producing
+helpers operate over the realized vector. This is compatibility for source and
+deterministic data behavior, not a parallel execution contract. The audit is
+mechanically enforced by reading ``clojure/parallel.clj`` from the bundled
+Clojure source resource, comparing public ``defn`` names against Basilisp's
+runtime publics, and by a fixture that checks source-only Clojure boundaries
+against executed Basilisp behavior. The adversarial fixture treats operation
+composition as the compatibility boundary: indexes remain tied to original
+collection positions after ``:bound`` and filters, ``:filter-with``/``:map-with``
+read the corresponding element from the companion collection by that position,
+and malformed odd trailing operation options are ignored because the legacy
+source reduces over ``(partition 2 ops)``. Empty realization, explicit
+unsupported operation errors, public arglists, comparator aggregates, and
+consecutive duplicate removal are part of the locked contract.
+
 ``basilisp.reflect`` exposes Python inspection data behind the portable
 reflection entrypoints. ``reflect``, ``type-reflect``, ``typename``,
 ``do-reflect``, ``Reflector``, and ``TypeReference`` are the shared
-Clojure-facing vocabulary. Java-specific record constructors such as
-``->Method``/``map->Method``, ``JavaReflector``/``AsmReflector``,
-``ClassResolver``, ``resolve-class``, and raw JVM flag descriptors are
-classified as host artifacts; they are not weakened into Python-shaped values
-under Clojure names.
+Clojure-facing vocabulary. Clojure-shaped ``Method``, ``Field``, and
+``Constructor`` records preserve the upstream data keys and factory helper
+names, and ``flag-descriptors`` preserves the JVM access flag table as data.
+``ClassResolver`` supports callable resolvers. ``JavaReflector`` and
+``AsmReflector`` are present as public reflector types for source
+compatibility, but ``do-reflect`` on them raises an explicit JVM metadata
+boundary instead of inventing Java class metadata from Python objects.
+Python-hosted reflection remains available through ``PythonReflector`` and the
+default ``reflect`` path. The semantic-depth follow-up directly exercises every
+audited public Var in the namespace by separating portable data/protocol
+contracts from host-specific reflector behavior: JVM Clojure reflects Java
+classes, while Basilisp reflects Python classes through ``PythonReflector``.
+The ``clojure.reflect.java`` source resource is treated as implementation code
+for ``clojure.reflect`` rather than as a public namespace: plain require is
+accepted after ``clojure.reflect`` has loaded, but no separate namespace is
+created.
 
 ``basilisp.xml`` is a deliberately small data-oriented XML adapter and is
 available through the usual ``clojure.xml`` import-path alias. It translates
@@ -953,9 +1243,12 @@ part of the advertised surface.
 Python-hosted implementation that preserves Clojure's floating-point domain
 categories, signed zero behavior, rounding, exponent, next-value, and ordinary
 exact-integer results. A shared conformance fixture uses category and identity
-checks rather than Java/Python libm last-bit comparisons. Python's arbitrary
-precision integers still mean ``*-exact`` overflow behavior remains documented
-as host-specific instead of pretending to reproduce fixed-width JVM arithmetic.
+checks rather than Java/Python libm last-bit comparisons. The semantic-depth
+follow-up directly exercises every audited public Var, including ``expm1``
+overflow and small-value behavior, ``tanh`` infinities and signed zero, and
+``random`` range/finite constraints. Python's arbitrary precision integers
+still mean ``*-exact`` overflow behavior remains documented as host-specific
+instead of pretending to reproduce fixed-width JVM arithmetic.
 
 ``basilisp.core.rrb-vector`` provides the portable public
 ``clojure.core.rrb-vector`` constructors, concatenation, and slicing API over
@@ -986,18 +1279,28 @@ argument groups and drops incomplete trailing groups, matching Clojure's
 is not a compatibility target.
 
 ``basilisp.test.check`` provides a portable property-testing subset across the
-root, ``generators``, ``properties``, ``results``, ``rose-tree``, and
-``clojure-test`` namespaces. The compatibility contract is generator domain
-shape, combinator behavior, ``quick-check`` result maps, failure shrinking,
-result-data keys under ``:clojure.test.check.properties/error``, constructor
-helpers such as ``->Generator``/``map->Generator`` and
-``->ErrorResult``/``map->ErrorResult``, rose-tree helper behavior for
+root, ``generators``, ``properties``, ``results``, ``random``, ``rose-tree``,
+``clojure-test``, ``impl``, ``clojure-test.assertions``, and empty
+``clojure-test.assertions.cljs`` namespaces. Those namespaces are included in
+the standard namespace surface matrix against ``org.clojure/test.check``; the
+generated JVM ``ThreadLocal`` proxy Var in ``clojure.test.check.random`` is
+classified as a non-portable implementation artifact. The compatibility
+contract is generator domain shape, combinator behavior, ``quick-check`` result
+maps, failure shrinking, the public ``Result`` protocol, result-data keys under
+``:clojure.test.check.properties/error``, constructor helpers such as
+``->Generator``/``map->Generator``, ``->ErrorResult``/``map->ErrorResult``,
+the source-compatible ``->JavaUtilSplittableRandom`` constructor helper, the
+public wall-clock millisecond helper, and the assertion bridge's report map
+shape. Rose-tree helper behavior for
 ``collapse``/``seq``/``remove``/``shrink``/``shrink-vector``/``zip``, lazy RNG
 state splitting, ratio-producing ``big-ratio`` generation, and portable
-``clojure-test`` option/reporting helpers.
-Exact generated values are not a cross-runtime promise: Basilisp's RNG is a
-Python-hosted deterministic splitter, so seeds are reproducible within Basilisp
-but not byte-for-byte aligned with Java test.check.
+``clojure-test`` option/reporting/assertion helpers are covered by shared
+fixtures. Exact generated values are not a cross-runtime promise: Basilisp's RNG
+is a Python-hosted deterministic splitter, so seeds are reproducible within
+Basilisp but not byte-for-byte aligned with Java test.check or Java
+``SplittableRandom``. Assertion stack locations are also Python-hosted, so the
+portable contract is the public helper and report-data boundary rather than JVM
+stack-frame identity.
 
 ``basilisp.walk`` is a direct port of ``clojure.walk``'s recursive traversal
 contract. Lists, sequences, vectors, map entries, maps, sets, records, and
@@ -1072,10 +1375,12 @@ compares the final EDN test summary while allowing test frameworks' preceding
 human-readable output. Its ``--all`` mode discovers every checked-in
 ``run.cljc`` with a portability manifest below ``tests/acceptance`` and runs
 them in stable order, so upstream acceptance additions share one reviewable
-gate. ``tests/acceptance/portable_library`` is the reference
-fixture: its ``:clj``/``:lpy`` conditionals perform only standard namespace
-substitutions, and its portable source exercises strings, sets, walking,
-collections, transducers, exception data, and ``clojure.test``.
+gate. The same batch mode supports Basilisp-only namespace-cache disabling and
+stable modulo sharding; cache-disabled shards are the preferred proof mode for
+source-level library acceptance after broad runtime edits. ``tests/acceptance/portable_library``
+is the reference fixture: its ``:clj``/``:lpy`` conditionals perform only
+standard namespace substitutions, and its portable source exercises strings,
+sets, walking, collections, transducers, exception data, and ``clojure.test``.
 
 An upstream acceptance directory may provide ``acceptance.json`` to record the
 pinned upstream URL and revision plus the exact standard-namespace

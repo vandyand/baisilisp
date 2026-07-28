@@ -2,6 +2,9 @@
   (:require
    [basilisp.spec.alpha :as s]
    [clojure.spec.gen.alpha :as sgen]
+   [clojure.test.check :as tc]
+   [clojure.test.check.generators :as gen]
+   [clojure.test.check.properties :as prop]
    [basilisp.test :refer [deftest is]]))
 
 (def name-key :tests.spec/name)
@@ -151,7 +154,35 @@
     (is (= s/invalid (s/conform small-ints [1 2 3 4])))
     (is (= s/invalid (s/conform small-ints [1 "two"])))))
 
+(deftest adversarial-regex-and-conformer-parity-test
+  (let [string->keyword (s/conformer #(if (string? %) (keyword %) s/invalid)
+                                     name)
+        chained         (s/and string->keyword keyword?)
+        greedy-tail     (s/cat :head (s/* int?) :tail int?)
+        explained       (s/cat :name string? :age int?)]
+    (is (= :ok (s/conform chained "ok")))
+    (is (= "ok" (s/unform chained :ok)))
+    (is (= {:head [1 2] :tail 3}
+           (s/conform greedy-tail [1 2 3])))
+    (let [problem (first (:basilisp.spec.alpha/problems
+                          (s/explain-data explained ["Ada" "old"])))]
+      (is (= [:age] (:path problem)))
+      (is (= [1] (:in problem))))))
+
+(deftest regex-repeat-backtracks-to-later-cat-branches-under-fuzzing
+  (let [property
+        (prop/for-all [head (gen/vector (gen/choose -10000 10000) 0 40)
+                       tail (gen/choose -10000 10000)]
+          (let [spec (s/cat :head (s/* int?) :tail int?)
+                input (conj head tail)]
+            (= {:head head :tail tail}
+               (s/conform spec input))))]
+    (let [result (tc/quick-check 120 property :seed 20260728 :max-size 60)]
+      (is (:pass? result))
+      (is (= 120 (:num-tests result))))))
+
 (defn spec-function [value] value)
+(defn control-spec-function [value] value)
 
 (deftest function-spec-registry-test
   (let [function-spec (s/fdef spec-function :args (s/cat :value int?) :ret int?)]
@@ -159,9 +190,22 @@
     (is (s/valid? function-spec spec-function))
     (is (not (s/valid? function-spec 42)))))
 
+(deftest abbrev-dequalifies-symbols-and-list-forms
+  (is (= 'int? (s/abbrev 'clojure.core/int?)))
+  (is (= 'foo (s/abbrev 'user/foo)))
+  (is (= '(fn [x] (inc x))
+         (s/abbrev '(clojure.core/fn [x] (clojure.core/inc x)))))
+  (is (= '((fn [x] x) 1)
+         (s/abbrev '((clojure.core/fn [x] x) 1))))
+  (is (= '[clojure.core/int? clojure.core/string?]
+         (s/abbrev '[clojure.core/int? clojure.core/string?])))
+  (is (= '{:a clojure.core/int?}
+         (s/abbrev '{:a clojure.core/int?}))))
+
 (deftest public-spec-compatibility-surface-test
   (doseq [sym '[*coll-check-limit*
                 *coll-error-limit*
+                *compile-asserts*
                 *explain-out*
                 *fspec-iterations*
                 *recursion-limit*
@@ -176,11 +220,15 @@
                 def-impl
                 describe*
                 every-impl
+                explain
                 explain*
                 explain-data*
                 explain-printer
+                fdef*
                 fspec-impl
                 gen*
+                get-fspec
+                invalid
                 keys*
                 map-spec-impl
                 maybe-impl
@@ -215,3 +263,44 @@
   (is (= [:i 1] (s/conform (s/alt-impl [:i] [int?] ['int?]) [1])))
   (is (= [1 2] (s/conform (s/rep+impl 'int? int?) [1 2])))
   (is (= nil (s/conform (s/maybe-impl int? 'int?) []))))
+
+(deftest public-control-vars-explain-and-fspec-registry-test
+  (is (= [true 101 20 21 4]
+         [s/*compile-asserts*
+          s/*coll-check-limit*
+          s/*coll-error-limit*
+          s/*fspec-iterations*
+          s/*recursion-limit*]))
+  (is (ifn? s/*explain-out*))
+  (is (s/invalid? s/invalid))
+  (let [seen (atom [])
+        output (binding [s/*explain-out* (fn [ed]
+                                           (swap! seen conj ed)
+                                           (print "captured"))]
+                 (with-out-str (s/explain int? "x")))]
+    (is (= "captured" output))
+    (is (= 1 (count @seen)))
+    (is (seq (:basilisp.spec.alpha/problems (first @seen)))))
+  (let [function-spec (s/fdef* (var control-spec-function)
+                               (s/cat :value int?)
+                               int?
+                               nil)]
+    (is (= function-spec (s/get-fspec (var control-spec-function))))
+    (is (s/valid? function-spec control-spec-function))
+    (is (not (s/valid? function-spec "not a function")))))
+
+(deftest randomized-explain-binding-always-uses-current-explain-out
+  (let [property
+        (prop/for-all [value gen/string-alphanumeric]
+          (let [seen (atom [])
+                output (binding [s/*explain-out* (fn [ed]
+                                                   (swap! seen conj ed)
+                                                   (print "bound-printer"))]
+                         (with-out-str (s/explain int? value)))]
+            (and (= "bound-printer" output)
+                 (= 1 (count @seen))
+                 (= value (:basilisp.spec.alpha/value (first @seen)))
+                 (boolean (seq (:basilisp.spec.alpha/problems (first @seen)))))))]
+    (let [result (tc/quick-check 40 property :seed 20260724 :max-size 24)]
+      (is (:pass? result))
+      (is (= 40 (:num-tests result))))))

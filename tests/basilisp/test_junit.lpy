@@ -1,0 +1,124 @@
+(ns tests.basilisp.test-junit
+  (:require [basilisp.string :as str]
+            [basilisp.test :as t :refer [deftest is testing]]
+            [clojure.test.junit :as junit])
+  (:import io
+           random))
+
+(defn passing-fixture []
+  (t/is (= 2 (+ 1 1)) "pass message"))
+
+(defn failing-fixture []
+  (t/is (= 3 (+ 1 1)) "fail <message> & details"))
+
+(defn throwing-fixture []
+  (t/is (throw (python/RuntimeError "boom <xml> & failure"))
+        "error message"))
+
+(defn- escaped-xml
+  [s]
+  (-> (str s)
+      (str/replace "&" "&amp;")
+      (str/replace "'" "&apos;")
+      (str/replace "<" "&lt;")
+      (str/replace ">" "&gt;")
+      (str/replace "\"" "&quot;")))
+
+(defn- rendered-element-content
+  [s]
+  (let [writer (io/StringIO)]
+    (binding [*out* writer]
+      (junit/element-content s))
+    (.getvalue writer)))
+
+(deftest junit-public-surface-and-helper-test
+  (is (= #{"*depth*" "*var-context*" "element-content" "error-el" "failure-el"
+           "finish-case" "finish-element" "finish-suite" "indent" "junit-report"
+           "message-el" "package-class" "start-case" "start-element"
+           "start-suite" "suite-attrs" "test-name" "with-junit-output"}
+         (set (map name (keys (ns-publics 'basilisp.test.junit))))))
+  (is (= ["demo.alpha" "Beta"] (junit/package-class "demo.alpha.Beta")))
+  (is (= [nil "Beta"] (junit/package-class "Beta")))
+  (is (= {:name "Beta" :package "demo.alpha"}
+         (junit/suite-attrs "demo.alpha" "Beta")))
+  (is (= {:name "Beta"} (junit/suite-attrs nil "Beta"))))
+
+(deftest junit-xml-rendering-test
+  (let [writer (io/StringIO)]
+    (binding [t/*test-out* writer
+              junit/*depth* 1]
+      (t/with-test-out
+       (junit/start-element 'sample true {:a "x<y&z" :quote "\"'"})
+       (junit/element-content "body <&> \"'")
+       (junit/finish-element 'sample true)))
+    (let [xml (.getvalue writer)]
+      (is (str/includes? xml "a=\"x&lt;y&amp;z\""))
+      (is (str/includes? xml "quote=\"&quot;&apos;\""))
+      (is (str/includes? xml "body &lt;&amp;&gt; &quot;&apos;"))
+      (is (str/includes? xml "</sample>")))))
+
+(deftest junit-direct-helper-rendering-test
+  (let [writer (io/StringIO)]
+    (binding [t/*test-out* writer
+              junit/*depth* 2]
+      (t/with-test-out (junit/indent)))
+    (is (= 8 (count (.getvalue writer)))))
+  (is (= "failing-fixture.passing-fixture"
+         (junit/test-name [#'passing-fixture #'failing-fixture])))
+  (let [writer (io/StringIO)]
+    (binding [t/*test-out* writer
+              junit/*depth* 1]
+      (t/with-test-out
+       (junit/start-suite "demo.alpha.Beta")
+       (junit/finish-suite)
+       (junit/start-case "sample" "demo.alpha.Beta")
+       (junit/finish-case)))
+    (let [xml (.getvalue writer)]
+      (is (str/includes? xml "<testsuite"))
+      (is (str/includes? xml "package=\"demo.alpha\""))
+      (is (str/includes? xml "<testcase"))
+      (is (str/includes? xml "classname=\"demo.alpha.Beta\"")))))
+
+(deftest with-junit-output-reporting-test
+  (let [writer (io/StringIO)
+        counters (atom t/*initial-report-counters*)]
+    (binding [t/*test-out* writer
+              t/*report-counters* counters
+              t/*test-failures* nil]
+      (junit/with-junit-output
+        (t/report {:type :begin-test-ns :ns *ns*})
+        (t/report {:type :begin-test-var :var #'passing-fixture})
+        (t/report {:type :pass :message "pass" :expected true :actual true})
+        (t/report {:type :end-test-var :var #'passing-fixture})
+        (t/report {:type :begin-test-var :var #'failing-fixture})
+        (t/report {:type :fail
+                   :message "fail <message>"
+                   :expected '(= 3 2)
+                   :actual false})
+        (t/report {:type :end-test-var :var #'failing-fixture})
+        (t/report {:type :begin-test-var :var #'throwing-fixture})
+        (t/report {:type :error
+                   :message "error <message>"
+                   :expected '(throw)
+                   :actual (python/RuntimeError "boom <xml> & failure")})
+        (t/report {:type :end-test-var :var #'throwing-fixture})
+        (t/report {:type :end-test-ns :ns *ns*})))
+    (let [xml (str/replace (.getvalue writer) "\r\n" "\n")]
+      (is (= {:test 0 :pass 1 :fail 1 :error 1} @counters))
+      (is (str/starts-with? xml "<?xml version=\"1.0\" encoding=\"UTF-8\"?>"))
+      (is (str/includes? xml "<testsuites>"))
+      (is (str/includes? xml "<testsuite name=\"test-junit\" package=\"tests.basilisp\">"))
+      (is (str/includes? xml "<testcase name=\"passing-fixture\" classname=\"tests.basilisp.test-junit\">"))
+      (is (str/includes? xml "<failure message=\"fail &lt;message&gt;\">"))
+      (is (str/includes? xml "expected: (= 3 2)"))
+      (is (str/includes? xml "<error message=\"error &lt;message&gt;\">"))
+      (is (str/includes? xml "boom &lt;xml&gt; &amp; failure"))
+      (is (str/ends-with? xml "</testsuites>\n")))))
+
+(deftest junit-xml-escaping-seeded-fuzz-test
+  (let [rng   (random/Random 0x517E0)
+        chars ["a" "Z" "0" " " "\t" "\n" "<" ">" "&" "\"" "'" "/"]]
+    (dotimes [_ 240]
+      (let [length (.randint rng 0 80)
+            source (apply str (repeatedly length #(.choice rng chars)))]
+        (is (= (escaped-xml source) (rendered-element-content source)))))))

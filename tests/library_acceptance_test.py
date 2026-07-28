@@ -5,7 +5,11 @@ from subprocess import CompletedProcess
 import pytest
 
 import scripts.library_acceptance as acceptance
-from scripts.library_acceptance import acceptance_manifest, verify_manifest
+from scripts.library_acceptance import (
+    _shard_library_roots,
+    acceptance_manifest,
+    verify_manifest,
+)
 
 
 def test_acceptance_manifest_is_portable_and_checked_in():
@@ -99,6 +103,49 @@ def test_acceptance_library_roots_discovers_checked_in_libraries(tmp_path):
     assert acceptance.acceptance_library_roots(tmp_path) == [first, second]
 
 
+def test_default_clojure_command_pins_verified_clojure_version(monkeypatch):
+    monkeypatch.delenv("CLOJURE_COMMAND", raising=False)
+    monkeypatch.setattr(acceptance.shutil, "which", lambda name: name == "clojure")
+
+    command = acceptance._default_clojure_command()
+
+    assert "clojure -Sdeps" in command
+    assert "org.clojure/clojure" in command
+    assert acceptance.CLOJURE_VERSION in command
+
+
+def test_shard_library_roots_selects_stable_modulo_shards():
+    roots = [Path(f"library-{index}") for index in range(7)]
+
+    assert _shard_library_roots(roots, shard_count=1, shard_index=0) == roots
+    assert _shard_library_roots(roots, shard_count=3, shard_index=0) == [
+        Path("library-0"),
+        Path("library-3"),
+        Path("library-6"),
+    ]
+    assert _shard_library_roots(roots, shard_count=3, shard_index=1) == [
+        Path("library-1"),
+        Path("library-4"),
+    ]
+    assert _shard_library_roots(roots, shard_count=3, shard_index=2) == [
+        Path("library-2"),
+        Path("library-5"),
+    ]
+
+
+@pytest.mark.parametrize(
+    "shard_count,shard_index",
+    [(0, 0), (1, -1), (2, 2)],
+)
+def test_shard_library_roots_rejects_invalid_requests(shard_count, shard_index):
+    with pytest.raises(ValueError):
+        _shard_library_roots(
+            [Path("library")],
+            shard_count=shard_count,
+            shard_index=shard_index,
+        )
+
+
 def test_main_all_runs_every_checked_in_library(monkeypatch, tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
@@ -133,6 +180,46 @@ def test_main_all_runs_every_checked_in_library(monkeypatch, tmp_path):
         item[2]["clojure_command"] == "clj" and item[2]["basilisp_command"] == "lpy"
         for item in observed
     )
+    assert all(item[2]["basilisp_env"] is None for item in observed)
+
+
+def test_main_all_applies_sharding_and_basilisp_cache_disable(monkeypatch, tmp_path):
+    first = tmp_path / "first"
+    second = tmp_path / "second"
+    third = tmp_path / "third"
+    for library in (first, second, third):
+        library.mkdir()
+    observed = []
+
+    monkeypatch.setattr(
+        acceptance, "acceptance_library_roots", lambda: [first, second, third]
+    )
+    monkeypatch.setattr(
+        acceptance,
+        "_accept_library",
+        lambda library_root, manifest_path, **kwargs: observed.append(
+            (library_root, manifest_path, kwargs)
+        )
+        or True,
+    )
+
+    assert 0 == acceptance.main(
+        [
+            "--all",
+            "--shard-count",
+            "2",
+            "--shard-index",
+            "1",
+            "--disable-basilisp-ns-cache",
+        ]
+    )
+
+    assert [(second.resolve(), second.resolve() / "portability-manifest.json")] == [
+        (library_root, manifest_path) for library_root, manifest_path, _ in observed
+    ]
+    assert observed[0][2]["basilisp_env"] == {
+        "BASILISP_DO_NOT_CACHE_NAMESPACES": "true"
+    }
 
 
 def test_main_all_stops_on_first_acceptance_mismatch(monkeypatch, tmp_path):
@@ -159,6 +246,11 @@ def test_main_all_rejects_explicit_manifest(monkeypatch, tmp_path):
 
     with pytest.raises(SystemExit):
         acceptance.main(["--all", "--manifest", str(tmp_path / "manifest.json")])
+
+
+def test_main_single_library_rejects_sharding(tmp_path):
+    with pytest.raises(SystemExit):
+        acceptance.main(["--library-root", str(tmp_path), "--shard-count", "2"])
 
 
 @pytest.mark.parametrize(
@@ -211,6 +303,28 @@ def test_acceptance_run_uses_only_the_final_edn_summary(monkeypatch, tmp_path):
     assert [acceptance._normalize_edn("{:pass 2 :fail 0}")] == acceptance._run(
         "basilisp run", runner, label="Basilisp"
     )
+
+
+def test_acceptance_run_merges_extra_environment(monkeypatch, tmp_path):
+    runner = tmp_path / "run.cljc"
+    seen_env = {}
+
+    def fake_run(*args, **kwargs):
+        seen_env.update(kwargs["env"])
+        return CompletedProcess(args, 0, stdout="{:pass 1 :fail 0}\n", stderr="")
+
+    monkeypatch.setenv("BASILISP_EXISTING_ENV", "preserved")
+    monkeypatch.setattr(acceptance.subprocess, "run", fake_run)
+
+    acceptance._run(
+        "basilisp run",
+        runner,
+        label="Basilisp",
+        extra_env={"BASILISP_DO_NOT_CACHE_NAMESPACES": "true"},
+    )
+
+    assert seen_env["BASILISP_EXISTING_ENV"] == "preserved"
+    assert seen_env["BASILISP_DO_NOT_CACHE_NAMESPACES"] == "true"
 
 
 @pytest.mark.parametrize("output", ["", "Testing example\n{:pass 1} {:fail 0}\n"])

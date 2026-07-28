@@ -1,10 +1,14 @@
 (ns tests.basilisp.test-java-namespace-aliases
   (:import os
            pathlib
-           sys)
+           sys
+           tempfile
+           webbrowser)
   (:require
    [basilisp.io :as bio]
+   [clojure.java.browse :as browse]
    [clojure.java.io :as io]
+   [clojure.java.javadoc :as javadoc]
    [clojure.java.shell :as shell]
    [basilisp.test :refer [are deftest is]]))
 
@@ -34,15 +38,68 @@
          (set (map name (keys (ns-publics 'basilisp.java.io))))))
   (is (every? #(contains? io/default-streams-impl %)
               [:make-reader :make-writer :make-input-stream :make-output-stream]))
+  (let [root (pathlib/Path (tempfile/mkdtemp))
+        text-target (pathlib/Path root "factory.txt")
+        stream-target (pathlib/Path root "stream.txt")]
+    (with-open [writer (io/make-writer text-target {:mode "w"})]
+      (.write writer "factory-text"))
+    (with-open [reader (io/make-reader text-target {:mode "r"})]
+      (is (= "factory-text" (slurp reader))))
+    (with-open [stream (io/make-output-stream stream-target {:mode "wb"})]
+      (.write stream (byte-string "factory-bytes" "utf-8")))
+    (with-open [stream (io/make-input-stream stream-target {:mode "rb"})]
+      (is (= "factory-bytes" (.decode (.read stream) "utf-8"))))
+    (is (= true (io/delete-file stream-target true)))
+    (is (= :silent (io/delete-file stream-target :silent))))
   (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "path")))
   (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "exists?")))
   (is (not (contains? (set (map name (keys (ns-publics 'basilisp.java.io)))) "touch"))))
+
+(deftest clojure-java-io-adversarial-file-boundaries-test
+  (let [root (pathlib/Path (tempfile/mkdtemp))
+        nested (pathlib/Path root "deep" "path" "value.txt")
+        stream-target (pathlib/Path root "stream.bin")
+        resource-dir (pathlib/Path root "assets")
+        original-path (.copy sys/path)]
+    (is (true? (io/make-parents nested)))
+    (is (false? (io/make-parents nested)))
+    (with-open [writer (io/writer nested)]
+      (.write writer "first"))
+    (with-open [writer (io/writer nested :append true)]
+      (.write writer "+second"))
+    (is (= "first+second" (slurp nested)))
+    (with-open [out (io/output-stream stream-target)]
+      (.write out (byte-string "bytes" "utf-8")))
+    (with-open [stream (io/input-stream stream-target)]
+      (is (= "bytes" (.decode (.read stream) "utf-8"))))
+    (is (= true (io/delete-file stream-target false)))
+    (is (= :silent (io/delete-file stream-target :silent)))
+    (is (thrown? python/FileNotFoundError
+                 (io/delete-file stream-target false)))
+    (.mkdir resource-dir ** :parents true :exist_ok true)
+    (spit (pathlib/Path resource-dir "payload.txt") "resource")
+    (try
+      (.insert sys/path 0 (str root))
+      (let [resource (io/resource "assets/payload.txt")]
+        (is (some? resource))
+        (is (= "resource" (slurp resource))))
+        (finally
+          (.clear sys/path)
+        (.extend sys/path original-path)))))
 
 (deftest clojure-java-shell-import-path-test
   (is (= {:exit 0 :out (str "alias" os/linesep) :err ""}
          (shell/sh sys/executable "-c" "print('alias')")))
   (is (= #{"*sh-dir*" "*sh-env*" "sh" "with-sh-dir" "with-sh-env"}
          (set (map name (keys (ns-publics 'basilisp.java.shell))))))
+  (is (nil? shell/*sh-dir*))
+  (is (nil? shell/*sh-env*))
+  (is (= "alias-env"
+         (shell/with-sh-env {"BASILISP_SHELL_ALIAS" "alias-env"}
+           (get shell/*sh-env* "BASILISP_SHELL_ALIAS"))))
+  (is (= "tests"
+         (shell/with-sh-dir "tests"
+           shell/*sh-dir*)))
   (is (= {:exit 0 :out "alias-env" :err ""}
          (shell/with-sh-env {"BASILISP_SHELL_ALIAS" "alias-env"}
            (shell/sh sys/executable
@@ -53,3 +110,63 @@
            (shell/sh sys/executable
                      "-c"
                      "import pathlib; print(pathlib.Path.cwd().name, end='')")))))
+
+(deftest clojure-java-shell-repeated-option-stress-test
+  (doseq [index (range 16)]
+    (let [payload (str "payload-" index)
+          env-value (str "env-" index)]
+      (is (= {:exit 0 :out payload :err ""}
+             (shell/sh sys/executable
+                       "-c"
+                       "import sys; print(sys.stdin.read(), end='')"
+                       :in payload)))
+      (is (= {:exit 0 :out env-value :err ""}
+             (shell/with-sh-env {"BASILISP_SHELL_STRESS" "bound"}
+               (shell/sh sys/executable
+                         "-c"
+                         "import os; print(os.environ.get('BASILISP_SHELL_STRESS', 'missing'), end='')"
+                         :env {"BASILISP_SHELL_STRESS" env-value}))))
+      (is (= {:exit 0 :out "tests" :err ""}
+             (shell/with-sh-dir "."
+               (shell/sh sys/executable
+                         "-c"
+                         "import pathlib; print(pathlib.Path.cwd().name, end='')"
+                         :dir "tests")))))))
+
+(deftest clojure-java-browse-import-path-test
+  (is (= #{"*open-url-script*" "browse-url"}
+         (set (map name (keys (ns-publics 'basilisp.java.browse))))))
+  (is (= (find-ns 'basilisp.java.browse) (find-ns 'clojure.java.browse)))
+  (is (= @browse/*open-url-script* :uninitialized))
+  (binding [browse/*open-url-script* (atom sys/executable)]
+    (is (true? (browse/browse-url "https://example.invalid"))))
+  (let [opened (atom [])
+        original-open webbrowser/open]
+    (try
+      (set! (.-open webbrowser) (fn [url]
+                                  (swap! opened conj url)
+                                  true))
+      (binding [browse/*open-url-script* (atom nil)]
+        (is (= "https://example.invalid/fallback"
+               (browse/browse-url "https://example.invalid/fallback")))
+        (is (= ["https://example.invalid/fallback"] @opened)))
+      (finally
+        (set! (.-open webbrowser) original-open)))))
+
+(deftest clojure-java-javadoc-import-path-test
+  (is (= #{"*core-java-api*" "*feeling-lucky*" "*feeling-lucky-url*"
+           "*local-javadocs*" "*remote-javadocs*" "add-local-javadoc"
+           "add-remote-javadoc" "javadoc"}
+         (set (map name (keys (ns-publics 'basilisp.java.javadoc))))))
+  (is (= (find-ns 'basilisp.java.javadoc) (find-ns 'clojure.java.javadoc)))
+  (is (not= -1 (.find javadoc/*core-java-api* "http")))
+  (is (not= -1 (.find javadoc/*feeling-lucky-url* "allinurl:")))
+  (binding [javadoc/*local-javadocs* (atom (list))]
+    (is (= ["docs/api"] (vec (javadoc/add-local-javadoc "docs/api")))))
+  (binding [javadoc/*remote-javadocs* (atom (sorted-map))]
+    (is (= {"demo." "https://docs.example/"}
+           (javadoc/add-remote-javadoc "demo." "https://docs.example/"))))
+  (binding [browse/*open-url-script* (atom sys/executable)
+            javadoc/*remote-javadocs* (atom (sorted-map))
+            javadoc/*feeling-lucky* true]
+    (is (true? (javadoc/javadoc "plain string fixture")))))

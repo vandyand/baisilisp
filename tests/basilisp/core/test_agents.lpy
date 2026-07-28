@@ -44,7 +44,7 @@
         state    @a
         error    (agent-error a)]
     (is (= 1 state))
-    (is (instance? python/ValueError error))))
+    (is (nil? error))))
 
 (deftest current-agent-binding-test
   (let [a      (agent nil)
@@ -105,6 +105,18 @@
 (deftest restart-agent-can-set-nil-state-test
   (let [a        (agent 1)
         _restart (restart-agent a nil)]
+    (is (nil? @a))))
+
+(deftest restart-agent-returns-new-state-test
+  (let [a       (agent 1)
+        _failed (send a (fn [_] (throw (python/RuntimeError "bad action"))))]
+    (loop [remaining 100]
+      (when (and (pos? remaining) (nil? (agent-error a)))
+        (time/sleep 0.01)
+        (recur (dec remaining))))
+    (is (= 7 (restart-agent a 7)))
+    (is (= 7 @a))
+    (is (nil? (restart-agent a nil)))
     (is (nil? @a))))
 
 (deftest restart-agent-clear-actions-option-test

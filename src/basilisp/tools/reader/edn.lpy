@@ -1,0 +1,38 @@
+(ns basilisp.tools.reader.edn
+  "EDN-only compatibility surface for `clojure.tools.reader.edn`."
+  (:refer-basilisp :exclude [read read-string])
+  (:require [basilisp.tools.reader :as tr]
+            [basilisp.tools.reader.reader-types :as reader-types])
+  (:import [basilisp.tools_reader :as backend]))
+
+(def ^:private default-edn-data-readers
+  (select-keys tr/default-data-readers '[inst uuid]))
+
+(defn- read* [opts reader eof-error? eof]
+  (backend/read_form reader
+                     eof-error?
+                     eof
+                     identity
+                     (:readers opts)
+                     nil
+                     nil
+                     (:default opts)
+                     nil
+                     true
+                     default-edn-data-readers
+                     true))
+
+(defn read
+  ([] (read *in*))
+  ([reader] (read {} reader))
+  ([opts reader]
+   (let [eof-error? (not (contains? opts :eof))]
+     (read* opts reader eof-error? (:eof opts))))
+  ([reader eof-error? eof opts]
+   (read* opts reader eof-error? eof)))
+
+(defn read-string
+  ([s] (read-string {:eof nil} s))
+  ([opts s]
+   (when (and s (not= s ""))
+     (read opts (reader-types/string-push-back-reader s)))))

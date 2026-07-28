@@ -1,0 +1,78 @@
+(ns basilisp.tools.reader.impl.utils
+  "Portable compatibility helpers for `clojure.tools.reader.impl.utils`."
+  (:refer-basilisp :exclude [char])
+  (:import [basilisp.lang.interfaces :as interfaces]))
+
+(defn char
+  "Coerce `x` to a character, returning nil for nil."
+  [x]
+  (when x
+    (basilisp.core/char x)))
+
+(def <=clojure-1-7-alpha5
+  false)
+
+(defmacro compile-when
+  [condition & body]
+  (when (eval condition)
+    `(do ~@body)))
+
+(defn ex-info?
+  [ex]
+  (instance? interfaces/IExceptionInfo ex))
+
+(defn whitespace?
+  "Checks whether a given character is whitespace or comma."
+  [ch]
+  (when ch
+    (or (.isspace (str ch))
+        (= \, ch))))
+
+(defn numeric?
+  "Checks whether a given character is numeric."
+  [ch]
+  (when ch
+    (.isdigit (str ch))))
+
+(defn newline?
+  "Checks whether the character is a newline or nil."
+  [ch]
+  (or (= \newline ch)
+      (nil? ch)))
+
+(defn desugar-meta
+  "Resolve syntactic metadata sugar into metadata maps."
+  [f]
+  (cond
+    (keyword? f) {f true}
+    (symbol? f)  {:tag f}
+    (string? f)  {:tag f}
+    (vector? f)  {:param-tags f}
+    :else        f))
+
+(defn make-var
+  "Returns an anonymous unbound Var."
+  []
+  (with-local-vars [x nil]
+    x))
+
+(defn namespace-keys [ns keys]
+  (for [key keys]
+    (if (or (symbol? key)
+            (keyword? key))
+      (let [key-ns (namespace key)
+            key-name (name key)
+            ->key (if (symbol? key) symbol keyword)]
+        (cond
+          (nil? key-ns)
+          (->key ns key-name)
+
+          (= "_" key-ns)
+          (->key key-name)
+
+          :else
+          key))
+      key)))
+
+(defn second' [[a b]]
+  (when-not a b))

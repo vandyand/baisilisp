@@ -32,6 +32,58 @@
                          :lru (memo/snapshot lru)
                          :lu (memo/snapshot lu)}))
 
+(let [ttl (memo/ttl identity :ttl/threshold 2000)]
+  (ttl :ttl-key)
+  (emit-case :ttl-policy {:snapshot (memo/snapshot ttl)}))
+
+(emit-case :memoizer-and-build-memoizer
+           (let [original (fn [x] [:value x])
+                 direct (memo/memoizer original
+                                       (cache/basic-cache-factory {})
+                                       {[:seed] :seeded})
+                 built (memo/build-memoizer
+                        (fn [_] (cache/basic-cache-factory {}))
+                        identity)]
+             (direct :x)
+             (memo/memo-clear! direct [:x])
+             (memo/memo-swap! direct cache/miss [:x] :swapped)
+             (let [memoized? (memo/memoized? direct)
+                   unwrapped? (= original (memo/memo-unwrap direct))
+                   snapshot (memo/snapshot direct)
+                   lazy-snapshot (set (memo/lazy-snapshot direct))
+                   _ (memo/memo-reset! direct {[:r] :reset})
+                   reset-snapshot (memo/snapshot direct)
+                   built-result (built :built)]
+               {:memoized? memoized?
+                :unwrapped? unwrapped?
+                :snapshot snapshot
+                :lazy-snapshot lazy-snapshot
+                :reset-snapshot reset-snapshot
+                :built built-result})))
+
+(emit-case :deprecated-policy-constructors
+           (let [fifo* (atom nil)
+                 lru* (atom nil)
+                 ttl* (atom nil)
+                 lu* (atom nil)
+                 _ (with-out-str
+                     (reset! fifo* (memo/memo-fifo identity 2))
+                     (reset! lru* (memo/memo-lru identity 2))
+                     (reset! ttl* (memo/memo-ttl identity 2000))
+                     (reset! lu* (memo/memo-lu identity 2)))
+                 fifo @fifo*
+                 lru @lru*
+                 ttl @ttl*
+                 lu @lu*]
+             (fifo 1) (fifo 2) (fifo 3)
+             (lru 1) (lru 2) (lru 1) (lru 3)
+             (ttl :ttl)
+             (lu 1) (lu 1) (lu 2) (lu 3)
+             {:fifo (memo/snapshot fifo)
+              :lru (memo/snapshot lru)
+              :ttl (memo/snapshot ttl)
+              :lu (memo/snapshot lu)}))
+
 (emit-case :public-constructors
            (let [delay-realized (memo/->RetryingDelay (fn [] :computed) true :seeded)
                  delay-pending (memo/->RetryingDelay (fn [] :computed) false nil)
@@ -49,3 +101,8 @@
               :pending-value pending-value
               :pending-after? pending-after
               :plug-lookup (cache/lookup plug :a)}))
+
+(emit-case :host-native-type-aliases
+           #?(:clj true
+              :lpy (every? some? [memo/RetryingDelay
+                                  memo/PluggableMemoization])))

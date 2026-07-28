@@ -16,8 +16,10 @@
    :value x})
 
 (emit-case :public-surface
-           (sort (map name (keys (ns-publics #?(:clj 'clojure.data
-                                                :lpy 'basilisp.data))))))
+           {:publics (sort (map name (keys (ns-publics #?(:clj 'clojure.data
+                                                          :lpy 'basilisp.data)))))
+            :protocol-vars [(some? data/Diff)
+                            (some? data/EqualityPartition)]})
 
 (emit-case :equality-partitions
            {:nil (data/equality-partition nil)
@@ -71,6 +73,36 @@
             :seq-only-right-nil (data/diff [] [nil])
             :seq-only-left-nil (data/diff [nil] [])})
 
+(emit-case :false-empty-and-metadata-diffs
+           {:map-left-false (data/diff {:a false} {:a 1})
+            :map-right-false (data/diff {:a 1} {:a false})
+            :map-shared-false (data/diff {:a false :b 1} {:a false :b 2})
+            :seq-shared-leading-false (data/diff [false 1] [false 2])
+            :seq-shared-trailing-false (data/diff [1 false] [2 false])
+            :empty-vector-shared (data/diff {:a [] :b 1} {:a [] :b 2})
+            :empty-map-shared (data/diff {:a {} :b 1} {:a {} :b 2})
+            :empty-set-shared (data/diff {:a #{} :b 1} {:a #{} :b 2})
+            :metadata-ignored (let [[a b both] (data/diff ^{:left true} [1 2]
+                                                          ^{:right true} [1 2])]
+                                [a b both (meta both)])
+            :metadata-left-retained (let [[_ _ both] (data/diff ^{:left true} {:a 1}
+                                                                 ^{:right true} {:a 1})]
+                                      (meta both))})
+
+(emit-case :record-and-map-boundaries
+           {:record-vs-record (result-shape (data/diff (->Pair 1 nil)
+                                                       (->Pair 1 false)))
+            :record-vs-map (result-shape (data/diff (->Pair 1 2)
+                                                    {:a 1 :b 2}))
+            :map-vs-record (result-shape (data/diff {:a 1 :b 2}
+                                                    (->Pair 1 2)))
+            :record-extra-map-key (result-shape (data/diff (->Pair 1 2)
+                                                           {:a 1 :b 2 :c 3}))
+            :sorted-map-vs-map (result-shape (data/diff (sorted-map :a 1 :b 2)
+                                                        {:a 1 :b 3 :c 4}))
+            :set-containing-empty-colls (data/diff #{[] {} #{}}
+                                                   #{[] {:a 1} #{}})})
+
 (defn next-seed [seed]
   (mod (+ (* seed 1103515245) 12345) 2147483648))
 
@@ -93,6 +125,31 @@
       2 {:a (seeded-scalar s1) :b (seeded-scalar s2)}
       3 (set [(seeded-scalar s1) (seeded-scalar s2) (seeded-scalar s3)])
       4 [{:x (seeded-scalar s1)} (set [(seeded-scalar s2)])])))
+
+(defn seeded-deep-value [seed depth]
+  (if (zero? depth)
+    (seeded-scalar seed)
+    (let [s1 (next-seed seed)
+          s2 (next-seed s1)
+          s3 (next-seed s2)
+          s4 (next-seed s3)]
+      (case (mod seed 8)
+        0 (seeded-scalar s1)
+        1 []
+        2 {}
+        3 #{}
+        4 [(seeded-deep-value s1 (dec depth))
+           (seeded-deep-value s2 (dec depth))
+           (seeded-deep-value s3 (dec depth))]
+        5 {:a (seeded-deep-value s1 (dec depth))
+           :b (seeded-deep-value s2 (dec depth))
+           :empty (case (mod s3 3) 0 [] 1 {} #{})}
+        6 (set [(seeded-scalar s1)
+                (seeded-scalar s2)
+                (seeded-scalar s3)])
+        7 [{:x (seeded-deep-value s1 (dec depth))}
+           (set [(seeded-scalar s2)])
+           (seeded-deep-value s4 (dec depth))]))))
 
 (emit-case :seeded-structural-fuzz
            (loop [remaining 72
@@ -117,3 +174,42 @@
                                       :shared (= (:shared both) (:shared a))
                                       :nested-shared (= (get-in both [:nested 0])
                                                         (get-in a [:nested 0]))}))))))
+
+(emit-case :seeded-deep-structural-fuzz
+           (loop [remaining 96
+                  seed 981273
+                  result []]
+             (if (zero? remaining)
+               result
+               (let [s1 (next-seed seed)
+                     s2 (next-seed s1)
+                     s3 (next-seed s2)
+                     shared (seeded-deep-value s1 4)
+                     left (seeded-deep-value s2 4)
+                     right (seeded-deep-value s3 4)
+                     a {:shared shared
+                        :left left
+                        :empty []
+                        :nested [{:shared shared} left false nil]}
+                     b {:shared shared
+                        :right right
+                        :empty []
+                        :nested [{:shared shared} right false nil]}
+                     [only-a only-b both] (data/diff a b)
+                     [same-a same-b same-both] (data/diff a a)]
+                 (recur (dec remaining)
+                        s3
+                        (conj result
+                              {:same-a? (nil? same-a)
+                               :same-b? (nil? same-b)
+                               :same-both? (= same-both a)
+                               :only-a? (some? only-a)
+                               :only-b? (some? only-b)
+                               :shared (= (:shared both) shared)
+                               :empty (= (:empty both) [])
+                               :nested-shared (= (get-in both [:nested 0 :shared])
+                                                 shared)
+                               :nested-false (= (get-in both [:nested 2])
+                                                false)
+                               :nested-nil (= (get-in both [:nested 3])
+                                              nil)}))))))

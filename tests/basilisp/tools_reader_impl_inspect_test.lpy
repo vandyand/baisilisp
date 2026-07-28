@@ -1,0 +1,80 @@
+(ns tests.basilisp.tools-reader-impl-inspect-test
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.tools.reader.impl.inspect :as inspect]))
+
+(deftest public-impl-inspect-api-test
+  (is (boolean (find-ns 'basilisp.tools.reader.impl.inspect)))
+  (doseq [sym '[inspect inspect*]]
+    (is (contains? (ns-publics 'basilisp.tools.reader.impl.inspect)
+                   sym))))
+
+(deftest scalar-and-string-inspection-contracts
+  (is (= "nil" (inspect/inspect nil)))
+  (is (= "true" (inspect/inspect true)))
+  (is (= "false" (inspect/inspect false)))
+  (is (= "42" (inspect/inspect 42)))
+  (is (= "3/2" (inspect/inspect 3/2)))
+  (is (= ":kw" (inspect/inspect :kw)))
+  (is (= "sym" (inspect/inspect 'sym)))
+  (is (= "\"\"" (inspect/inspect "")))
+  (is (= "\"short\"" (inspect/inspect "short")))
+  (is (= "\"abcdefghijklmnopqrst\""
+         (inspect/inspect "abcdefghijklmnopqrst")))
+  (is (= "\"abcdefghijklmnopqrst...\""
+         (inspect/inspect "abcdefghijklmnopqrstu")))
+  (is (= "\"abcde...\"" (inspect/inspect true "abcdef")))
+  (is (= "\"abcde\"" (inspect/inspect true "abcde")))
+  (is (= "\"abcdefghijklmnopqrst...\""
+         (inspect/inspect* false "abcdefghijklmnopqrstu")))
+  (is (= "\"abcde...\""
+         (inspect/inspect* true "abcdef"))))
+
+(deftest collection-inspection-contracts
+  (is (= "[]" (inspect/inspect [])))
+  (is (= "[1 2 3]" (inspect/inspect [1 2 3])))
+  (is (= "[0 1 2 3 4 5 6 7 8 9]"
+         (inspect/inspect [0 1 2 3 4 5 6 7 8 9])))
+  (is (= "[0 1 2 3 4 5 6 7 8 9...]"
+         (inspect/inspect [0 1 2 3 4 5 6 7 8 9 10])))
+  (is (= "[...]" (inspect/inspect true [1 2 3])))
+  (is (= "()" (inspect/inspect '())))
+  (is (= "(1 2 3)" (inspect/inspect '(1 2 3))))
+  (is (= "(0 1 2 3 4 5 6 7 8 9...)"
+         (inspect/inspect '(0 1 2 3 4 5 6 7 8 9 10))))
+  (is (= "(...)" (inspect/inspect true '(1 2 3))))
+  (is (= "{}" (inspect/inspect {})))
+  (is (= "{:a 1}" (inspect/inspect {:a 1})))
+  (is (= "{...}" (inspect/inspect true {:a 1})))
+  (is (= "#{}" (inspect/inspect #{})))
+  (is (= "#{:a}" (inspect/inspect #{:a})))
+  (is (= "#{...}" (inspect/inspect true #{:a}))))
+
+(deftest nested-and-opaque-inspection-contracts
+  (is (= "{:a [...]}"
+         (inspect/inspect {:a [1 "abcdef"]})))
+  (is (= "{...}" (inspect/inspect true {:a [1 "abcdef"]})))
+  (is (= "<seq>" (inspect/inspect (seq [1 2 3])))))
+
+(deftest generated-string-and-vector-boundary-corpus
+  (doseq [n (range 0 32)]
+    (let [s (apply str (repeat n "a"))
+          inspected (inspect/inspect s)
+          truncated (inspect/inspect true s)]
+      (testing (str "string length " n)
+        (if (> n 20)
+          (is (= "\"aaaaaaaaaaaaaaaaaaaa...\"" inspected))
+          (is (= (str "\"" s "\"") inspected)))
+        (if (> n 5)
+          (is (= "\"aaaaa...\"" truncated))
+          (is (= (str "\"" s "\"") truncated)))))
+    (let [v (vec (range n))
+          inspected (inspect/inspect v)
+          truncated (inspect/inspect true v)]
+      (testing (str "vector length " n)
+        (if (> n 10)
+          (is (= "[0 1 2 3 4 5 6 7 8 9...]" inspected))
+          (is (= (str "[" (apply str (interpose " " (range n))) "]")
+                 inspected)))
+        (if (pos? n)
+          (is (= "[...]" truncated))
+          (is (= "[]" truncated)))))))

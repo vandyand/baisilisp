@@ -115,6 +115,10 @@
 (deftest core-server-repl-read-and-quit-test
   (binding [*in* (io/StringIO "42")]
     (is (= 42 (server/repl-read :prompt :exit))))
+  (binding [*in* (io/StringIO "nil")]
+    (is (nil? (server/repl-read :prompt :exit))))
+  (binding [*in* (io/StringIO "")]
+    (is (= :exit (server/repl-read :prompt :exit))))
   (binding [*in* (io/StringIO ":repl/quit")]
     (is (= :exit (server/repl-read :prompt :exit)))))
 

@@ -1,0 +1,20 @@
+(ns basilisp.java.basis
+  "Small compatibility surface for ``clojure.java.basis``.
+
+  Clojure exposes the active tools.deps basis through this namespace. Basilisp
+  has no JVM classpath basis, but the public deref/update model is useful for
+  portable tooling and for code that probes the namespace."
+  (:require [basilisp.java.basis.impl :as impl]))
+
+(defn initial-basis
+  "Return Basilisp's initial dependency basis.
+
+  Python does not have Clojure CLI's JVM/Maven basis object, so the initial
+  value is ``nil`` unless a caller explicitly redefines implementation state."
+  []
+  @impl/init-basis)
+
+(defn current-basis
+  "Return the current dependency basis atom value."
+  []
+  @@impl/the-basis)

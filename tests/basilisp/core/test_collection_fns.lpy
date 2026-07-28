@@ -1,6 +1,6 @@
 (ns tests.basilisp.core.test-collection-fns
   (:require
-   [basilisp.test :refer [deftest is are]]))
+   [basilisp.test :refer [deftest is are testing]]))
 
 (deftest vec-test
   (is (= #{[:a 1] [:b 2]} (set (vec {:a 1 :b 2}))))
@@ -31,6 +31,31 @@
     #{[:a 1]}        {:a 1}
     #{[:a 1] [:b 2]} {:a 1 :b 2}))
 
+(deftest character-scalar-collection-boundary-test
+  (testing "characters remain scalar values, not one-character strings"
+    (is (char? \a))
+    (is (not (string? \a)))
+    (is (not (seqable? \a)))
+    (are [expr] (thrown? python/Exception expr)
+      (seq \a)
+      (empty? \a)
+      (not-empty \a)
+      (fnext \a)
+      (last \a)
+      (vec (remove identity \a))
+      (vec (reverse \a))
+      (set \a)))
+
+  (testing "strings keep the collection behavior characters reject"
+    (is (= [\a] (vec (seq "a"))))
+    (is (empty? ""))
+    (is (= "a" (not-empty "a")))
+    (is (= \b (fnext "ab")))
+    (is (= \b (last "ab")))
+    (is (= [\b] (vec (remove #{\a} "aba"))))
+    (is (= [\b \a] (vec (reverse "ab"))))
+    (is (= #{\a \b} (set "aba")))))
+
 (deftest fnext-test
   (is (= nil (fnext [])))
   (is (= nil (fnext [1])))
@@ -38,6 +63,13 @@
 
   (is (= 2 (fnext [1 2])))
   (is (= [2] (fnext [1 [2] 3]))))
+
+(deftest nthrest-and-counted-test
+  (is (= '(:c :d) (nthrest [:a :b :c :d] 2)))
+  (is (= '() (nthrest [:a :b] 10)))
+  (is (= '() (nthrest nil 3)))
+  (is (counted? '(:a :b)))
+  (is (not (counted? (range)))))
 
 (deftest bounded-count-test
   (are [x n y] (= x (bounded-count n y))
@@ -53,7 +85,7 @@
     5 5 (range 5)
 
     4 2 [:a :b :c :d]
-    2 2 '(:a :b :c :d)
+    4 2 '(:a :b :c :d)
     4 2 {:a 1 :b 2 :c 3 :d 4}
     4 2 #{:a :b :c :d}
     2 2 (range 5)))

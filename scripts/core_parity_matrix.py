@@ -5,7 +5,9 @@ from __future__ import annotations
 
 import argparse
 import csv
+import os
 import shlex
+import shutil
 import signal
 import subprocess
 import sys
@@ -19,10 +21,39 @@ CLOJURE_CORE_PUBLICS = (
 BASILISP_CORE_PUBLICS = (
     "(doseq [n (sort (map name (keys (ns-publics 'basilisp.core))))] " "(println n))"
 )
+CLOJURE_VERSION = "1.12.4"
+DEFAULT_CLOJURE_SDEPS = (
+    f'{{:deps {{org.clojure/clojure {{:mvn/version "{CLOJURE_VERSION}"}}}}}}'
+)
+
+
+def _default_clojure_command() -> list[str]:
+    """Return a Clojure command that works for native and WSL-backed Windows use."""
+
+    if configured := os.environ.get("CLOJURE_COMMAND"):
+        return shlex.split(configured)
+    if shutil.which("clojure"):
+        return ["clojure", "-Sdeps", DEFAULT_CLOJURE_SDEPS, "-M", "-e"]
+    if os.name == "nt" and shutil.which("wsl"):
+        return [
+            "wsl",
+            "-d",
+            "Ubuntu-24.04",
+            "--",
+            "clojure",
+            "-Sdeps",
+            DEFAULT_CLOJURE_SDEPS,
+            "-M",
+            "-e",
+        ]
+    return ["clojure", "-Sdeps", DEFAULT_CLOJURE_SDEPS, "-M", "-e"]
 
 
 def _run_publics_command(command: list[str]) -> set[str]:
-    result = subprocess.run(command, check=True, capture_output=True, text=True)
+    try:
+        result = subprocess.run(command, check=True, capture_output=True, text=True)
+    except FileNotFoundError as exc:
+        raise RuntimeError(f"publics command is unavailable: {command[0]}") from exc
     return {line.strip() for line in result.stdout.splitlines() if line.strip()}
 
 
@@ -49,7 +80,13 @@ def _rows(
         }
 
 
-def main() -> int:
+def has_missing_publics(rows: Iterable[dict[str, str]]) -> bool:
+    """Return True when a Clojure core public Var is absent from Basilisp."""
+
+    return any(row["status"] == "missing-in-basilisp" for row in rows)
+
+
+def main(argv: list[str] | None = None) -> int:
     if hasattr(signal, "SIGPIPE"):
         signal.signal(signal.SIGPIPE, signal.SIG_DFL)
 
@@ -72,21 +109,25 @@ def main() -> int:
     )
     parser.add_argument(
         "--clojure-command",
-        default="clojure -M -e",
         help=(
-            "command prefix used to evaluate Clojure (default: 'clojure -M -e'); "
-            "on Windows a WSL command such as 'wsl -d Ubuntu-24.04 -- clojure -M -e' "
-            "is supported"
+            "command prefix used to evaluate Clojure; defaults to CLOJURE_COMMAND, "
+            f"native clojure with Clojure {CLOJURE_VERSION}, or WSL on Windows"
         ),
     )
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
+    clojure_command = (
+        shlex.split(args.clojure_command)
+        if args.clojure_command
+        else _default_clojure_command()
+    )
     clojure_publics = _run_publics_command(
-        [*shlex.split(args.clojure_command), CLOJURE_CORE_PUBLICS]
+        [*clojure_command, CLOJURE_CORE_PUBLICS]
     )
     basilisp_publics = _run_publics_command(
         [*shlex.split(args.basilisp_command), BASILISP_CORE_PUBLICS]
     )
+    rows = list(_rows(clojure_publics, basilisp_publics))
 
     output = args.output.open("w", newline="") if args.output else sys.stdout
     try:
@@ -95,7 +136,7 @@ def main() -> int:
             fieldnames=("symbol", "clojure_core", "basilisp_core", "status"),
         )
         writer.writeheader()
-        writer.writerows(_rows(clojure_publics, basilisp_publics))
+        writer.writerows(rows)
     finally:
         if args.output:
             output.close()
@@ -108,7 +149,7 @@ def main() -> int:
         f"basilisp_extensions={extensions}",
         file=sys.stderr,
     )
-    return 0
+    return 1 if has_missing_publics(rows) else 0
 
 
 if __name__ == "__main__":

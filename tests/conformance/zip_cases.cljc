@@ -95,6 +95,8 @@
               :children (vec (zip/children root-loc))
               :path (zip/path first-child)
               :lefts (zip/lefts middle-child)
+              :left (some-> (zip/left middle-child) zip/node)
+              :left-of-first (nil? (zip/left first-child))
               :rights (zip/rights first-child)
               :leftmost (zip/node (zip/leftmost final-child))
               :rightmost (zip/node (zip/rightmost first-child))
@@ -117,6 +119,38 @@
               :append-child (zip/root (zip/append-child root-loc :last))
               :remove-middle (zip/root (zip/remove middle-child))
               :remove-first (zip/root (zip/remove (zip/down root-loc)))}))
+
+(emit-case :make-node-and-xml-zip
+           (let [vector-loc (zip/vector-zip [[:a] :b])
+                 vector-child (zip/down vector-loc)
+                 custom-root {:value :root :children [{:value :leaf}]}
+                 custom-loc (zip/zipper map?
+                                        :children
+                                        (fn [node children]
+                                          (assoc node :children (vec children)))
+                                        custom-root)
+                 xml-root {:tag :root
+                           :content [{:tag :left}
+                                     "text"
+                                     {:tag :right :content []}]}
+                 xml-loc (zip/xml-zip xml-root)
+                 xml-right (-> xml-loc zip/down zip/right zip/right)]
+             {:vector-make-node (zip/make-node vector-loc
+                                               (zip/node vector-loc)
+                                               [:x :y])
+              :child-make-node-root (zip/root (zip/replace
+                                               vector-child
+                                               (zip/make-node vector-child
+                                                              (zip/node vector-child)
+                                                              [:z])))
+              :custom-make-node (zip/make-node custom-loc
+                                               (zip/node custom-loc)
+                                               [{:value :new}])
+              :xml-root (zip/node xml-loc)
+              :xml-children (vec (zip/children xml-loc))
+              :xml-text-branch? (zip/branch? (-> xml-loc zip/down zip/right))
+              :xml-edited-root (zip/root (zip/append-child xml-right
+                                                           {:tag :nested}))}))
 
 (emit-case :seq-zip-and-custom-boundaries
            (let [seq-tree (with-meta '((:a :b) :c) {:tag :seq-root})

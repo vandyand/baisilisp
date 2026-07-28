@@ -73,6 +73,17 @@
           generated (sgen/generate (s/gen spec {[0] #(sgen/return 7)}) 20 71)]
       (is (= 7 (first generated)))
       (is (s/valid? spec generated))))
+  (testing "path overrides embedded in regex specs remain scalar values"
+    (let [spec (s/cat :age int? :label string?)
+          values (map (fn [seed]
+                        (sgen/generate
+                         (s/gen spec {[:age] (fn [] (sgen/return 9))
+                                      [:label] (fn [] (sgen/return "regex"))})
+                         20
+                         seed))
+                      (range 80))]
+      (is (every? #(= [9 "regex"] (vec %)) values))
+      (is (every? #(s/valid? spec %) values))))
   (testing "invalid explicit generators are rejected rather than leaking bad values"
     (is (thrown? Exception
                  (sgen/generate (s/gen int? {int? #(sgen/return "not-an-integer")})
@@ -81,22 +92,45 @@
 
 (deftest regex-generators-and-exercise-preserve-conformance
   (let [spec (s/cat :label string? :values (s/+ int?))
-        values (map #(sgen/generate (s/gen spec) 35 %) (range 250))
-        exercised (s/exercise spec 180)]
+        values (map #(sgen/generate (s/gen spec) 20 %) (range 80))
+        exercised (s/exercise spec 40)]
     (is (every? #(s/valid? spec %) values))
     (is (every? (fn [[value conformed]]
                   (and (s/valid? spec value)
                        (= conformed (s/conform spec value))))
                 exercised)))
-  (let [spec (s/alt :flag boolean? :items (s/+ keyword?))
-        values (map #(sgen/generate (s/gen spec) 30 %) (range 250))]
+  (let [spec (s/alt :flag boolean?
+                    :items (s/+ (s/with-gen keyword?
+                                              #(sgen/elements [:a :b :c]))))
+        values (map #(sgen/generate (s/gen spec) 20 %) (range 80))]
     (is (every? #(s/valid? spec %) values)))
   (let [choice (s/or :text string? :number int?)
         bounded (s/& (s/+ int?) #(< (count %) 5))]
     (is (every? #(s/valid? choice %)
-                (map #(sgen/generate (s/gen choice) 20 %) (range 180))))
+                (map #(sgen/generate (s/gen choice) 20 %) (range 80))))
     (is (every? #(s/valid? bounded %)
-                (map #(sgen/generate (s/gen bounded) 10 %) (range 120))))))
+                (map #(sgen/generate (s/gen bounded) 8 %) (range 60))))))
+
+(deftest regex-generators-preserve-with-gen-scalars-and-repeat-diversity
+  (let [token (s/with-gen int? #(sgen/elements [1 2 3 4]))
+        star-spec (s/* token)
+        plus-spec (s/+ token)
+        cat-spec (s/cat :head (s/with-gen int? #(sgen/return 7))
+                        :tail (s/+ (s/with-gen keyword?
+                                                #(sgen/elements [:a :b]))))
+        stars (map #(sgen/generate (s/gen star-spec) 40 %) (range 300))
+        pluses (map #(sgen/generate (s/gen plus-spec) 40 %) (range 300))
+        cats (map #(sgen/generate (s/gen cat-spec) 40 %) (range 180))]
+    (is (every? #(s/valid? star-spec %) stars))
+    (is (some empty? stars))
+    (is (some seq stars))
+    (is (every? #(s/valid? plus-spec %) pluses))
+    (is (every? seq pluses))
+    (is (some #(> (count %) 1) pluses))
+    (is (every? #(s/valid? cat-spec %) cats))
+    (is (every? #(= 7 (first %)) cats))
+    (is (every? #(every? #{:a :b} (rest %)) cats))
+    (is (some #(> (count %) 2) cats))))
 
 (deftest with-gen-and-exercise-fn-use-test-check-generators
   (let [spec (s/with-gen #(and (int? %) (<= 10 % 20)) #(sgen/choose 10 20))

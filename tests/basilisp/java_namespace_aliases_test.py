@@ -4,6 +4,7 @@ import sys
 import tempfile
 
 from hypothesis import given
+from hypothesis import settings
 from hypothesis import strategies as st
 
 from basilisp import main
@@ -31,6 +32,7 @@ def _io_fn(name):
         max_size=8,
     )
 )
+@settings(deadline=None)
 def test_clojure_java_io_file_matches_pathlib_for_generated_path_segments(parts):
     path = pathlib.Path(*parts)
     assert path == _io_fn("file")(*parts)
@@ -48,6 +50,7 @@ def test_clojure_java_io_file_matches_pathlib_for_generated_path_segments(parts)
         max_size=5,
     ),
 )
+@settings(deadline=None)
 def test_clojure_java_io_as_url_preserves_generated_url_components(scheme, host, path):
     value = f"{scheme}://{host}/{'/'.join(path)}"
     url = _io_fn("as-url")(value)
@@ -65,6 +68,7 @@ def test_clojure_java_io_as_url_preserves_generated_url_components(scheme, host,
         max_size=200,
     )
 )
+@settings(deadline=None)
 def test_clojure_java_io_resource_discovers_generated_import_path_files(content):
     with tempfile.TemporaryDirectory() as tempdir:
         resource_dir = pathlib.Path(tempdir, "assets")

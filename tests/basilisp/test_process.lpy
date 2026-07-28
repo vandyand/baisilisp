@@ -90,6 +90,15 @@
                                     sys/executable "-c" (str "print('" line "')"))))))
     (is (= "before\nmiddle\nafter\n" (slurp output)))))
 
+(deftest clojure-java-process-stream-accessor-test
+  (let [proc (clj-process/start {:encoding "utf-8"}
+                                sys/executable "-c"
+                                "import sys; print('stream-out', end=''); print('stream-err', file=sys.stderr, end='')")]
+    (is (some? (clj-process/stdin proc)))
+    (is (= "stream-out" (slurp (clj-process/stdout proc))))
+    (is (= "stream-err" (slurp (clj-process/stderr proc))))
+    (is (= 0 @(clj-process/exit-ref proc)))))
+
 (deftest clojure-java-process-io-task-preserves-dynamic-context-test
   (let [task (binding [*io-task-context* :captured]
                (clj-process/io-task #(vector *io-task-context* "done")))]

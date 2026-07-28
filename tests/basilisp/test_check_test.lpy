@@ -2,7 +2,10 @@
   (:require [basilisp.test :refer [deftest is testing]]
             [basilisp.test.check :as tc]
             [basilisp.test.check.clojure-test :as ct :refer [defspec]]
+            [basilisp.test.check.clojure-test.assertions :as assertions]
+            [basilisp.test.check.clojure-test.assertions.cljs :as assertions-cljs]
             [basilisp.test.check.generators :as gen]
+            [basilisp.test.check.impl :as impl]
             [basilisp.test.check.properties :as prop]
             [basilisp.test.check.random :as rnd]
             [basilisp.test.check.results :as results]
@@ -45,7 +48,10 @@
                                                    {:min-elements 3 :max-elements 8})
                            250)]
     (is (every? #(= (count %) (count (set %))) values))
-    (is (every? #(<= 3 (count %) 8) values))))
+    (is (every? #(<= 3 (count %) 8) values)))
+  (let [values (gen/sample (gen/not-empty (gen/vector (gen/choose -50 50)))
+                           200)]
+    (is (every? seq values))))
 
 (deftest properties-run-many-fuzzed-trials
   (let [property (prop/for-all [xs (gen/vector (gen/choose -10000 10000))]
@@ -105,6 +111,8 @@
     (is (gen/generator? generator))
     (is (= [:size 7] (gen/generate generator 7 1)))
     (is (= [:map-size 8] (gen/generate map-generator 8 1)))
+    (is (satisfies? results/Result true))
+    (is (satisfies? results/Result error))
     (is (not (results/pass? error)))
     (is (not (results/pass? map-error)))
     (is (contains? (results/result-data error)
@@ -113,6 +121,16 @@
                         :basilisp.test.check.properties/error)))
     (is (= :root (rose/root tree)))
     (is (= 1 (count (rose/children tree))))))
+
+(deftest random-public-constructor-and-protocol-surface
+  (let [rng (rnd/->JavaUtilSplittableRandom 1 2)
+        made (rnd/make-java-util-splittable-random 2)]
+    (is (some? rnd/IRandom))
+    (is (some? rnd/JavaUtilSplittableRandom))
+    (is (number? (rnd/rand-long rng)))
+    (is (float? (rnd/rand-double rng)))
+    (is (= 2 (count (rnd/split rng))))
+    (is (= 4 (count (rnd/split-n made 4))))))
 
 (deftest auxiliary-rose-tree-helpers-match-test-check-contract
   (let [t1 (rose/make-rose 1 [(rose/pure 10) (rose/pure 11)])
@@ -173,6 +191,24 @@
   (is (= true ct/*report-completion*))
   (is (= 10000 ct/*trial-report-period*))
   (is (:pass? (defspec-runs-through-basilisp-test 5 :seed 123))))
+
+(deftest clojure-test-assertions-and-impl-surface-is-callable
+  (let [before (impl/get-current-time-millis)
+        check-form (assertions/check? nil
+                                      '(clojure.test.check.clojure-test/check?
+                                        {:pass? true}))
+        report-result (assertions/check-results {:pass? true
+                                                 :result true
+                                                 :num-tests 1})
+        after (impl/get-current-time-millis)]
+    (is (integer? before))
+    (is (integer? after))
+    (is (<= before after))
+    (is (sequential? (assertions/test-context-stacktrace [])))
+    (is (= {:file nil :line nil} (assertions/file-and-line* [])))
+    (is (seq? check-form))
+    (is (nil? report-result))
+    (is (empty? (ns-publics 'basilisp.test.check.clojure-test.assertions.cljs)))))
 
 (deftest fixed-arity-properties-handle-wide-integer-shrink-trees
   ;; This specifically exercises the tuple generator used by for-all*.  Wide

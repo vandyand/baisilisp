@@ -85,13 +85,18 @@
   [s cmap]
   (when-not (string? s)
     (throw (python/TypeError "escape expects a string")))
-  (.join ""
-         (map (fn [ch]
-                (let [replacement (get cmap ch)]
-                  (if (nil? replacement)
-                    (str ch)
-                    (str replacement))))
-              s)))
+  (let [missing (python/object)]
+    (.join ""
+           (map (fn [ch]
+                  (let [replacement (get cmap ch missing)
+                        replacement (if (identical? missing replacement)
+                                      (get cmap (first ch) missing)
+                                      replacement)]
+                    (if (or (identical? missing replacement)
+                            (nil? replacement))
+                      ch
+                      (str replacement))))
+                (iterator-seq (python/iter s))))))
 
 (defn index-of
   "Return the first index of value in ``s``, optionally starting from ``from-index``.
@@ -110,7 +115,7 @@
   ([s value]
    (last-index-of s value (python/len s)))
   ([s value from-index]
-   (let [idx (.rfind s value 0 from-index)]
+   (let [idx (.rfind s value 0 (+ from-index (count value)))]
      (if (= idx -1)
        nil
        idx))))
@@ -132,34 +137,69 @@
   [s]
   (operator/getitem s (python/slice nil nil -1)))
 
+(defn- drop-trailing-empty-strings [parts]
+  (loop [parts (vec parts)]
+    (if (and (seq parts) (= "" (peek parts)))
+      (recur (pop parts))
+      parts)))
+
+(defn- split-empty-pattern [s limit]
+  (cond
+    (= "" s)
+    [""]
+
+    (and limit (pos? limit))
+    (if (= limit 1)
+      [s]
+      (let [prefix-count (min (dec limit) (count s))
+            prefix       (map str (take prefix-count s))
+            suffix       (subs s prefix-count)]
+        (vec (if (= "" suffix)
+               prefix
+               (concat prefix [suffix])))))
+
+    :else
+    (vec (map str s))))
+
 (defn split
   "Split a string on a regular expression or another string. Caller may optionally limit
   the maximum number of splits with ``limit``. Returns a vector of the splits."
   ([s pattern]
    (split s pattern nil))
   ([s pattern limit]
-   (cond
-     (instance? typing/Pattern pattern)
-     (if (= "" (.-pattern pattern))
-       (vec (map str s))
-       (vec (re/split pattern s ** :maxsplit (or (when limit (dec limit)) 0))))
+   (let [positive-limit? (and limit (pos? limit))
+         maxsplit        (if positive-limit? (dec limit) 0)]
+     (cond
+       (instance? typing/Pattern pattern)
+       (if (= "" (.-pattern pattern))
+         (split-empty-pattern s limit)
+         (if (= "" s)
+           [""]
+           (let [parts (re/split pattern s ** :maxsplit maxsplit)]
+             (if positive-limit?
+               (vec parts)
+               (drop-trailing-empty-strings parts)))))
 
-     (string? pattern)
-     (vec
-      (if (= pattern "")
-        (map str s)
-        (.split s pattern (or (when limit (dec limit)) -1))))
+       (string? pattern)
+       (if (= pattern "")
+         (split-empty-pattern s limit)
+         (if (= "" s)
+           [""]
+           (let [parts (.split s pattern (if positive-limit? (dec limit) -1))]
+             (if positive-limit?
+               (vec parts)
+               (drop-trailing-empty-strings parts)))))
 
-     :else
-     (throw
-      (ex-info "String split pattern must be a re.Pattern or str"
-               {:pattern pattern
-                :type    (python/type pattern)})))))
+       :else
+       (throw
+        (ex-info "String split pattern must be a re.Pattern or str"
+                 {:pattern pattern
+                  :type    (python/type pattern)}))))))
 
 (defn split-lines
-  "Split ``s`` on universal newlines as by Python's :external:py:meth:`str.splitlines`."
+  "Split ``s`` on ``\\n`` or ``\\r\\n`` line boundaries."
   [s]
-  (vec (.splitlines s)))
+  (drop-trailing-empty-strings (re/split #"\r?\n" s)))
 
 (defn lpad
   "Pad ``s`` on the left such that the final string length is ``width``. If the initial
@@ -183,7 +223,18 @@
   "Escape special characters in a regex replacement pattern so they are interpreted
   literally, rather than as special characters."
   [replacement]
-  (re/escape replacement))
+  (-> replacement
+      (.replace "\\" "\\\\")
+      (.replace "$" "\\$")))
+
+(def ^:private replacement-dollar-sentinel "\ue000")
+
+(defn- clojure-regex-replacement [replacement]
+  (let [quoted-dollar (.replace replacement "\\$" replacement-dollar-sentinel)
+        with-groups   (re/sub #"\$(\d+)"
+                              #(str "\\g<" (.group % 1) ">")
+                              quoted-dollar)]
+    (.replace with-groups replacement-dollar-sentinel "$")))
 
 (defn replace
   "Replace all instances of match in ``s`` with ``replacement``.
@@ -206,7 +257,7 @@
     (re/sub match
             (if (python/callable replacement)
               #(replacement (.group % 0))
-              replacement)
+              (clojure-regex-replacement replacement))
             s)
 
     (and (string? match) (string? replacement))
@@ -241,7 +292,7 @@
     (re/sub match
             (if (python/callable replacement)
               #(replacement (.group % 0))
-              replacement)
+              (clojure-regex-replacement replacement))
             s
             **
             :count 1)

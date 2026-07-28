@@ -59,7 +59,7 @@
       (is (not= -1 (.find output "INFO:native")))
       (is (not= -1 (.find output "INFO:{:value \"quoted\"}")))
       (is (not= -1 (.find output "INFO:readable={:value \"quoted\"}")))
-      (is (not= -1 (.find output "(+ 1 2) => 3")))
+      (is (not= -1 (.find output "(+ 1 2)\n=> 3")))
       (is (not= -1 (.find output "value=8"))))))
 
 (deftest log-stream-and-with-logs-flush-safely
@@ -85,11 +85,13 @@
     (is (contains? (ns-publics 'basilisp.tools.logging) sym)))
   (doseq [sym '[Logger LoggerFactory class-found? disabled-logger
                 disabled-logger-factory slf4j-factory cl-factory
-                log4j2-factory log4j-factory jul-factory name]]
+                log4j2-factory log4j-factory jul-factory name
+                enabled? get-logger write!]]
     (is (contains? (ns-publics 'basilisp.tools.logging.impl) sym)))
   (is (= "disabled" (impl/name impl/disabled-logger-factory)))
   (is (not (impl/enabled? (impl/get-logger impl/disabled-logger-factory "x")
                           :info)))
+  (is (nil? (impl/write! impl/disabled-logger :info nil "ignored")))
   (is (= "python-logging" (impl/name (impl/find-factory))))
   (is (impl/class-found? "logging.Logger"))
   (is (not (impl/class-found? "definitely.missing.logging.Backend")))
@@ -98,6 +100,88 @@
   (is (nil? (impl/log4j2-factory)))
   (is (nil? (impl/log4j-factory)))
   (is (nil? (impl/jul-factory))))
+
+(defn capture-factory
+  [enabled-levels]
+  (let [records (atom [])
+        logger (reify impl/Logger
+                 (enabled? [_ level]
+                   (contains? enabled-levels level))
+                 (write! [_ level throwable message]
+                   (swap! records conj
+                          {:level level
+                           :throwable? (boolean throwable)
+                           :message (str message)})
+                   nil))
+        factory (reify impl/LoggerFactory
+                  (name [_] "test-capture")
+                  (get-logger [_ _logger-ns]
+                    logger))]
+    {:factory factory
+     :records records}))
+
+(deftest throwable-only-logp-arguments-are-messages
+  (let [{:keys [factory records]} (capture-factory #{:debug :info :warn :error})
+        throwable (ex-info "fixture" {:kind :boundary})]
+    (binding [log/*logger-factory* factory]
+      (log/warn throwable)
+      (log/error throwable "with message")
+      (readable/warn throwable)
+      (readable/error throwable {:kind :readable}))
+    (let [summary (mapv #(select-keys % [:level :throwable?]) @records)
+          messages (mapv :message @records)]
+      (is (= [{:level :warn :throwable? false}
+              {:level :error :throwable? true}
+              {:level :warn :throwable? false}
+              {:level :error :throwable? true}]
+             summary))
+      (is (every? seq messages))
+      (is (= "with message" (second messages)))
+      (is (= "{:kind :readable}" (nth messages 3))))))
+
+(deftest disabled-logp-optimized-paths-remain-lazy
+  (let [{:keys [factory records]} (capture-factory #{:error})
+        realized (atom [])]
+    (binding [log/*logger-factory* factory]
+      (doseq [index (range 250)]
+        (log/debug (do (swap! realized conj [:root index])
+                       (ex-info "disabled" {:index index})))
+        (readable/info (do (swap! realized conj [:readable index])
+                           (ex-info "disabled" {:index index}))))
+      (log/error (do (swap! realized conj :enabled)
+                     "enabled")))
+    (is (= [:enabled] @realized))
+    (is (= [{:level :error
+             :throwable? false
+             :message "enabled"}]
+           @records))))
+
+(deftest readable-logp-literal-strings-remain-unquoted
+  (let [{:keys [factory records]} (capture-factory #{:info})
+        runtime-string (str "runtime")]
+    (binding [log/*logger-factory* factory]
+      (readable/info "literal" {:a 1} "tail")
+      (readable/info runtime-string)
+      (readable/infof "fmt=%s/%s" "literal" {:b 2}))
+    (is (= ["literal {:a 1} tail"
+            "\"runtime\""
+            "fmt=\"literal\"/{:b 2}"]
+           (mapv :message @records)))))
+
+(deftest readable-spyf-returns-expression-and-logs-readable-result
+  (let [{:keys [factory records]} (capture-factory #{:debug :info})]
+    (binding [log/*logger-factory* factory]
+      (is (= {:value "quoted"}
+             (readable/spyf "value=%s" {:value "quoted"})))
+      (is (= [1 2]
+             (readable/spyf :info "values=%s" [1 2]))))
+    (is (= [{:level :debug
+             :throwable? false
+             :message "value={:value \"quoted\"}"}
+            {:level :info
+             :throwable? false
+             :message "values=[1 2]"}]
+           @records))))
 
 (deftest stress-mixed-level-emission-remains-lossless
   (with-capture [logger stream] "tests.logging.stress" 5

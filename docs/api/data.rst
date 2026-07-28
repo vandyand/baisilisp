@@ -10,6 +10,11 @@ Python-native containers passed to ``diff`` are converted to Basilisp data
 structures before comparison. Custom extension should use the Clojure-compatible
 ``Diff`` and ``EqualityPartition`` protocols.
 
+As in Clojure, records participate in map-like structural diffs, but
+record-vs-plain-map comparisons do not use the top-level equality shortcut even
+when their entries match; they retain ``clojure.data``'s seq-shaped map diff
+result.
+
 .. toctree::
    :maxdepth: 2
    :caption: Contents:

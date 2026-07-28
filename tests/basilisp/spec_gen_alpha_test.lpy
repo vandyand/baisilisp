@@ -10,6 +10,7 @@
                   char-alphanumeric char-ascii choose delay delay-impl double double*
                   elements fmap for-all* frequency gen-for-name gen-for-pred generate
                   hash-map int keyword keyword-ns large-integer large-integer* list map
+                  lazy-combinator lazy-combinators lazy-prim lazy-prims
                   not-empty one-of quick-check ratio return sample set shuffle simple-type
                   simple-type-printable string string-alphanumeric string-ascii such-that
                   symbol symbol-ns tuple uuid vector vector-distinct])))
@@ -41,8 +42,33 @@
     (is (= 1 @calls)))
   (is (tc-gen/generator?
        (gen/gen-for-name 'clojure.test.check.generators/int)))
-  (is (thrown? Exception (gen/gen-for-name 'unqualified)))
-  (is (thrown? Exception (gen/gen-for-name 'clojure.core/+))))
+    (is (thrown? Exception (gen/gen-for-name 'unqualified)))
+    (is (thrown? Exception (gen/gen-for-name 'clojure.core/+))))
+
+(deftest lazy-helper-macros-define-callable-generators
+  (gen/lazy-prim int)
+  (gen/lazy-prims boolean string)
+  (gen/lazy-combinator vector)
+  (gen/lazy-combinators return tuple)
+  (is (ifn? int))
+  (is (ifn? boolean))
+  (is (ifn? string))
+  (is (ifn? vector))
+  (is (ifn? return))
+  (is (ifn? tuple))
+  (is (tc-gen/generator? (int)))
+  (is (every? integer? (gen/sample (int) 80)))
+  (is (every? boolean? (gen/sample (boolean) 80)))
+  (is (every? string? (gen/sample (string) 80)))
+  (is (every? #(= [:x :x] %)
+              (gen/sample (vector (return :x) 2) 40)))
+  (is (= :constant (gen/generate (return :constant) 8 12)))
+  (is (every? (fn [value]
+                (and (vector? value)
+                     (= 2 (count value))
+                     (integer? (first value))
+                     (string? (second value))))
+              (gen/sample (tuple (int) (string)) 80))))
 
 (deftest predicate-generators-cover-common-host-and-collection-predicates
   (testing "enumerated predicates produce only members of their set"

@@ -39,8 +39,16 @@
 (defn read-all [source & opts]
   (vec (apply csv/read-csv source opts)))
 
+(defn errors? [f]
+  (try
+    (f)
+    false
+    (catch #?(:clj Throwable :lpy python/Exception) _
+      true)))
+
 (emit-case :public-surface
-           (public-csv-names))
+           {:publics (public-csv-names)
+            :protocol-var (some? csv/Read-CSV-From)})
 
 (emit-case :basic-reading
            {:string (read-all "id,name\n1,Ada\n2,Rich")
@@ -64,6 +72,38 @@
 
 (emit-case :quoted-reading
            (read-all "\"a,b\",\"has\"\"quote\",\"has\nnewline\"\r\nplain,last,end"))
+
+(emit-case :adversarial-option-boundaries
+           {:char-delimiters (read-all (write-output [["left" "right"]]
+                                                    :separator \;
+                                                    :quote \|)
+                                      :separator \;
+                                      :quote \|)
+            :integer-delimiters (vec (csv/read-csv-from "a|b\nc|d"
+                                                        (int \|)
+                                                        (int \")))
+            :invalid-separator? (errors? #(write-output [["x"]] :separator "::"))
+            :invalid-quote? (errors? #(write-output [["x"]] :quote ""))
+            :invalid-newline-output (write-output [["x"]] :newline :bad)
+            :quote-none (write-output [["has,comma" "has\"quote" "plain"]]
+                                      :quote? (constantly false))
+            :quote-all (write-output [["a" "b"] ["" "c"]]
+                                     :quote? (constantly true))
+            :crlf-roundtrip (read-all (write-output [["a" "b"] ["c" "d"]]
+                                                   :newline :cr+lf))})
+
+(emit-case :adversarial-scalar-and-shape-writing
+           (let [rows [[nil true false 42 :kw 'sym]
+                       []
+                       ["leading" "" "trailing"]
+                       ["line\rbreak" "line\nbreak" "both\r\nbreak"]]
+                 output (write-output rows)]
+             {:output output
+              :round-trip (read-all output)
+              :custom-round-trip (read-all
+                                  (write-output rows :separator \; :quote \')
+                                  :separator \;
+                                  :quote \')}))
 
 (defn next-seed [seed]
   (mod (+ (* seed 1103515245) 12345) 2147483648))
