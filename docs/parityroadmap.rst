@@ -207,6 +207,11 @@ Near-term deliverable:
   covers ``priority-map-keyfn-by`` construction/update behavior, raising
   ``clojure.data.priority-map`` direct semantic fixture coverage to 100.0%, with
   local seeded stress checks for key-function plus custom-comparator ordering.
+* **Completed locally:** add the first ``clojure.core.async`` facade tranche
+  for the non-``go`` subset: Clojure-shaped buffers and ``chan``, close and
+  non-blocking operations, awaitable/callback ``put!`` and ``take!``,
+  ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
+  and blocking forms remain absent.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

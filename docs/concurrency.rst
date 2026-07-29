@@ -81,6 +81,17 @@ pub/sub, and a ``go`` macro are not yet implemented. ``defasync`` and
 ``go``-block use case. See :ref:`core_async_design` for the proposed
 ``clojure.core.async`` compatibility path.
 
+``clojure.core.async`` Compatibility Facade
+-------------------------------------------
+
+``clojure.core.async`` requires are rewritten to ``basilisp.core.async`` for
+the currently supported non-``go`` subset. The facade provides Clojure-shaped
+buffer constructors, ``chan`` argument handling, close and non-blocking
+operations, awaitable ``put!``/``take!`` with optional callback scheduling,
+``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. It does not
+advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking ``<!!``/``>!!``/
+``alts!!``, ``thread``, pub/sub, mult/mix, or async pipeline variants.
+
 Transactions
 ------------
 

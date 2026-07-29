@@ -351,8 +351,9 @@ Async Pipelines And ``go``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Decision:** extend the local channel with Python-native pipeline helpers;
-do not claim ``core.async`` or add a ``go`` alias until the compatibility
-facade and parking semantics are explicitly implemented.
+claim only the explicitly implemented ``clojure.core.async`` facade subset,
+and do not add a ``go`` alias until parking semantics are explicitly
+implemented.
 
 The first API should live in ``basilisp.concurrent`` and be deliberately
 small: a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
@@ -591,11 +592,10 @@ is:
    history-control contract; add an adaptive snapshot queue only if a workload
    demonstrates starvation or snapshot-retention pressure.
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a
-   separate proof and rejection model. ``basilisp.concurrent`` now has an
-   executable guard that preserves the current Python-native async/channel
-   boundary: channels, ``alts!``, and ``pipeline!`` are supported, but
-   core.async parking/blocking macros are not advertised as public parity
-   surface.
+   separate proof and rejection model. ``basilisp.concurrent`` remains the
+   Python-native async/channel boundary, while ``clojure.core.async`` now
+   exposes the tested non-``go`` facade subset. Core.async parking/blocking
+   macros are not advertised as public parity surface.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 

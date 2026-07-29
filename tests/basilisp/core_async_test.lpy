@@ -1,0 +1,120 @@
+(ns tests.basilisp.core-async-test
+  (:import asyncio)
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.core.async :as async]))
+
+(defasync core-async-rendezvous-roundtrip []
+  (let [channel (async/chan)
+        putter  (asyncio/create-task (async/put! channel :value))]
+    (let [value (await (async/take! channel))]
+      [value (await putter)])))
+
+(defasync core-async-fixed-buffer-roundtrip []
+  (let [channel (async/chan (async/buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-sliding-buffer-roundtrip []
+  (let [channel (async/chan (async/sliding-buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    (await (async/put! channel :third))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-dropping-buffer-roundtrip []
+  (let [channel (async/chan (async/dropping-buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    (await (async/put! channel :third))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-callback-roundtrip []
+  (let [channel (async/chan)
+        events  (atom [])]
+    (is (nil? (async/take! channel #(swap! events conj [:take %]))))
+    (is (nil? (async/put! channel :callback #(swap! events conj [:put %]))))
+    (await (asyncio/sleep 0))
+    (await (asyncio/sleep 0))
+    (await (asyncio/sleep 0))
+    @events))
+
+(defasync core-async-alts-roundtrip []
+  (let [first  (async/chan 1)
+        second (async/chan 1)]
+    (await (async/put! first :first))
+    (await (async/put! second :second))
+    (let [[value selected] (await (async/alts! [second first] :priority true))
+          [fallback port]  (await (async/alts! [(async/chan)] :default :fallback))]
+      [value (identical? selected second) fallback port])))
+
+(defasync core-async-timeout-roundtrip []
+  (let [timer (async/timeout 1)]
+    (await (async/take! timer))))
+
+(defasync core-async-pipe-roundtrip []
+  (let [source      (async/chan 2)
+        destination (async/chan 2)]
+    (await (async/put! source :first))
+    (await (async/put! source :second))
+    (async/close! source)
+    (let [runner (async/pipe source destination)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(defasync core-async-pipeline-roundtrip []
+  (let [source      (async/chan 3)
+        destination (async/chan 3)]
+    (await (async/put! source 1))
+    (await (async/put! source 2))
+    (await (async/put! source 3))
+    (async/close! source)
+    (let [runner (async/pipeline 2 destination (map inc) source)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(deftest namespace-alias-test
+  (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
+
+(deftest public-surface-test
+  (let [publics (set (map name (keys (ns-publics 'clojure.core.async))))]
+    (is (every? publics ["buffer" "dropping-buffer" "sliding-buffer"
+                         "chan" "close!" "offer!" "poll!" "put!" "take!"
+                         "alts!" "timeout" "pipe" "pipeline"]))
+    (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
+                           "alts!!" "<!!" ">!!" "thread" "thread-call"
+                           "pub" "sub" "mult" "mix" "pipeline-async"
+                           "pipeline-blocking"]))))
+
+(deftest buffer-validation-test
+  (is (thrown? Exception (async/buffer 0)))
+  (is (thrown? Exception (async/dropping-buffer -1)))
+  (is (thrown? Exception (async/sliding-buffer "2")))
+  (is (thrown? Exception (async/chan {:capacity 1 :policy :fixed})))
+  (is (thrown? Exception (async/chan 1 (map inc)))))
+
+(deftest core-async-facade-test
+  (testing "channels and buffers"
+    (is (= [:value true] (asyncio/run (core-async-rendezvous-roundtrip))))
+    (is (= [:first :second] (asyncio/run (core-async-fixed-buffer-roundtrip))))
+    (is (= [:second :third] (asyncio/run (core-async-sliding-buffer-roundtrip))))
+    (is (= [:first :second] (asyncio/run (core-async-dropping-buffer-roundtrip)))))
+  (testing "callback-shaped put! and take!"
+    (is (= #{[:take :callback] [:put true]}
+           (set (asyncio/run (core-async-callback-roundtrip))))))
+  (testing "selection, timeout, pipe, and pipeline"
+    (is (= [:second true :fallback :default]
+           (asyncio/run (core-async-alts-roundtrip))))
+    (is (nil? (asyncio/run (core-async-timeout-roundtrip))))
+    (is (= [:first :second nil]
+           (asyncio/run (core-async-pipe-roundtrip))))
+    (is (= [2 3 4 nil]
+           (asyncio/run (core-async-pipeline-roundtrip))))))

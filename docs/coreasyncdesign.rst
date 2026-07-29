@@ -80,10 +80,11 @@ The implementation is intentionally ``asyncio``-native:
 * Closed takes return ``nil`` after buffered values drain.
 * Closed puts return ``false``.
 
-This is the right substrate, but it is not yet ``clojure.core.async``. The
-important missing pieces are the compatibility namespace, Clojure-shaped
-buffer constructors, blocking adapters, pub/sub-style combinators, and
-compiler support for ``go`` parking forms.
+This is the right substrate. BaisiLisp now has an initial
+``clojure.core.async`` facade for the non-``go`` subset, backed by
+``basilisp.core.async`` and the existing channel runtime. The important missing
+pieces are blocking adapters, pub/sub-style combinators, async pipeline
+variants, and compiler support for ``go`` parking forms.
 
 Design Principles
 -----------------
@@ -177,7 +178,7 @@ into one of these states:
 Phase 1: Compatibility Facade Without ``go``
 --------------------------------------------
 
-The next implementation tranche should add ``clojure.core.async`` with the
+The first implementation tranche adds ``clojure.core.async`` with the
 non-compiler subset.
 
 Proposed public functions/macros:
@@ -408,27 +409,22 @@ Every phase should add tests before broadening the public surface.
    Examples in ``docs/concurrency.rst`` and this design should compile or be
    explicitly marked as design-only.
 
-Recommended Next Tranche
+Completed Facade Tranche
 ------------------------
 
-The next implementation tranche should be:
+The initial implementation now covers:
 
-**Add the ``clojure.core.async`` facade for the non-``go`` subset.**
-
-Scope:
-
-* Create ``clojure.core.async``.
 * Add ``buffer``, ``dropping-buffer``, and ``sliding-buffer`` descriptors.
 * Make ``chan`` accept Clojure-shaped buffer arguments and delegate to the
   existing channel runtime.
 * Re-export or wrap ``close!``, ``offer!``, ``poll!``, ``timeout``, ``pipe``,
   and ``pipeline``.
-* Decide and test the phase-1 callback/awaitable behavior for ``put!`` and
-  ``take!``.
-* Add explicit placeholder macros/functions for ``go``, ``go-loop``, ``<!``,
-  ``>!``, ``alt!``, blocking ops, and advanced combinators only if they raise
-  clear "not implemented" errors. Otherwise leave them absent and document the
-  support matrix.
+* Provide and test the phase-1 callback/awaitable behavior for ``put!`` and
+  ``take!``: no callback returns an awaitable; callback calls schedule on the
+  current event loop and return ``nil``.
+* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, blocking ops, and
+  advanced combinators absent until they can be implemented or rejected with a
+  stable support matrix.
 
 Why this tranche first:
 
@@ -438,3 +434,21 @@ Why this tranche first:
 * It avoids compiler-risk until the public surface and argument semantics are
   stable.
 * It creates the acceptance matrix needed to implement ``go`` without guessing.
+
+Recommended Next Tranche
+------------------------
+
+The next tranche after the facade should harden this namespace before adding
+compiler-level ``go`` support:
+
+* Add a maintained public support matrix for ``clojure.core.async``.
+* Add JVM differential fixtures for buffer close/drain behavior, nil
+  rejection, ``alts!`` priority/default behavior, ``pipe``, and ``pipeline``
+  output order.
+* Decide whether ``put!``/``take!`` callback return values should remain
+  strict Clojure-compatible ``nil`` or expose a BaisiLisp task handle through a
+  separate Python-native name.
+* Add rejection tests for channel transducers, blocking operations from an
+  event-loop thread, and unavailable parking macros.
+* Only then choose between the blocking bridge tranche and the minimal
+  coroutine-backed ``go`` tranche.
