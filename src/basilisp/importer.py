@@ -90,7 +90,7 @@ def _get_basilisp_bytecode(
         logger.debug(message)
         raise ImportError(message, **exc_details)
 
-    return marshal.loads(cache_data[12:])  # nosec 6302
+    return marshal.loads(cache_data[12:])  # nosec B302
 
 
 def _basilisp_aot_bytecode(source_filename: str, code: list[types.CodeType]) -> bytes:
@@ -116,7 +116,7 @@ def _get_basilisp_aot_bytecode(
             name=fullname,
         )
     try:
-        source_filename, code = marshal.loads(cache_data[4:])  # nosec 6302
+        source_filename, code = marshal.loads(cache_data[4:])  # nosec B302
     except (EOFError, TypeError, ValueError) as e:
         raise ImportError(f"Invalid Basilisp AOT artifact for {fullname}") from e
     if (

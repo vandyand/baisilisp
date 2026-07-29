@@ -40,7 +40,7 @@ class ReplSession:
     error: BaseException | None = None
 
     @classmethod
-    def create(cls, namespace: sym.Symbol) -> "ReplSession":
+    def create(cls, namespace: sym.Symbol) -> ReplSession:
         """Create a namespace with Basilisp core referred into it."""
         eval_ns = runtime.Namespace.get_or_create(namespace)
         core_ns = runtime.Namespace.get(_CORE_NS)

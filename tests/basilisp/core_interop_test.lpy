@@ -19,11 +19,11 @@
                     (throw (python/RuntimeError "outer"))
                     (catch python/Exception outer outer))))
         mapped (Throwable->map error)]
-    (is (= "inner {:detail 1}" (:cause mapped)))
+    (is (= "inner" (:cause mapped)))
     (is (= {:detail 1} (:data mapped)))
     (is (= 2 (count (:via mapped))))
     (is (= "outer" (:message (first (:via mapped)))))
-    (is (= "inner {:detail 1}" (:message (second (:via mapped)))))
+    (is (= "inner" (:message (second (:via mapped)))))
     (is (vector? (:trace mapped)))
     (is (vector? (:at (first (:via mapped)))))))
 

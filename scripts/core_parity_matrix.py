@@ -121,9 +121,7 @@ def main(argv: list[str] | None = None) -> int:
         if args.clojure_command
         else _default_clojure_command()
     )
-    clojure_publics = _run_publics_command(
-        [*clojure_command, CLOJURE_CORE_PUBLICS]
-    )
+    clojure_publics = _run_publics_command([*clojure_command, CLOJURE_CORE_PUBLICS])
     basilisp_publics = _run_publics_command(
         [*shlex.split(args.basilisp_command), BASILISP_CORE_PUBLICS]
     )

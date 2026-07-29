@@ -24,7 +24,9 @@ def test_default_clojure_command_prefers_native_clojure(monkeypatch):
         "-M",
         "-e",
     ] == core_parity_matrix._default_clojure_command()
-    assert core_parity_matrix.CLOJURE_VERSION in core_parity_matrix.DEFAULT_CLOJURE_SDEPS
+    assert (
+        core_parity_matrix.CLOJURE_VERSION in core_parity_matrix.DEFAULT_CLOJURE_SDEPS
+    )
 
 
 def test_default_clojure_command_falls_back_to_wsl_on_windows(monkeypatch):
@@ -103,9 +105,11 @@ def test_main_returns_success_when_core_publics_are_complete(monkeypatch):
     monkeypatch.setattr(
         core_parity_matrix,
         "_run_publics_command",
-        lambda command: {"shared", "only-basilisp"}
-        if "basilisp.core" in command[-1]
-        else {"shared"},
+        lambda command: (
+            {"shared", "only-basilisp"}
+            if "basilisp.core" in command[-1]
+            else {"shared"}
+        ),
     )
 
     assert 0 == core_parity_matrix.main([])

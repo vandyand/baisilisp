@@ -3,8 +3,7 @@ import pathlib
 import sys
 import tempfile
 
-from hypothesis import given
-from hypothesis import settings
+from hypothesis import given, settings
 from hypothesis import strategies as st
 
 from basilisp import main

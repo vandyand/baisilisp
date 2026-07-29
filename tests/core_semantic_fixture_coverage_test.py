@@ -86,18 +86,12 @@ def test_direct_core_references_counts_calls_and_qualified_references(tmp_path):
     assert refs["filter"].modes_by_fixture[fixture] == frozenset(
         {"alias-call", "alias-reference"}
     )
-    assert refs["await"].modes_by_fixture[fixture] == frozenset(
-        {"qualified-reference"}
-    )
+    assert refs["await"].modes_by_fixture[fixture] == frozenset({"qualified-reference"})
     assert refs["*out*"].modes_by_fixture[fixture] == frozenset(
         {"unqualified-reference"}
     )
-    assert refs["*1"].modes_by_fixture[fixture] == frozenset(
-        {"unqualified-reference"}
-    )
-    assert refs["*e"].modes_by_fixture[fixture] == frozenset(
-        {"unqualified-reference"}
-    )
+    assert refs["*1"].modes_by_fixture[fixture] == frozenset({"unqualified-reference"})
+    assert refs["*e"].modes_by_fixture[fixture] == frozenset({"unqualified-reference"})
     assert refs["primitives-classnames"].modes_by_fixture[fixture] == frozenset(
         {"unqualified-reference"}
     )

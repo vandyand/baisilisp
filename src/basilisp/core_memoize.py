@@ -7,12 +7,7 @@ from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from basilisp.core_cache import (
-    BasicCache,
-    FIFOCache,
-    LRUCache,
-    LUCache,
     PersistentCache,
-    TTLCacheQ,
     basic_cache_factory,
     fifo_cache_factory,
     lru_cache_factory,
@@ -59,7 +54,7 @@ def cache_seed(cache: Any, base: Mapping[Any, Any]):
 class RetryingDelay(IDeref, IPending):
     """A thread-safe delay which retries its function after an exception."""
 
-    __slots__ = ("_fun", "_available", "_value", "_lock")
+    __slots__ = ("_available", "_fun", "_lock", "_value")
 
     def __init__(
         self, fun: Callable[[], Any], available: bool = False, value: Any = None
@@ -125,7 +120,7 @@ def _derefable_seed(seed: Mapping[Any, Any]) -> lmap.PersistentMap:
 class PluggableMemoization:
     """A cache-protocol-shaped wrapper retained for core.memoize API parity."""
 
-    __slots__ = ("f", "cache")
+    __slots__ = ("cache", "f")
 
     def __init__(self, f: Callable[..., Any], cache: Any):
         self.f = f
@@ -186,7 +181,7 @@ def _cache_key(value: Any):
 class MemoizedFunction:
     """Callable carrying a manipulable cache atom in normal Basilisp metadata."""
 
-    __slots__ = ("_f", "_cache_atom", "_key_fn", "_lock", "meta")
+    __slots__ = ("_cache_atom", "_f", "_key_fn", "_lock", "meta")
 
     def __init__(self, f: Callable[..., Any], cache_atom: Atom, key_fn=None, meta=None):
         self._f = f

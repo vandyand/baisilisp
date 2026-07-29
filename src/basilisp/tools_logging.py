@@ -38,8 +38,9 @@ def class_found(name: Any) -> bool:
         try:
             importlib.import_module(".".join(parts[:end]))
             return True
-        except Exception:  # pragma: no cover - mirrors Clojure's probing helper
-            continue
+        except Exception:  # nosec B110
+            # Mirrors Clojure's probing helper.
+            pass
     return False
 
 
@@ -92,6 +93,8 @@ def capture(logger_ns: Any, out_level: Any = "info", err_level: Any = "error") -
 
 def uncapture() -> None:
     global _original_streams
-    if _original_streams is not None:
-        sys.stdout, sys.stderr = _original_streams
+    streams = _original_streams
+    if streams is not None:
+        sys.stdout = streams[0]
+        sys.stderr = streams[1]
         _original_streams = None

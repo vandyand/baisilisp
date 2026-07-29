@@ -219,9 +219,9 @@ def persistent_priority_map_from_parts(
     comparator = getattr(priority_to_items, "comparator", _default_comparator)
     if isinstance(item_to_priority, PersistentPriorityMap):
         inner = item_to_priority._inner
-    elif isinstance(item_to_priority, PersistentMap):
-        inner = _Map(item_to_priority.items())
-    elif isinstance(item_to_priority, Mapping):
+    elif isinstance(item_to_priority, PersistentMap) or isinstance(
+        item_to_priority, Mapping
+    ):
         inner = _Map(item_to_priority.items())
     else:
         inner = _Map(

@@ -84,11 +84,7 @@ def utf16_substring(value: str, start: Any, end: Any = _END_SENTINEL) -> str:
 
     start = _coerce_substring_index(start, "start")
     length = utf16_length(value)
-    actual_end = (
-        length
-        if end is _END_SENTINEL
-        else _coerce_substring_index(end, "end")
-    )
+    actual_end = length if end is _END_SENTINEL else _coerce_substring_index(end, "end")
     if start < 0 or actual_end < start or actual_end > length:
         raise IndexError(
             f"substring indexes {start} through {actual_end} out of bounds for length {length}"

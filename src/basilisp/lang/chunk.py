@@ -129,7 +129,6 @@ class ChunkedCons(_ChunkedSeqBase[T]):
 
     @property
     def rest(self) -> ISeq[T]:
-        from basilisp.lang.seq import EMPTY
 
         if self._offset + 1 < len(self._chunk):
             return ChunkedCons(self._chunk, self._rest, self._offset + 1)
@@ -237,7 +236,6 @@ def chunk_buffer(capacity: int) -> ChunkBuffer:
 
 def chunk_append(buffer: ChunkBuffer, value: T) -> None:
     buffer.append(value)
-    return None
 
 
 def chunk(buffer: ChunkBuffer) -> ArrayChunk:
@@ -281,11 +279,11 @@ def chunked_vector_seq(source: Sequence[T]) -> ChunkedVectorSeq[T] | None:
 
 
 __all__ = (
+    "DEFAULT_CHUNK_SIZE",
     "ArrayChunk",
     "ChunkBuffer",
     "ChunkedCons",
     "ChunkedVectorSeq",
-    "DEFAULT_CHUNK_SIZE",
     "array_chunk",
     "chunk",
     "chunk_append",

@@ -12,9 +12,10 @@ import builtins
 import math
 import time
 import uuid as _uuid
+from collections.abc import Callable, Iterable, Mapping, Sequence, Sized
 from dataclasses import dataclass
 from fractions import Fraction
-from typing import Any, Callable, Iterable, Mapping, Sequence, Sized
+from typing import Any
 
 from basilisp.lang import character as lchar
 from basilisp.lang import keyword as kw
@@ -68,12 +69,12 @@ class RNG:
             1.0 / (1 << 53)
         )
 
-    def split(self) -> tuple["RNG", "RNG"]:
+    def split(self) -> tuple[RNG, RNG]:
         left = _mix64((self.state + 0x9E3779B97F4A7C15) & _MASK64)
         right = _mix64((self.state + 0xD1B54A32D192ED03) & _MASK64)
         return RNG(left), RNG(right)
 
-    def split_n(self, n: int) -> tuple["RNG", ...]:
+    def split_n(self, n: int) -> tuple[RNG, ...]:
         if n < 0:
             raise ValueError("n must not be negative")
         result: list[RNG] = []
@@ -109,7 +110,7 @@ def split_n(rng: RNG, n: int):
 @dataclass(frozen=True, slots=True)
 class RoseTree:
     root: Any
-    children: tuple["RoseTree", ...] = ()
+    children: tuple[RoseTree, ...] = ()
 
 
 def make_rose(root: Any, children: Iterable[RoseTree] = ()) -> RoseTree:

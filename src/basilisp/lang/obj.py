@@ -4,14 +4,14 @@ import math
 import re
 import uuid
 from abc import ABC, abstractmethod
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from decimal import Decimal
 from fractions import Fraction
 from functools import singledispatch
 from itertools import islice
 from pathlib import Path
 from re import Pattern
-from typing import Any, Callable, Union, cast
+from typing import Any, Union, cast
 
 from typing_extensions import TypedDict, Unpack
 
@@ -383,7 +383,7 @@ def _lrepr_datetime(o: datetime.datetime, **_) -> str:
 @_lrepr.register(Decimal)
 def _lrepr_decimal(o: Decimal, print_dup: bool = PRINT_DUP, **_) -> str:
     if print_dup:
-        return f"{str(o)}M"
+        return f"{o!s}M"
     return str(o)
 
 
@@ -406,4 +406,4 @@ def _lrepr_pattern(o: Pattern, **_) -> str:
 def _lrepr_uuid(o: uuid.UUID, human_readable: bool = False, **_) -> str:
     if human_readable:
         return str(o)
-    return f'#uuid "{str(o)}"'
+    return f'#uuid "{o!s}"'

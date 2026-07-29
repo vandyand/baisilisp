@@ -36,7 +36,7 @@ def _contains_reader_conditional(form: Any) -> bool:
 class PushbackReader:
     """A stateful, optionally source-logging wrapper around a text stream."""
 
-    __slots__ = ("stream", "reader", "source_logging", "file_name", "indexing")
+    __slots__ = ("file_name", "indexing", "reader", "source_logging", "stream")
 
     def __init__(
         self,
@@ -138,7 +138,7 @@ class PushbackReader:
                 and ctx.should_process_reader_cond
             ):
                 raise ctx.syntax_error(
-                    f"Unexpected reader conditional '{repr(form)})'; "
+                    f"Unexpected reader conditional '{form!r})'; "
                     "reader is configured to process reader conditionals"
                 )
             if not with_source:

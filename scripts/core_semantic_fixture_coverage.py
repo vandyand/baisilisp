@@ -183,9 +183,8 @@ def _qualified_symbol(token: str, aliases: set[str]) -> tuple[str, str] | None:
 
 
 def _is_unqualified_value_reference(symbol: str) -> bool:
-    return (
-        symbol in _VALUE_REFERENCE_PUBLICS
-        or (len(symbol) > 2 and symbol.startswith("*") and symbol.endswith("*"))
+    return symbol in _VALUE_REFERENCE_PUBLICS or (
+        len(symbol) > 2 and symbol.startswith("*") and symbol.endswith("*")
     )
 
 
@@ -232,11 +231,15 @@ def direct_core_references(
             ):
                 references[token][fixture].add("unqualified-reference")
 
-        alias_pattern = re.compile(
-            rf"{_SYMBOL_BOUNDARY}"
-            rf"({'|'.join(re.escape(alias) for alias in aliases)})/"
-            rf"{_SYMBOL_BODY}"
-        ) if aliases else None
+        alias_pattern = (
+            re.compile(
+                rf"{_SYMBOL_BOUNDARY}"
+                rf"({'|'.join(re.escape(alias) for alias in aliases)})/"
+                rf"{_SYMBOL_BODY}"
+            )
+            if aliases
+            else None
+        )
         for pattern, mode in (
             (qualified_pattern, "qualified-reference"),
             (alias_pattern, "alias-reference"),

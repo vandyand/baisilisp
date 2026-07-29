@@ -6,8 +6,9 @@ import contextvars
 import inspect
 import numbers
 from collections import deque
+from collections.abc import Callable
 from contextlib import ExitStack
-from typing import Any, Callable, Generic, TypeVar
+from typing import Any, Generic, TypeVar
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
@@ -108,7 +109,7 @@ class Ref(RefBase[T], Generic[T]):
         with self._lock:
             return self._min_history
 
-    def set_min_history(self, value: Any) -> "Ref[T]":
+    def set_min_history(self, value: Any) -> Ref[T]:
         """Set the minimum committed-value history retained by this Ref.
 
         As with Clojure, changing a control does not eagerly discard values
@@ -124,7 +125,7 @@ class Ref(RefBase[T], Generic[T]):
         with self._lock:
             return self._max_history
 
-    def set_max_history(self, value: Any) -> "Ref[T]":
+    def set_max_history(self, value: Any) -> Ref[T]:
         """Set the maximum history control and return this Ref.
 
         Basilisp transactions do not consume historical snapshots, unlike the
