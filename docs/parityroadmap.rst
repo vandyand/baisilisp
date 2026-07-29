@@ -570,7 +570,10 @@ Near-term deliverable:
   ``basilisp.test.junit`` exposes Clojure's public reporter helpers, routes
   through Basilisp's existing ``clojure.test`` report hooks, emits deterministic
   JUnit-compatible XML, and fuzz-tests XML escaping for assertion messages and
-  attributes.
+  attributes. The adversarial semantic follow-up now also locks package/class
+  splitting for empty and dotted boundaries plus exact generated XML rendering
+  for pretty/non-pretty elements. Basilisp now preserves caller-supplied
+  attribute order in ``start-element`` instead of imposing a preferred order.
 * **Completed locally:** deepen ``clojure.test.tap`` reporter output parity.
   Shared fixtures now cover blank, internal-blank, and trailing-newline TAP
   diagnostics, nil plans, empty pass/fail messages, testing-context rendering,

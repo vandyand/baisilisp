@@ -37,12 +37,24 @@
     (-> (writer-str w)
         (str/replace #"\r\n" "\n"))))
 
+(defn element-output [depth pretty tag attrs content]
+  (output-with-depth
+   depth
+   #(do
+      (junit/start-element tag pretty attrs)
+      (junit/element-content content)
+      (junit/finish-element tag pretty))))
+
 (emit-case :junit-public-surface
            (sort (map name (keys (ns-publics 'clojure.test.junit)))))
 
 (emit-case :junit-package-class
            [(junit/package-class "demo.alpha.Beta")
             (junit/package-class "Beta")
+            (junit/package-class "demo.alpha.inner.Beta")
+            (junit/package-class ".Leading")
+            (junit/package-class "Trailing.")
+            (junit/package-class "")
             (junit/suite-attrs "demo.alpha" "Beta")
             (junit/suite-attrs nil "Beta")])
 
@@ -80,6 +92,17 @@
                  (junit/finish-element 'sample true)))
              (-> (writer-str w)
                  (str/replace #"\r\n" "\n"))))
+
+(emit-case :junit-generated-xml-corpus
+           (mapv (fn [[depth pretty tag attrs content]]
+                   {:depth depth
+                    :pretty pretty
+                    :tag tag
+                    :output (element-output depth pretty tag attrs content)})
+                 [[0 true 'root nil ""]
+                  [1 true 'case (array-map :name "n<1" :classname "c&1") "body"]
+                  [2 false 'failure (array-map :message "m\"'") "x<y&z"]
+                  [1 true 'sample (array-map :package "pkg" :name "Name") "\nline"]]))
 
 (emit-case :junit-message-elements
            (let [message (output-with-depth

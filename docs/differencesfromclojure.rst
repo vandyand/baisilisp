@@ -604,7 +604,8 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   runners. :lpy:ns:`basilisp.test.junit` provides the standard
   ``clojure.test.junit`` XML reporter helpers. ``with-junit-output`` binds
   Basilisp's human test output off while preserving Clojure's report hook,
-  writer, counter, suite, testcase, failure, and error element behavior.
+  writer, counter, suite, testcase, failure, error element, XML escaping, and
+  caller-supplied attribute-order behavior.
 * :lpy:ns:`basilisp.template` is a port of ``clojure.template``. Shared
   fixtures cover public names, ``apply-template`` replacement boundaries,
   duplicate binding handling, short/long value lists, quoted-form walking,
