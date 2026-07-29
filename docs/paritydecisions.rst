@@ -500,6 +500,13 @@ consumption for iterators. ``bean`` remains a documented object projection and
 binary integrations should still be separate optional namespaces, for example
 a buffer adapter that documents byte order and mutability.
 
+``py->lisp`` may accept generic Python collection ABCs because its contract is
+already an explicit host conversion boundary. Generic mappings, sequences, and
+sets convert like their concrete ``dict``, ``list``/``tuple``, and
+``set``/``frozenset`` counterparts. Strings and binary buffers remain scalar
+host values, and existing Basilisp persistent collections are preserved so
+metadata and collection identity are not lost through accidental round trips.
+
 XML now has a bounded immutable-tree adapter for the data-oriented subset.
 Namespace/prefix fidelity, comments, processing instructions, and streaming are
 deliberately still separate work. Python's XML security guidance identifies

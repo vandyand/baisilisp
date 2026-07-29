@@ -1369,6 +1369,14 @@ Candidate investments:
 * multiprocessing and thread/process pool helpers that fit Python's runtime
   model better than JVM-style STM
 
+Completed locally:
+
+* ``py->lisp`` now accepts generic Python ``Mapping``, ``Sequence``, and
+  ``Set`` implementations, while preserving strings, binary buffers, and
+  existing Basilisp persistent collections as host/persistent values rather
+  than over-converting them. This extends Python-native interop without adding
+  a framework dependency or changing Clojure-facing semantics.
+
 Near-term deliverable:
 
 * choose one Python-native integration area and make it excellent rather than

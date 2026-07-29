@@ -2310,10 +2310,20 @@ def to_lisp(o, keywordize_keys: bool = True):  # pylint: disable=unused-argument
 
 @to_lisp.register(list)
 @to_lisp.register(tuple)
-def _to_lisp_vec(o: Iterable, keywordize_keys: bool = True) -> vec.PersistentVector:
+@to_lisp.register(Sequence)
+def _to_lisp_vec(o: Sequence, keywordize_keys: bool = True):
+    if isinstance(o, (str, bytes, bytearray, memoryview)):
+        return o
     return vec.vector(
         map(functools.partial(to_lisp, keywordize_keys=keywordize_keys), o)
     )
+
+
+@to_lisp.register(IPersistentVector)
+def _to_lisp_persistent_vector(
+    o: IPersistentVector, keywordize_keys: bool = True
+) -> IPersistentVector:
+    return o
 
 
 @functools.singledispatch
@@ -2327,6 +2337,7 @@ def _keywordize_keys_str(k: str, keywordize_keys: bool = True):
 
 
 @to_lisp.register(dict)
+@to_lisp.register(Mapping)
 def _to_lisp_map(o: Mapping, keywordize_keys: bool = True) -> lmap.PersistentMap:
     process_key = _keywordize_keys if keywordize_keys else to_lisp
     return lmap.map(
@@ -2339,10 +2350,25 @@ def _to_lisp_map(o: Mapping, keywordize_keys: bool = True) -> lmap.PersistentMap
     )
 
 
+@to_lisp.register(IPersistentMap)
+def _to_lisp_persistent_map(
+    o: IPersistentMap, keywordize_keys: bool = True
+) -> IPersistentMap:
+    return o
+
+
 @to_lisp.register(frozenset)
 @to_lisp.register(set)
+@to_lisp.register(collections.abc.Set)
 def _to_lisp_set(o: AbstractSet, keywordize_keys: bool = True) -> lset.PersistentSet:
     return lset.set(map(functools.partial(to_lisp, keywordize_keys=keywordize_keys), o))
+
+
+@to_lisp.register(IPersistentSet)
+def _to_lisp_persistent_set(
+    o: IPersistentSet, keywordize_keys: bool = True
+) -> IPersistentSet:
+    return o
 
 
 def _kw_name(kw: kw.Keyword) -> str:
