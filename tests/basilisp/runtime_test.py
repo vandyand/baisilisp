@@ -731,16 +731,36 @@ def test_trampoline_args():
     assert (llist.l(2, 3, 4),) == args.args
 
     args = runtime._TrampolineArgs(True, llist.l(2, 3, 4))
-    assert (2, 3, 4) == args.args
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert llist.l(2, 3, 4) == recur_rest.rest
+    assert llist.l(2, 3, 4) == runtime._unwrap_rest_args(args.args)
 
     args = runtime._TrampolineArgs(False, 1, 2, 3, llist.l(4, 5, 6))
     assert (1, 2, 3, llist.l(4, 5, 6)) == args.args
 
     args = runtime._TrampolineArgs(True, 1, 2, 3, llist.l(4, 5, 6))
-    assert (1, 2, 3, 4, 5, 6) == args.args
+    assert 4 == len(args.args)
+    assert (1, 2, 3) == args.args[:3]
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert llist.l(4, 5, 6) == recur_rest.rest
+    assert llist.l(4, 5, 6) == runtime._unwrap_rest_args(args.args[3:])
 
     args = runtime._TrampolineArgs(True, 1, llist.l(2, 3, 4), 5, 6)
-    assert (1, llist.l(2, 3, 4), 5, 6) == args.args
+    assert 4 == len(args.args)
+    assert (1, llist.l(2, 3, 4), 5) == args.args[:3]
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert 6 == recur_rest.rest
+    assert 6 == runtime._unwrap_rest_args(args.args[3:])
+
+    args = runtime._TrampolineArgs(True, 1, 2, None)
+    assert 3 == len(args.args)
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert recur_rest.rest is None
+    assert runtime._unwrap_rest_args(args.args[2:]) is None
 
 
 @pytest.mark.parametrize("form", runtime._SPECIAL_FORMS)

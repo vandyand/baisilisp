@@ -1,0 +1,128 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic/arithmetic.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "basilisp.algo.generic",
+        "clojure.core",
+        "generic",
+        "ns",
+        "one-type",
+        "qsym",
+        "x",
+        "zero-type"
+      ],
+      "sha256": "0f5c090622e5b2589ac5ae28d728bf44bdae460626e0f77adcff2108589a5895"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic/collection.cljc",
+      "reader_features": [],
+      "requires": [
+        "assoc",
+        "clojure.core",
+        "coll",
+        "m",
+        "s",
+        "to"
+      ],
+      "sha256": "221314c9d9d1daadb0fcd01ef1934a13d57f1647ede5249c27f6c53652038a0a"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic/comparison.cljc",
+      "reader_features": [],
+      "requires": [
+        "basilisp.algo.generic",
+        "clojure.core",
+        "generic",
+        "x"
+      ],
+      "sha256": "300f49f10952e169cb801c31a485edd72996ab41535d1a4cfb29435d77a9eb67"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic/functor.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "f",
+        "k"
+      ],
+      "sha256": "ed7ec27bf941b63b5d834b61da81e98005c2713495833624ad359171265189cd"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic/math_functions.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "abs",
+        "basilisp.algo.generic",
+        "basilisp.algo.generic.arithmetic",
+        "basilisp.algo.generic.comparison",
+        "generic",
+        "host-symbol",
+        "name",
+        "x"
+      ],
+      "sha256": "4ee64e04582193314cc50ec00f0f50bb0d6e446fbf817467d73fe7aab813c58e"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/algo/generic.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "numeric-type",
+        "python",
+        "x"
+      ],
+      "sha256": "a7b2787c1306b083c6ef0fed8d1f194cb7c083f731678e5eed25dae7abfb3a77"
+    }
+  ],
+  "substitutions": [
+    "clojure.algo.generic -> basilisp.algo.generic",
+    "JVM Object root dispatch -> Python object root dispatch",
+    "JVM Number dispatch -> Basilisp numeric host-type dispatch",
+    "JVM persistent collection/Future/Delay dispatch -> Basilisp interface dispatch",
+    "java.lang.Math calls -> Python math module calls"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "660b62b2fd84ed4c7383e2263f1fae039a5f5435",
+  "upstream_url": "https://github.com/clojure/algo.generic"
+}

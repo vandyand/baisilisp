@@ -134,13 +134,13 @@
   [data]
   (let [data (slice data 1)
         i    (index-of data #b "e")]
-    [(int (slice data 0 i))
+    [(python/int (slice data 0 i))
      (slice data (inc i))]))
 
 (defn ^:private decode-byte-string
   [data {:keys [string-fn] :or {string-fn identity}}]
   (let [i    (index-of data #b ":")
-        n    (int (slice data 0 i))
+        n    (python/int (slice data 0 i))
         data (slice data (inc i))]
     [(if (= n 0)
        (string-fn #b "")
@@ -224,4 +224,3 @@
        (if (nil? item)
          [items data]
          (recur (conj items item) data))))))
-

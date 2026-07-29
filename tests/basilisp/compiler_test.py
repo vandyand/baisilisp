@@ -5060,6 +5060,43 @@ class TestRecur:
         assert 10 == lcompile("(+++ 1 2 3 4)")
         assert 15 == lcompile("(+++ 1 2 3 4 5)")
 
+    def test_variadic_recur_rebinds_rest_expression_directly(
+        self, lcompile: CompileFn
+    ):
+        lcompile("""
+        (def recur-rest-vector
+          (fn recur-rest-vector [n & more]
+            (if (pos? n)
+              (recur (dec n) [1 2])
+              [(vector? more) (seq? more) more])))
+
+        (def recur-rest-nil
+          (fn recur-rest-nil [n & more]
+            (if (pos? n)
+              (recur (dec n) nil)
+              [(nil? more) more])))
+        """)
+
+        assert "[true false [1 2]]" == lcompile("(pr-str (recur-rest-vector 1))")
+        assert "[true nil]" == lcompile("(pr-str (recur-rest-nil 1))")
+
+    def test_fixed_arity_recur_in_mixed_variadic_fn_uses_fixed_arity(
+        self, lcompile: CompileFn
+    ):
+        lcompile("""
+        (def mixed-recur
+          (fn mixed-recur
+            ([x]
+             (if (pos? x)
+               (recur (dec x))
+               x))
+            ([x & more]
+             [x more])))
+        """)
+
+        assert 0 == lcompile("(mixed-recur 3)")
+        assert "[3 (4 5)]" == lcompile("(pr-str (mixed-recur 3 4 5))")
+
     @pytest.mark.parametrize(
         "code",
         [

@@ -487,6 +487,18 @@ class TestRun:
             result = run_cli(["run", "-c", "(println *main-ns*)"])
             assert f"nil{os.linesep}" == result.lisp_out
 
+        def test_run_code_tracks_eval_namespace_switch(self, run_cli):
+            result = run_cli(
+                [
+                    "run",
+                    "--disable-ns-cache",
+                    "true",
+                    "-c",
+                    "(eval '(ns cli.evaled)) (println (ns-name *ns*))",
+                ]
+            )
+            assert f"cli.evaled{os.linesep}" == result.lisp_out
+
         @pytest.mark.parametrize("args,ret", cli_run_args_params)
         def test_run_code_with_args(self, run_cli, args: list[str], ret: str):
             result = run_cli(["run", "-c", cli_run_args_code, *args])
@@ -567,6 +579,14 @@ class TestRun:
                 f.write("(println *main-ns*)")
             result = run_cli(["run", "test.lpy"])
             assert f"nil{os.linesep}" == result.lisp_out
+
+        def test_run_file_tracks_eval_namespace_switch(
+            self, isolated_filesystem, run_cli
+        ):
+            with open("test.lpy", mode="w") as f:
+                f.write("(eval '(ns cli.file-evaled)) (println (ns-name *ns*))")
+            result = run_cli(["run", "--disable-ns-cache", "true", "test.lpy"])
+            assert f"cli.file-evaled{os.linesep}" == result.lisp_out
 
         @pytest.mark.parametrize("args,ret", cli_run_args_params)
         def test_run_file_with_args(
@@ -802,6 +822,13 @@ class TestRun:
         def test_run_stdin_main_ns(self, run_cli):
             result = run_cli(["run", "-"], input="(println *main-ns*)")
             assert f"nil{os.linesep}" == result.lisp_out
+
+        def test_run_stdin_tracks_eval_namespace_switch(self, run_cli):
+            result = run_cli(
+                ["run", "--disable-ns-cache", "true", "-"],
+                input="(eval '(ns cli.stdin-evaled)) (println (ns-name *ns*))",
+            )
+            assert f"cli.stdin-evaled{os.linesep}" == result.lisp_out
 
         @pytest.mark.parametrize("args,ret", cli_run_args_params)
         def test_run_stdin_with_args(self, run_cli, args: list[str], ret: str):

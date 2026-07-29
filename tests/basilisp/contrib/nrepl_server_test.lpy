@@ -155,6 +155,36 @@
     [:error "AttributeError(\"'PersistentList' object has no attribute 'ns'\")"] *ns* "'abc" ;; passing in a symbol
     ))
 
+(deftest nrepl-error-diagnostics-use-evaluation-phase-test
+  (testing "runtime exceptions carry the nREPL evaluation phase"
+    (let [client*   (atom {})
+          responses (atom [])
+          send-fn   (fn [_ response] (swap! responses conj response))]
+      (@#'nr/handle-error send-fn {:client* client* :ns "diag.ns"}
+       (python/ZeroDivisionError "boom"))
+      (let [diagnostic-response (second @responses)
+            diagnostic          (read-string (get diagnostic-response "basilisp/diagnostic"))]
+        (is (= ["eval-error"] (get diagnostic-response "status")))
+        (is (= "diag.ns" (get diagnostic-response "ns")))
+        (is (= :execution (:phase diagnostic)))
+        (is (= "ZeroDivisionError" (:type diagnostic)))
+        (is (string? (:*e @client*))))))
+  (testing "exception data keeps its own phase nested under :data"
+    (let [client*   (atom {})
+          responses (atom [])
+          send-fn   (fn [_ response] (swap! responses conj response))
+          error     (ex-info "compiler-shaped"
+                             {:phase :analyzing
+                              :file  "nrepl-diagnostic-test.lpy"
+                              :form  'broken-form})]
+      (@#'nr/handle-error send-fn {:client* client* :ns "diag.ns"} error)
+      (let [diagnostic-response (second @responses)
+            diagnostic          (read-string (get diagnostic-response "basilisp/diagnostic"))]
+        (is (= :execution (:phase diagnostic)))
+        (is (= :analyzing (get-in diagnostic [:data :phase])))
+        (is (= "nrepl-diagnostic-test.lpy" (get-in diagnostic [:source :file])))
+        (is (= 'broken-form (get-in diagnostic [:source :form])))))))
+
 (deftest nrepl-server-macroexpand
   (with-server {}
     (with-connect client
@@ -429,7 +459,8 @@
           ;; ns completions
           (client-send! client {:id (id-inc!) :op "complete" :ns "user" :prefix "clojur"})
           (is (= {:id @id* :status ["done"]
-                  :completions  [{:candidate "clojure.core/"}
+                  :completions  [{:candidate "clojure-version" :ns "basilisp.core" :type "function"}
+                                 {:candidate "clojure.core/"}
                                  {:candidate "clojure.string/"}]}
                  (client-recv! client)))
 
@@ -511,6 +542,7 @@
             (is (= "xyz" ns))
             (is (= ["eval-error"] status))
             (is (str/starts-with? ex "Traceback (most recent call last):"))
+            (is (= :execution (:phase diagnostic)))
             (is (= "ZeroDivisionError" (:type diagnostic)))
             (is (= "builtins.ZeroDivisionError" (:class diagnostic))))
           (are [response] (= response (client-recv! client))
@@ -563,10 +595,13 @@
                     "    message: Unexpected EOF in list"
                     "       line: 1:4"]
                    (str/split-lines err))))
-          (let [{:keys [id ex status ns]} (client-recv! client)]
+          (let [{:keys [id ex status ns] :as response} (client-recv! client)
+                diagnostic                       (read-string (:basilisp/diagnostic response))]
             (is (= @id* id))
             (is (= "xyz" ns))
             (is (= ["eval-error"] status))
+            (is (= :execution (:phase diagnostic)))
+            (is (= "UnexpectedEOFError" (:type diagnostic)))
             (is (str/starts-with? ex "Traceback (most recent call last):")))
           (are [response] (= response (client-recv! client))
             {:id @id* :ns "xyz" :status ["done"]})
@@ -586,7 +621,8 @@
             (is (= "CompilerException" (:type diagnostic)))
             (is (= "basilisp.lang.compiler.exception.CompilerException"
                    (:class diagnostic)))
-            (is (= :analyzing (:phase diagnostic)))
+            (is (= :execution (:phase diagnostic)))
+            (is (= :analyzing (get-in diagnostic [:data :phase])))
             (is (= "<nREPL Input>" (get-in diagnostic [:source :file])))
             (is (= "IndexError" (get-in diagnostic [:causes 0 :type]))))
           (are [response] (= response (client-recv! client))

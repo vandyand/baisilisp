@@ -71,8 +71,15 @@
   (let [agent (agent 0)]
     (send agent + 1)
     (concurrent/wait agent)
-    (is (= {:pending? false :error nil :error-mode "fail"}
+    (is (= {:pending? false :error nil :error-mode :fail}
            (concurrent/agent-status agent)))))
+
+(deftest core-async-go-boundary-test
+  (let [publics (set (map name (keys (ns-publics 'basilisp.concurrent))))]
+    (is (not-any? publics ["go" "go-loop" "<!" ">!" "alts!!" "<!!" ">!!" "thread"]))
+    (is (contains? publics "chan"))
+    (is (contains? publics "alts!"))
+    (is (contains? publics "pipeline!"))))
 
 (deftest asyncio-adapter-test
   (let [awaitable (resolve-value)

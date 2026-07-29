@@ -35,7 +35,8 @@
                  host-class #?(:clj java.util.ArrayList
                                :lpy python/list)
                  root-class #?(:clj Object
-                              :lpy python/object)]
+                              :lpy python/object)
+                 h-class (derive h0 root-class :hm/root-host)]
              {:initial-empty [(parents h0 :hm/missing)
                               (ancestors h0 :hm/missing)
                               (descendants h0 :hm/missing)]
@@ -58,10 +59,16 @@
               :invalid [(rejected? #(derive h1 :hm/polygon :hm/red-square))
                         (rejected? #(derive h1 :hm/square :hm/square))
                         (rejected? #(derive {} :hm/a :hm/b))]
+              :nil-type (type nil)
               :class-shape [(boolean (seq (bases host-class)))
-                            (boolean (seq (supers host-class)))
-                            (boolean (seq (bases root-class)))
-                            (boolean (seq (supers root-class)))]}))
+                             (boolean (seq (supers host-class)))
+                             (boolean (seq (bases root-class)))
+                             (boolean (seq (supers root-class)))]
+              :class-derived-root [(isa? h-class host-class root-class)
+                                   (isa? h-class host-class :hm/root-host)
+                                   (sorted-set-values (parents h-class root-class))
+                                   (contains? (ancestors h-class host-class)
+                                              :hm/root-host)]}))
 
 (def ^:dynamic hm-dispatch-hierarchy
   (-> (make-hierarchy)
@@ -116,6 +123,41 @@
               :after-remove-all [(method-keys hm-kind)
                                  (rejected? #(hm-kind dog))
                                  (boolean (get-method hm-kind :hm/default))]}))
+
+(def ^:private hm-number-type #?(:clj java.lang.Number :lpy :hm/number))
+#?(:lpy (derive python/int hm-number-type))
+
+(defmulti hm-self-recursive
+  (fn
+    ([] :hm/nil)
+    ([x] (type x))
+    ([x y] [(type x) (type y)])
+    ([x y & _] :hm/nary)))
+
+(defmethod hm-self-recursive :hm/nil []
+  0)
+
+(defmethod hm-self-recursive hm-number-type [x]
+  x)
+
+(defmethod hm-self-recursive [hm-number-type hm-number-type] [x y]
+  (+ x y))
+
+(defmethod hm-self-recursive :hm/nary
+  [x y & more]
+  (if more
+    (recur (hm-self-recursive x y) (first more) (next more))
+    (hm-self-recursive x y)))
+
+(emit-case :multimethod-self-recursive-var-dispatch
+           {:nulary (hm-self-recursive)
+            :unary (hm-self-recursive 7)
+            :binary (hm-self-recursive 3 4)
+            :nary (hm-self-recursive 1 2 3 4)
+            :method-selected (boolean
+                              (get-method hm-self-recursive
+                                          [#?(:clj java.lang.Long :lpy python/int)
+                                           #?(:clj java.lang.Long :lpy python/int)]))})
 
 (emit-case :seeded-hierarchy-fuzz
            (mapv (fn [[child parent grandparent]]

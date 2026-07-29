@@ -76,6 +76,33 @@
     (is (= {:tag :ret :val "3" :ns "user" :form "(+ 1 2)"}
            (dissoc (read-string (.getvalue out)) :ms)))))
 
+(deftest io-prepl-serializes-tap-events-test
+  (let [in  (io/StringIO "(import time)\n(tap> {:a 1})\n(time/sleep 0.05)")
+        out (io/StringIO)]
+    (binding [*in* in *out* out]
+      (prepl/io-prepl))
+    (let [events    (mapv read-string (.splitlines (.getvalue out)))
+          tap-event (first (filter #(= :tap (:tag %)) events))
+          ret-event (first (filter #(= "(tap> {:a 1})" (:form %)) events))]
+      (is (= "{:a 1}" (:val tap-event)))
+      (is (= {:tag :ret :val "true" :ns "user" :form "(tap> {:a 1})"}
+             (dissoc ret-event :ms))))))
+
+(deftest io-prepl-contains-valf-errors-test
+  (let [out (io/StringIO)
+        valf (fn [value]
+               (if (and (map? value) (:phase value))
+                 (pr-str value)
+                 (/ 1 0)))]
+    (binding [*in* (io/StringIO "(+ 1 2)") *out* out]
+      (prepl/io-prepl :valf valf))
+    (let [event      (read-string (.getvalue out))
+          diagnostic (read-string (:val event))]
+      (is (= :ret (:tag event)))
+      (is (true? (:exception event)))
+      (is (= :print-eval-result (:phase diagnostic)))
+      (is (= "ZeroDivisionError" (:type diagnostic))))))
+
 (deftest remote-prepl-server-test
   (let [server (prepl/server-make {})
         thread (threading/Thread ** :target #(.serve_forever server) :daemon true)]

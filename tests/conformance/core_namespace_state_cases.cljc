@@ -17,6 +17,7 @@
 (def refer-target-ns 'core-namespace-state.refer-target)
 (def refer-client-ns 'core-namespace-state.refer-client)
 (def switched-ns 'core-namespace-state.switched)
+(def evaled-ns 'core-namespace-state.evaled)
 (def fuzz-ns 'core-namespace-state.fuzz)
 (def missing-ns 'core-namespace-state.missing)
 
@@ -26,6 +27,7 @@
    refer-target-ns
    refer-client-ns
    switched-ns
+   evaled-ns
    fuzz-ns
    missing-ns])
 
@@ -199,5 +201,24 @@
                                (loaded-libs)
                                #?(:clj 'clojure.string
                                   :lpy 'basilisp.string))]})
+             (finally
+               (cleanup!))))
+
+(emit-case :eval-ns-macro-switches-current-namespace
+           (try
+             (let [original-ns *ns*
+                   result (eval
+                           (list 'ns evaled-ns
+                                 (list :require
+                                       '[clojure.string :as str])))
+                   active-ns *ns*
+                   aliases (ns-aliases active-ns)
+                   summary {:result-nil? (nil? result)
+                            :active      (ns-sym active-ns)
+                            :found       (boolean (find-ns evaled-ns))
+                            :loaded?     (contains? (loaded-libs) evaled-ns)
+                            :alias?      (boolean (get aliases 'str))}]
+               (in-ns (symbol (str (ns-name original-ns))))
+               summary)
              (finally
                (cleanup!))))

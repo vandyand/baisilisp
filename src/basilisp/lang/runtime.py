@@ -2515,20 +2515,20 @@ class _TrampolineArgs:
 
     @property
     def args(self) -> tuple:
-        """Return the arguments for a trampolined function. If the function
-        that is being trampolined has varargs, unroll the final argument if
-        it is a sequence."""
+        """Return the arguments for a trampolined function.
+
+        If the function being trampolined is recurring to a variadic arity, the
+        final argument is the new value for the rest binding itself, not one
+        additional positional argument to be packed into that rest binding.
+        Mark it so the receiving function can bind it directly after re-entry.
+        """
         if not self._has_varargs:
             return self._args
 
-        try:
-            final = self._args[-1]
-            if isinstance(final, ISeq):
-                inits = self._args[:-1]
-                return tuple(itertools.chain(inits, final))
-            return self._args
-        except IndexError:
+        if not self._args:
             return ()
+        *inits, final = self._args
+        return tuple(itertools.chain(inits, (_RecurRestArgs(final),)))
 
     @property
     def kwargs(self) -> dict:
@@ -2668,14 +2668,28 @@ class _WrappedRestArgs:
         self.rest = rest
 
 
-def _unwrap_rest_args(args: tuple) -> ISeq:
+class _RecurRestArgs:
+    """Sentinel wrapper for a variadic ``recur`` rest binding value."""
+
+    __slots__ = ("rest",)
+
+    def __init__(self, rest):
+        self.rest = rest
+
+
+def _unwrap_rest_args(args: tuple):
     """Runtime support function added by the compiler for generated variadic Python
     functions to support infinite sequences of arguments with `apply`.
 
     Unwraps any `_WrappedRestArgs` objects in the final position of the Python vararg
-    on a variadic arity function, returning an ISeq which can be consumed lazily."""
+    on a variadic arity function, returning an ISeq which can be consumed lazily.
+    Unwraps `_RecurRestArgs` directly so variadic `recur` matches Clojure's rest
+    rebinding semantics."""
     assert args, "Args must be defined"
     *final, last = args
+    if isinstance(last, _RecurRestArgs):
+        assert not final, "Variadic recur rest marker must be the only rest argument"
+        return last.rest
     if isinstance(last, _WrappedRestArgs):
         return concat(final, last.rest)
     return concat(final, [last])

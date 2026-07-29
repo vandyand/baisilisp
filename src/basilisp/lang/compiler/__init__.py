@@ -41,7 +41,7 @@ from basilisp.lang.compiler.generator import (
 from basilisp.lang.compiler.generator import statementize as _statementize
 from basilisp.lang.compiler.nodes import Def
 from basilisp.lang.compiler.optimizer import PythonASTOptimizer
-from basilisp.lang.interfaces import ISeq
+from basilisp.lang.interfaces import IMeta, ISeq
 from basilisp.lang.runtime import BasilispModule
 from basilisp.lang.typing import CompilerOpts, ReaderForm
 from basilisp.lang.util import genname
@@ -136,7 +136,15 @@ def _emit_ast_string(
 def _flatmap_forms(forms: Iterable[ReaderForm]) -> Iterable[ReaderForm]:
     """Flatmap over an iterable of forms, unrolling any top-level `do` forms"""
     for form in forms:
-        if isinstance(form, ISeq) and form.first == SpecialForm.DO:
+        if (
+            isinstance(form, ISeq)
+            and form.first == SpecialForm.DO
+            and not (
+                isinstance(form.first, IMeta)
+                and form.first.meta
+                and form.first.meta.val_at(USE_VAR_INDIRECTION)
+            )
+        ):
             yield from _flatmap_forms(form.rest)
         else:
             yield form
@@ -223,14 +231,17 @@ def compile_and_exec_form(
         return None
 
     with _source_bindings(ctx.filename):
-        if not ns.module.__basilisp_bootstrapped__:
-            _bootstrap_module(ctx.generator_context, ctx.py_ast_optimizer, ns.module)
-
         last = _sentinel
-        with _compile_time_macro_defs(
-            ctx, ns.module, collect_bytecode=collect_bytecode
-        ):
-            for unrolled_form in _flatmap_forms([form]):
+        for unrolled_form in _flatmap_forms([form]):
+            active_ns = runtime.get_current_ns()
+            if not active_ns.module.__basilisp_bootstrapped__:
+                _bootstrap_module(
+                    ctx.generator_context, ctx.py_ast_optimizer, active_ns.module
+                )
+
+            with _compile_time_macro_defs(
+                ctx, active_ns.module, collect_bytecode=collect_bytecode
+            ):
                 final_wrapped_name = genname(wrapped_fn_name)
                 lisp_ast = analyze_form(ctx.analyzer_context, unrolled_form)
                 py_ast = gen_py_ast(ctx.generator_context, lisp_ast)
@@ -258,12 +269,12 @@ def compile_and_exec_form(
                 if collect_bytecode:
                     collect_bytecode(bytecode)
                 exec(
-                    bytecode, ns.module.__dict__
+                    bytecode, active_ns.module.__dict__
                 )  # pylint: disable=exec-used  # nosec B102
                 try:
-                    last = getattr(ns.module, final_wrapped_name)()
+                    last = getattr(active_ns.module, final_wrapped_name)()
                 finally:
-                    del ns.module.__dict__[final_wrapped_name]
+                    del active_ns.module.__dict__[final_wrapped_name]
 
     assert last is not _sentinel, "Must compile at least one form"
     return last

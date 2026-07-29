@@ -37,6 +37,14 @@
     (catch #?(:clj Throwable :lpy python/Exception) _
       nil)))
 
+(def load-string-ns 'core-reader-eval-load.load-string-ns)
+(def load-reader-ns 'core-reader-eval-load.load-reader-ns)
+
+(defn cleanup-load-ns! []
+  (doseq [ns-sym [load-string-ns load-reader-ns]]
+    (when (find-ns ns-sym)
+      (remove-ns ns-sym))))
+
 (def ^{:test (fn [] :metadata-test-ran)} metadata-tested-root :root)
 (def metadata-untested-root :root)
 
@@ -98,6 +106,35 @@
                                       (+ load_string_probe 5)")
             :load-string-reader-cond (rejected?
                                       #(load-string "#?(:clj :clj :lpy :lpy)"))})
+
+(emit-case :load-reader-load-string-honor-internal-namespace
+           (try
+             (cleanup-load-ns!)
+             (let [original-ns *ns*
+                   load-string-ret (load-string
+                                    "(ns core-reader-eval-load.load-string-ns)
+                                     (def loaded-value 31)")
+                   load-string-after *ns*
+                   load-string-target (find-ns load-string-ns)
+                   load-string-var (ns-resolve load-string-target 'loaded-value)
+                   load-reader-ret (load-reader
+                                    (reader
+                                     "(ns core-reader-eval-load.load-reader-ns)
+                                      (def loaded-value 37)"))
+                   load-reader-after *ns*
+                   load-reader-target (find-ns load-reader-ns)
+                   load-reader-var (ns-resolve load-reader-target 'loaded-value)]
+               (in-ns (symbol (str (ns-name original-ns))))
+               {:load-string {:restored? (= original-ns load-string-after)
+                              :found (boolean load-string-target)
+                              :returned-var? (var? load-string-ret)
+                              :value @load-string-var}
+                :load-reader {:restored? (= original-ns load-reader-after)
+                              :found (boolean load-reader-target)
+                              :returned-var? (var? load-reader-ret)
+                              :value @load-reader-var}})
+             (finally
+               (cleanup-load-ns!))))
 
 (emit-case :load-file-and-load
            (let [path (temp-path)]

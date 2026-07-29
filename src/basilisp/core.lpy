@@ -2259,7 +2259,8 @@
 (defn ^:inline type
   "Return the type of ``x``\\."
   [x]
-  (python/type x))
+  (when-not (nil? x)
+    (python/type x)))
 
 (defn method-sig
   "Return an inspectable Python method's signature as ``[name parameters return]``.
@@ -5988,13 +5989,19 @@
   If ``namespace`` is given, evaluate code in that Namespace. Otherwise, the current
   value of :lpy:var:`*ns*` is used."
   ([form]
-   (eval form *ns*))
-  ([form namespace]
    (if (basilisp.lang.typing/is-reader-form form)
      (let [ctx (basilisp.lang.compiler.CompilerContext. "<Eval Input>")]
        (basilisp.lang.compiler/compile-and-exec-form form
                                                      ctx
-                                                     namespace))
+                                                     *ns*))
+     form))
+  ([form namespace]
+   (if (basilisp.lang.typing/is-reader-form form)
+     (let [ctx (basilisp.lang.compiler.CompilerContext. "<Eval Input>")]
+       (binding [*ns* namespace]
+         (basilisp.lang.compiler/compile-and-exec-form form
+                                                       ctx
+                                                       namespace)))
      form)))
 
 (defn- load-reader-with-opts
@@ -6004,12 +6011,16 @@
                     (pathlib/Path)
                     (.resolve)
                     (python/str))
-        ctx (basilisp.lang.compiler.CompilerContext. (or src "<Load Input>"))]
-    (last
-     (for [form (read-seq opts reader)]
-       (basilisp.lang.compiler/compile-and-exec-form form
-                                                     ctx
-                                                     *ns*)))))
+        ctx (basilisp.lang.compiler.CompilerContext. (or src "<Load Input>"))
+        original-ns *ns*]
+    (try
+      (last
+       (for [form (read-seq opts reader)]
+         (basilisp.lang.compiler/compile-and-exec-form form
+                                                       ctx
+                                                       *ns*)))
+      (finally
+        (set! *ns* original-ns)))))
 
 (defn load-reader
   "Read and evaluate the set of forms in the :external:py:class:`io.TextIOBase` instance
@@ -7111,10 +7122,13 @@
    (ancestors global-hierarchy tag))
   ([h tag]
    (not-empty
-    (let [hierarchy-ancestors (get-in h [:ancestors tag] #{})]
-      (if (class? tag)
-        (reduce* conj hierarchy-ancestors (supers tag))
-        hierarchy-ancestors)))))
+    (let [hierarchy-ancestors (get-in h [:ancestors tag] #{})
+          class-ancestors     (if (class? tag) (supers tag) #{})
+          direct-ancestors    (reduce* conj hierarchy-ancestors class-ancestors)]
+      (reduce* (fn [acc parent]
+                 (reduce* conj acc (get-in h [:ancestors parent] #{})))
+               direct-ancestors
+               direct-ancestors)))))
 
 (defn descendants
   "Return the set of all descendants (children and grandchildren and so forth) of
@@ -7347,6 +7361,7 @@
         name        (if doc
                       (vary-meta name assoc :doc doc)
                       name)
+        name        (vary-meta name assoc :redef true)
         dispatch-fn (first body)
         opts        (apply hash-map (rest body))]
     `(def ~name (basilisp.lang.multifn/MultiFunction (quote ~name)

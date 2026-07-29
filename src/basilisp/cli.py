@@ -44,6 +44,7 @@ def eval_stream(stream, ctx: compiler.CompilerContext, ns: runtime.Namespace):
     for form in reader.read(stream, resolver=runtime.resolve_alias):
         assert not isinstance(form, reader.ReaderConditional)
         last = compiler.compile_and_exec_form(form, ctx, ns)
+        ns = runtime.get_current_ns()
     return last
 
 
@@ -53,6 +54,7 @@ def eval_str(s: str, ctx: compiler.CompilerContext, ns: runtime.Namespace, eof: 
     for form in reader.read_str(s, resolver=runtime.resolve_alias, eof=eof):
         assert not isinstance(form, reader.ReaderConditional)
         last = compiler.compile_and_exec_form(form, ctx, ns)
+        ns = runtime.get_current_ns()
     return last
 
 

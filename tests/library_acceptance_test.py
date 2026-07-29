@@ -90,6 +90,53 @@ def test_medley_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_algo_generic_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "algo-generic"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.algo.generic -> basilisp.algo.generic" in manifest
+    assert "JVM Number dispatch -> Basilisp numeric host-type dispatch" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
+def test_core_unify_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-unify"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.core.unify -> basilisp.core.unify" in manifest
+    assert (
+        "JVM IllegalStateException occurs-check failures -> Python RuntimeError"
+        in manifest
+    )
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
+def test_core_cache_memoize_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "core-cache-memoize"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "jvm-only"' in manifest
+    assert "clojure.core.cache -> basilisp.core.cache" in manifest
+    assert "clojure.core.memoize -> basilisp.core.memoize" in manifest
+    assert (
+        "JVM SoftReference cache operations remain excluded from the portable acceptance contract"
+        in manifest
+    )
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_acceptance_library_roots_discovers_checked_in_libraries(tmp_path):
     first = tmp_path / "portable"
     second = tmp_path / "upstream" / "library"
