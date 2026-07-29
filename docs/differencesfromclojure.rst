@@ -491,6 +491,11 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   ``org.clojure/core.match`` 1.1.1. JVM-specific extension namespaces such as
   ``clojure.core.match.array``, ``clojure.core.match.java``, and
   ``clojure.core.match.regex`` are not implemented.
+* :lpy:ns:`basilisp.algo.monads` ports ``clojure.algo.monads`` through
+  Basilisp's accepted ``tools.macro`` implementation. Shared source-level
+  acceptance covers public monad definitions, monadic comprehensions,
+  helper functions, writer/state/reader/continuation monads, and transformer
+  composition.
 * ``medley.core`` is available as a portable upstream-library port. Its public
   functional collection operations use Basilisp collections and Python UUID and
   regular-expression values instead of JVM implementation classes.

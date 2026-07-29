@@ -162,12 +162,16 @@ Near-term deliverable:
   pinned ``clojure/tools.cli`` source snapshot, a minimal Python-hosted port,
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
-  ``medley``, ``tools-macro``, ``algo-generic``, ``core-unify``, and
-  ``core-cache-memoize``. The
+  ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
+  ``core-unify``, and ``core-cache-memoize``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
-  ``660b62b2fd84ed4c7383e2263f1fae039a5f5435``. The ``core-unify`` proof
+  ``660b62b2fd84ed4c7383e2263f1fae039a5f5435``. The ``algo-monads`` proof
+  exercises source-level macro-generated monadic functions, comprehension
+  conditionals, writer/state/reader/continuation monads, and transformer
+  contracts, and is pinned to ``clojure/algo.monads`` revision
+  ``cc1fdb069049245a1226064c2fa55a65e72810a0``. The ``core-unify`` proof
   exercises symbolic unification, wildcard/range variables, substitution,
   factory-generated unifiers, occurs-check failures, and order-explicit map
   pattern unification, and is pinned to ``clojure/core.unify`` revision
@@ -1290,6 +1294,11 @@ Completed locally:
   and variadic ``recur`` rest-rebinding gaps above. Its n-ary comparison and
   arithmetic acceptance paths now run through upstream-style self-recursive
   multimethod methods instead of Basilisp-specific workarounds.
+* source-level ``algo-monads`` acceptance added as a macro-heavy upstream port
+  probe; it locks the public monad surface, ``domonad`` conditional expansion,
+  ``defmonadfn`` symbol-macro helpers, sequence/maybe/set/writer/state/reader/
+  continuation monads, transformer composition, and failure boundaries while
+  reusing the accepted ``basilisp.tools.macro`` source substrate.
 * source-level ``core-unify`` acceptance added as the next pure ``.cljc``
   upstream-library probe; it preserves the public symbolic unification API over
   Basilisp's ``zip`` and ``walk`` namespaces and locks wildcard/range variables,

@@ -104,6 +104,18 @@ def test_algo_generic_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_algo_monads_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "algo-monads"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.algo.monads -> basilisp.algo.monads" in manifest
+    assert "clojure.tools.macro -> basilisp.tools.macro" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_core_unify_acceptance_manifest_is_portable_and_checked_in():
     library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-unify"
     manifest = acceptance_manifest(library_root)

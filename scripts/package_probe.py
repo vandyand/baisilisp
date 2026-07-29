@@ -16,6 +16,7 @@ from zipfile import ZipFile
 _REQUIRED_SOURCES = (
     "basilisp/core.lpy",
     "basilisp/concurrent.lpy",
+    "basilisp/algo/monads.lpy",
     "basilisp/datafy.lpy",
     "basilisp/inspector.lpy",
     "basilisp/java/io.lpy",
@@ -46,6 +47,7 @@ from basilisp.main import init
 init()
 core = importlib.import_module("basilisp.core")
 concurrent = importlib.import_module("basilisp.concurrent")
+algo_monads = importlib.import_module("basilisp.algo.monads")
 datafy = importlib.import_module("basilisp.datafy")
 inspector = importlib.import_module("basilisp.inspector")
 basis = importlib.import_module("basilisp.java.basis")
@@ -67,6 +69,7 @@ deps_interop = importlib.import_module("basilisp.tools.deps.interop")
 assert callable(datafy.datafy)
 assert callable(concurrent.chan)
 assert callable(concurrent.pipeline__BANG__)
+assert callable(algo_monads.m__PLUS__m_seq__PLUS__m)
 assert callable(inspector.tree_model)
 assert callable(basis.current_basis)
 assert callable(basis_impl.update_basis__BANG__)

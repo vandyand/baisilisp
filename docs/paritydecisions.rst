@@ -518,11 +518,13 @@ There is now also a source-level multi-file library acceptance proof with a
 checked-in portability manifest and Clojure/Basilisp test-summary comparison.
 The batch acceptance gate runs the reference portable library plus the pinned
 ``cognitect-anomalies``, ``math-combinatorics``, ``medley``, ``tools-cli``,
-``tools-macro``, ``algo-generic``, ``core-unify``, and
+``tools-macro``, ``algo-generic``, ``algo-monads``, ``core-unify``, and
 ``core-cache-memoize`` upstream contracts through one
 ``scripts/library_acceptance.py --all`` command. ``algo-generic`` is the
-multimethod/host-dispatch pressure test; ``core-unify`` is the pure ``.cljc``
-symbolic unification and macro-generated-function pressure test;
+multimethod/host-dispatch pressure test; ``algo-monads`` is the macro-heavy
+comprehension, symbol-macro, state/reader/writer/continuation, and transformer
+pressure test; ``core-unify`` is the pure ``.cljc`` symbolic unification and
+macro-generated-function pressure test;
 ``core-cache-memoize`` is the stateful protocol-heavy cache/memoization pressure
 test over portable constructors, policy transitions, snapshots, mutation
 helpers, and protocol interop, with JVM ``SoftReference`` behavior explicitly
