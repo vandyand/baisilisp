@@ -457,6 +457,14 @@ remain adapters outside the core diagnostic data. Fixtures now assert compiler
 and runtime diagnostic type, phase, source, and cause data across pREPL, nREPL,
 CLI, and direct human traceback rendering.
 
+Namespace cache files are performance artifacts, not semantic authority. The
+importer validates the ``.lpyc`` magic number, source timestamp, source size,
+marshaled payload readability, and decoded payload shape before executing
+cached code. Header mismatches, truncated files, corrupt marshal payloads, and
+wrong-shaped decoded payloads are treated as cache misses and recompiled from
+source. AOT artifacts remain stricter because they are source-independent
+deployment artifacts rather than local namespace caches.
+
 The analyzer already checks known abstract members for ``deftype`` and
 ``reify`` and can inspect ordinary Python signatures when
 ``:warn-on-arity-mismatch`` is active. These warnings now include a source span

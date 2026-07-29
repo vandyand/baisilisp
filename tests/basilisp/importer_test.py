@@ -1,4 +1,5 @@
 import importlib
+import marshal
 import os.path
 import pathlib
 import platform
@@ -6,6 +7,7 @@ import site
 import subprocess
 import sys
 import tempfile
+import types
 from concurrent.futures import ThreadPoolExecutor
 from multiprocessing import Process, get_start_method
 from tempfile import TemporaryDirectory
@@ -580,6 +582,56 @@ class TestImporter:
 
         using_cache = load_namespace(cached_module_ns)
         assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+    def test_import_module_with_corrupt_cache_payload(
+        self, module_dir, cached_module_ns, cached_module_file, load_namespace
+    ):
+        source_filename = os.path.join(module_dir, cached_module_file)
+        cache_filename = importer._cache_from_source(source_filename)
+        stat = os.stat(source_filename)
+        with open(cache_filename, mode="w+b") as f:
+            f.write(importer.MAGIC_NUMBER)
+            f.write(importer._w_long(stat.st_mtime))
+            f.write(importer._w_long(stat.st_size))
+            f.write(b"not marshal data")
+
+        using_cache = load_namespace(cached_module_ns)
+        assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+        with open(cache_filename, mode="rb") as f:
+            cached_code = importer._get_basilisp_bytecode(
+                cached_module_ns,
+                int(stat.st_mtime),
+                stat.st_size,
+                f.read(),
+            )
+        assert cached_code
+        assert all(isinstance(code, types.CodeType) for code in cached_code)
+
+    def test_import_module_with_wrong_shaped_cache_payload(
+        self, module_dir, cached_module_ns, cached_module_file, load_namespace
+    ):
+        source_filename = os.path.join(module_dir, cached_module_file)
+        cache_filename = importer._cache_from_source(source_filename)
+        stat = os.stat(source_filename)
+        with open(cache_filename, mode="w+b") as f:
+            f.write(importer.MAGIC_NUMBER)
+            f.write(importer._w_long(stat.st_mtime))
+            f.write(importer._w_long(stat.st_size))
+            f.write(marshal.dumps({"not": "bytecode"}))
+
+        using_cache = load_namespace(cached_module_ns)
+        assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+        with open(cache_filename, mode="rb") as f:
+            cached_code = importer._get_basilisp_bytecode(
+                cached_module_ns,
+                int(stat.st_mtime),
+                stat.st_size,
+                f.read(),
+            )
+        assert cached_code
+        assert all(isinstance(code, types.CodeType) for code in cached_code)
 
     class TestPackageStructure:
         def test_import_module_no_child(self, make_new_module, load_namespace):

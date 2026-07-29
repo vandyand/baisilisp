@@ -1337,6 +1337,11 @@ Completed locally:
   with the namespace currently selected by ``eval``/``ns`` forms, so multi-form
   CLI and REPL inputs can switch namespaces and continue evaluating like
   Clojure.
+* Namespace bytecode cache hardening now treats corrupt or wrong-shaped
+  marshaled ``.lpyc`` payloads as disposable cache misses after validating the
+  source timestamp and size header. This preserves normal cached imports while
+  recovering from interrupted writes or stale local cache artifacts by
+  recompiling source and replacing the cache with a valid code-object payload.
 
 Near-term deliverable:
 

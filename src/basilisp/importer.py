@@ -90,7 +90,21 @@ def _get_basilisp_bytecode(
         logger.debug(message)
         raise ImportError(message, **exc_details)
 
-    return marshal.loads(cache_data[12:])  # nosec B302
+    try:
+        code = marshal.loads(cache_data[12:])  # nosec B302
+    except (EOFError, TypeError, ValueError) as e:
+        message = f"Invalid Basilisp bytecode cache payload for {fullname}"
+        logger.debug(message)
+        raise ImportError(message, **exc_details) from e
+
+    if not isinstance(code, list) or not all(
+        isinstance(c, types.CodeType) for c in code
+    ):
+        message = f"Invalid Basilisp bytecode cache payload for {fullname}"
+        logger.debug(message)
+        raise ImportError(message, **exc_details)
+
+    return code
 
 
 def _basilisp_aot_bytecode(source_filename: str, code: list[types.CodeType]) -> bytes:
