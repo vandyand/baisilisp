@@ -17,7 +17,6 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))
 
 from basilisp.lang import reader
-
 from scripts.standard_namespace_surface_matrix import (
     STANDARD_NAMESPACE_PAIRS,
     _default_clojure_command,
@@ -361,7 +360,7 @@ def _source_resource_omission_expr(
         "(require 'clojure.java.io) "
         f"(doseq [[ns-name resource owner-name] [{rows}]] "
         "(let [ns-sym (symbol ns-name) owner-sym (symbol owner-name) "
-        "expected-in-ns (str \"(in-ns '\" owner-name \")\") "
+        'expected-in-ns (str "(in-ns \'" owner-name ")") '
         "resource-url (clojure.java.io/resource resource) "
         "source (when resource-url (slurp resource-url))] "
         "(try (require owner-sym) "
@@ -447,8 +446,7 @@ def _discover_clojure_runtime_resources(command: Sequence[str]) -> tuple[str, ..
     )
     if result.returncode:
         raise RuntimeError(
-            "Clojure runtime resource discovery command failed: "
-            f"{result.stderr}"
+            "Clojure runtime resource discovery command failed: " f"{result.stderr}"
         )
     forms = tuple(reader.read_str(result.stdout))
     if len(forms) != 1:

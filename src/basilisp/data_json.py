@@ -14,8 +14,8 @@ import io
 import json
 import math
 import uuid
-from collections.abc import Iterable, Mapping
-from typing import Any, Callable
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap

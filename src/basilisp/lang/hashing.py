@@ -12,9 +12,9 @@ from __future__ import annotations
 import decimal
 import math
 import struct
-from collections.abc import Mapping, Set
+from collections.abc import Iterable, Mapping, Set
 from fractions import Fraction
-from typing import Any, Iterable
+from typing import Any
 
 from basilisp.lang.character import Character, iter_utf16_units
 from basilisp.lang.interfaces import IMapEntry, INamed, IRecord, ISeq, ISequential

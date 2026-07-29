@@ -1,6 +1,6 @@
-from collections.abc import Iterable, Iterator, Sequence
+from collections.abc import Callable, Iterable, Iterator, Sequence
 from functools import total_ordering
-from typing import Any, Callable, TypeVar, Union, cast, overload
+from typing import Any, TypeVar, Union, cast, overload
 
 from typing_extensions import Unpack
 
@@ -342,7 +342,7 @@ class PersistentVector(
     def __getitem__(self, item):
         if isinstance(item, slice):
             return vector(
-                (self._nth(index) for index in range(*item.indices(self._count)))
+                self._nth(index) for index in range(*item.indices(self._count))
             )
         return self._nth(item)
 
@@ -579,7 +579,7 @@ class PrimitiveVector(PersistentVector[T]):
 class MapEntry(IMapEntry[K, V], PersistentVector[Union[K, V]]):
     __slots__ = ()
 
-    def __init__(self, members: Sequence[Union[K, V]]) -> None:
+    def __init__(self, members: Sequence[K | V]) -> None:
         values = tuple(members)
         assert len(values) == 2, "Vector arg to map conj must be a pair"
         built = vector(values)

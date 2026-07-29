@@ -156,7 +156,7 @@ def forward_remote_prepl(
                 line = reader.readline(max_event_chars + 2)
                 if not line:
                     return
-                event = line[:-1] if line.endswith("\n") else line
+                event = line.removesuffix("\n")
                 if len(event) > max_event_chars or (
                     len(line) == max_event_chars + 2 and not line.endswith("\n")
                 ):

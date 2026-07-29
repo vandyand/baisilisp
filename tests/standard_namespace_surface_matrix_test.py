@@ -139,9 +139,7 @@ def test_test_check_random_generated_proxy_var_is_non_portable_artifact():
     assert "shared" == statuses["make-random"]
     assert (
         "non-portable-artifact"
-        == statuses[
-            "clojure.test.check.random.proxy$java.lang.ThreadLocal$ff19274a"
-        ]
+        == statuses["clojure.test.check.random.proxy$java.lang.ThreadLocal$ff19274a"]
     )
 
 

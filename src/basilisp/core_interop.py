@@ -12,8 +12,8 @@ import traceback
 import types
 import urllib.parse
 import urllib.request
-from collections.abc import Iterable, Mapping
-from typing import Any, Callable
+from collections.abc import Callable, Iterable, Mapping
+from typing import Any
 
 from basilisp.lang import keyword as kw
 from basilisp.lang import map as lmap
@@ -111,31 +111,30 @@ class PrintWriterOn:
             self._ensure_open()
             if text:
                 self._buffer.append(text)
-        return None
 
     def flush(self):
         """Deliver the buffered text once, retaining it if the callback fails."""
         with self._lock:
             self._ensure_open()
             if not self._buffer:
-                return None
+                return
             text = "".join(self._buffer)
             self._flush_fn(text)
             self._buffer.clear()
-        return None
+        return
 
     def close(self):
         """Flush once, run the optional close callback, and close this writer."""
         with self._lock:
             if self._closed:
-                return None
+                return
             self.flush()
             try:
                 if self._close_fn is not None:
                     self._close_fn()
             finally:
                 self._closed = True
-        return None
+        return
 
     def print(self, value: Any = ""):
         """Write the host string representation of ``value`` without flushing."""
@@ -147,7 +146,6 @@ class PrintWriterOn:
         self.write(os.linesep)
         if self._autoflush:
             self.flush()
-        return None
 
     def check_error(self) -> bool:
         """Return false; callback failures propagate as normal Python exceptions."""
@@ -212,7 +210,6 @@ def add_classpath(url: Any) -> None:
         if normalized_entry not in known_entries:
             sys.path.append(entry)
         importlib.invalidate_caches()
-    return None
 
 
 def bean(value: Any):
@@ -248,8 +245,9 @@ def bean(value: Any):
                 continue
             try:
                 fields[name] = getattr(value, name)
-            except Exception:  # properties are observational, not mandatory
-                continue
+            except Exception:  # nosec B110
+                # Properties are observational, not mandatory.
+                pass
     result = {
         name if isinstance(name, kw.Keyword) else kw.keyword(str(name)): field
         for name, field in fields.items()

@@ -32,8 +32,8 @@ _VAL = kw.keyword("val")
 _VIA = kw.keyword("via")
 _IN = kw.keyword("in")
 _REGISTRY: dict[kw.Keyword, Any] = {}
-_FUNCTION_SPECS: dict[Any, "_FSpec"] = {}
-_INSTRUMENTED: dict[Var, "_Instrumented"] = {}
+_FUNCTION_SPECS: dict[Any, _FSpec] = {}
+_INSTRUMENTED: dict[Var, _Instrumented] = {}
 _REGISTRY_LOCK = threading.RLock()
 _MISSING = object()
 _INSTRUMENT_DISABLED = threading.local()
@@ -104,11 +104,11 @@ class _Instrumented:
 class _GeneratedFSpecFunction:
     __slots__ = (
         "_args_spec",
-        "_ret_spec",
-        "_fn_spec",
-        "_ret_generator",
-        "_lock",
         "_calls",
+        "_fn_spec",
+        "_lock",
+        "_ret_generator",
+        "_ret_spec",
     )
 
     def __init__(

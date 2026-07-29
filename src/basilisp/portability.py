@@ -6,9 +6,9 @@ import argparse
 import hashlib
 import json
 import re
+from collections.abc import Iterable, Sequence
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Iterable, Sequence
 
 _SOURCE_SUFFIXES = {".clj", ".cljc", ".lpy"}
 _JVM_MARKERS = {

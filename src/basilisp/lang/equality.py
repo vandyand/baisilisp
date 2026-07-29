@@ -13,7 +13,6 @@ iteration and lookup always expose the original Python values.
 from __future__ import annotations
 
 import decimal
-import numbers
 from fractions import Fraction
 from typing import Any
 
@@ -61,7 +60,7 @@ def numeric_compare(left: Any, right: Any) -> bool:
 class EquivalenceKey:
     """A hash key that keeps Clojure-unequal numeric families distinct."""
 
-    __slots__ = ("value", "family")
+    __slots__ = ("family", "value")
 
     def __init__(self, value: Any, family: str) -> None:
         self.value = value

@@ -19,7 +19,7 @@ from typing import Any
 from basilisp.lang import map as lmap
 from basilisp.lang.equality import key as equivalence_key
 from basilisp.lang.equality import unkey as public_key
-from basilisp.lang.interfaces import IMapEntry, IPersistentMap
+from basilisp.lang.interfaces import IPersistentMap
 from basilisp.lang.map import PersistentMap
 
 _MISSING = object()
@@ -58,19 +58,19 @@ class PersistentCache(PersistentMap):
     def cache_has(self, item: Any) -> bool:
         return equivalence_key(item) in self._inner
 
-    def cache_hit(self, item: Any) -> "PersistentCache":
+    def cache_hit(self, item: Any) -> PersistentCache:
         return self
 
-    def cache_miss(self, item: Any, result: Any) -> "PersistentCache":
+    def cache_miss(self, item: Any, result: Any) -> PersistentCache:
         return self._with_cache(self.cache.assoc(item, result))
 
-    def cache_evict(self, item: Any) -> "PersistentCache":
+    def cache_evict(self, item: Any) -> PersistentCache:
         return self._with_cache(self.cache.dissoc(item))
 
-    def cache_seed(self, base: Mapping[Any, Any]) -> "PersistentCache":
+    def cache_seed(self, base: Mapping[Any, Any]) -> PersistentCache:
         return self._with_cache(_as_map(base))
 
-    def _with_cache(self, cache: PersistentMap, **_kwargs: Any) -> "PersistentCache":
+    def _with_cache(self, cache: PersistentMap, **_kwargs: Any) -> PersistentCache:
         return type(self)(cache, meta=self._meta)
 
     def with_meta(self, meta: IPersistentMap | None):
@@ -173,7 +173,7 @@ class FnCache(BasicCache):
 
 
 class FIFOCache(PersistentCache):
-    __slots__ = ("_q", "_limit")
+    __slots__ = ("_limit", "_q")
 
     def __init__(self, cache: Mapping[Any, Any], q=(), limit: int = 32, meta=None):
         if limit <= 0:
@@ -220,7 +220,7 @@ class FIFOCache(PersistentCache):
 
 
 class LRUCache(PersistentCache):
-    __slots__ = ("_lru", "_tick", "_limit")
+    __slots__ = ("_limit", "_lru", "_tick")
 
     def __init__(
         self, cache: Mapping[Any, Any], lru=None, tick=0, limit: int = 32, meta=None
@@ -279,7 +279,7 @@ class LRUCache(PersistentCache):
 
 
 class TTLCacheQ(PersistentCache):
-    __slots__ = ("_ttl", "_q", "_gen", "_ttl_ms", "_clock")
+    __slots__ = ("_clock", "_gen", "_q", "_ttl", "_ttl_ms")
 
     def __init__(
         self,
@@ -380,7 +380,7 @@ class TTLCacheQ(PersistentCache):
 
 
 class LUCache(PersistentCache):
-    __slots__ = ("_lu", "_limit")
+    __slots__ = ("_limit", "_lu")
 
     def __init__(self, cache: Mapping[Any, Any], lu=None, limit: int = 32, meta=None):
         if limit <= 0:
@@ -431,7 +431,7 @@ def _oldest(table: dict[Any, int]) -> Any:
 class LIRSCache(PersistentCache):
     """Persistent implementation of the LIRS S/Q history algorithm."""
 
-    __slots__ = ("_lru_s", "_lru_q", "_tick", "_limit_s", "_limit_q")
+    __slots__ = ("_limit_q", "_limit_s", "_lru_q", "_lru_s", "_tick")
 
     def __init__(
         self,

@@ -379,7 +379,9 @@ def main() -> int:
         missing = missing_paths(args.suite_root)
         if missing:
             formatted = "\n".join(str(path) for path in missing)
-            parser.error(f"residual files are missing from suite checkout:\n{formatted}")
+            parser.error(
+                f"residual files are missing from suite checkout:\n{formatted}"
+            )
 
     if args.verify_evidence:
         try:

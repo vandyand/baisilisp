@@ -113,9 +113,15 @@ def read_instant(cs: str) -> datetime.datetime:
     """Read ``cs`` as a timezone-aware Python datetime normalized to UTC.
 
     Python datetimes retain microseconds, so fractions finer than six decimal
-    places are truncated. Leap seconds are rejected because ``datetime`` has no
-    representable value for them.
+    places are truncated. Valid leap seconds are normalized to the following
+    representable second.
     """
+    return parse_timestamp(validated(_construct_datetime), cs)
+
+
+def read_instant_strict(cs: str) -> datetime.datetime:
+    """Read ``cs`` as UTC while rejecting leap seconds for reader literals."""
+
     return parse_timestamp(validated(_construct_strict_datetime), cs)
 
 
@@ -144,7 +150,7 @@ class InstantTimestamp(InstantDateTime):
         *,
         fold: int = 0,
         nanoseconds: int = 0,
-    ) -> "InstantTimestamp":
+    ) -> InstantTimestamp:
         self = super().__new__(
             cls,
             year,

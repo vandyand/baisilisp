@@ -240,7 +240,7 @@ class StreamReader:
 
     DEFAULT_INDEX = -2
 
-    __slots__ = ("_stream", "_pushback_depth", "_idx", "_buffer", "_line", "_col")
+    __slots__ = ("_buffer", "_col", "_idx", "_line", "_pushback_depth", "_stream")
 
     def __init__(
         self,
@@ -361,7 +361,7 @@ def _py_list_from_vec(form: vec.PersistentVector) -> list:
 
 def _inst_from_str(inst_str: str) -> datetime:
     try:
-        return langinstant.read_instant(inst_str)
+        return langinstant.read_instant_strict(inst_str)
     except (ValueError, OverflowError, TypeError) as e:
         raise SyntaxError(f"Unrecognized date/time syntax: {inst_str}") from e
 
@@ -388,20 +388,20 @@ class ReaderContext:
     )
 
     __slots__ = (
-        "_data_readers",
         "_builtin_data_readers",
+        "_data_readers",
         "_default_data_reader_fn",
+        "_edn",
+        "_eof",
         "_features",
+        "_gensym_env",
+        "_in_anon_fn",
         "_process_reader_cond",
         "_process_tagged_literals",
         "_reader",
         "_reader_eval",
         "_resolve",
-        "_in_anon_fn",
         "_syntax_quoted",
-        "_gensym_env",
-        "_eof",
-        "_edn",
     )
 
     def __init__(  # pylint: disable=too-many-arguments
@@ -557,7 +557,7 @@ class ReaderContext:
 class ReaderConditional(ILookup[kw.Keyword, ReaderForm], ILispObject):
     FEATURE_NOT_PRESENT = object()
 
-    __slots__ = ("_form", "_feature_vec", "_is_splicing")
+    __slots__ = ("_feature_vec", "_form", "_is_splicing")
 
     def __init__(
         self,
@@ -934,7 +934,7 @@ MaybeSymbol = Union[bool, None, sym.Symbol]
 MaybeNumber = Union[complex, decimal.Decimal, float, Fraction, int, MaybeSymbol]
 
 
-def _read_num(  # noqa: C901  # pylint: disable=too-many-locals,too-many-statements
+def _read_num(  # pylint: disable=too-many-locals,too-many-statements
     ctx: ReaderContext,
 ) -> MaybeNumber:
     """Return a numeric (complex, Decimal, float, int, Fraction) from the input stream."""
@@ -1936,7 +1936,7 @@ def _read_next_consuming_whitespace(ctx: ReaderContext) -> LispReaderForm:
     return _read_next(ctx)
 
 
-def _read_next(ctx: ReaderContext) -> LispReaderForm:  # noqa: C901
+def _read_next(ctx: ReaderContext) -> LispReaderForm:
     """Read the next full form from the input stream."""
     reader = ctx.reader
     char = reader.peek()
@@ -2078,7 +2078,7 @@ def read(  # pylint: disable=too-many-arguments
             continue
         if isinstance(expr, ReaderConditional) and ctx.should_process_reader_cond:
             raise ctx.syntax_error(
-                f"Unexpected reader conditional '{repr(expr)})'; "
+                f"Unexpected reader conditional '{expr!r})'; "
                 "reader is configured to process reader conditionals"
             )
         yield expr
@@ -2126,7 +2126,7 @@ def read_with_source(  # pylint: disable=too-many-arguments
             continue
         if isinstance(expr, ReaderConditional) and ctx.should_process_reader_cond:
             raise ctx.syntax_error(
-                f"Unexpected reader conditional '{repr(expr)})'; "
+                f"Unexpected reader conditional '{expr!r})'; "
                 "reader is configured to process reader conditionals"
             )
 

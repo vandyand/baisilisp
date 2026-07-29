@@ -6,7 +6,7 @@ import asyncio
 import random
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
-from typing import Any, Deque
+from typing import Any
 
 from basilisp.lang.keyword import Keyword, keyword
 from basilisp.lang.reduced import Reduced
@@ -81,9 +81,9 @@ class Channel:
         self._policy = policy
         self._closed = False
         self._loop: asyncio.AbstractEventLoop | None = None
-        self._buffer: Deque[Any] = deque()
-        self._puts: Deque[tuple[Any, _Waiter]] = deque()
-        self._takes: Deque[_Waiter] = deque()
+        self._buffer: deque[Any] = deque()
+        self._puts: deque[tuple[Any, _Waiter]] = deque()
+        self._takes: deque[_Waiter] = deque()
 
     @property
     def closed(self) -> bool:

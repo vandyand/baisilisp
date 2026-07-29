@@ -102,9 +102,7 @@ def test_character_scalar_fuzz_never_inherits_string_collection_behavior(value):
     start_offset=st.integers(min_value=0, max_value=50),
     end_offset=st.integers(min_value=0, max_value=50),
 )
-def test_utf16_substring_fuzz_matches_code_unit_slice(
-    value, start_offset, end_offset
-):
+def test_utf16_substring_fuzz_matches_code_unit_slice(value, start_offset, end_offset):
     units = _utf16_units(value)
     start = min(start_offset, len(units))
     end = min(start + end_offset, len(units))
@@ -112,9 +110,12 @@ def test_utf16_substring_fuzz_matches_code_unit_slice(
     expected = _utf16_bytes(_utf16_slice(value, start, end))
 
     assert _utf16_bytes(character.utf16_substring(value, start, end)) == expected
-    assert character.utf16_substring(
-        value, Fraction(start * 10 + 9, 10), Fraction(end * 10 + 9, 10)
-    ).encode("utf-16-le", "surrogatepass") == expected
+    assert (
+        character.utf16_substring(
+            value, Fraction(start * 10 + 9, 10), Fraction(end * 10 + 9, 10)
+        ).encode("utf-16-le", "surrogatepass")
+        == expected
+    )
     assert character.utf16_substring(value, math.nan) == value
 
 

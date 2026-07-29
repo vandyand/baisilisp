@@ -5,9 +5,12 @@ from __future__ import annotations
 import io
 import re
 import uuid
-import xml.etree.ElementTree as etree
-import xml.sax
-import xml.sax.handler
+
+# The public parse/event APIs reject DTD/entity declarations, enforce input
+# size limits, and disable external SAX entity expansion before parsing.
+import xml.etree.ElementTree as etree  # nosec B405
+import xml.sax  # nosec B406
+import xml.sax.handler  # nosec B406
 from collections import deque
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass
@@ -185,8 +188,13 @@ def parse(source: Any, options: Mapping[Any, Any] | None = None) -> lmap.Persist
         kw.keyword("include-node?"), {kw.keyword("element"), kw.keyword("characters")}
     )
     include_comments = kw.keyword("comment") in include
-    parser = etree.XMLParser(target=etree.TreeBuilder(insert_comments=include_comments))
-    root = etree.fromstring(_safe_source(source, max_chars), parser=parser)
+    # _safe_source rejects DTD/entity declarations before ElementTree sees XML.
+    parser = etree.XMLParser(  # nosec B314
+        target=etree.TreeBuilder(insert_comments=include_comments)
+    )
+    root = etree.fromstring(  # nosec B314
+        _safe_source(source, max_chars), parser=parser
+    )
     return _element_from_etree(root, include_comments)
 
 
@@ -206,7 +214,7 @@ class _EventHandler(xml.sax.handler.ContentHandler):
             self.events.append(StartElementEvent(tag, attrs, lmap.EMPTY))
             self._open_tags.append(tag)
 
-    def startElementNS(self, name, _qname, attrs):  # noqa: N802
+    def startElementNS(self, name, _qname, attrs):
         self._flush_pending()
         uri, local = name
         converted = {
@@ -215,30 +223,36 @@ class _EventHandler(xml.sax.handler.ContentHandler):
         }
         self._pending.append((qname(uri or "", local), lmap.map(converted)))
 
-    def endElementNS(self, name, _qname):  # noqa: N802
+    def endElementNS(self, name, _qname):
         if self._pending:
             tag, attrs = self._pending.pop()
             self.events.append(EmptyElementEvent(tag, attrs, lmap.EMPTY))
         else:
-            tag = self._open_tags.pop() if self._open_tags else qname(name[0] or "", name[1])
+            tag = (
+                self._open_tags.pop()
+                if self._open_tags
+                else qname(name[0] or "", name[1])
+            )
             self.events.append(EndElementEvent(tag, lmap.EMPTY, None))
 
     def characters(self, content: str) -> None:
         if not content:
             return
         self._flush_pending()
-        event_type = CDataEvent if self._in_cdata and not self._coalescing else CharsEvent
+        event_type = (
+            CDataEvent if self._in_cdata and not self._coalescing else CharsEvent
+        )
         if self.events and isinstance(self.events[-1], event_type):
             previous = self.events[-1]
             self.events[-1] = event_type(previous.str + content)
         else:
             self.events.append(event_type(content))
 
-    def startCDATA(self):  # noqa: N802
+    def startCDATA(self):
         self._flush_pending()
         self._in_cdata = True
 
-    def endCDATA(self):  # noqa: N802
+    def endCDATA(self):
         self._in_cdata = False
 
     def comment(self, content: str) -> None:
@@ -249,21 +263,21 @@ class _EventHandler(xml.sax.handler.ContentHandler):
         if self._include_comments:
             self.events.append(CommentEvent(content))
 
-    def processingInstruction(self, _target, _data):  # noqa: N802
+    def processingInstruction(self, _target, _data):
         # data.xml has no processing-instruction event record, but it still
         # prevents its containing element from being an empty-element event.
         self._flush_pending()
 
-    def startDTD(self, _name, _public_id, _system_id):  # noqa: N802
+    def startDTD(self, _name, _public_id, _system_id):
         raise ValueError("XML DTD and entity declarations are not permitted")
 
-    def endDTD(self):  # noqa: N802
+    def endDTD(self):
         pass
 
-    def startEntity(self, _name):  # noqa: N802
+    def startEntity(self, _name):
         pass
 
-    def endEntity(self, _name):  # noqa: N802
+    def endEntity(self, _name):
         pass
 
 
@@ -310,7 +324,9 @@ def event_seq(source: Any, options: Mapping[Any, Any] | None = None):
     )
     coalescing = bool(options.get(kw.keyword("coalescing"), True))
     handler = _EventHandler(kw.keyword("comment") in include, coalescing)
-    parser = xml.sax.make_parser()
+    # _event_chunks rejects DTD/entity declarations; external entities are
+    # disabled below before chunks are fed into the parser.
+    parser = xml.sax.make_parser()  # nosec B317
     parser.setFeature(xml.sax.handler.feature_namespaces, True)
     for feature in (
         xml.sax.handler.feature_external_ges,
@@ -390,7 +406,7 @@ def _nss_shape(prefix_to_uri: Mapping[str, str]) -> lmap.PersistentMap:
 def element_nss_raw(value: Any) -> Any:
     meta = getattr(value, "meta", None)
     if meta is None and hasattr(value, "_meta"):
-        meta = value._meta  # noqa: SLF001 - Basilisp collection metadata
+        meta = value._meta
     if meta:
         nss_key = kw.keyword("nss", ns="clojure.data.xml")
         nss = meta.val_at(nss_key) if hasattr(meta, "val_at") else meta.get(nss_key)
@@ -609,8 +625,10 @@ def _indent(element: etree.Element, level: int = 0, space: str = "  ") -> None:
     for index, child in enumerate(children):
         _indent(child, level + 1, space)
         if child.tail and child.tail.strip():
-            child.tail = child_indent + child.tail + (
-                parent_indent if index == last_index else child_indent
+            child.tail = (
+                child_indent
+                + child.tail
+                + (parent_indent if index == last_index else child_indent)
             )
         else:
             child.tail = parent_indent if index == last_index else child_indent

@@ -73,7 +73,7 @@ class ProtocolDispatch:
     which in turn take precedence over extensions registered for an external type.
     """
 
-    __slots__ = ("_dispatch", "_default", "_interface", "_metadata_key")
+    __slots__ = ("_default", "_dispatch", "_interface", "_metadata_key")
 
     def __init__(
         self,
@@ -330,16 +330,16 @@ class Unbound:
 
 class Var(RefBase):
     __slots__ = (
+        "_dynamic",
+        "_is_bound",
+        "_lock",
+        "_meta",
         "_name",
         "_ns",
         "_root",
-        "_dynamic",
-        "_is_bound",
         "_tl",
-        "_meta",
-        "_lock",
-        "_watches",
         "_validator",
+        "_watches",
     )
 
     def __init__(
@@ -525,7 +525,7 @@ class Var(RefBase):
     @staticmethod
     def find_in_ns(
         ns_or_sym: Union["Namespace", sym.Symbol], name_sym: sym.Symbol
-    ) -> "Optional[Var]":
+    ) -> "Var | None":
         """Return the value current bound to the name `name_sym` in the namespace
         specified by `ns_sym`."""
         ns = (
@@ -536,7 +536,7 @@ class Var(RefBase):
         return None
 
     @classmethod
-    def find(cls, ns_qualified_sym: sym.Symbol) -> "Optional[Var]":
+    def find(cls, ns_qualified_sym: sym.Symbol) -> "Var | None":
         """Return the value currently bound to the name in the namespace specified
         by `ns_qualified_sym`."""
         ns = Maybe(ns_qualified_sym.ns).or_else_raise(
@@ -710,16 +710,16 @@ class Namespace(ReferenceBase):
     _NAMESPACE_ALIASES: Atom[NamespaceMap] = Atom(lmap.EMPTY)
 
     __slots__ = (
-        "_name",
-        "_module",
-        "_meta",
-        "_lock",
-        "_interns",
-        "_refers",
         "_aliases",
-        "_imports",
         "_import_aliases",
         "_import_refers",
+        "_imports",
+        "_interns",
+        "_lock",
+        "_meta",
+        "_module",
+        "_name",
+        "_refers",
     )
 
     def __init__(self, name: sym.Symbol, module: BasilispModule | None = None) -> None:
@@ -888,7 +888,7 @@ class Namespace(ReferenceBase):
                 new_m = new_m.assoc(alias, namespace)
             self._aliases = new_m
 
-    def get_alias(self, alias: sym.Symbol) -> "Optional[Namespace]":
+    def get_alias(self, alias: sym.Symbol) -> "Namespace | None":
         """Get the Namespace aliased by Symbol or None if it does not exist."""
         with self._lock:
             return self._aliases.val_at(alias, None)
@@ -1046,7 +1046,7 @@ class Namespace(ReferenceBase):
         ]
 
     @classmethod
-    def get(cls, name: sym.Symbol) -> "Optional[Namespace]":
+    def get(cls, name: sym.Symbol) -> "Namespace | None":
         """Get the namespace bound to the symbol `name` in the global namespace
         cache. Return the namespace if it exists or None otherwise.."""
         if (namespace := cls._NAMESPACES.deref().val_at(name, None)) is not None:
@@ -1997,7 +1997,7 @@ def _vals_none(_: None) -> None:
 @vals.register(str)
 def _vals_str(o: str) -> None:
     if to_seq(o) is None:
-        return None
+        return
     raise TypeError(f"Object of type {type(o)} cannot be coerced to a value sequence")
 
 
@@ -2506,7 +2506,7 @@ def repl_completions(text: str) -> Iterable[str]:
 
 
 class _TrampolineArgs:
-    __slots__ = ("_has_varargs", "_args", "_kwargs")
+    __slots__ = ("_args", "_has_varargs", "_kwargs")
 
     def __init__(self, has_varargs: bool, *args, **kwargs) -> None:
         self._has_varargs = has_varargs

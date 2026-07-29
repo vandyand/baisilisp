@@ -219,19 +219,20 @@ def test_source_resource_omission_verifier_rejects_bad_probe_rows(monkeypatch):
     errors = inventory.verify_source_resource_omissions(["clojure", "-e"])
 
     assert any("clojure.core-print source resource missing" in e for e in errors)
-    assert any("clojure.genclass source does not declare expected owner" in e for e in errors)
+    assert any(
+        "clojure.genclass source does not declare expected owner" in e for e in errors
+    )
     assert any("clojure.gvec unexpectedly created a namespace" in e for e in errors)
-    assert any("clojure.reflect.java source resource failed to require" in e for e in errors)
+    assert any(
+        "clojure.reflect.java source resource failed to require" in e for e in errors
+    )
     assert any("did not report" in e for e in errors)
 
 
 def test_source_resource_omission_verifier_accepts_complete_good_probe(monkeypatch):
     def run(*_args, **_kwargs):
         rows = [
-            (
-                f"[{namespace} :ok \"{resource}\" "
-                'true true false true nil nil]'
-            )
+            (f'[{namespace} :ok "{resource}" ' "true true false true nil nil]")
             for namespace, (resource, _owner) in sorted(
                 inventory.SOURCE_RESOURCE_OMISSIONS.items()
             )

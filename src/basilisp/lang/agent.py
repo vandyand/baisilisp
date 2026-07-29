@@ -17,7 +17,7 @@ _UNSET = object()
 _CURRENT_AGENT = threading.local()
 
 
-def current_agent() -> "Agent[Any] | None":
+def current_agent() -> Agent[Any] | None:
     """Return the agent whose action is executing on this thread, if any.
 
     The marker gives the Clojure-facing blocking wait functions a reliable way
@@ -33,17 +33,17 @@ class Agent(RefBase[T], Generic[T]):
     """A mutable reference whose submitted actions execute sequentially."""
 
     __slots__ = (
-        "_meta",
-        "_state",
-        "_lock",
-        "_watches",
-        "_validator",
-        "_condition",
-        "_queue",
         "_active",
+        "_condition",
         "_error",
-        "_error_mode",
         "_error_handler",
+        "_error_mode",
+        "_lock",
+        "_meta",
+        "_queue",
+        "_state",
+        "_validator",
+        "_watches",
     )
 
     def __init__(
@@ -52,7 +52,7 @@ class Agent(RefBase[T], Generic[T]):
         meta: IPersistentMap | None = None,
         validator: RefValidator | None = None,
         error_mode: str = "fail",
-        error_handler: Callable[["Agent[T]", BaseException], Any] | None = None,
+        error_handler: Callable[[Agent[T], BaseException], Any] | None = None,
     ) -> None:
         self._meta = meta
         self._state = state
@@ -106,7 +106,7 @@ class Agent(RefBase[T], Generic[T]):
                 and bool(self._queue)
             )
 
-    def submit(self, executor: Executor, f: Callable[..., T], *args: Any) -> "Agent[T]":
+    def submit(self, executor: Executor, f: Callable[..., T], *args: Any) -> Agent[T]:
         scheduled = None
         scheduling_error = None
         with self._condition:
@@ -130,7 +130,7 @@ class Agent(RefBase[T], Generic[T]):
 
     def submit_args(
         self, executor: Executor, f: Callable[..., T], args: tuple[Any, ...] | None
-    ) -> "Agent[T]":
+    ) -> Agent[T]:
         """Submit an action when its argument sequence is already collected."""
         return self.submit(executor, f, *(args or ()))
 
@@ -159,7 +159,7 @@ class Agent(RefBase[T], Generic[T]):
             self._error = None
             self._condition.notify_all()
 
-    def restart(self, state: Any = _UNSET, clear_actions: bool = False) -> "Agent[T]":
+    def restart(self, state: Any = _UNSET, clear_actions: bool = False) -> Agent[T]:
         scheduled = None
         scheduling_error = None
         with self._condition:

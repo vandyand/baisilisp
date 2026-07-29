@@ -9,8 +9,8 @@ import scripts.differential_conformance as conformance
 from scripts.differential_conformance import (
     _fixture_argument,
     _fixture_paths,
-    _shard_fixture_paths,
     _normalize_edn,
+    _shard_fixture_paths,
 )
 
 

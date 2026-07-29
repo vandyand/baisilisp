@@ -73,7 +73,7 @@ def _entry_from_vector_arg(elem) -> IMapEntry:
 class TransientMap(ITransientMap[K, V]):
     __slots__ = ("_inner",)
 
-    def __init__(self, evolver: "MapMutation[K, V]") -> None:
+    def __init__(self, evolver: MapMutation[K, V]) -> None:
         self._inner = evolver
 
     def __bool__(self):
@@ -91,7 +91,7 @@ class TransientMap(ITransientMap[K, V]):
     def __len__(self):
         return len(self._inner)
 
-    def assoc_transient(self, *kvs) -> "TransientMap":
+    def assoc_transient(self, *kvs) -> TransientMap:
         for t in partition(kvs, 2):
             # Clojure allows assoc! to have odd numbers of arguments, setting nil for
             # the missing value.
@@ -105,7 +105,7 @@ class TransientMap(ITransientMap[K, V]):
     def contains_transient(self, k: K) -> bool:
         return equivalence_key(k) in self._inner
 
-    def dissoc_transient(self, *ks: K) -> "TransientMap[K, V]":
+    def dissoc_transient(self, *ks: K) -> TransientMap[K, V]:
         for k in ks:
             try:
                 del self._inner[equivalence_key(k)]
@@ -131,7 +131,7 @@ class TransientMap(ITransientMap[K, V]):
             | IPersistentVector[K | V]
             | Mapping[K, V]
         ),
-    ) -> "TransientMap[K, V]":
+    ) -> TransientMap[K, V]:
         try:
             for elem in elems:
                 if isinstance(elem, (IPersistentMap, Mapping)):
@@ -151,7 +151,7 @@ class TransientMap(ITransientMap[K, V]):
         else:
             return self
 
-    def to_persistent(self) -> "PersistentMap[K, V]":
+    def to_persistent(self) -> PersistentMap[K, V]:
         return PersistentMap(self._inner.finish())
 
 
@@ -255,7 +255,7 @@ class PersistentMap(
 
     def __init__(
         self,
-        m: "_Map[K, V]",
+        m: _Map[K, V],
         meta: IPersistentMap | None = None,
     ) -> None:
         self._inner = _Map((equivalence_key(key), value) for key, value in m.items())
@@ -266,7 +266,7 @@ class PersistentMap(
         cls,
         members: Mapping[K, V] | Iterable[tuple[K, V]],
         meta: IPersistentMap | None = None,
-    ) -> "PersistentMap[K, V]":
+    ) -> PersistentMap[K, V]:
         return PersistentMap(
             (
                 _Map((equivalence_key(key), value) for key, value in members.items())
@@ -329,7 +329,7 @@ class PersistentMap(
     def meta(self) -> IPersistentMap | None:
         return self._meta
 
-    def with_meta(self, meta: IPersistentMap | None) -> "PersistentMap":
+    def with_meta(self, meta: IPersistentMap | None) -> PersistentMap:
         return PersistentMap(self._inner, meta=meta)
 
     def assoc(self, *kvs):
@@ -360,7 +360,7 @@ class PersistentMap(
     def val_at(self, k, default=None):
         return self._inner.get(equivalence_key(k), default)
 
-    def update(self, *maps: Mapping[K, V]) -> "PersistentMap":
+    def update(self, *maps: Mapping[K, V]) -> PersistentMap:
         with self._inner.mutate() as m:
             for map_ in maps:
                 for key, value in map_.items():
@@ -369,7 +369,7 @@ class PersistentMap(
 
     def update_with(  # type: ignore[return]
         self, merge_fn: Callable[[V, V], V], *maps: Mapping[K, V]
-    ) -> "PersistentMap[K, V]":
+    ) -> PersistentMap[K, V]:
         with self._inner.mutate() as m:
             for map in maps:
                 for k, v in map.items():
@@ -388,7 +388,7 @@ class PersistentMap(
             | IPersistentVector[K | V]
             | Mapping[K, V]
         ),
-    ) -> "PersistentMap[K, V]":
+    ) -> PersistentMap[K, V]:
         with self._inner.mutate() as m:
             try:
                 for elem in elems:
@@ -409,7 +409,7 @@ class PersistentMap(
             else:
                 return PersistentMap(m.finish(), meta=self.meta)
 
-    def empty(self) -> "PersistentMap":
+    def empty(self) -> PersistentMap:
         return EMPTY.with_meta(self._meta)
 
     def seq(self) -> ISeq[IMapEntry[K, V]] | None:
@@ -485,7 +485,7 @@ class PersistentArrayMap(PersistentMap[K, V]):
 
     def _new(
         self,
-        inner: "_Map[K, V]",
+        inner: _Map[K, V],
         order: Iterable[Any] | None = None,
         meta: IPersistentMap | None = None,
     ):
@@ -527,7 +527,7 @@ class PersistentArrayMap(PersistentMap[K, V]):
             | IPersistentVector[K | V]
             | Mapping[K, V]
         ),
-    ) -> "PersistentArrayMap[K, V]":
+    ) -> PersistentArrayMap[K, V]:
         result = self
         try:
             for elem in elems:
@@ -601,7 +601,7 @@ class PersistentStructMap(PersistentMap[K, V]):
     def __init__(
         self,
         definition: StructDefinition,
-        m: "_Map[K, V]" | Mapping[K, V] | Iterable[tuple[K, V]],
+        m: _Map[K, V] | Mapping[K, V] | Iterable[tuple[K, V]],
         meta: IPersistentMap | None = None,
     ) -> None:
         if not isinstance(definition, StructDefinition):
@@ -643,6 +643,12 @@ class PersistentStructMap(PersistentMap[K, V]):
     def __iter__(self):
         return (key for key, _ in self._ordered_items())
 
+    def items(self):
+        return tuple(self._ordered_items())
+
+    def values(self):
+        return tuple(value for _, value in self._ordered_items())
+
     def _lrepr(self, **kwargs: Unpack[PrintSettings]):
         return map_lrepr(
             self._ordered_items,
@@ -652,7 +658,7 @@ class PersistentStructMap(PersistentMap[K, V]):
             **kwargs,
         )
 
-    def _new(self, m: "_Map[K, V]", meta: IPersistentMap | None = None):
+    def _new(self, m: _Map[K, V], meta: IPersistentMap | None = None):
         return PersistentStructMap(
             self._definition, m, meta=self._meta if meta is None else meta
         )
@@ -764,7 +770,7 @@ class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
 
     def __init__(
         self,
-        m: "_Map[K, V]",
+        m: _Map[K, V],
         comparator: Callable[[K, K], int | bool],
         meta: IPersistentMap | None = None,
     ) -> None:
@@ -786,7 +792,7 @@ class PersistentSortedMap(PersistentMap[K, V], IReversible[IMapEntry[K, V]]):
             key=functools.cmp_to_key(compare_entries),
         )
 
-    def _new(self, m: "_Map[K, V]", meta: IPersistentMap | None = None):
+    def _new(self, m: _Map[K, V], meta: IPersistentMap | None = None):
         return PersistentSortedMap(
             m, self._comparator, meta=self._meta if meta is None else meta
         )
