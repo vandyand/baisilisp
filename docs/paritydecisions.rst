@@ -351,7 +351,8 @@ Async Pipelines And ``go``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Decision:** extend the local channel with Python-native pipeline helpers;
-do not claim ``core.async`` or add a ``go`` alias.
+do not claim ``core.async`` or add a ``go`` alias until the compatibility
+facade and parking semantics are explicitly implemented.
 
 The first API should live in ``basilisp.concurrent`` and be deliberately
 small: a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
@@ -383,6 +384,10 @@ joined. Only after that is stable should asynchronous mapping be considered.
 Implementing ``go`` correctly would require a compiler-produced resumable state
 machine and defined rejection for unsupported Python control flow; a macro that
 merely wraps ``defasync`` would misrepresent that contract.
+
+The staged design for moving from this Python-native surface toward a
+``clojure.core.async`` compatibility namespace is captured in
+:ref:`core_async_design`.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^

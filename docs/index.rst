@@ -49,6 +49,7 @@ Contents
    paritydecisions
    concepts
    concurrency
+   coreasyncdesign
    reference
    releasenotes
    contributing

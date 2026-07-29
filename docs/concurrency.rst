@@ -73,9 +73,13 @@ returns ``[value :default]`` without waiting. ``timeout`` creates a one-shot
 channel that closes after its delay. A cancelled ``alts!`` call removes all of
 its pending operations.
 
-Transducers, pipelines, pub/sub, and a ``go`` macro are not yet implemented.
-``defasync`` and ``await`` are the intended Python-native equivalent of the
-initial ``go``-block use case.
+``pipe!`` and ``pipeline!`` provide the first channel pipeline helpers;
+``pipeline!`` applies a synchronous transducer with bounded parallelism while
+preserving output order. Channel transducers at ``chan`` construction time,
+pub/sub, and a ``go`` macro are not yet implemented. ``defasync`` and
+``await`` remain the intended Python-native equivalent of the initial
+``go``-block use case. See :ref:`core_async_design` for the proposed
+``clojure.core.async`` compatibility path.
 
 Transactions
 ------------
