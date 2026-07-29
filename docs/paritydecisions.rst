@@ -526,10 +526,15 @@ symbolic unification and macro-generated-function pressure test;
 ``core-cache-memoize`` is the stateful protocol-heavy cache/memoization pressure
 test over portable constructors, policy transitions, snapshots, mutation
 helpers, and protocol interop, with JVM ``SoftReference`` behavior explicitly
-excluded. ``core.match`` was inspected and deferred because its upstream source
-is a large JVM/CLJS macro compiler with Java import assumptions, making it a
-future compiler-pressure tranche rather than a small portable acceptance seed. A dedicated
-reducers fixture locks the serial
+excluded. ``basilisp.core.match`` now provides a Basilisp-native portable
+subset compared against ``org.clojure/core.match`` 1.1.1 for ``match``,
+``matchm``, ``match-let``, basic data patterns, application patterns, and
+as-patterns; ``matchv`` is available as a Basilisp wrapper but its JVM vector
+specialization tag machinery is not part of the cross-runtime fixture yet. The
+upstream source is still a large JVM/CLJS macro compiler with Java import
+assumptions, so JVM extension namespaces such as ``array``, ``java``, and
+``regex`` remain future compiler-pressure work rather than part of this
+portable subset. A dedicated reducers fixture locks the serial
 ``clojure.core.reducers`` subset, including the Clojure distinction between
 raw key/value map reduction and transformed map-entry reduction. The
 ``clojure.xml`` accepted subset is also locked by a shared fixture for immutable

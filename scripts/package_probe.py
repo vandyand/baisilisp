@@ -26,6 +26,7 @@ _REQUIRED_SOURCES = (
     "basilisp/java/javadoc.lpy",
     "basilisp/java/shell.lpy",
     "basilisp/main_compat.lpy",
+    "basilisp/core/match.lpy",
     "basilisp/math/combinatorics.lpy",
     "basilisp/parallel.lpy",
     "basilisp/repl_deps.lpy",
@@ -55,6 +56,7 @@ java_io = importlib.import_module("basilisp.java.io")
 javadoc = importlib.import_module("basilisp.java.javadoc")
 java_shell = importlib.import_module("basilisp.java.shell")
 main_compat = importlib.import_module("basilisp.main_compat")
+core_match = importlib.import_module("basilisp.core.match")
 combinatorics = importlib.import_module("basilisp.math.combinatorics")
 medley = importlib.import_module("medley.core")
 parallel = importlib.import_module("basilisp.parallel")
@@ -74,6 +76,7 @@ assert callable(java_io.file)
 assert callable(javadoc.javadoc)
 assert callable(java_shell.sh)
 assert callable(main_compat.repl_read)
+assert callable(core_match.match)
 assert callable(combinatorics.combinations)
 assert callable(medley.deep_merge)
 assert callable(parallel.pvec)

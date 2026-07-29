@@ -17,7 +17,7 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
-      max-parallel: 8
+      max-parallel: 4
       matrix:
         shard-index: [
           0, 1, 2, 3, 4, 5, 6, 7,
@@ -47,6 +47,9 @@ jobs:
       - name: Install package in Tox environment
         run: |
           tox exec -e py314 -- python -m pip install -e ".[pytest]"
+      - name: Prefetch Clojure differential dependencies
+        run: |
+          tox exec -e py314 -- python scripts/prefetch_clojure_deps.py differential
       - name: Run cache-disabled differential conformance shard
         run: |
           tox exec -e py314 -- python scripts/differential_conformance.py \
@@ -83,6 +86,9 @@ jobs:
       - name: Install package in Tox environment
         run: |
           tox exec -e py314 -- python -m pip install -e ".[pytest]"
+      - name: Prefetch Clojure library dependencies
+        run: |
+          tox exec -e py314 -- python scripts/prefetch_clojure_deps.py library
       - name: Run cache-disabled library acceptance shard
         run: |
           tox exec -e py314 -- python scripts/library_acceptance.py \

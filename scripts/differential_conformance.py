@@ -41,6 +41,7 @@ DEFAULT_CLOJURE_SDEPS = (
     'org.clojure/data.codec {:mvn/version \\"0.1.1\\"} '
     'org.clojure/data.priority-map {:mvn/version \\"1.2.0\\"} '
     'org.clojure/core.cache {:mvn/version \\"1.1.234\\"} '
+    'org.clojure/core.match {:mvn/version \\"1.1.1\\"} '
     'org.clojure/core.memoize {:mvn/version \\"1.1.266\\"} '
     'org.clojure/core.rrb-vector {:mvn/version \\"0.2.0\\"} '
     'org.clojure/java.classpath {:mvn/version \\"1.1.0\\"} '

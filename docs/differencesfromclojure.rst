@@ -484,6 +484,13 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   lazy sequence, multiset, direct-count, direct-index, and partition contracts
   are covered by shared Clojure/Basilisp acceptance and conformance fixtures,
   including a deterministic generated corpus.
+* :lpy:ns:`basilisp.core.match` provides a Basilisp-native portable subset of
+  ``clojure.core.match``. Shared fixtures compare ``match``, ``matchm``,
+  ``match-let``, basic literals/bindings, vector/map/seq patterns, rest
+  patterns, application patterns, and as-patterns against
+  ``org.clojure/core.match`` 1.1.1. JVM-specific extension namespaces such as
+  ``clojure.core.match.array``, ``clojure.core.match.java``, and
+  ``clojure.core.match.regex`` are not implemented.
 * ``medley.core`` is available as a portable upstream-library port. Its public
   functional collection operations use Basilisp collections and Python UUID and
   regular-expression values instead of JVM implementation classes.

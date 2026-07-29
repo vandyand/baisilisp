@@ -1303,10 +1303,15 @@ Completed locally:
   ``clojure.core.cache`` and ``clojure.core.memoize`` aliases. It locks
   portable cache policy behavior, memoized-function snapshots and mutation
   helpers, cache/memoizer constructors, and protocol interop while keeping
-  ``SoftReference`` support classified as JVM-only. ``core.match`` was also
-  inspected and deferred: the upstream snapshot is a large JVM/CLJS macro
-  compiler with Java import assumptions, so it is a future compiler-pressure
-  candidate rather than a small portable acceptance seed.
+  ``SoftReference`` support classified as JVM-only.
+* ``basilisp.core.match`` now provides a Basilisp-native portable subset of
+  ``clojure.core.match`` covering ``match``, ``matchm``, ``matchv``,
+  ``match-let``, literals, wildcards, named bindings, vector/map/seq patterns,
+  vector and seq rest patterns, application patterns, and as-patterns. The
+  shared fixture compares this subset against ``org.clojure/core.match``
+  1.1.1. The upstream snapshot remains too JVM/CLJS-compiler-specific to port
+  wholesale, so extension namespaces such as ``array``, ``java``, and ``regex``
+  stay outside the claimed compatibility contract.
 * ``Throwable->map`` diagnostics hardening now differentially locks thrown
   exception chains with ``:clojure.error/phase`` data, preserving Clojure's
   top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``

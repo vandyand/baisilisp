@@ -78,6 +78,7 @@ def test_default_deps_cover_conformance_external_libraries():
     assert "org.clojure/java.classpath" in deps
     assert "org.clojure/math.combinatorics" in deps
     assert "org.clojure/tools.cli" in deps
+    assert "org.clojure/core.match" in deps
     assert "org.clojure/tools.logging" in deps
     assert "org.clojure/tools.reader" in deps
 
