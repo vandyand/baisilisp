@@ -442,9 +442,12 @@ The next tranche after the facade should harden this namespace before adding
 compiler-level ``go`` support:
 
 * Add a maintained public support matrix for ``clojure.core.async``.
+  The current test gate asserts the exact supported non-``go`` public set and
+  the absence of unsupported parking/blocking names.
 * Add JVM differential fixtures for buffer close/drain behavior, nil
   rejection, ``alts!`` priority/default behavior, ``pipe``, and ``pipeline``
-  output order.
+  output order. ``tests/conformance/core_async_cases.cljc`` now covers this
+  first fixture tranche.
 * Decide whether ``put!``/``take!`` callback return values should remain
   strict Clojure-compatible ``nil`` or expose a BaisiLisp task handle through a
   separate Python-native name.

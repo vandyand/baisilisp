@@ -85,10 +85,11 @@
   (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
 
 (deftest public-surface-test
-  (let [publics (set (map name (keys (ns-publics 'clojure.core.async))))]
-    (is (every? publics ["buffer" "dropping-buffer" "sliding-buffer"
-                         "chan" "close!" "offer!" "poll!" "put!" "take!"
-                         "alts!" "timeout" "pipe" "pipeline"]))
+  (let [supported #{"buffer" "dropping-buffer" "sliding-buffer"
+                    "chan" "close!" "offer!" "poll!" "put!" "take!"
+                    "alts!" "timeout" "pipe" "pipeline"}
+        publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
+    (is (= supported publics))
     (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
                            "alts!!" "<!!" ">!!" "thread" "thread-call"
                            "pub" "sub" "mult" "mix" "pipeline-async"

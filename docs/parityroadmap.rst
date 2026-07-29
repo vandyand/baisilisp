@@ -211,7 +211,9 @@ Near-term deliverable:
   for the non-``go`` subset: Clojure-shaped buffers and ``chan``, close and
   non-blocking operations, awaitable/callback ``put!`` and ``take!``,
   ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
-  and blocking forms remain absent.
+  and blocking forms remain absent. The follow-up fixture now compares the
+  implemented subset against JVM ``core.async`` for buffers, close/drain, nil
+  rejection, selection, timeout, pipe, and pipeline order.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

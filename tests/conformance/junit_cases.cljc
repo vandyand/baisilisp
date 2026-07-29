@@ -87,7 +87,12 @@
              (binding [t/*test-out* w
                        junit/*depth* 1]
                (t/with-test-out
-                 (junit/start-element 'sample true {:a "x<y&z" :quote "\"'"})
+                 ;; XML attribute order is semantically irrelevant, but this
+                 ;; fixture compares exact strings. Use an insertion-ordered
+                 ;; map so Clojure and Basilisp exercise escaping without
+                 ;; depending on ordinary hash-map iteration order.
+                 (junit/start-element 'sample true (array-map :a "x<y&z"
+                                                              :quote "\"'"))
                  (junit/element-content "body <&> \"'")
                  (junit/finish-element 'sample true)))
              (-> (writer-str w)
