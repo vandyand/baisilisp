@@ -217,9 +217,10 @@ Near-term deliverable:
   collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
   ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. The follow-up
   local tranche now adds task-backed routing combinators ``mult``, ``tap``,
-  ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``
-  with shared JVM fixtures; ``mix``, blocking bridges, async pipeline variants,
-  and ``go`` remain outside the supported surface.
+  ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``,
+  ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
+  ``solo-mode`` with shared JVM fixtures; blocking bridges, async pipeline
+  variants, and ``go`` remain outside the supported surface.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

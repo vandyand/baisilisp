@@ -185,6 +185,85 @@
                        (async/poll! beta))]
           [alpha-ret? beta-ret? matched unsubbed closed])))))
 
+(defasync core-async-mix-roundtrip []
+  (let [out (async/chan 10)
+        x   (async/chan 10)
+        y   (async/chan 10)
+        mx  (async/mix out)]
+    (async/admix mx x)
+    (async/admix mx y)
+    (await (async/put! x :x1))
+    (let [basic (await (async/take! out))]
+      (async/toggle mx {x {:mute true}})
+      (await (async/put! x :x-muted))
+      (await (async/put! y :y-after-mute))
+      (let [mute [(await (async/take! out))
+                  (do
+                    (await (asyncio/sleep 0))
+                    (async/poll! out))]]
+        (async/toggle mx {x {:mute false :pause true}})
+        (await (async/put! x :x-paused))
+        (await (async/put! y :y-after-pause))
+        (let [pause-before [(await (async/take! out))
+                            (do
+                              (await (asyncio/sleep 0))
+                              (async/poll! out))]]
+          (async/toggle mx {x {:pause false}})
+          (let [pause-after (await (async/take! out))]
+            [basic mute pause-before pause-after]))))))
+
+(defasync core-async-mix-solo-roundtrip []
+  (let [default-out (async/chan 10)
+        default-x   (async/chan 10)
+        default-y   (async/chan 10)
+        default-mx  (async/mix default-out)]
+    (async/admix default-mx default-x)
+    (async/admix default-mx default-y)
+    (async/toggle default-mx {default-x {:solo true}})
+    (await (asyncio/sleep 0))
+    (await (async/put! default-y :y-default-solo))
+    (await (async/put! default-x :x-default-solo))
+    (let [default-solo [(await (async/take! default-out))
+                        (do
+                          (await (asyncio/sleep 0))
+                          (async/poll! default-out))]]
+      (async/toggle default-mx {default-x {:solo false}})
+      (let [default-after (do
+                            (await (asyncio/sleep 0))
+                            (async/poll! default-out))
+            pause-out     (async/chan 10)
+            pause-x       (async/chan 10)
+            pause-y       (async/chan 10)
+            pause-mx      (async/mix pause-out)]
+        (async/admix pause-mx pause-x)
+        (async/admix pause-mx pause-y)
+        (async/solo-mode pause-mx :pause)
+        (async/toggle pause-mx {pause-x {:solo true}})
+        (await (asyncio/sleep 0))
+        (await (async/put! pause-y :y-paused-solo))
+        (await (async/put! pause-x :x-paused-solo))
+        (let [pause-solo [(await (async/take! pause-out))
+                          (do
+                            (await (asyncio/sleep 0))
+                            (async/poll! pause-out))]]
+          (async/toggle pause-mx {pause-x {:solo false}})
+          [default-solo
+           default-after
+           pause-solo
+           (await (async/take! pause-out))])))))
+
+(defasync core-async-mix-toggle-add-roundtrip []
+  (let [out (async/chan 10)
+        x   (async/chan 10)
+        mx  (async/mix out)]
+    (async/toggle mx {x {:pause true}})
+    (await (async/put! x :added-paused))
+    (let [before (do
+                   (await (asyncio/sleep 0))
+                   (async/poll! out))]
+      (async/toggle mx {x {:pause false}})
+      [before (await (async/take! out))])))
+
 (deftest namespace-alias-test
   (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
 
@@ -195,12 +274,14 @@
                     "to-chan!" "onto-chan!" "merge" "split" "take"
                     "into" "reduce" "transduce"
                     "mult" "tap" "untap" "untap-all"
-                    "pub" "sub" "unsub" "unsub-all"}
+                    "pub" "sub" "unsub" "unsub-all"
+                    "mix" "admix" "unmix" "unmix-all"
+                    "toggle" "solo-mode"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
     (is (= supported publics))
     (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
                            "alts!!" "<!!" ">!!" "thread" "thread-call"
-                           "mix" "pipeline-async" "pipeline-blocking"]))))
+                           "pipeline-async" "pipeline-blocking"]))))
 
 (deftest buffer-validation-test
   (is (thrown? Exception (async/buffer 0)))
@@ -248,4 +329,10 @@
     (is (= [:value :value]
            (asyncio/run (core-async-mult-unbuffered-parallel-roundtrip))))
     (is (= [true true [{:topic :a :value 1} {:topic :b :value 2}] nil nil]
-           (asyncio/run (core-async-pub-roundtrip))))))
+           (asyncio/run (core-async-pub-roundtrip))))
+    (is (= [:x1 [:y-after-mute nil] [:y-after-pause nil] :x-paused]
+           (asyncio/run (core-async-mix-roundtrip))))
+    (is (= [[:x-default-solo nil] nil [:x-paused-solo nil] :y-paused-solo]
+           (asyncio/run (core-async-mix-solo-roundtrip))))
+    (is (= [nil :added-paused]
+           (asyncio/run (core-async-mix-toggle-add-roundtrip))))))

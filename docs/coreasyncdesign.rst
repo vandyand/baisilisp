@@ -83,8 +83,8 @@ The implementation is intentionally ``asyncio``-native:
 This is the right substrate. BaisiLisp now has an initial
 ``clojure.core.async`` facade for the non-``go`` subset, backed by
 ``basilisp.core.async`` and the existing channel runtime. The important missing
-pieces are blocking adapters, ``mix``-style coordination, async pipeline
-variants, and compiler support for ``go`` parking forms.
+pieces are blocking adapters, async pipeline variants, and compiler support for
+``go`` parking forms.
 
 Design Principles
 -----------------
@@ -168,7 +168,8 @@ into one of these states:
        ``io-thread``
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
-     - ``mix``, ``admix``, ``toggle``, ``solo-mode``
+     - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
+       APIs are deferred.
    * - Defer
      - Experimental or broad enough to need a separate design.
      - ``clojure.core.async.flow``
@@ -197,6 +198,8 @@ Proposed public functions/macros:
 * ``pipeline``
 * ``mult`` / ``tap`` / ``untap`` / ``untap-all``
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
+* ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
+  ``solo-mode``
 
 The buffer constructors should return small Basilisp data objects or Python
 objects that describe policy and capacity:
@@ -345,8 +348,6 @@ After the facade and basic ``go`` subset, the best parity wins are the
 combinators that appear in real Clojure code:
 
 * ``pipeline-async``
-* ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
-  ``solo-mode``
 
 These should be built as ordinary channel processes over the same runtime,
 not as separate concurrency primitives. Each operation needs explicit
@@ -423,6 +424,10 @@ The initial implementation now covers:
   ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. The current
   publication implementation accepts ``buf-fn`` for source compatibility but
   does not yet model per-topic internal buffers.
+* Add the ``mix`` routing family: ``mix``, ``admix``, ``unmix``,
+  ``unmix-all``, ``toggle``, and ``solo-mode``. The implementation supports
+  Clojure's ``:mute``, ``:pause``, and ``:solo`` state maps, including both
+  default solo muting and ``solo-mode :pause``.
 
 Why this tranche first:
 
@@ -451,5 +456,5 @@ compiler-level ``go`` support:
   separate Python-native name.
 * Add rejection tests for channel transducers, blocking operations from an
   event-loop thread, and unavailable parking macros.
-* Only then choose between the blocking bridge tranche, ``mix``/async-pipeline
+* Only then choose between the blocking bridge tranche, async-pipeline
   lifecycle combinators, and the minimal coroutine-backed ``go`` tranche.
