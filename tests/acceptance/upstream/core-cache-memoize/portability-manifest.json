@@ -1,0 +1,135 @@
+{
+  "classification": "jvm-only",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [
+        "java-interop",
+        "jvm-runtime-class"
+      ],
+      "classification": "jvm-only",
+      "language": "clj",
+      "path": "clojure/core/cache.clj",
+      "reader_features": [],
+      "requires": [
+        "LIRS",
+        "base",
+        "cache",
+        "dropping",
+        "gen",
+        "item",
+        "k",
+        "kache",
+        "key",
+        "kill-old",
+        "ks",
+        "lastS",
+        "lruS",
+        "mappy",
+        "min-key",
+        "new-lruQ",
+        "now",
+        "q",
+        "r",
+        "ret",
+        "s",
+        "s-history-limit",
+        "soft-cache",
+        "this",
+        "tick",
+        "ttl",
+        "type-name",
+        "v",
+        "value-fn",
+        "wrap-fn",
+        "x"
+      ],
+      "sha256": "d132f0b9b919451345d58423cafc8629ed70b0cc32cb609a3298ee9086597de2"
+    },
+    {
+      "blockers": [
+        "java-interop",
+        "jvm-runtime-class"
+      ],
+      "classification": "jvm-only",
+      "language": "clj",
+      "path": "clojure/core/memoize.clj",
+      "reader_features": [],
+      "requires": [
+        "args",
+        "c",
+        "cache",
+        "cache-factory",
+        "ckey",
+        "clojure.core.cache",
+        "clojure.core.memoize",
+        "condition",
+        "f",
+        "fun",
+        "good-key",
+        "k",
+        "memoized-fn",
+        "n",
+        "nom",
+        "seed",
+        "this",
+        "v",
+        "x"
+      ],
+      "sha256": "273cc3cb93323e6e5a4e5697140906916c80d1d12b83d84e8aba9a11864d7a78"
+    },
+    {
+      "blockers": [
+        "java-interop",
+        "jvm-runtime-class"
+      ],
+      "classification": "jvm-only",
+      "language": "clj",
+      "path": "clojure/data/priority_map.clj",
+      "reader_features": [],
+      "requires": [
+        "CLJ-428",
+        "a",
+        "comparator",
+        "current-priority",
+        "e",
+        "f",
+        "include",
+        "item",
+        "keyfn",
+        "priority",
+        "priority-",
+        "priority-key",
+        "priority1",
+        "priority2",
+        "sets",
+        "subseq",
+        "test",
+        "this",
+        "v",
+        "x"
+      ],
+      "sha256": "a6df776e598e41e79ba95f5ea5beeeef42186bccd6b9dc981bcadecf8f48376a"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.priority-map upstream source loaded only for the Clojure runtime",
+    "clojure.core.cache upstream source loaded only for the Clojure runtime",
+    "clojure.core.memoize upstream source loaded only for the Clojure runtime",
+    "clojure.core.cache -> basilisp.core.cache for the Basilisp runtime",
+    "clojure.core.memoize -> basilisp.core.memoize for the Basilisp runtime",
+    "JVM SoftReference cache operations remain excluded from the portable acceptance contract"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "core.cache bdf41c62ce1d2047f8d860a3bd936b85d144f2b3; core.memoize 6d0e5d9ce8e822301de34155ec095eba8c1c7f49; data.priority-map d8d20c74be6391975b15029c143b8694f750f521",
+  "upstream_url": "https://github.com/clojure/core.cache + https://github.com/clojure/core.memoize"
+}

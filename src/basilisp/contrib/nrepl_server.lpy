@@ -88,7 +88,8 @@
 
 (defn- handle-error [send-fn request e]
   (let [{:keys [client* ns]} request
-        diagnostic           (basilisp.lang.diagnostics/exception-data e)
+        diagnostic           (basilisp.lang.diagnostics/exception-data
+                              e ** :phase :execution)
         message              (->> (basilisp.lang.exception/format_exception
                                   e (type e) (.-__traceback__ e) ** :disable-color true)
                                  (str/join ""))]

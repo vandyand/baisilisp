@@ -20,14 +20,7 @@
 
 (defn- ordered-attrs
   [attrs]
-  (let [preferred [:name :classname :package :message]
-        preferred-entries (keep #(when (contains? attrs %)
-                                   [% (get attrs %)])
-                                preferred)
-        rest-entries      (sort-by #(name (key %))
-                                   (remove #(contains? (set preferred) (key %))
-                                           attrs))]
-    (concat preferred-entries rest-entries)))
+  attrs)
 
 (defn indent
   "Print indentation for the current XML depth."

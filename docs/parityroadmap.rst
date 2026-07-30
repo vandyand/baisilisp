@@ -162,7 +162,26 @@ Near-term deliverable:
   pinned ``clojure/tools.cli`` source snapshot, a minimal Python-hosted port,
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
-  ``medley``, and ``tools-macro``.
+  ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
+  ``core-unify``, and ``core-cache-memoize``. The
+  ``algo-generic`` proof exercises host-adapted multimethod dispatch across
+  comparison, arithmetic, collection, functor, future/delay, and math-function
+  contracts, and is pinned to ``clojure/algo.generic`` revision
+  ``660b62b2fd84ed4c7383e2263f1fae039a5f5435``. The ``algo-monads`` proof
+  exercises source-level macro-generated monadic functions, comprehension
+  conditionals, writer/state/reader/continuation monads, and transformer
+  contracts, and is pinned to ``clojure/algo.monads`` revision
+  ``cc1fdb069049245a1226064c2fa55a65e72810a0``. The ``core-unify`` proof
+  exercises symbolic unification, wildcard/range variables, substitution,
+  factory-generated unifiers, occurs-check failures, and order-explicit map
+  pattern unification, and is pinned to ``clojure/core.unify`` revision
+  ``cbcf559abc86e30fbad83acdb0f8ab787379ad16``. The
+  ``core-cache-memoize`` proof loads checked-in upstream ``data.priority-map``,
+  ``core.cache``, and ``core.memoize`` snapshots on the JVM side while
+  exercising Basilisp's production cache and memoize namespaces; it locks
+  portable stateful cache policy, memoization snapshot/manipulation,
+  constructor, and protocol interop without claiming JVM ``SoftReference``
+  support.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -188,6 +207,19 @@ Near-term deliverable:
   covers ``priority-map-keyfn-by`` construction/update behavior, raising
   ``clojure.data.priority-map`` direct semantic fixture coverage to 100.0%, with
   local seeded stress checks for key-function plus custom-comparator ordering.
+* **Completed locally:** add the first ``clojure.core.async`` facade tranche
+  for the non-``go`` subset: Clojure-shaped buffers and ``chan``, close and
+  non-blocking operations, awaitable/callback ``put!`` and ``take!``,
+  ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
+  and blocking forms remain absent. The follow-up fixture now compares the
+  implemented subset against JVM ``core.async`` for buffers, close/drain, nil
+  rejection, selection, timeout, pipe, pipeline order, and the non-``go``
+  collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
+  ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. The follow-up
+  local tranche now adds task-backed routing combinators ``mult``, ``tap``,
+  ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``
+  with shared JVM fixtures; ``mix``, blocking bridges, async pipeline variants,
+  and ``go`` remain outside the supported surface.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,
@@ -391,7 +423,13 @@ Near-term deliverable:
   namespace transitions and ``:repl/quit`` behavior through a shared fixture,
   retain generated isolated namespaces for loopback socket connections, accept
   string ports in ``remote-prepl`` like Clojure, and raise the pREPL socket
-  backlog for concurrent-client stress.
+  backlog for concurrent-client stress. The diagnostics follow-up now treats
+  ``read+string``'s ``[nil ""]`` result as EOF instead of repeatedly evaluating
+  ``nil``, and locks local ``io-prepl`` tap serialization plus value-formatter
+  failure events as structured ``:print-eval-result`` diagnostics. nREPL eval
+  errors now use the same top-level ``:execution`` diagnostic phase while
+  preserving compiler/read-specific phase and source data in the normalized
+  diagnostic payload.
 * **Completed locally:** lock ``clojure.zip`` semantic parity with a shared
   fixture covering exact public names, vector/sequence/custom zipper navigation,
   edits, removals, generated traversal/edit/removal corpora, and the Clojure
@@ -545,7 +583,10 @@ Near-term deliverable:
   ``basilisp.test.junit`` exposes Clojure's public reporter helpers, routes
   through Basilisp's existing ``clojure.test`` report hooks, emits deterministic
   JUnit-compatible XML, and fuzz-tests XML escaping for assertion messages and
-  attributes.
+  attributes. The adversarial semantic follow-up now also locks package/class
+  splitting for empty and dotted boundaries plus exact generated XML rendering
+  for pretty/non-pretty elements. Basilisp now preserves caller-supplied
+  attribute order in ``start-element`` instead of imposing a preferred order.
 * **Completed locally:** deepen ``clojure.test.tap`` reporter output parity.
   Shared fixtures now cover blank, internal-blank, and trailing-newline TAP
   diagnostics, nil plans, empty pass/fail messages, testing-context rendering,
@@ -877,6 +918,20 @@ Near-term deliverable:
   leaving stale preference state behind. Direct ``clojure.core`` semantic
   fixture coverage is now ``553/679`` shared Vars, or ``81.4%``, with no
   missing Basilisp core publics.
+* **Completed locally:** harden hierarchy/type behavior exposed by the
+  ``algo-generic`` acceptance tranche. ``type`` now follows Clojure's
+  ``nil`` boundary by returning ``nil`` for ``nil`` instead of Python
+  ``NoneType``. Class ancestry now includes explicit hierarchy ancestors
+  attached to superclasses, so deriving ``Object``/``python.object`` to a
+  root keyword also makes subclasses satisfy that root in ``isa?`` and
+  ``ancestors``. Variadic ``recur`` now rebinds the rest local to the final
+  ``recur`` expression itself, including ``nil`` and non-seq values, matching
+  Clojure's variadic arity boundary instead of repacking the value through
+  Python ``*args``. Multimethod calls now support zero arguments when the
+  dispatch function and selected method do, and ``defmulti`` Vars are marked
+  redefable so method bodies do not direct-link a stale multifn value. The
+  shared hierarchy/multimethod fixture now locks these behaviors against JVM
+  Clojure.
 * **Completed locally:** close the deterministic sequence/control/transducer
   helper tranche from the core semantic coverage audit. A new shared fixture
   now directly covers ``while``, ``lazy-cat``, ``trampoline``, ``tree-seq``,
@@ -956,8 +1011,12 @@ Near-term deliverable:
   ``read+string`` returns ``[eof ""]`` for an explicit EOF option, and public
   ``load-reader``/``load-string`` use Clojure's default reader-conditional
   rejection while ``load-file`` retains an internal permissive path for Basilisp
-  source loading. Direct ``clojure.core`` semantic fixture coverage is now
-  ``602/679`` shared Vars, or ``88.7%``, with no missing Basilisp core publics.
+  source loading. A follow-up guard now also proves ``load-reader`` and
+  ``load-string`` honor an internal ``ns`` form for subsequent loaded forms
+  while restoring the caller's original ``*ns*`` after loading, matching
+  Clojure's REPL/load boundary. Direct ``clojure.core`` semantic fixture
+  coverage is now ``602/679`` shared Vars, or ``88.7%``, with no missing
+  Basilisp core publics.
 * **Completed locally:** close the portable definition-form and utility
   residual tranche from the core semantic coverage audit. A new shared fixture
   now directly covers ``declare``, ``defn-``, ``defstruct``, ``letfn``,
@@ -1245,6 +1304,57 @@ Completed locally:
   global namespace-name aliases, so ``find-ns`` and ``ns-publics`` work with the
   original ``clojure.*`` symbol while ``all-ns`` remains a list of real loaded
   Basilisp namespaces rather than duplicate alias entries
+* source-level ``algo-generic`` acceptance added as the next real-library
+  parity probe; it found and locked the ``type nil``, superclass-derived
+  hierarchy, zero-arity multimethod invocation, ``defmulti`` direct-linking,
+  and variadic ``recur`` rest-rebinding gaps above. Its n-ary comparison and
+  arithmetic acceptance paths now run through upstream-style self-recursive
+  multimethod methods instead of Basilisp-specific workarounds.
+* source-level ``algo-monads`` acceptance added as a macro-heavy upstream port
+  probe; it locks the public monad surface, ``domonad`` conditional expansion,
+  ``defmonadfn`` symbol-macro helpers, sequence/maybe/set/writer/state/reader/
+  continuation monads, transformer composition, and failure boundaries while
+  reusing the accepted ``basilisp.tools.macro`` source substrate.
+* source-level ``core-unify`` acceptance added as the next pure ``.cljc``
+  upstream-library probe; it preserves the public symbolic unification API over
+  Basilisp's ``zip`` and ``walk`` namespaces and locks wildcard/range variables,
+  recursive binding flattening, substitution, factory-generated unifiers,
+  no-occurs variants, occurs-check rejection, and explicit ordered map-pattern
+  unification without importing JVM collection or test.check dependencies.
+* source-level ``core-cache-memoize`` acceptance added as a stateful
+  protocol-heavy upstream-library probe; it loads checked-in JVM snapshots of
+  ``data.priority-map``, ``core.cache``, and ``core.memoize`` against Clojure
+  while testing Basilisp's production namespaces through the standard
+  ``clojure.core.cache`` and ``clojure.core.memoize`` aliases. It locks
+  portable cache policy behavior, memoized-function snapshots and mutation
+  helpers, cache/memoizer constructors, and protocol interop while keeping
+  ``SoftReference`` support classified as JVM-only.
+* ``basilisp.core.match`` now provides a Basilisp-native portable subset of
+  ``clojure.core.match`` covering ``match``, ``matchm``, ``matchv``,
+  ``match-let``, literals, wildcards, named bindings, vector/map/seq patterns,
+  vector and seq rest patterns, application patterns, and as-patterns. The
+  shared fixture compares this subset against ``org.clojure/core.match``
+  1.1.1. The upstream snapshot remains too JVM/CLJS-compiler-specific to port
+  wholesale, so extension namespaces such as ``array``, ``java``, and ``regex``
+  stay outside the claimed compatibility contract.
+* ``Throwable->map`` diagnostics hardening now differentially locks thrown
+  exception chains with ``:clojure.error/phase`` data, preserving Clojure's
+  top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``
+  entries, per-entry ``:at`` vectors, and four-field ``:trace`` entries while
+  allowing host-specific file/class names.
+* Socket-backed nREPL diagnostics are now covered by the full contrib nREPL
+  suite again. The bencode decoder now parses bencoded integer and byte-string
+  lengths with Python's native integer parser instead of Clojure-compatible
+  numeric coercion, restoring request decoding after stricter ``int`` parity.
+  The related REPL/compiler follow-up keeps top-level form compilation aligned
+  with the namespace currently selected by ``eval``/``ns`` forms, so multi-form
+  CLI and REPL inputs can switch namespaces and continue evaluating like
+  Clojure.
+* Namespace bytecode cache hardening now treats corrupt or wrong-shaped
+  marshaled ``.lpyc`` payloads as disposable cache misses after validating the
+  source timestamp and size header. This preserves normal cached imports while
+  recovering from interrupted writes or stale local cache artifacts by
+  recompiling source and replacing the cache with a valid code-object payload.
 
 Near-term deliverable:
 
@@ -1271,6 +1381,14 @@ Candidate investments:
 * Python debugger, traceback, and coverage integration
 * multiprocessing and thread/process pool helpers that fit Python's runtime
   model better than JVM-style STM
+
+Completed locally:
+
+* ``py->lisp`` now accepts generic Python ``Mapping``, ``Sequence``, and
+  ``Set`` implementations, while preserving strings, binary buffers, and
+  existing Basilisp persistent collections as host/persistent values rather
+  than over-converting them. This extends Python-native interop without adding
+  a framework dependency or changing Clojure-facing semantics.
 
 Near-term deliverable:
 

@@ -1,0 +1,13 @@
+{
+  "source_root": "upstream/src",
+  "upstream_url": "https://github.com/clojure/core.cache + https://github.com/clojure/core.memoize",
+  "upstream_revision": "core.cache bdf41c62ce1d2047f8d860a3bd936b85d144f2b3; core.memoize 6d0e5d9ce8e822301de34155ec095eba8c1c7f49; data.priority-map d8d20c74be6391975b15029c143b8694f750f521",
+  "substitutions": [
+    "clojure.data.priority-map upstream source loaded only for the Clojure runtime",
+    "clojure.core.cache upstream source loaded only for the Clojure runtime",
+    "clojure.core.memoize upstream source loaded only for the Clojure runtime",
+    "clojure.core.cache -> basilisp.core.cache for the Basilisp runtime",
+    "clojure.core.memoize -> basilisp.core.memoize for the Basilisp runtime",
+    "JVM SoftReference cache operations remain excluded from the portable acceptance contract"
+  ]
+}

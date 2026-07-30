@@ -1,0 +1,497 @@
+(ns basilisp.core.async
+  "Compatibility facade for the portable subset of ``clojure.core.async``.
+
+  This namespace intentionally wraps Basilisp's ``asyncio``-native
+  ``basilisp.concurrent`` channel runtime. Parking macros, blocking operations,
+  mix, async pipeline variants, and compiler-backed ``go`` blocks are not
+  implemented here yet."
+  (:refer-basilisp :exclude [into reduce take transduce])
+  (:require [basilisp.concurrent :as concurrent])
+  (:import asyncio))
+
+(def ^:private buffer-key :basilisp.core.async/buffer)
+(def ^:private fixed-policy :fixed)
+(def ^:private dropping-policy :dropping)
+(def ^:private sliding-policy :sliding)
+
+(defn- positive-capacity
+  [capacity buffer-kind]
+  (when-not (pos-int? capacity)
+    (throw (ex-info (str buffer-kind " requires a positive integer capacity")
+                    {:capacity capacity
+                     :buffer-kind buffer-kind})))
+  capacity)
+
+(defn- buffer-descriptor
+  [policy capacity]
+  {buffer-key true
+   :policy    policy
+   :capacity  (positive-capacity capacity policy)})
+
+(defn- buffer-descriptor?
+  [value]
+  (and (map? value)
+       (true? (get value buffer-key))
+       (contains? value :policy)
+       (contains? value :capacity)))
+
+(defn buffer
+  "Create a fixed buffer descriptor for ``chan``."
+  [capacity]
+  (buffer-descriptor fixed-policy capacity))
+
+(defn dropping-buffer
+  "Create a dropping buffer descriptor for ``chan``."
+  [capacity]
+  (buffer-descriptor dropping-policy capacity))
+
+(defn sliding-buffer
+  "Create a sliding buffer descriptor for ``chan``."
+  [capacity]
+  (buffer-descriptor sliding-policy capacity))
+
+(defn- unsupported-channel-transducer
+  [xform]
+  (throw (ex-info "clojure.core.async channel transducers are not implemented; use pipeline for now"
+                  {:xform xform})))
+
+(defn chan
+  "Create an ``asyncio``-native channel with Clojure-shaped buffer arguments.
+
+  Supported forms:
+
+  * ``(chan)``
+  * ``(chan n)``
+  * ``(chan (buffer n))``
+  * ``(chan (dropping-buffer n))``
+  * ``(chan (sliding-buffer n))``
+
+  Channel transducers at construction time are not implemented yet."
+  ([] (concurrent/chan))
+  ([buf-or-n]
+   (cond
+     (nil? buf-or-n)
+     (concurrent/chan)
+
+     (pos-int? buf-or-n)
+     (concurrent/chan buf-or-n)
+
+     (buffer-descriptor? buf-or-n)
+     (concurrent/chan (:capacity buf-or-n) (:policy buf-or-n))
+
+     :else
+     (throw (ex-info "chan expects nil, a positive integer capacity, or a buffer descriptor"
+                     {:value buf-or-n}))))
+  ([buf-or-n xform]
+   (if (nil? xform)
+     (chan buf-or-n)
+     (unsupported-channel-transducer xform)))
+  ([buf-or-n xform _ex-handler]
+   (if (nil? xform)
+     (chan buf-or-n)
+     (unsupported-channel-transducer xform))))
+
+(defn close!
+  "Close ``channel``."
+  [channel]
+  (concurrent/close! channel))
+
+(defn offer!
+  "Try to put ``value`` on ``channel`` without waiting."
+  [channel value]
+  (concurrent/offer! channel value))
+
+(defn poll!
+  "Try to take a value from ``channel`` without waiting, returning ``nil`` when
+  no value is immediately available or the closed channel is drained."
+  [channel]
+  (concurrent/poll! channel))
+
+(defn- schedule-callback!
+  [awaitable callback]
+  (let [task (asyncio/create-task awaitable)]
+    (.add_done_callback task (fn [completed]
+                               (callback (.result completed))))
+    nil))
+
+(defn put!
+  "Put ``value`` on ``channel``.
+
+  Without a callback this returns an awaitable, matching
+  ``basilisp.concurrent/put!``. With a callback it schedules the operation on
+  the current event loop, calls the callback with ``true`` or ``false``, and
+  returns ``nil``."
+  ([channel value]
+   (concurrent/put! channel value))
+  ([channel value callback]
+   (schedule-callback! (concurrent/put! channel value) callback)))
+
+(defn take!
+  "Take a value from ``channel``.
+
+  Without a callback this returns an awaitable, matching
+  ``basilisp.concurrent/take!``. With a callback it schedules the operation on
+  the current event loop, calls the callback with the taken value or ``nil``,
+  and returns ``nil``."
+  ([channel]
+   (concurrent/take! channel))
+  ([channel callback]
+   (schedule-callback! (concurrent/take! channel) callback)))
+
+(defasync alts!
+  "Await exactly one take channel or ``[channel value]`` put operation.
+
+  This is an awaitable BaisiLisp extension until ``go`` parking support is
+  implemented."
+  [ports & opts]
+  (await (apply concurrent/alts! ports opts)))
+
+(defasync ^:private copy-coll-to-channel!
+  [channel coll close? completion]
+  (try
+    (loop [items (seq coll)]
+      (when items
+        (when (await (put! channel (first items)))
+          (recur (next items)))))
+    (finally
+      (when close?
+        (close! channel))
+      (when completion
+        (close! completion)))))
+
+(defn to-chan!
+  "Create and return a channel containing the contents of ``coll``.
+
+  The channel closes when ``coll`` is exhausted. Access to ``coll`` occurs in an
+  ``asyncio`` task and should not block."
+  [coll]
+  (let [channel (chan)]
+    (asyncio/create-task (copy-coll-to-channel! channel coll true nil))
+    channel))
+
+(defn onto-chan!
+  "Put the contents of ``coll`` into ``channel``.
+
+  By default ``channel`` closes after the items are copied; pass ``false`` as
+  ``close?`` to keep it open. Returns a completion channel which closes after
+  copying finishes."
+  ([channel coll]
+   (onto-chan! channel coll true))
+  ([channel coll close?]
+   (let [completion (chan)]
+     (asyncio/create-task (copy-coll-to-channel! channel coll close? completion))
+     completion)))
+
+(defasync ^:private merge-one!
+  [source output]
+  (loop [value (await (take! source))]
+    (when (some? value)
+      (when (await (put! output value))
+        (recur (await (take! source)))))))
+
+(defasync ^:private merge-all!
+  [sources output]
+  (try
+    (await (apply asyncio/gather
+                  (map #(asyncio/create-task (merge-one! % output)) sources)))
+    (finally
+      (close! output))))
+
+(defn merge
+  "Return a channel containing all values taken from ``channels``.
+
+  The returned channel closes after every source channel closes."
+  ([channels]
+   (merge channels nil))
+  ([channels buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (merge-all! channels output))
+     output)))
+
+(defasync ^:private split-all!
+  [pred source true-output false-output]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (let [target (if (pred value) true-output false-output)]
+          (when (await (put! target value))
+            (recur (await (take! source)))))))
+    (finally
+      (close! true-output)
+      (close! false-output))))
+
+(defn split
+  "Split values from ``channel`` into ``[true-channel false-channel]`` by
+  applying ``pred`` to each value."
+  ([pred channel]
+   (split pred channel nil nil))
+  ([pred channel true-buf-or-n false-buf-or-n]
+   (let [true-output  (chan true-buf-or-n)
+         false-output (chan false-buf-or-n)]
+     (asyncio/create-task (split-all! pred channel true-output false-output))
+     [true-output false-output])))
+
+(defasync ^:private take-values!
+  [n source output]
+  (try
+    (loop [remaining n
+           value     (when (pos? n) (await (take! source)))]
+      (when (and (pos? remaining) (some? value))
+        (when (await (put! output value))
+          (let [next-remaining (dec remaining)]
+            (recur next-remaining
+                   (when (pos? next-remaining)
+                     (await (take! source))))))))
+    (finally
+      (close! output))))
+
+(defn take
+  "Return a channel containing at most ``n`` values from ``channel``."
+  ([n channel]
+   (take n channel nil))
+  ([n channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (take-values! n channel output))
+     output)))
+
+(defasync ^:private into-result!
+  [to channel output]
+  (try
+    (loop [result to
+           value  (await (take! channel))]
+      (if (some? value)
+        (recur (conj result value) (await (take! channel)))
+        (when (some? result)
+          (await (put! output result)))))
+    (finally
+      (close! output))))
+
+(defn into
+  "Return a channel containing the collection result of conjoining all values
+  from ``channel`` onto ``to``."
+  [to channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (into-result! to channel output))
+    output))
+
+(defasync ^:private reduce-result!
+  [f init channel output]
+  (try
+    (loop [result init
+           value  (await (take! channel))]
+      (cond
+        (reduced? result)
+        (when (some? @result)
+          (await (put! output @result)))
+
+        (some? value)
+        (recur (f result value) (await (take! channel)))
+
+        :else
+        (when (some? result)
+          (await (put! output result)))))
+    (finally
+      (close! output))))
+
+(defn reduce
+  "Return a channel containing the result of reducing values from ``channel``."
+  [f init channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (reduce-result! f init channel output))
+    output))
+
+(defasync ^:private transduce-result!
+  [xform f init channel output]
+  (try
+    (let [xf (xform f)]
+      (loop [result init
+             value  (await (take! channel))]
+        (cond
+          (reduced? result)
+          (let [final (xf @result)]
+            (when (some? final)
+              (await (put! output final))))
+
+          (some? value)
+          (recur (xf result value) (await (take! channel)))
+
+          :else
+          (let [final (xf result)]
+            (when (some? final)
+              (await (put! output final)))))))
+    (finally
+      (close! output))))
+
+(defn transduce
+  "Return a channel containing the result of reducing values from ``channel``
+  with the transformation ``xform`` applied to ``f``."
+  [xform f init channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (transduce-result! xform f init channel output))
+    output))
+
+(defn- close-registered-channels!
+  [registrations]
+  (doseq [[channel close?] registrations]
+    (when close?
+      (close! channel))))
+
+(defn- registration-put-tasks
+  [registrations value]
+  (loop [entries (seq registrations)
+         tasks   []]
+    (if (seq entries)
+      (let [[channel _close?] (first entries)]
+        (recur (next entries)
+               (conj tasks [channel (asyncio/create-task
+                                      (put! channel value))])))
+      tasks)))
+
+(defasync ^:private route-to-registrations!
+  [registrations value remove!]
+  (loop [tasks (seq (registration-put-tasks registrations value))]
+    (when (seq tasks)
+      (let [[channel task] (first tasks)
+            accepted?     (await task)]
+        (when-not accepted?
+          (remove! channel))
+        (recur (next tasks))))))
+
+(defasync ^:private distribute-mult!
+  [source taps]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (let [snapshot @taps]
+          (when (seq snapshot)
+            (await (route-to-registrations!
+                    snapshot
+                    value
+                    #(swap! taps dissoc %)))))
+        (recur (await (take! source)))))
+    (finally
+      (close-registered-channels! @taps))))
+
+(defn mult
+  "Create a multiple of ``channel``.
+
+  Values from ``channel`` are copied to every registered tap. Values received
+  when there are no taps are dropped. The source channel is consumed by an
+  ``asyncio`` task created on the current event loop."
+  [channel]
+  (let [taps (atom {})]
+    {:source channel
+     :taps   taps
+     :task   (asyncio/create-task (distribute-mult! channel taps))}))
+
+(defn tap
+  "Copy values from ``mult`` onto ``channel``.
+
+  By default ``channel`` closes when the mult source closes. Pass ``false`` as
+  ``close?`` to leave it open. Returns ``channel``."
+  ([mult channel]
+   (tap mult channel true))
+  ([mult channel close?]
+   (swap! (:taps mult) assoc channel close?)
+   channel))
+
+(defn untap
+  "Disconnect ``channel`` from ``mult``."
+  [mult channel]
+  (swap! (:taps mult) dissoc channel)
+  nil)
+
+(defn untap-all
+  "Disconnect every target channel from ``mult``."
+  [mult]
+  (reset! (:taps mult) {})
+  nil)
+
+(defasync ^:private route-topic!
+  [topics topic value]
+  (let [registrations (get @topics topic)]
+    (when (seq registrations)
+      (await (route-to-registrations!
+              registrations
+              value
+              #(swap! topics update topic dissoc %))))))
+
+(defasync ^:private distribute-publication!
+  [source topic-fn topics]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (await (route-topic! topics (topic-fn value) value))
+        (recur (await (take! source)))))
+    (finally
+      (doseq [[_topic registrations] @topics]
+        (close-registered-channels! registrations)))))
+
+(defn pub
+  "Create a publication of ``channel`` partitioned by ``topic-fn``.
+
+  The optional ``buf-fn`` argument is accepted for Clojure-shaped source
+  compatibility but the current direct ``asyncio`` router does not create
+  internal topic buffers."
+  ([channel topic-fn]
+   (pub channel topic-fn (constantly nil)))
+  ([channel topic-fn buf-fn]
+   (let [topics (atom {})]
+     {:source   channel
+      :topic-fn topic-fn
+      :buf-fn   buf-fn
+      :topics   topics
+      :task     (asyncio/create-task
+                 (distribute-publication! channel topic-fn topics))})))
+
+(defn sub
+  "Subscribe ``channel`` to ``topic`` in publication ``pub``.
+
+  By default ``channel`` closes when the publication source closes. Pass
+  ``false`` as ``close?`` to leave it open. Returns ``channel``."
+  ([pub topic channel]
+   (sub pub topic channel true))
+  ([pub topic channel close?]
+   (swap! (:topics pub) update topic #(assoc (or % {}) channel close?))
+   channel))
+
+(defn unsub
+  "Unsubscribe ``channel`` from ``topic`` in publication ``pub``."
+  [pub topic channel]
+  (swap! (:topics pub) update topic dissoc channel)
+  nil)
+
+(defn unsub-all
+  "Unsubscribe all channels from publication ``pub``, or all channels from one
+  ``topic``."
+  ([pub]
+   (reset! (:topics pub) {})
+   nil)
+  ([pub topic]
+   (swap! (:topics pub) dissoc topic)
+   nil))
+
+(defn timeout
+  "Create a channel that closes after ``delay-ms`` milliseconds."
+  [delay-ms]
+  (concurrent/timeout delay-ms))
+
+(defn pipe
+  "Forward values from ``from`` to ``to`` in a caller-owned task.
+
+  ``:close?`` defaults to ``true`` and maps to
+  ``basilisp.concurrent/pipe!``'s ``:close-output`` option."
+  [from to & {:keys [close?] :or {close? true}}]
+  (concurrent/pipe! from to :close-output close?))
+
+(defn pipeline
+  "Run a synchronous transducer over channel values with bounded parallelism.
+
+  The argument order follows ``clojure.core.async/pipeline``:
+  ``parallelism``, output channel, transducer, input channel. ``:close?`` maps
+  to ``:close-output`` and ``:ex-handler`` maps to ``:on-error``."
+  [parallelism to xform from & {:keys [close? ex-handler]
+                                :or {close? true}}]
+  (concurrent/pipeline! parallelism from to xform
+                        :close-output close?
+                        :on-error ex-handler))

@@ -1,0 +1,11 @@
+{
+  "source_root": "port/src",
+  "upstream_url": "https://github.com/clojure/algo.monads",
+  "upstream_revision": "cc1fdb069049245a1226064c2fa55a65e72810a0",
+  "substitutions": [
+    "clojure.algo.monads -> basilisp.algo.monads",
+    "clojure.set -> basilisp.set",
+    "clojure.tools.macro -> basilisp.tools.macro",
+    "JVM Exception boundaries -> Python ExceptionInfo"
+  ]
+}

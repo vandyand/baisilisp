@@ -46,6 +46,10 @@
             (nil? read-result)
             nil
 
+            (and (nil? (first read-result))
+                 (= "" (second read-result)))
+            nil
+
             :else
             (let [[form source] read-result
                   evaluation    (basilisp.contrib.repl_session/evaluate-form

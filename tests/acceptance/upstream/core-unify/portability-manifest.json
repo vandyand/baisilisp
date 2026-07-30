@@ -1,0 +1,64 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "basilisp/core/unify.cljc",
+      "reader_features": [
+        "clj",
+        "cljs",
+        "default",
+        "lpy"
+      ],
+      "requires": [
+        "basilisp.walk",
+        "basilisp.zip",
+        "bind",
+        "binds",
+        "clojure.walk",
+        "clojure.zip",
+        "current",
+        "entry",
+        "expr",
+        "expression",
+        "expression1",
+        "form",
+        "k",
+        "lv-fn",
+        "sym",
+        "uv-fn",
+        "v",
+        "variable",
+        "variable-fn",
+        "varp",
+        "vb",
+        "vexpr",
+        "want-occurs",
+        "x",
+        "z"
+      ],
+      "sha256": "754c095db6b897712d0a8081e793fa576fc12d088088f96c6f0a90dd6358cf08"
+    }
+  ],
+  "substitutions": [
+    "clojure.core.unify -> basilisp.core.unify",
+    "clojure.zip -> basilisp.zip",
+    "clojure.walk -> basilisp.walk",
+    "JVM IllegalStateException occurs-check failures -> Python RuntimeError"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "cbcf559abc86e30fbad83acdb0f8ab787379ad16",
+  "upstream_url": "https://github.com/clojure/core.unify"
+}

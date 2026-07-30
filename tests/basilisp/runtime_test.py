@@ -1,5 +1,7 @@
 import platform
 import sys
+from collections import UserDict, UserList
+from collections.abc import Set
 from decimal import Decimal
 from fractions import Fraction
 
@@ -20,6 +22,20 @@ from basilisp.lang.compiler.constants import SpecialForm
 from basilisp.lang.interfaces import ISeq
 from basilisp.lang.reduced import Reduced
 from tests.basilisp.helpers import get_or_create_ns
+
+
+class CustomSet(Set):
+    def __init__(self, values):
+        self._values = frozenset(values)
+
+    def __contains__(self, value):
+        return value in self._values
+
+    def __iter__(self):
+        return iter(self._values)
+
+    def __len__(self):
+        return len(self._values)
 
 
 def test_is_supported_python_version():
@@ -706,6 +722,36 @@ class TestToLisp:
             keywordize_keys=False,
         )
 
+    def test_to_lisp_accepts_generic_python_collection_abcs(self):
+        assert lmap.map(
+            {
+                kw.keyword("a"): vec.v(1, 2),
+                kw.keyword("b"): lmap.map({kw.keyword("c"): 3}),
+                kw.keyword("s"): lset.set({"x", "y"}),
+            }
+        ) == runtime.to_lisp(
+            UserDict(
+                {
+                    "a": UserList([1, 2]),
+                    "b": UserDict({"c": 3}),
+                    "s": CustomSet(["x", "y"]),
+                }
+            )
+        )
+
+    def test_to_lisp_preserves_text_binary_and_existing_lisp_collections(self):
+        lisp_map = lmap.map({kw.keyword("a"): 1}, meta=lmap.m(source="test"))
+        lisp_vector = vec.v("a", "b", meta=lmap.m(source="test"))
+        lisp_set = lset.set({"a", "b"}, meta=lmap.m(source="test"))
+        payload = bytearray(b"abc")
+
+        assert "abc" == runtime.to_lisp("abc")
+        assert b"abc" == runtime.to_lisp(b"abc")
+        assert payload is runtime.to_lisp(payload)
+        assert lisp_map is runtime.to_lisp(lisp_map)
+        assert lisp_vector is runtime.to_lisp(lisp_vector)
+        assert lisp_set is runtime.to_lisp(lisp_set)
+
     def test_to_set(self):
         assert lset.EMPTY == runtime.to_lisp(set())
         assert lset.set({"a", 2}) == runtime.to_lisp({"a", 2})
@@ -731,16 +777,36 @@ def test_trampoline_args():
     assert (llist.l(2, 3, 4),) == args.args
 
     args = runtime._TrampolineArgs(True, llist.l(2, 3, 4))
-    assert (2, 3, 4) == args.args
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert llist.l(2, 3, 4) == recur_rest.rest
+    assert llist.l(2, 3, 4) == runtime._unwrap_rest_args(args.args)
 
     args = runtime._TrampolineArgs(False, 1, 2, 3, llist.l(4, 5, 6))
     assert (1, 2, 3, llist.l(4, 5, 6)) == args.args
 
     args = runtime._TrampolineArgs(True, 1, 2, 3, llist.l(4, 5, 6))
-    assert (1, 2, 3, 4, 5, 6) == args.args
+    assert 4 == len(args.args)
+    assert (1, 2, 3) == args.args[:3]
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert llist.l(4, 5, 6) == recur_rest.rest
+    assert llist.l(4, 5, 6) == runtime._unwrap_rest_args(args.args[3:])
 
     args = runtime._TrampolineArgs(True, 1, llist.l(2, 3, 4), 5, 6)
-    assert (1, llist.l(2, 3, 4), 5, 6) == args.args
+    assert 4 == len(args.args)
+    assert (1, llist.l(2, 3, 4), 5) == args.args[:3]
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert 6 == recur_rest.rest
+    assert 6 == runtime._unwrap_rest_args(args.args[3:])
+
+    args = runtime._TrampolineArgs(True, 1, 2, None)
+    assert 3 == len(args.args)
+    recur_rest = args.args[-1]
+    assert isinstance(recur_rest, runtime._RecurRestArgs)
+    assert recur_rest.rest is None
+    assert runtime._unwrap_rest_args(args.args[2:]) is None
 
 
 @pytest.mark.parametrize("form", runtime._SPECIAL_FORMS)

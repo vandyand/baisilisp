@@ -1317,7 +1317,7 @@ def __deftype_method_arity_to_py_ast(
     with (
         ctx.new_symbol_table(node.name, is_context_boundary=True),
         ctx.new_recur_point(
-            arity.loop_id, RecurType.METHOD, is_variadic=node.is_variadic
+            arity.loop_id, RecurType.METHOD, is_variadic=arity.is_variadic
         ),
     ):
         this_name = genname(munge(arity.this_local.name))
@@ -1828,7 +1828,9 @@ def __single_arity_fn_to_py_ast(  # pylint: disable=too-many-locals
     py_fn_name = __fn_name(ctx, lisp_fn_name) if def_name is None else munge(def_name)
     with (
         ctx.new_symbol_table(py_fn_name, is_context_boundary=True),
-        ctx.new_recur_point(method.loop_id, RecurType.FN, is_variadic=node.is_variadic),
+        ctx.new_recur_point(
+            method.loop_id, RecurType.FN, is_variadic=method.is_variadic
+        ),
     ):
         # Allow named anonymous functions to recursively call themselves
         if lisp_fn_name is not None:
@@ -2143,7 +2145,7 @@ def __multi_arity_fn_to_py_ast(  # pylint: disable=too-many-locals
         with (
             ctx.new_symbol_table(arity_name, is_context_boundary=True),
             ctx.new_recur_point(
-                arity.loop_id, RecurType.FN, is_variadic=node.is_variadic
+                arity.loop_id, RecurType.FN, is_variadic=arity.is_variadic
             ),
         ):
             # Allow named anonymous functions to recursively call themselves

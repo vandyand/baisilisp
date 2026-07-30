@@ -68,7 +68,9 @@
                                                             (recur (conj os [:short-opt o]) cs)
                                                             [(conj os [:short-opt o]) cdr]))))]
                                  (recur (into opts os) argv remaining))
-            :else (recur opts (conj argv car) cdr)))
+            :else (if subcommand
+                    (recur opts (into argv (cons car cdr)) [])
+                    (recur opts (conj argv car) cdr))))
         [opts argv]))))
 
 #?(:cljs

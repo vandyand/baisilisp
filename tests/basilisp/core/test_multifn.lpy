@@ -109,6 +109,16 @@
     (is (= {:doc "test3" :test 3} (select-keys mt3 [:doc :test])))
     (is (= "test4" (:doc mt4)))))
 
+(defmulti nulary-test
+  (fn [] :none))
+
+(defmethod nulary-test :none
+  []
+  0)
+
+(deftest nulary-multimethod-test
+  (is (= 0 (nulary-test))))
+
 (defmulti preference-cleanup-test
   :kind)
 

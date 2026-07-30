@@ -73,9 +73,29 @@ returns ``[value :default]`` without waiting. ``timeout`` creates a one-shot
 channel that closes after its delay. A cancelled ``alts!`` call removes all of
 its pending operations.
 
-Transducers, pipelines, pub/sub, and a ``go`` macro are not yet implemented.
-``defasync`` and ``await`` are the intended Python-native equivalent of the
-initial ``go``-block use case.
+``pipe!`` and ``pipeline!`` provide the first channel pipeline helpers;
+``pipeline!`` applies a synchronous transducer with bounded parallelism while
+preserving output order. Channel transducers at ``chan`` construction time and
+a ``go`` macro are not yet implemented. ``defasync`` and ``await`` remain the
+intended Python-native equivalent of the initial ``go``-block use case. See
+:ref:`core_async_design` for the proposed ``clojure.core.async``
+compatibility path.
+
+``clojure.core.async`` Compatibility Facade
+-------------------------------------------
+
+``clojure.core.async`` requires are rewritten to ``basilisp.core.async`` for
+the currently supported non-``go`` subset. The facade provides Clojure-shaped
+buffer constructors, ``chan`` argument handling, close and non-blocking
+operations, awaitable ``put!``/``take!`` with optional callback scheduling,
+``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``, and the
+non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
+``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. It
+also provides task-backed routing combinators ``mult``, ``tap``, ``untap``,
+``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. Source close
+propagation is performed by the router task on the owning event loop. The
+facade does not advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking
+``<!!``/``>!!``/``alts!!``, ``thread``, ``mix``, or async pipeline variants.
 
 Transactions
 ------------

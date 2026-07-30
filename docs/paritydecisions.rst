@@ -218,6 +218,18 @@ Synchronous evaluation interruption remains cooperative in-process; a hard
 timeout must execute in a disposable worker process rather than attempt to
 kill a Python thread.
 
+**Completed locally:** local ``io-prepl`` now terminates on ``read+string``'s
+EOF marker, serializes ``:tap`` events through the same value transformation as
+``:ret`` events, and converts value-formatter failures into structured
+``:print-eval-result`` diagnostics. These checks complement the existing remote
+``:read-eval-result`` decoding boundary.
+
+**Completed locally:** nREPL eval errors now use the same operation-phase
+boundary as pREPL: the top-level diagnostic phase is ``:execution`` while
+compiler/read-specific phase, source, and form data remain available under the
+normalized ``:data`` and ``:source`` entries. The standard nREPL ``err``/``ex``
+fields remain unchanged.
+
 Project Configuration And Builds
 --------------------------------
 
@@ -229,9 +241,10 @@ The resolver already centralizes source paths, test paths, and compiler options
 for the CLI. **Completed locally:** ``scripts/package_probe.py`` builds the
 current package into an sdist and wheel through Maturin, asserts representative
 ``.lpy`` sources are included, installs each artifact into a clean environment,
-imports ``core``, ``datafy``, and ``spec.alpha``, and verifies namespace cache
-creation. It is intentionally a black-box artifact probe rather than a unit
-test of Maturin internals.
+imports ``core``, ``concurrent``, ``datafy``, and ``spec.alpha``, checks the
+async/channel entrypoints, and verifies namespace cache creation. It is
+intentionally a black-box artifact probe rather than a unit test of Maturin
+internals.
 
 Only a failing probe justifies ``basilisp.build``. A future wrapper backend
 must delegate to the established native-extension build path, implement the
@@ -338,7 +351,9 @@ Async Pipelines And ``go``
 ^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 **Decision:** extend the local channel with Python-native pipeline helpers;
-do not claim ``core.async`` or add a ``go`` alias.
+claim only the explicitly implemented ``clojure.core.async`` facade subset,
+and do not add a ``go`` alias until parking semantics are explicitly
+implemented.
 
 The first API should live in ``basilisp.concurrent`` and be deliberately
 small: a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
@@ -370,6 +385,21 @@ joined. Only after that is stable should asynchronous mapping be considered.
 Implementing ``go`` correctly would require a compiler-produced resumable state
 machine and defined rejection for unsupported Python control flow; a macro that
 merely wraps ``defasync`` would misrepresent that contract.
+
+The staged design for moving from this Python-native surface toward a
+``clojure.core.async`` compatibility namespace is captured in
+:ref:`core_async_design`.
+
+The facade now also includes the lower-risk non-``go`` collection/channel
+combinators ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``,
+``into``, ``reduce``, and ``transduce``. These are still ``asyncio`` task-backed
+helpers and do not imply blocking or parking support.
+
+The facade additionally includes task-backed routing combinators ``mult``,
+``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, and
+``unsub-all``. These preserve the portable fan-out/topic-routing contracts
+against JVM fixtures, while keeping ``mix``, blocking bridges, async pipeline
+variants, and ``go`` parking forms outside the advertised surface.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -444,6 +474,14 @@ remain adapters outside the core diagnostic data. Fixtures now assert compiler
 and runtime diagnostic type, phase, source, and cause data across pREPL, nREPL,
 CLI, and direct human traceback rendering.
 
+Namespace cache files are performance artifacts, not semantic authority. The
+importer validates the ``.lpyc`` magic number, source timestamp, source size,
+marshaled payload readability, and decoded payload shape before executing
+cached code. Header mismatches, truncated files, corrupt marshal payloads, and
+wrong-shaped decoded payloads are treated as cache misses and recompiled from
+source. AOT artifacts remain stricter because they are source-independent
+deployment artifacts rather than local namespace caches.
+
 The analyzer already checks known abstract members for ``deftype`` and
 ``reify`` and can inspect ordinary Python signatures when
 ``:warn-on-arity-mismatch`` is active. These warnings now include a source span
@@ -479,6 +517,13 @@ consumption for iterators. ``bean`` remains a documented object projection and
 binary integrations should still be separate optional namespaces, for example
 a buffer adapter that documents byte order and mutability.
 
+``py->lisp`` may accept generic Python collection ABCs because its contract is
+already an explicit host conversion boundary. Generic mappings, sequences, and
+sets convert like their concrete ``dict``, ``list``/``tuple``, and
+``set``/``frozenset`` counterparts. Strings and binary buffers remain scalar
+host values, and existing Basilisp persistent collections are preserved so
+metadata and collection identity are not lost through accidental round trips.
+
 XML now has a bounded immutable-tree adapter for the data-oriented subset.
 Namespace/prefix fidelity, comments, processing instructions, and streaming are
 deliberately still separate work. Python's XML security guidance identifies
@@ -504,9 +549,26 @@ chunked realization over ``range``.
 There is now also a source-level multi-file library acceptance proof with a
 checked-in portability manifest and Clojure/Basilisp test-summary comparison.
 The batch acceptance gate runs the reference portable library plus the pinned
-``cognitect-anomalies``, ``math-combinatorics``, ``medley``, ``tools-cli``, and
-``tools-macro`` upstream contracts through one ``scripts/library_acceptance.py
---all`` command. A dedicated reducers fixture locks the serial
+``cognitect-anomalies``, ``math-combinatorics``, ``medley``, ``tools-cli``,
+``tools-macro``, ``algo-generic``, ``algo-monads``, ``core-unify``, and
+``core-cache-memoize`` upstream contracts through one
+``scripts/library_acceptance.py --all`` command. ``algo-generic`` is the
+multimethod/host-dispatch pressure test; ``algo-monads`` is the macro-heavy
+comprehension, symbol-macro, state/reader/writer/continuation, and transformer
+pressure test; ``core-unify`` is the pure ``.cljc`` symbolic unification and
+macro-generated-function pressure test;
+``core-cache-memoize`` is the stateful protocol-heavy cache/memoization pressure
+test over portable constructors, policy transitions, snapshots, mutation
+helpers, and protocol interop, with JVM ``SoftReference`` behavior explicitly
+excluded. ``basilisp.core.match`` now provides a Basilisp-native portable
+subset compared against ``org.clojure/core.match`` 1.1.1 for ``match``,
+``matchm``, ``match-let``, basic data patterns, application patterns, and
+as-patterns; ``matchv`` is available as a Basilisp wrapper but its JVM vector
+specialization tag machinery is not part of the cross-runtime fixture yet. The
+upstream source is still a large JVM/CLJS macro compiler with Java import
+assumptions, so JVM extension namespaces such as ``array``, ``java``, and
+``regex`` remain future compiler-pressure work rather than part of this
+portable subset. A dedicated reducers fixture locks the serial
 ``clojure.core.reducers`` subset, including the Clojure distinction between
 raw key/value map reduction and transformed map-entry reduction. The
 ``clojure.xml`` accepted subset is also locked by a shared fixture for immutable
@@ -524,7 +586,15 @@ handling, signed zero, rounding, exponent/navigation helpers, ordinary exact
 integer operations, and seeded algebraic identities. ``clojure.java.shell`` is
 locked by shared fixtures for its full public surface, result maps, stdin,
 environment override/binding, directory binding, byte output, and seeded
-commands. The next work is:
+commands. Diagnostics transport has a socket-backed nREPL guard as well as
+direct pREPL/nREPL diagnostic checks; bencode wire parsing deliberately uses
+host parsing for protocol byte counts while preserving Clojure-compatible
+numeric coercion in ``clojure.core/int``. REPL-style top-level compilation must
+target the namespace current at each form boundary after ``eval``/``ns``
+switches. Reader-backed loading has a narrower boundary: ``load-reader`` and
+``load-string`` must let an internal ``ns`` form affect later loaded forms, but
+must restore the caller's original ``*ns*`` after loading returns. The next work
+is:
 
 1. Expand the source-level acceptance corpus only when a candidate adds a new
    public portability pressure point. Keep reader conditionals limited to
@@ -532,8 +602,11 @@ commands. The next work is:
    only after a shared fixture and manifest pass. Preserve the tested Ref
    history-control contract; add an adaptive snapshot queue only if a workload
    demonstrates starvation or snapshot-retention pressure.
-2. Do not add a ``go`` macro until resumable-state-machine semantics have a separate
-   proof and rejection model.
+2. Do not add a ``go`` macro until resumable-state-machine semantics have a
+   separate proof and rejection model. ``basilisp.concurrent`` remains the
+   Python-native async/channel boundary, while ``clojure.core.async`` now
+   exposes the tested non-``go`` facade subset. Core.async parking/blocking
+   macros are not advertised as public parity surface.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 

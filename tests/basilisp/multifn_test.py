@@ -64,3 +64,16 @@ def test_multi_function():
 
     with pytest.raises(NotImplementedError):
         f("blah")
+
+
+def test_multi_function_can_dispatch_and_invoke_without_args():
+    def dispatch() -> kw.Keyword:
+        return kw.keyword("none")
+
+    def fn_none() -> str:
+        return "0"
+
+    f = multifn.MultiFunction(sym.symbol("test-nulary"), dispatch, kw.keyword("default"))
+    f.add_method(kw.keyword("none"), fn_none)
+
+    assert "0" == f()

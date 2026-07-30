@@ -1,0 +1,12 @@
+{
+  "source_root": "port/src",
+  "upstream_url": "https://github.com/clojure/algo.generic",
+  "upstream_revision": "660b62b2fd84ed4c7383e2263f1fae039a5f5435",
+  "substitutions": [
+    "clojure.algo.generic -> basilisp.algo.generic",
+    "JVM Object root dispatch -> Python object root dispatch",
+    "JVM Number dispatch -> Basilisp numeric host-type dispatch",
+    "JVM persistent collection/Future/Delay dispatch -> Basilisp interface dispatch",
+    "java.lang.Math calls -> Python math module calls"
+  ]
+}

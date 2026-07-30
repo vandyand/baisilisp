@@ -15,6 +15,8 @@ from zipfile import ZipFile
 
 _REQUIRED_SOURCES = (
     "basilisp/core.lpy",
+    "basilisp/concurrent.lpy",
+    "basilisp/algo/monads.lpy",
     "basilisp/datafy.lpy",
     "basilisp/inspector.lpy",
     "basilisp/java/io.lpy",
@@ -25,6 +27,7 @@ _REQUIRED_SOURCES = (
     "basilisp/java/javadoc.lpy",
     "basilisp/java/shell.lpy",
     "basilisp/main_compat.lpy",
+    "basilisp/core/match.lpy",
     "basilisp/math/combinatorics.lpy",
     "basilisp/parallel.lpy",
     "basilisp/repl_deps.lpy",
@@ -43,6 +46,8 @@ from basilisp.main import init
 
 init()
 core = importlib.import_module("basilisp.core")
+concurrent = importlib.import_module("basilisp.concurrent")
+algo_monads = importlib.import_module("basilisp.algo.monads")
 datafy = importlib.import_module("basilisp.datafy")
 inspector = importlib.import_module("basilisp.inspector")
 basis = importlib.import_module("basilisp.java.basis")
@@ -53,6 +58,7 @@ java_io = importlib.import_module("basilisp.java.io")
 javadoc = importlib.import_module("basilisp.java.javadoc")
 java_shell = importlib.import_module("basilisp.java.shell")
 main_compat = importlib.import_module("basilisp.main_compat")
+core_match = importlib.import_module("basilisp.core.match")
 combinatorics = importlib.import_module("basilisp.math.combinatorics")
 medley = importlib.import_module("medley.core")
 parallel = importlib.import_module("basilisp.parallel")
@@ -61,6 +67,9 @@ spec = importlib.import_module("basilisp.spec.alpha")
 test_junit = importlib.import_module("basilisp.test.junit")
 deps_interop = importlib.import_module("basilisp.tools.deps.interop")
 assert callable(datafy.datafy)
+assert callable(concurrent.chan)
+assert callable(concurrent.pipeline__BANG__)
+assert callable(algo_monads.m__PLUS__m_seq__PLUS__m)
 assert callable(inspector.tree_model)
 assert callable(basis.current_basis)
 assert callable(basis_impl.update_basis__BANG__)
@@ -70,6 +79,7 @@ assert callable(java_io.file)
 assert callable(javadoc.javadoc)
 assert callable(java_shell.sh)
 assert callable(main_compat.repl_read)
+assert callable(core_match.match)
 assert callable(combinatorics.combinations)
 assert callable(medley.deep_merge)
 assert callable(parallel.pvec)

@@ -151,6 +151,23 @@ The adapter does not recursively convert values, register specs, or change
 global ``datafy`` behavior. Attribute names, rather than attrs constructor
 aliases, are the public data keys; unknown and non-init fields are errors.
 
+.. _python_collection_interop:
+
+Python collection conversion
+----------------------------
+
+``py->lisp`` recursively converts ordinary Python data structures to Basilisp
+data. In addition to concrete ``dict``, ``list``, ``tuple``, ``set``, and
+``frozenset`` values, it accepts generic Python ``Mapping``, ``Sequence``, and
+``Set`` implementations from :external:py:mod:`collections.abc`. This lets
+small adapter objects such as ``UserDict`` and ``UserList`` cross the boundary
+without a project-specific conversion layer.
+
+String and binary values remain scalar Python values instead of being treated
+as sequences, and existing Basilisp persistent maps, vectors, and sets are
+preserved as-is. ``:keywordize-keys`` keeps its existing behavior: string keys
+in Python mappings become keywords by default and remain strings when disabled.
+
 .. _referencing_module_members:
 
 Referencing Module Members

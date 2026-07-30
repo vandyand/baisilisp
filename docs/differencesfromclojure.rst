@@ -484,6 +484,18 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   lazy sequence, multiset, direct-count, direct-index, and partition contracts
   are covered by shared Clojure/Basilisp acceptance and conformance fixtures,
   including a deterministic generated corpus.
+* :lpy:ns:`basilisp.core.match` provides a Basilisp-native portable subset of
+  ``clojure.core.match``. Shared fixtures compare ``match``, ``matchm``,
+  ``match-let``, basic literals/bindings, vector/map/seq patterns, rest
+  patterns, application patterns, and as-patterns against
+  ``org.clojure/core.match`` 1.1.1. JVM-specific extension namespaces such as
+  ``clojure.core.match.array``, ``clojure.core.match.java``, and
+  ``clojure.core.match.regex`` are not implemented.
+* :lpy:ns:`basilisp.algo.monads` ports ``clojure.algo.monads`` through
+  Basilisp's accepted ``tools.macro`` implementation. Shared source-level
+  acceptance covers public monad definitions, monadic comprehensions,
+  helper functions, writer/state/reader/continuation monads, and transformer
+  composition.
 * ``medley.core`` is available as a portable upstream-library port. Its public
   functional collection operations use Basilisp collections and Python UUID and
   regular-expression values instead of JVM implementation classes.
@@ -592,7 +604,8 @@ Basilisp includes ports of some of the standard libraries from Clojure which sho
   runners. :lpy:ns:`basilisp.test.junit` provides the standard
   ``clojure.test.junit`` XML reporter helpers. ``with-junit-output`` binds
   Basilisp's human test output off while preserving Clojure's report hook,
-  writer, counter, suite, testcase, failure, and error element behavior.
+  writer, counter, suite, testcase, failure, error element, XML escaping, and
+  caller-supplied attribute-order behavior.
 * :lpy:ns:`basilisp.template` is a port of ``clojure.template``. Shared
   fixtures cover public names, ``apply-template`` replacement boundaries,
   duplicate binding handling, short/long value lists, quoted-form walking,

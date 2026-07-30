@@ -1,0 +1,11 @@
+{
+  "source_root": "port/src",
+  "upstream_url": "https://github.com/clojure/core.unify",
+  "upstream_revision": "cbcf559abc86e30fbad83acdb0f8ab787379ad16",
+  "substitutions": [
+    "clojure.core.unify -> basilisp.core.unify",
+    "clojure.zip -> basilisp.zip",
+    "clojure.walk -> basilisp.walk",
+    "JVM IllegalStateException occurs-check failures -> Python RuntimeError"
+  ]
+}

@@ -1,0 +1,251 @@
+(ns tests.basilisp.core-async-test
+  (:import asyncio)
+  (:require [basilisp.test :refer [deftest is testing]]
+            [clojure.core.async :as async]))
+
+(defasync core-async-rendezvous-roundtrip []
+  (let [channel (async/chan)
+        putter  (asyncio/create-task (async/put! channel :value))]
+    (let [value (await (async/take! channel))]
+      [value (await putter)])))
+
+(defasync core-async-fixed-buffer-roundtrip []
+  (let [channel (async/chan (async/buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-sliding-buffer-roundtrip []
+  (let [channel (async/chan (async/sliding-buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    (await (async/put! channel :third))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-dropping-buffer-roundtrip []
+  (let [channel (async/chan (async/dropping-buffer 2))]
+    (await (async/put! channel :first))
+    (await (async/put! channel :second))
+    (await (async/put! channel :third))
+    [(await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-callback-roundtrip []
+  (let [channel (async/chan)
+        events  (atom [])]
+    (is (nil? (async/take! channel #(swap! events conj [:take %]))))
+    (is (nil? (async/put! channel :callback #(swap! events conj [:put %]))))
+    (await (asyncio/sleep 0))
+    (await (asyncio/sleep 0))
+    (await (asyncio/sleep 0))
+    @events))
+
+(defasync core-async-alts-roundtrip []
+  (let [first  (async/chan 1)
+        second (async/chan 1)]
+    (await (async/put! first :first))
+    (await (async/put! second :second))
+    (let [[value selected] (await (async/alts! [second first] :priority true))
+          [fallback port]  (await (async/alts! [(async/chan)] :default :fallback))]
+      [value (identical? selected second) fallback port])))
+
+(defasync core-async-timeout-roundtrip []
+  (let [timer (async/timeout 1)]
+    (await (async/take! timer))))
+
+(defasync core-async-pipe-roundtrip []
+  (let [source      (async/chan 2)
+        destination (async/chan 2)]
+    (await (async/put! source :first))
+    (await (async/put! source :second))
+    (async/close! source)
+    (let [runner (async/pipe source destination)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(defasync core-async-pipeline-roundtrip []
+  (let [source      (async/chan 3)
+        destination (async/chan 3)]
+    (await (async/put! source 1))
+    (await (async/put! source 2))
+    (await (async/put! source 3))
+    (async/close! source)
+    (let [runner (async/pipeline 2 destination (map inc) source)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(defasync core-async-to-chan-roundtrip []
+  (let [channel (async/to-chan! [1 2 3])]
+    [(await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-onto-chan-roundtrip []
+  (let [channel    (async/chan 2)
+        completion (async/onto-chan! channel [:first :second])]
+    (await (async/take! completion))
+    [(await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-merge-roundtrip []
+  (let [first  (async/to-chan! [1 2])
+        second (async/to-chan! [3])
+        output (async/merge [first second] 3)]
+    (sort [(await (async/take! output))
+           (await (async/take! output))
+           (await (async/take! output))])))
+
+(defasync core-async-split-roundtrip []
+  (let [[even odd] (async/split even? (async/to-chan! [1 2 3 4]) 2 2)]
+    [(await (async/take! even))
+     (await (async/take! even))
+     (await (async/take! even))
+     (await (async/take! odd))
+     (await (async/take! odd))
+     (await (async/take! odd))]))
+
+(defasync core-async-take-roundtrip []
+  (let [output (async/take 2 (async/to-chan! [1 2 3]) 2)]
+    [(await (async/take! output))
+     (await (async/take! output))
+     (await (async/take! output))]))
+
+(defasync core-async-fold-roundtrip []
+  [(await (async/take! (async/into [] (async/to-chan! [1 2 3]))))
+   (await (async/take! (async/reduce + 0 (async/to-chan! [1 2 3]))))
+   (await (async/take! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3]))))])
+
+(defasync core-async-mult-roundtrip []
+  (let [source (async/chan 2)
+        m      (async/mult source)
+        left   (async/chan 2)
+        right  (async/chan 2)
+        left-ret?  (identical? left (async/tap m left))
+        right-ret? (identical? right (async/tap m right false))]
+    (await (async/put! source :one))
+    (let [both [(await (async/take! left))
+                (await (async/take! right))]]
+      (async/untap m right)
+      (await (async/put! source :two))
+      (let [left-only [(await (async/take! left))
+                       (async/poll! right)]]
+        (await (asyncio/sleep 0))
+        (async/close! source)
+        (await (:task m))
+        (let [closed (do
+                       (await (async/take! left))
+                       (async/poll! right))]
+          [left-ret? right-ret? both left-only closed])))))
+
+(defasync core-async-mult-unbuffered-parallel-roundtrip []
+  (let [source (async/chan 1)
+        m      (async/mult source)
+        left   (async/chan)
+        right  (async/chan)]
+    (async/tap m left)
+    (async/tap m right)
+    (await (async/put! source :value))
+    (let [right-take (asyncio/create-task (async/take! right))]
+      (await (asyncio/sleep 0))
+      (let [right-value (await (asyncio/wait_for right-take 1))
+            left-value  (await (async/take! left))]
+        (async/close! source)
+        (await (:task m))
+        [right-value left-value]))))
+
+(defasync core-async-pub-roundtrip []
+  (let [source      (async/chan 4)
+        publication (async/pub source :topic)
+        alpha       (async/chan 4)
+        beta        (async/chan 4)
+        alpha-ret?  (identical? alpha (async/sub publication :a alpha))
+        beta-ret?   (identical? beta (async/sub publication :b beta false))]
+    (await (async/put! source {:topic :a :value 1}))
+    (await (async/put! source {:topic :b :value 2}))
+    (await (async/put! source {:topic :c :value 3}))
+    (let [matched [(await (async/take! alpha))
+                   (await (async/take! beta))]]
+      (async/unsub publication :b beta)
+      (await (async/put! source {:topic :b :value 4}))
+      (let [unsubbed (async/poll! beta)]
+        (await (asyncio/sleep 0))
+        (async/close! source)
+        (await (:task publication))
+        (let [closed (do
+                       (await (async/take! alpha))
+                       (async/poll! beta))]
+          [alpha-ret? beta-ret? matched unsubbed closed])))))
+
+(deftest namespace-alias-test
+  (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
+
+(deftest public-surface-test
+  (let [supported #{"buffer" "dropping-buffer" "sliding-buffer"
+                    "chan" "close!" "offer!" "poll!" "put!" "take!"
+                    "alts!" "timeout" "pipe" "pipeline"
+                    "to-chan!" "onto-chan!" "merge" "split" "take"
+                    "into" "reduce" "transduce"
+                    "mult" "tap" "untap" "untap-all"
+                    "pub" "sub" "unsub" "unsub-all"}
+        publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
+    (is (= supported publics))
+    (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
+                           "alts!!" "<!!" ">!!" "thread" "thread-call"
+                           "mix" "pipeline-async" "pipeline-blocking"]))))
+
+(deftest buffer-validation-test
+  (is (thrown? Exception (async/buffer 0)))
+  (is (thrown? Exception (async/dropping-buffer -1)))
+  (is (thrown? Exception (async/sliding-buffer "2")))
+  (is (thrown? Exception (async/chan {:capacity 1 :policy :fixed})))
+  (is (thrown? Exception (async/chan 1 (map inc)))))
+
+(deftest core-async-facade-test
+  (testing "channels and buffers"
+    (is (= [:value true] (asyncio/run (core-async-rendezvous-roundtrip))))
+    (is (= [:first :second] (asyncio/run (core-async-fixed-buffer-roundtrip))))
+    (is (= [:second :third] (asyncio/run (core-async-sliding-buffer-roundtrip))))
+    (is (= [:first :second] (asyncio/run (core-async-dropping-buffer-roundtrip)))))
+  (testing "callback-shaped put! and take!"
+    (is (= #{[:take :callback] [:put true]}
+           (set (asyncio/run (core-async-callback-roundtrip))))))
+  (testing "selection, timeout, pipe, and pipeline"
+    (is (= [:second true :fallback :default]
+           (asyncio/run (core-async-alts-roundtrip))))
+    (is (nil? (asyncio/run (core-async-timeout-roundtrip))))
+    (is (= [:first :second nil]
+           (asyncio/run (core-async-pipe-roundtrip))))
+    (is (= [2 3 4 nil]
+           (asyncio/run (core-async-pipeline-roundtrip)))))
+  (testing "collection and channel combinators"
+    (is (= [1 2 3 nil]
+           (asyncio/run (core-async-to-chan-roundtrip))))
+    (is (= [:first :second nil]
+           (asyncio/run (core-async-onto-chan-roundtrip))))
+    (is (= [1 2 3]
+           (asyncio/run (core-async-merge-roundtrip))))
+    (is (= [2 4 nil 1 3 nil]
+           (asyncio/run (core-async-split-roundtrip))))
+    (is (= [1 2 nil]
+           (asyncio/run (core-async-take-roundtrip))))
+    (is (= [[1 2 3] 6 9]
+           (asyncio/run (core-async-fold-roundtrip))))))
+
+(deftest core-async-routing-combinators-test
+  (testing "routing combinators"
+    (let [actual (asyncio/run (core-async-mult-roundtrip))]
+      (is (= [true true [:one :one] [:two nil] nil]
+             actual)))
+    (is (= [:value :value]
+           (asyncio/run (core-async-mult-unbuffered-parallel-roundtrip))))
+    (is (= [true true [{:topic :a :value 1} {:topic :b :value 2}] nil nil]
+           (asyncio/run (core-async-pub-roundtrip))))))

@@ -1,0 +1,238 @@
+(ns basilisp.core.match
+  "Portable subset of clojure.core.match for Basilisp.
+
+  This namespace intentionally implements the core data-pattern surface without
+  claiming JVM-specific extension namespaces such as clojure.core.match.array,
+  clojure.core.match.java, or clojure.core.match.regex."
+  (:refer-basilisp :exclude [compile]))
+
+(defn- wildcard-pattern?
+  [pattern]
+  (= '_ pattern))
+
+(defn- bind-pattern?
+  [pattern]
+  (and (symbol? pattern)
+       (nil? (namespace pattern))
+       (not (wildcard-pattern? pattern))))
+
+(defn- tagged-pattern?
+  [pattern tag]
+  (and (seq? pattern)
+       (= tag (second pattern))))
+
+(defn- emit-and
+  [tests]
+  (cond
+    (empty? tests) true
+    (= 1 (count tests)) (first tests)
+    :else `(and ~@tests)))
+
+(declare compile-pattern)
+
+(defn- index-of
+  [coll value]
+  (first (keep-indexed (fn [idx item]
+                         (when (= value item)
+                           idx))
+                       coll)))
+
+(defn- compile-vector-like-pattern
+  [pattern occurrence type-test count-form nth-form rest-form rest-pattern-form]
+  (let [amp-index (index-of pattern '&)]
+    (if (nil? amp-index)
+      (let [compiled (map-indexed
+                      (fn [idx child]
+                        (compile-pattern child (nth-form idx)))
+                      pattern)]
+        {:test `(and ~type-test
+                     (= ~(count pattern) ~count-form)
+                     ~@(map :test compiled))
+         :bindings (vec (mapcat :bindings compiled))})
+      (let [fixed-patterns (subvec pattern 0 amp-index)
+            rest-patterns  (subvec pattern (inc amp-index))
+            rest-pattern   (first rest-patterns)
+            compiled       (map-indexed
+                            (fn [idx child]
+                              (compile-pattern child (nth-form idx)))
+                            fixed-patterns)
+            rest-form*     (rest-form amp-index)
+            rest-compiled  (when (and rest-pattern
+                                       (not (wildcard-pattern? rest-pattern))
+                                       (not (bind-pattern? rest-pattern)))
+                             (compile-pattern (rest-pattern-form rest-pattern)
+                                              rest-form*))
+            rest-bindings  (cond
+                             (nil? rest-pattern) []
+                             (wildcard-pattern? rest-pattern) []
+                             (bind-pattern? rest-pattern)
+                             [rest-pattern rest-form*]
+                             :else
+                             (:bindings rest-compiled))
+            rest-test      (cond
+                             (or (nil? rest-pattern)
+                                 (wildcard-pattern? rest-pattern)
+                                 (bind-pattern? rest-pattern))
+                             true
+                             :else
+                             (:test rest-compiled))]
+        {:test `(and ~type-test
+                     (<= ~amp-index ~count-form)
+                     ~@(map :test compiled)
+                     ~rest-test)
+         :bindings (vec (concat (mapcat :bindings compiled) rest-bindings))}))))
+
+(defn- compile-vector-pattern
+  [pattern occurrence]
+  (compile-vector-like-pattern pattern
+                               occurrence
+                               `(vector? ~occurrence)
+                               `(count ~occurrence)
+                               (fn [idx] `(nth ~occurrence ~idx))
+                               (fn [idx] `(subvec ~occurrence ~idx))
+                               identity))
+
+(defn- compile-map-pattern
+  [pattern occurrence]
+  (let [compiled (map (fn [[k child]]
+                        (let [value-form `(get ~occurrence ~k)]
+                          (assoc (compile-pattern child value-form)
+                                 :key k)))
+                      pattern)]
+    {:test `(and (map? ~occurrence)
+                 ~@(mapcat (fn [{:keys [key test]}]
+                             [`(contains? ~occurrence ~key) test])
+                           compiled))
+     :bindings (vec (mapcat :bindings compiled))}))
+
+(defn- compile-seq-pattern
+  [pattern occurrence]
+  (compile-vector-like-pattern (vec pattern)
+                               occurrence
+                               true
+                               `(count (vec ~occurrence))
+                               (fn [idx] `(nth (vec ~occurrence) ~idx))
+                               (fn [idx] `(drop ~idx ~occurrence))
+                               (fn [rest-pattern]
+                                 (if (vector? rest-pattern)
+                                   (list rest-pattern :seq)
+                                   rest-pattern))))
+
+(defn- compile-app-pattern
+  [pattern occurrence]
+  (let [target (first pattern)
+        f      (nth pattern 2)]
+    (compile-pattern target `(~f ~occurrence))))
+
+(defn- compile-as-pattern
+  [pattern occurrence]
+  (let [target (first pattern)
+        bind   (nth pattern 2)
+        compiled (compile-pattern target occurrence)]
+    (update compiled :bindings into [bind occurrence])))
+
+(defn- compile-pattern
+  [pattern occurrence]
+  (cond
+    (wildcard-pattern? pattern)
+    {:test true :bindings []}
+
+    (bind-pattern? pattern)
+    {:test true :bindings [pattern occurrence]}
+
+    (vector? pattern)
+    (compile-vector-pattern pattern occurrence)
+
+    (map? pattern)
+    (compile-map-pattern pattern occurrence)
+
+    (tagged-pattern? pattern :seq)
+    (compile-seq-pattern (first pattern) occurrence)
+
+    (tagged-pattern? pattern :<<)
+    (compile-app-pattern pattern occurrence)
+
+    (tagged-pattern? pattern :as)
+    (compile-as-pattern pattern occurrence)
+
+    :else
+    {:test `(= ~occurrence ~pattern) :bindings []}))
+
+(defn- compile-clause
+  [occurrences pattern action next-form]
+  (if (= :else pattern)
+    action
+    (let [patterns (if (vector? pattern) pattern [pattern])
+          compiled (map compile-pattern patterns occurrences)
+          tests    (map :test compiled)
+          bindings (vec (mapcat :bindings compiled))]
+      (when-not (= (count occurrences) (count patterns))
+        (throw (ex-info "Pattern arity does not match occurrence arity"
+                        {:occurrences (count occurrences)
+                         :patterns    (count patterns)})))
+      `(if ~(emit-and tests)
+         (let [~@bindings]
+           ~action)
+         ~next-form))))
+
+(defn- compile-match
+  [vars clauses]
+  (let [pairs       (partition 2 clauses)
+        occurrences (vec (repeatedly (count vars) #(gensym "ocr__")))
+        no-match    `(throw (ex-info "No match found." {:occurrences [~@occurrences]}))
+        body        (reduce (fn [next-form [pattern action]]
+                              (compile-clause occurrences pattern action next-form))
+                            no-match
+                            (reverse pairs))]
+    `(let [~@(mapcat vector occurrences vars)]
+       ~body)))
+
+(defmacro match
+  "Pattern match one or more occurrences against clause/action pairs.
+
+  This Basilisp implementation covers the portable core data-pattern subset:
+  literals, wildcards, named bindings, vectors, vector rest, maps, seq patterns,
+  application patterns, and as-patterns."
+  [vars & clauses]
+  (let [[vars clauses] (if (vector? vars)
+                         [vars clauses]
+                         [(vector vars)
+                          (mapcat (fn [[pattern action]]
+                                    [(if (= :else pattern)
+                                       pattern
+                                       (vector pattern))
+                                     action])
+                                  (partition 2 clauses))])]
+    (compile-match vars clauses)))
+
+(defmacro matchv
+  "Like clojure.core.match/matchv for portable vector-like patterns.
+
+  Basilisp currently accepts the type selector for source compatibility and
+  ignores JVM-specific primitive-array specialization."
+  [_type vars & clauses]
+  (compile-match vars clauses))
+
+(defmacro matchm
+  "Like clojure.core.match/match, with map matching enabled.
+
+  Basilisp maps already satisfy the portable lookup behavior implemented here,
+  so this currently delegates to match semantics."
+  [vars & clauses]
+  (let [[vars clauses] (if (vector? vars)
+                         [vars clauses]
+                         [(vector vars)
+                          (mapcat (fn [[pattern action]]
+                                    [(if (= :else pattern)
+                                       pattern
+                                       (vector pattern))
+                                     action])
+                                  (partition 2 clauses))])]
+    (compile-match vars clauses)))
+
+(defmacro match-let
+  [bindings & body]
+  (let [bind-vars (take-nth 2 bindings)]
+    `(let ~bindings
+       (match [~@bind-vars]
+         ~@body))))

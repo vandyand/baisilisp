@@ -9,7 +9,8 @@ def test_parity_proofs_workflow_runs_sharded_differential_conformance():
 
     assert "0, 1, 2, 3, 4, 5, 6, 7" in workflow
     assert "24, 25, 26, 27, 28, 29, 30, 31" in workflow
-    assert "max-parallel: 8" in workflow
+    assert "max-parallel: 4" in workflow
+    assert "scripts/prefetch_clojure_deps.py differential" in workflow
     assert "scripts/differential_conformance.py" in workflow
     assert "--disable-basilisp-ns-cache" in workflow
     assert "--shard-count 32" in workflow
@@ -24,6 +25,7 @@ def test_parity_proofs_workflow_runs_sharded_library_acceptance():
 
     assert "shard-index: [0, 1, 2]" in workflow
     assert "scripts/library_acceptance.py" in workflow
+    assert "scripts/prefetch_clojure_deps.py library" in workflow
     assert "--all" in workflow
     assert "--disable-basilisp-ns-cache" in workflow
     assert "--shard-count 3" in workflow
