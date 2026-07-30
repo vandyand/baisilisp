@@ -3,7 +3,7 @@
 
   This namespace intentionally wraps Basilisp's ``asyncio``-native
   ``basilisp.concurrent`` channel runtime. Parking macros, blocking operations,
-  mix, async pipeline variants, and compiler-backed ``go`` blocks are not
+  async pipeline variants, and compiler-backed ``go`` blocks are not
   implemented here yet."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
@@ -470,6 +470,155 @@
   ([pub topic]
    (swap! (:topics pub) dissoc topic)
    nil))
+
+(defn- mix-state?
+  [state mode]
+  (true? (get state mode)))
+
+(defn- mix-has-solo?
+  [inputs]
+  (loop [entries (seq inputs)]
+    (when (seq entries)
+      (let [[_channel state] (first entries)]
+        (if (mix-state? state :solo)
+          true
+          (recur (next entries)))))))
+
+(defn- mix-routes
+  [inputs solo-mode]
+  (let [has-solo? (boolean (mix-has-solo? inputs))]
+    (loop [entries (seq inputs)
+           routes  {}]
+      (if (seq entries)
+        (let [[channel state] (first entries)
+              solo?          (mix-state? state :solo)
+              paused?        (mix-state? state :pause)
+              muted?         (mix-state? state :mute)]
+          (cond
+            solo?
+            (recur (next entries) (assoc routes channel {:mute? false}))
+
+            has-solo?
+            (if (= :pause solo-mode)
+              (recur (next entries) routes)
+              (recur (next entries) (assoc routes channel {:mute? true})))
+
+            paused?
+            (recur (next entries) routes)
+
+            :else
+            (recur (next entries) (assoc routes channel {:mute? muted?}))))
+        routes))))
+
+(defn- mix-ports
+  [routes change]
+  (loop [channels (seq (keys routes))
+         ports    [change]]
+    (if (seq channels)
+      (recur (next channels) (conj ports (first channels)))
+      ports)))
+
+(defn- signal-mix!
+  [mix]
+  (offer! (:change mix) true)
+  false)
+
+(defn- merge-mix-state
+  [current updates]
+  (loop [entries (seq updates)
+         state   current]
+    (if (seq entries)
+      (let [[k v] (first entries)]
+        (recur (next entries) (assoc state k v)))
+      state)))
+
+(defasync ^:private distribute-mix!
+  [mix]
+  (let [output    (:output mix)
+        inputs    (:inputs mix)
+        mode      (:solo-mode mix)
+        change    (:change mix)]
+    (loop []
+      (let [routes          (mix-routes @inputs @mode)
+            [value source]  (await (alts! (mix-ports routes change)
+                                          :priority true))]
+        (cond
+          (identical? source change)
+          (recur)
+
+          (nil? value)
+          (do
+            (swap! inputs dissoc source)
+            (recur))
+
+          (:mute? (get routes source))
+          (recur)
+
+          (await (put! output value))
+          (recur)
+
+          :else
+          nil)))))
+
+(defn mix
+  "Create a mix of input channels which will be put on ``out``.
+
+  Inputs are added with ``admix`` or ``toggle`` and removed with ``unmix`` or
+  ``unmix-all``. Channel state maps support Clojure's ``:solo``, ``:mute``,
+  and ``:pause`` flags. The router task is owned by the current event loop."
+  [out]
+  (let [mix {:output    out
+             :inputs    (atom {})
+             :solo-mode (atom :mute)
+             :change    (chan (sliding-buffer 1))}]
+    (assoc mix :task (asyncio/create-task (distribute-mix! mix)))))
+
+(defn admix
+  "Add ``channel`` as an input to ``mix``."
+  [mix channel]
+  (swap! (:inputs mix) update channel #(or % {}))
+  (signal-mix! mix))
+
+(defn unmix
+  "Remove ``channel`` as an input from ``mix``."
+  [mix channel]
+  (swap! (:inputs mix) dissoc channel)
+  (signal-mix! mix))
+
+(defn unmix-all
+  "Remove all inputs from ``mix``."
+  [mix]
+  (reset! (:inputs mix) {})
+  (signal-mix! mix))
+
+(defn toggle
+  "Merge channel state updates into ``mix``.
+
+  ``state-map`` maps channels to maps containing any of ``:solo``, ``:mute``,
+  or ``:pause`` boolean flags. Supplying a channel not already in the mix adds
+  it with the supplied state."
+  [mix state-map]
+  (swap! (:inputs mix)
+         (fn [inputs]
+           (loop [updates (seq state-map)
+                  inputs  inputs]
+             (if (seq updates)
+               (let [[channel state] (first updates)]
+                 (recur (next updates)
+                        (assoc inputs channel
+                               (merge-mix-state
+                                (get inputs channel {})
+                                state))))
+               inputs))))
+  (signal-mix! mix))
+
+(defn solo-mode
+  "Set ``mix`` solo mode to ``:mute`` or ``:pause``."
+  [mix mode]
+  (when-not (contains? #{:mute :pause} mode)
+    (throw (ex-info "solo-mode expects :mute or :pause" {:mode mode})))
+  (reset! (:solo-mode mix) mode)
+  (signal-mix! mix))
 
 (defn timeout
   "Create a channel that closes after ``delay-ms`` milliseconds."

@@ -92,10 +92,11 @@ operations, awaitable ``put!``/``take!`` with optional callback scheduling,
 non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
 ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. It
 also provides task-backed routing combinators ``mult``, ``tap``, ``untap``,
-``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. Source close
-propagation is performed by the router task on the owning event loop. The
-facade does not advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking
-``<!!``/``>!!``/``alts!!``, ``thread``, ``mix``, or async pipeline variants.
+``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``,
+``admix``, ``unmix``, ``unmix-all``, ``toggle``, and ``solo-mode``. Source
+close propagation is performed by the router task on the owning event loop.
+The facade does not advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking
+``<!!``/``>!!``/``alts!!``, ``thread``, or async pipeline variants.
 
 Transactions
 ------------

@@ -18,12 +18,14 @@
      to-chan! onto-chan! merge split take
      into reduce transduce
      mult tap untap untap-all
-     pub sub unsub unsub-all})
+     pub sub unsub unsub-all
+     mix admix unmix unmix-all
+     toggle solo-mode})
 
 (def unsupported-parking-and-blocking-publics
   '#{go go-loop <! >! alt!
      <!! >!! alts!! thread thread-call
-     mix pipeline-async pipeline-blocking})
+     pipeline-async pipeline-blocking})
 
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
@@ -384,9 +386,171 @@
            (async/close! source)
            (await (:task publication))
            (let [closed (do
-                          (await (async/take! alpha))
+                           (await (async/take! alpha))
                           (async/poll! beta))]
              [alpha-ret? beta-ret? matched unsubbed closed]))))))
+
+#?(:clj
+   (defn mix-roundtrip []
+     (let [out (async/chan 10)
+           x   (async/chan 10)
+           y   (async/chan 10)
+           mx  (async/mix out)]
+       (async/admix mx x)
+       (async/admix mx y)
+       (async/>!! x :x1)
+       (let [basic (async/<!! out)]
+         (async/toggle mx {x {:mute true}})
+         (async/>!! x :x-muted)
+         (async/>!! y :y-after-mute)
+         (let [mute [(async/<!! out)
+                     (do
+                       (Thread/sleep 50)
+                       (async/poll! out))]]
+           (async/toggle mx {x {:mute false :pause true}})
+           (async/>!! x :x-paused)
+           (async/>!! y :y-after-pause)
+           (let [pause-before [(async/<!! out)
+                               (do
+                                 (Thread/sleep 50)
+                                 (async/poll! out))]]
+             (async/toggle mx {x {:pause false}})
+             [basic mute pause-before (async/<!! out)])))))
+
+   :lpy
+   (defasync mix-roundtrip []
+     (let [out (async/chan 10)
+           x   (async/chan 10)
+           y   (async/chan 10)
+           mx  (async/mix out)]
+       (async/admix mx x)
+       (async/admix mx y)
+       (await (async/put! x :x1))
+       (let [basic (await (async/take! out))]
+         (async/toggle mx {x {:mute true}})
+         (await (async/put! x :x-muted))
+         (await (async/put! y :y-after-mute))
+         (let [mute [(await (async/take! out))
+                     (do
+                       (await (asyncio/sleep 0))
+                       (async/poll! out))]]
+           (async/toggle mx {x {:mute false :pause true}})
+           (await (async/put! x :x-paused))
+           (await (async/put! y :y-after-pause))
+           (let [pause-before [(await (async/take! out))
+                               (do
+                                 (await (asyncio/sleep 0))
+                                 (async/poll! out))]]
+             (async/toggle mx {x {:pause false}})
+             [basic mute pause-before (await (async/take! out))]))))))
+
+#?(:clj
+   (defn mix-solo-roundtrip []
+     (let [default-out (async/chan 10)
+           default-x   (async/chan 10)
+           default-y   (async/chan 10)
+           default-mx  (async/mix default-out)]
+       (async/admix default-mx default-x)
+       (async/admix default-mx default-y)
+       (async/toggle default-mx {default-x {:solo true}})
+       (Thread/sleep 50)
+       (async/>!! default-y :y-default-solo)
+       (async/>!! default-x :x-default-solo)
+       (let [default-solo [(async/<!! default-out)
+                           (do
+                             (Thread/sleep 50)
+                             (async/poll! default-out))]]
+         (async/toggle default-mx {default-x {:solo false}})
+         (let [default-after (do
+                               (Thread/sleep 50)
+                               (async/poll! default-out))
+               pause-out     (async/chan 10)
+               pause-x       (async/chan 10)
+               pause-y       (async/chan 10)
+               pause-mx      (async/mix pause-out)]
+           (async/admix pause-mx pause-x)
+           (async/admix pause-mx pause-y)
+           (async/solo-mode pause-mx :pause)
+           (async/toggle pause-mx {pause-x {:solo true}})
+           (Thread/sleep 50)
+           (async/>!! pause-y :y-paused-solo)
+           (async/>!! pause-x :x-paused-solo)
+           (let [pause-solo [(async/<!! pause-out)
+                             (do
+                               (Thread/sleep 50)
+                               (async/poll! pause-out))]]
+             (async/toggle pause-mx {pause-x {:solo false}})
+             [default-solo
+              default-after
+              pause-solo
+              (async/<!! pause-out)])))))
+
+   :lpy
+   (defasync mix-solo-roundtrip []
+     (let [default-out (async/chan 10)
+           default-x   (async/chan 10)
+           default-y   (async/chan 10)
+           default-mx  (async/mix default-out)]
+       (async/admix default-mx default-x)
+       (async/admix default-mx default-y)
+       (async/toggle default-mx {default-x {:solo true}})
+       (await (asyncio/sleep 0))
+       (await (async/put! default-y :y-default-solo))
+       (await (async/put! default-x :x-default-solo))
+       (let [default-solo [(await (async/take! default-out))
+                           (do
+                             (await (asyncio/sleep 0))
+                             (async/poll! default-out))]]
+         (async/toggle default-mx {default-x {:solo false}})
+         (let [default-after (do
+                               (await (asyncio/sleep 0))
+                               (async/poll! default-out))
+               pause-out     (async/chan 10)
+               pause-x       (async/chan 10)
+               pause-y       (async/chan 10)
+               pause-mx      (async/mix pause-out)]
+           (async/admix pause-mx pause-x)
+           (async/admix pause-mx pause-y)
+           (async/solo-mode pause-mx :pause)
+           (async/toggle pause-mx {pause-x {:solo true}})
+           (await (asyncio/sleep 0))
+           (await (async/put! pause-y :y-paused-solo))
+           (await (async/put! pause-x :x-paused-solo))
+           (let [pause-solo [(await (async/take! pause-out))
+                             (do
+                               (await (asyncio/sleep 0))
+                               (async/poll! pause-out))]]
+             (async/toggle pause-mx {pause-x {:solo false}})
+              [default-solo
+               default-after
+               pause-solo
+               (await (async/take! pause-out))]))))))
+
+#?(:clj
+   (defn mix-toggle-add-roundtrip []
+     (let [out (async/chan 10)
+           x   (async/chan 10)
+           mx  (async/mix out)]
+       (async/toggle mx {x {:pause true}})
+       (async/>!! x :added-paused)
+       (let [before (do
+                      (Thread/sleep 50)
+                      (async/poll! out))]
+         (async/toggle mx {x {:pause false}})
+         [before (async/<!! out)])))
+
+   :lpy
+   (defasync mix-toggle-add-roundtrip []
+     (let [out (async/chan 10)
+           x   (async/chan 10)
+           mx  (async/mix out)]
+       (async/toggle mx {x {:pause true}})
+       (await (async/put! x :added-paused))
+       (let [before (do
+                      (await (asyncio/sleep 0))
+                      (async/poll! out))]
+         (async/toggle mx {x {:pause false}})
+         [before (await (async/take! out))]))))
 
 (emit-case :core-async-public-surface
            (supported-public-surface))
@@ -431,6 +595,12 @@
 
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)
-                    (pub-roundtrip)]
+                    (pub-roundtrip)
+                    (mix-roundtrip)
+                    (mix-solo-roundtrip)
+                    (mix-toggle-add-roundtrip)]
               :lpy [(asyncio/run (mult-roundtrip))
-                    (asyncio/run (pub-roundtrip))]))
+                    (asyncio/run (pub-roundtrip))
+                    (asyncio/run (mix-roundtrip))
+                    (asyncio/run (mix-solo-roundtrip))
+                    (asyncio/run (mix-toggle-add-roundtrip))]))

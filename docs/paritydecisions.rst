@@ -396,10 +396,11 @@ combinators ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``,
 helpers and do not imply blocking or parking support.
 
 The facade additionally includes task-backed routing combinators ``mult``,
-``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, and
-``unsub-all``. These preserve the portable fan-out/topic-routing contracts
-against JVM fixtures, while keeping ``mix``, blocking bridges, async pipeline
-variants, and ``go`` parking forms outside the advertised surface.
+``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
+``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
+``solo-mode``. These preserve the portable fan-out/topic-routing contracts
+against JVM fixtures, while keeping blocking bridges, async pipeline variants,
+and ``go`` parking forms outside the advertised surface.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^
