@@ -83,7 +83,7 @@ The implementation is intentionally ``asyncio``-native:
 This is the right substrate. BaisiLisp now has an initial
 ``clojure.core.async`` facade for the non-``go`` subset, backed by
 ``basilisp.core.async`` and the existing channel runtime. The important missing
-pieces are blocking adapters, pub/sub-style combinators, async pipeline
+pieces are blocking adapters, ``mix``-style coordination, async pipeline
 variants, and compiler support for ``go`` parking forms.
 
 Design Principles
@@ -168,8 +168,7 @@ into one of these states:
        ``io-thread``
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
-     - ``mult``, ``tap``, ``untap``, ``pub``, ``sub``, ``unsub``,
-       ``mix``, ``admix``, ``toggle``, ``solo-mode``
+     - ``mix``, ``admix``, ``toggle``, ``solo-mode``
    * - Defer
      - Experimental or broad enough to need a separate design.
      - ``clojure.core.async.flow``
@@ -196,6 +195,8 @@ Proposed public functions/macros:
 * ``timeout``
 * ``pipe``
 * ``pipeline``
+* ``mult`` / ``tap`` / ``untap`` / ``untap-all``
+* ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
 
 The buffer constructors should return small Basilisp data objects or Python
 objects that describe policy and capacity:
@@ -344,8 +345,6 @@ After the facade and basic ``go`` subset, the best parity wins are the
 combinators that appear in real Clojure code:
 
 * ``pipeline-async``
-* ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
-* ``mult`` / ``tap`` / ``untap`` / ``untap-all``
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
   ``solo-mode``
 
@@ -420,6 +419,10 @@ The initial implementation now covers:
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
+* Add task-backed routing combinators: ``mult``, ``tap``, ``untap``,
+  ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. The current
+  publication implementation accepts ``buf-fn`` for source compatibility but
+  does not yet model per-topic internal buffers.
 
 Why this tranche first:
 
@@ -448,5 +451,5 @@ compiler-level ``go`` support:
   separate Python-native name.
 * Add rejection tests for channel transducers, blocking operations from an
   event-loop thread, and unavailable parking macros.
-* Only then choose between the blocking bridge tranche, higher-level routing
-  combinators, and the minimal coroutine-backed ``go`` tranche.
+* Only then choose between the blocking bridge tranche, ``mix``/async-pipeline
+  lifecycle combinators, and the minimal coroutine-backed ``go`` tranche.

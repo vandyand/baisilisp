@@ -16,12 +16,14 @@
      chan close! offer! poll! put! take!
      alts! timeout pipe pipeline
      to-chan! onto-chan! merge split take
-     into reduce transduce})
+     into reduce transduce
+     mult tap untap untap-all
+     pub sub unsub unsub-all})
 
 (def unsupported-parking-and-blocking-publics
   '#{go go-loop <! >! alt!
      <!! >!! alts!! thread thread-call
-     pub sub mult mix pipeline-async pipeline-blocking})
+     mix pipeline-async pipeline-blocking})
 
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
@@ -296,6 +298,96 @@
         (await (async/take! destination))
         (await (async/take! destination))])))
 
+#?(:clj
+   (defn mult-roundtrip []
+     (let [source (async/chan 2)
+           m      (async/mult source)
+           left   (async/chan 2)
+           right  (async/chan 2)
+           left-ret?  (identical? left (async/tap m left))
+           right-ret? (identical? right (async/tap m right false))]
+       (async/>!! source :one)
+       (let [both [(async/<!! left)
+                   (async/<!! right)]]
+         (async/untap m right)
+         (async/>!! source :two)
+         (let [left-only [(async/<!! left)
+                          (async/poll! right)]]
+           (async/close! source)
+           (let [closed (do
+                          (async/<!! left)
+                          (async/poll! right))]
+             [left-ret? right-ret? both left-only closed])))))
+
+   :lpy
+   (defasync mult-roundtrip []
+     (let [source (async/chan 2)
+           m      (async/mult source)
+           left   (async/chan 2)
+           right  (async/chan 2)
+           left-ret?  (identical? left (async/tap m left))
+           right-ret? (identical? right (async/tap m right false))]
+       (await (async/put! source :one))
+       (let [both [(await (async/take! left))
+                   (await (async/take! right))]]
+         (async/untap m right)
+         (await (async/put! source :two))
+         (let [left-only [(await (async/take! left))
+                          (async/poll! right)]]
+           (await (asyncio/sleep 0))
+           (async/close! source)
+           (await (:task m))
+           (let [closed (do
+                          (await (async/take! left))
+                          (async/poll! right))]
+             [left-ret? right-ret? both left-only closed]))))))
+
+#?(:clj
+   (defn pub-roundtrip []
+     (let [source      (async/chan 4)
+           publication (async/pub source :topic)
+           alpha       (async/chan 4)
+           beta        (async/chan 4)
+           alpha-ret?  (identical? alpha (async/sub publication :a alpha))
+           beta-ret?   (identical? beta (async/sub publication :b beta false))]
+       (async/>!! source {:topic :a :value 1})
+       (async/>!! source {:topic :b :value 2})
+       (async/>!! source {:topic :c :value 3})
+       (let [matched [(async/<!! alpha)
+                      (async/<!! beta)]]
+         (async/unsub publication :b beta)
+         (async/>!! source {:topic :b :value 4})
+         (let [unsubbed (async/poll! beta)]
+           (async/close! source)
+           (let [closed (do
+                          (async/<!! alpha)
+                          (async/poll! beta))]
+             [alpha-ret? beta-ret? matched unsubbed closed])))))
+
+   :lpy
+   (defasync pub-roundtrip []
+     (let [source      (async/chan 4)
+           publication (async/pub source :topic)
+           alpha       (async/chan 4)
+           beta        (async/chan 4)
+           alpha-ret?  (identical? alpha (async/sub publication :a alpha))
+           beta-ret?   (identical? beta (async/sub publication :b beta false))]
+       (await (async/put! source {:topic :a :value 1}))
+       (await (async/put! source {:topic :b :value 2}))
+       (await (async/put! source {:topic :c :value 3}))
+       (let [matched [(await (async/take! alpha))
+                      (await (async/take! beta))]]
+         (async/unsub publication :b beta)
+         (await (async/put! source {:topic :b :value 4}))
+         (let [unsubbed (async/poll! beta)]
+           (await (asyncio/sleep 0))
+           (async/close! source)
+           (await (:task publication))
+           (let [closed (do
+                          (await (async/take! alpha))
+                          (async/poll! beta))]
+             [alpha-ret? beta-ret? matched unsubbed closed]))))))
+
 (emit-case :core-async-public-surface
            (supported-public-surface))
 
@@ -336,3 +428,9 @@
                     (asyncio/run (split-roundtrip))
                     (asyncio/run (take-roundtrip))
                     (asyncio/run (fold-roundtrip))]))
+
+(emit-case :core-async-routing-combinators
+           #?(:clj [(mult-roundtrip)
+                    (pub-roundtrip)]
+              :lpy [(asyncio/run (mult-roundtrip))
+                    (asyncio/run (pub-roundtrip))]))

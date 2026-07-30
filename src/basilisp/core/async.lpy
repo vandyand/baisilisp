@@ -3,8 +3,8 @@
 
   This namespace intentionally wraps Basilisp's ``asyncio``-native
   ``basilisp.concurrent`` channel runtime. Parking macros, blocking operations,
-  pub/sub, mult/mix, and compiler-backed ``go`` blocks are not implemented here
-  yet."
+  mix, async pipeline variants, and compiler-backed ``go`` blocks are not
+  implemented here yet."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
   (:import asyncio))
@@ -329,6 +329,147 @@
   (let [output (chan 1)]
     (asyncio/create-task (transduce-result! xform f init channel output))
     output))
+
+(defn- close-registered-channels!
+  [registrations]
+  (doseq [[channel close?] registrations]
+    (when close?
+      (close! channel))))
+
+(defn- registration-put-tasks
+  [registrations value]
+  (loop [entries (seq registrations)
+         tasks   []]
+    (if (seq entries)
+      (let [[channel _close?] (first entries)]
+        (recur (next entries)
+               (conj tasks [channel (asyncio/create-task
+                                      (put! channel value))])))
+      tasks)))
+
+(defasync ^:private route-to-registrations!
+  [registrations value remove!]
+  (loop [tasks (seq (registration-put-tasks registrations value))]
+    (when (seq tasks)
+      (let [[channel task] (first tasks)
+            accepted?     (await task)]
+        (when-not accepted?
+          (remove! channel))
+        (recur (next tasks))))))
+
+(defasync ^:private distribute-mult!
+  [source taps]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (let [snapshot @taps]
+          (when (seq snapshot)
+            (await (route-to-registrations!
+                    snapshot
+                    value
+                    #(swap! taps dissoc %)))))
+        (recur (await (take! source)))))
+    (finally
+      (close-registered-channels! @taps))))
+
+(defn mult
+  "Create a multiple of ``channel``.
+
+  Values from ``channel`` are copied to every registered tap. Values received
+  when there are no taps are dropped. The source channel is consumed by an
+  ``asyncio`` task created on the current event loop."
+  [channel]
+  (let [taps (atom {})]
+    {:source channel
+     :taps   taps
+     :task   (asyncio/create-task (distribute-mult! channel taps))}))
+
+(defn tap
+  "Copy values from ``mult`` onto ``channel``.
+
+  By default ``channel`` closes when the mult source closes. Pass ``false`` as
+  ``close?`` to leave it open. Returns ``channel``."
+  ([mult channel]
+   (tap mult channel true))
+  ([mult channel close?]
+   (swap! (:taps mult) assoc channel close?)
+   channel))
+
+(defn untap
+  "Disconnect ``channel`` from ``mult``."
+  [mult channel]
+  (swap! (:taps mult) dissoc channel)
+  nil)
+
+(defn untap-all
+  "Disconnect every target channel from ``mult``."
+  [mult]
+  (reset! (:taps mult) {})
+  nil)
+
+(defasync ^:private route-topic!
+  [topics topic value]
+  (let [registrations (get @topics topic)]
+    (when (seq registrations)
+      (await (route-to-registrations!
+              registrations
+              value
+              #(swap! topics update topic dissoc %))))))
+
+(defasync ^:private distribute-publication!
+  [source topic-fn topics]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (await (route-topic! topics (topic-fn value) value))
+        (recur (await (take! source)))))
+    (finally
+      (doseq [[_topic registrations] @topics]
+        (close-registered-channels! registrations)))))
+
+(defn pub
+  "Create a publication of ``channel`` partitioned by ``topic-fn``.
+
+  The optional ``buf-fn`` argument is accepted for Clojure-shaped source
+  compatibility but the current direct ``asyncio`` router does not create
+  internal topic buffers."
+  ([channel topic-fn]
+   (pub channel topic-fn (constantly nil)))
+  ([channel topic-fn buf-fn]
+   (let [topics (atom {})]
+     {:source   channel
+      :topic-fn topic-fn
+      :buf-fn   buf-fn
+      :topics   topics
+      :task     (asyncio/create-task
+                 (distribute-publication! channel topic-fn topics))})))
+
+(defn sub
+  "Subscribe ``channel`` to ``topic`` in publication ``pub``.
+
+  By default ``channel`` closes when the publication source closes. Pass
+  ``false`` as ``close?`` to leave it open. Returns ``channel``."
+  ([pub topic channel]
+   (sub pub topic channel true))
+  ([pub topic channel close?]
+   (swap! (:topics pub) update topic #(assoc (or % {}) channel close?))
+   channel))
+
+(defn unsub
+  "Unsubscribe ``channel`` from ``topic`` in publication ``pub``."
+  [pub topic channel]
+  (swap! (:topics pub) update topic dissoc channel)
+  nil)
+
+(defn unsub-all
+  "Unsubscribe all channels from publication ``pub``, or all channels from one
+  ``topic``."
+  ([pub]
+   (reset! (:topics pub) {})
+   nil)
+  ([pub topic]
+   (swap! (:topics pub) dissoc topic)
+   nil))
 
 (defn timeout
   "Create a channel that closes after ``delay-ms`` milliseconds."
