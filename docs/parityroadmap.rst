@@ -219,8 +219,10 @@ Near-term deliverable:
   local tranche now adds task-backed routing combinators ``mult``, ``tap``,
   ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``,
   ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
-  ``solo-mode`` with shared JVM fixtures; blocking bridges, async pipeline
-  variants, and ``go`` remain outside the supported surface.
+  ``solo-mode`` with shared JVM fixtures. The stacked blocking-bridge tranche
+  adds ``<!!``, ``>!!``, ``alts!!``, ``thread``, and ``thread-call`` with
+  explicit same-owner-loop rejection; async pipeline variants and ``go`` remain
+  outside the supported surface.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

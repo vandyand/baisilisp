@@ -1,4 +1,5 @@
 import asyncio
+import threading
 
 import pytest
 
@@ -6,6 +7,9 @@ from basilisp.concurrent_channel import (
     DEFAULT_PORT,
     Channel,
     alts,
+    blocking_alts,
+    blocking_put,
+    blocking_take,
     pipe,
     pipeline,
     timeout,
@@ -129,6 +133,53 @@ def test_channel_cannot_be_shared_across_event_loops():
 
     with pytest.raises(RuntimeError, match="cannot be shared"):
         run(channel.take())
+
+
+def test_blocking_put_take_and_alts_on_unbound_channels():
+    channel = Channel(1)
+    assert blocking_put(channel, "value") is True
+    assert blocking_take(channel) == "value"
+
+    first = Channel(1)
+    second = Channel(1)
+    assert blocking_put(first, "first")
+    assert blocking_put(second, "second")
+    assert blocking_alts([second, first], priority=True) == ("second", second)
+    assert blocking_alts([Channel()], default="fallback") == (
+        "fallback",
+        DEFAULT_PORT,
+    )
+
+
+def test_blocking_put_can_cross_into_an_owner_event_loop():
+    async def scenario():
+        channel = Channel()
+        assert channel.offer("pre-bind") is False
+        results = []
+        worker = threading.Thread(
+            target=lambda: results.append(blocking_put(channel, "value"))
+        )
+        worker.start()
+        assert await channel.take() == "value"
+        await asyncio.sleep(0)
+        worker.join(timeout=2)
+        assert results == [True]
+
+    run(scenario())
+
+
+def test_blocking_operations_reject_the_owning_event_loop():
+    async def scenario():
+        channel = Channel(1)
+        assert await channel.put("value")
+        with pytest.raises(RuntimeError, match="owning event loop"):
+            blocking_take(channel)
+        with pytest.raises(RuntimeError, match="owning event loop"):
+            blocking_put(channel, "another")
+        with pytest.raises(RuntimeError, match="owning event loop"):
+            blocking_alts([channel])
+
+    run(scenario())
 
 
 def test_alts_selects_ready_take_by_priority_and_returns_default_without_waiting():

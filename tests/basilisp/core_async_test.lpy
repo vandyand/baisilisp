@@ -264,6 +264,48 @@
       (async/toggle mx {x {:pause false}})
       [before (await (async/take! out))])))
 
+(defn core-async-blocking-roundtrip []
+  (let [channel (async/chan 1)
+        first   (async/chan 1)
+        second  (async/chan 1)]
+    [(async/>!! channel :value)
+     (async/<!! channel)
+     (do
+       (async/>!! first :first)
+       (async/>!! second :second)
+       (let [[value selected] (async/alts!! [second first] :priority true)
+             [fallback port]  (async/alts!! [(async/chan)] :default :fallback)]
+         [value (identical? selected second) fallback port]))]))
+
+(defn core-async-thread-roundtrip []
+  (let [from-call (async/thread-call (fn [] :thread-call-result))
+        from-body (async/thread :thread-result)
+        from-nil  (async/thread nil)]
+    [(async/<!! from-call)
+     (async/<!! from-call)
+     (async/<!! from-body)
+     (async/<!! from-body)
+     (async/<!! from-nil)]))
+
+(defasync core-async-same-loop-blocking-rejected []
+  (let [channel (async/chan 1)]
+    (await (async/put! channel :value))
+    [(try
+       (async/<!! channel)
+       false
+       (catch Exception _
+         true))
+     (try
+       (async/>!! channel :another)
+       false
+       (catch Exception _
+         true))
+     (try
+       (async/alts!! [channel])
+       false
+       (catch Exception _
+         true))]))
+
 (deftest namespace-alias-test
   (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
 
@@ -276,11 +318,12 @@
                     "mult" "tap" "untap" "untap-all"
                     "pub" "sub" "unsub" "unsub-all"
                     "mix" "admix" "unmix" "unmix-all"
-                    "toggle" "solo-mode"}
+                    "toggle" "solo-mode"
+                    "<!!" ">!!" "alts!!"
+                    "thread" "thread-call"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
     (is (= supported publics))
     (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
-                           "alts!!" "<!!" ">!!" "thread" "thread-call"
                            "pipeline-async" "pipeline-blocking"]))))
 
 (deftest buffer-validation-test
@@ -336,3 +379,13 @@
            (asyncio/run (core-async-mix-solo-roundtrip))))
     (is (= [nil :added-paused]
            (asyncio/run (core-async-mix-toggle-add-roundtrip))))))
+
+(deftest core-async-blocking-bridges-test
+  (testing "blocking operations and thread helpers"
+    (is (= [true :value [:second true :fallback :default]]
+           (core-async-blocking-roundtrip)))
+    (is (= [:thread-call-result nil :thread-result nil nil]
+           (core-async-thread-roundtrip))))
+  (testing "same-loop blocking is rejected"
+    (is (= [true true true]
+           (asyncio/run (core-async-same-loop-blocking-rejected))))))

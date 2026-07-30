@@ -83,8 +83,8 @@ The implementation is intentionally ``asyncio``-native:
 This is the right substrate. BaisiLisp now has an initial
 ``clojure.core.async`` facade for the non-``go`` subset, backed by
 ``basilisp.core.async`` and the existing channel runtime. The important missing
-pieces are blocking adapters, async pipeline variants, and compiler support for
-``go`` parking forms.
+pieces are async pipeline variants and compiler support for ``go`` parking
+forms.
 
 Design Principles
 -----------------
@@ -164,8 +164,8 @@ into one of these states:
    * - Blocking bridge
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
-     - ``<!!``, ``>!!``, ``alts!!``, ``thread``, ``thread-call``,
-       ``io-thread``
+     - Covered locally for ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
+       ``thread-call``. ``io-thread`` remains out of the advertised surface.
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
      - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
@@ -200,6 +200,8 @@ Proposed public functions/macros:
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
   ``solo-mode``
+* ``<!!`` / ``>!!`` / ``alts!!``
+* ``thread`` / ``thread-call``
 
 The buffer constructors should return small Basilisp data objects or Python
 objects that describe policy and capacity:
@@ -428,6 +430,9 @@ The initial implementation now covers:
   ``unmix-all``, ``toggle``, and ``solo-mode``. The implementation supports
   Clojure's ``:mute``, ``:pause``, and ``:solo`` state maps, including both
   default solo muting and ``solo-mode :pause``.
+* Add blocking/thread bridges: ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
+  ``thread-call``. Blocking calls run against the channel's owner loop from
+  synchronous callers and reject calls from that owner loop to avoid deadlock.
 
 Why this tranche first:
 
@@ -456,5 +461,5 @@ compiler-level ``go`` support:
   separate Python-native name.
 * Add rejection tests for channel transducers, blocking operations from an
   event-loop thread, and unavailable parking macros.
-* Only then choose between the blocking bridge tranche, async-pipeline
-  lifecycle combinators, and the minimal coroutine-backed ``go`` tranche.
+* Only then choose between async-pipeline lifecycle combinators and the minimal
+  coroutine-backed ``go`` tranche.
