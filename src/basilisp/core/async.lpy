@@ -5,6 +5,7 @@
   ``basilisp.concurrent`` channel runtime. Parking macros, blocking operations,
   pub/sub, mult/mix, and compiler-backed ``go`` blocks are not implemented here
   yet."
+  (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
   (:import asyncio))
 
@@ -144,6 +145,190 @@
   implemented."
   [ports & opts]
   (await (apply concurrent/alts! ports opts)))
+
+(defasync ^:private copy-coll-to-channel!
+  [channel coll close? completion]
+  (try
+    (loop [items (seq coll)]
+      (when items
+        (when (await (put! channel (first items)))
+          (recur (next items)))))
+    (finally
+      (when close?
+        (close! channel))
+      (when completion
+        (close! completion)))))
+
+(defn to-chan!
+  "Create and return a channel containing the contents of ``coll``.
+
+  The channel closes when ``coll`` is exhausted. Access to ``coll`` occurs in an
+  ``asyncio`` task and should not block."
+  [coll]
+  (let [channel (chan)]
+    (asyncio/create-task (copy-coll-to-channel! channel coll true nil))
+    channel))
+
+(defn onto-chan!
+  "Put the contents of ``coll`` into ``channel``.
+
+  By default ``channel`` closes after the items are copied; pass ``false`` as
+  ``close?`` to keep it open. Returns a completion channel which closes after
+  copying finishes."
+  ([channel coll]
+   (onto-chan! channel coll true))
+  ([channel coll close?]
+   (let [completion (chan)]
+     (asyncio/create-task (copy-coll-to-channel! channel coll close? completion))
+     completion)))
+
+(defasync ^:private merge-one!
+  [source output]
+  (loop [value (await (take! source))]
+    (when (some? value)
+      (when (await (put! output value))
+        (recur (await (take! source)))))))
+
+(defasync ^:private merge-all!
+  [sources output]
+  (try
+    (await (apply asyncio/gather
+                  (map #(asyncio/create-task (merge-one! % output)) sources)))
+    (finally
+      (close! output))))
+
+(defn merge
+  "Return a channel containing all values taken from ``channels``.
+
+  The returned channel closes after every source channel closes."
+  ([channels]
+   (merge channels nil))
+  ([channels buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (merge-all! channels output))
+     output)))
+
+(defasync ^:private split-all!
+  [pred source true-output false-output]
+  (try
+    (loop [value (await (take! source))]
+      (when (some? value)
+        (let [target (if (pred value) true-output false-output)]
+          (when (await (put! target value))
+            (recur (await (take! source)))))))
+    (finally
+      (close! true-output)
+      (close! false-output))))
+
+(defn split
+  "Split values from ``channel`` into ``[true-channel false-channel]`` by
+  applying ``pred`` to each value."
+  ([pred channel]
+   (split pred channel nil nil))
+  ([pred channel true-buf-or-n false-buf-or-n]
+   (let [true-output  (chan true-buf-or-n)
+         false-output (chan false-buf-or-n)]
+     (asyncio/create-task (split-all! pred channel true-output false-output))
+     [true-output false-output])))
+
+(defasync ^:private take-values!
+  [n source output]
+  (try
+    (loop [remaining n
+           value     (when (pos? n) (await (take! source)))]
+      (when (and (pos? remaining) (some? value))
+        (when (await (put! output value))
+          (let [next-remaining (dec remaining)]
+            (recur next-remaining
+                   (when (pos? next-remaining)
+                     (await (take! source))))))))
+    (finally
+      (close! output))))
+
+(defn take
+  "Return a channel containing at most ``n`` values from ``channel``."
+  ([n channel]
+   (take n channel nil))
+  ([n channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (take-values! n channel output))
+     output)))
+
+(defasync ^:private into-result!
+  [to channel output]
+  (try
+    (loop [result to
+           value  (await (take! channel))]
+      (if (some? value)
+        (recur (conj result value) (await (take! channel)))
+        (when (some? result)
+          (await (put! output result)))))
+    (finally
+      (close! output))))
+
+(defn into
+  "Return a channel containing the collection result of conjoining all values
+  from ``channel`` onto ``to``."
+  [to channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (into-result! to channel output))
+    output))
+
+(defasync ^:private reduce-result!
+  [f init channel output]
+  (try
+    (loop [result init
+           value  (await (take! channel))]
+      (cond
+        (reduced? result)
+        (when (some? @result)
+          (await (put! output @result)))
+
+        (some? value)
+        (recur (f result value) (await (take! channel)))
+
+        :else
+        (when (some? result)
+          (await (put! output result)))))
+    (finally
+      (close! output))))
+
+(defn reduce
+  "Return a channel containing the result of reducing values from ``channel``."
+  [f init channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (reduce-result! f init channel output))
+    output))
+
+(defasync ^:private transduce-result!
+  [xform f init channel output]
+  (try
+    (let [xf (xform f)]
+      (loop [result init
+             value  (await (take! channel))]
+        (cond
+          (reduced? result)
+          (let [final (xf @result)]
+            (when (some? final)
+              (await (put! output final))))
+
+          (some? value)
+          (recur (xf result value) (await (take! channel)))
+
+          :else
+          (let [final (xf result)]
+            (when (some? final)
+              (await (put! output final)))))))
+    (finally
+      (close! output))))
+
+(defn transduce
+  "Return a channel containing the result of reducing values from ``channel``
+  with the transformation ``xform`` applied to ``f``."
+  [xform f init channel]
+  (let [output (chan 1)]
+    (asyncio/create-task (transduce-result! xform f init channel output))
+    output))
 
 (defn timeout
   "Create a channel that closes after ``delay-ms`` milliseconds."

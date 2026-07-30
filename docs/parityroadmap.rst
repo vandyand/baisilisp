@@ -213,7 +213,9 @@ Near-term deliverable:
   ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
   and blocking forms remain absent. The follow-up fixture now compares the
   implemented subset against JVM ``core.async`` for buffers, close/drain, nil
-  rejection, selection, timeout, pipe, and pipeline order.
+  rejection, selection, timeout, pipe, pipeline order, and the non-``go``
+  collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
+  ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

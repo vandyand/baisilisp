@@ -88,9 +88,11 @@ pub/sub, and a ``go`` macro are not yet implemented. ``defasync`` and
 the currently supported non-``go`` subset. The facade provides Clojure-shaped
 buffer constructors, ``chan`` argument handling, close and non-blocking
 operations, awaitable ``put!``/``take!`` with optional callback scheduling,
-``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. It does not
-advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking ``<!!``/``>!!``/
-``alts!!``, ``thread``, pub/sub, mult/mix, or async pipeline variants.
+``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``, and the
+non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
+``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. It
+does not advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking ``<!!``/
+``>!!``/``alts!!``, ``thread``, pub/sub, mult/mix, or async pipeline variants.
 
 Transactions
 ------------

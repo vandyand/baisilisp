@@ -14,7 +14,9 @@
 (def supported-non-go-publics
   '#{buffer dropping-buffer sliding-buffer
      chan close! offer! poll! put! take!
-     alts! timeout pipe pipeline})
+     alts! timeout pipe pipeline
+     to-chan! onto-chan! merge split take
+     into reduce transduce})
 
 (def unsupported-parking-and-blocking-publics
   '#{go go-loop <! >! alt!
@@ -29,6 +31,104 @@
    :unsupported-absent-in-basilisp?  #?(:clj true
                             :lpy (not-any? (current-publics)
                                            unsupported-parking-and-blocking-publics))})
+
+#?(:clj
+   (defn to-chan-roundtrip []
+     (let [channel (async/to-chan! [1 2 3])]
+       [(async/<!! channel)
+        (async/<!! channel)
+        (async/<!! channel)
+        (async/<!! channel)]))
+
+   :lpy
+   (defasync to-chan-roundtrip []
+     (let [channel (async/to-chan! [1 2 3])]
+       [(await (async/take! channel))
+        (await (async/take! channel))
+        (await (async/take! channel))
+        (await (async/take! channel))])))
+
+#?(:clj
+   (defn onto-chan-roundtrip []
+     (let [channel    (async/chan 2)
+           completion (async/onto-chan! channel [:first :second])]
+       (async/<!! completion)
+       [(async/<!! channel)
+        (async/<!! channel)
+        (async/<!! channel)]))
+
+   :lpy
+   (defasync onto-chan-roundtrip []
+     (let [channel    (async/chan 2)
+           completion (async/onto-chan! channel [:first :second])]
+       (await (async/take! completion))
+       [(await (async/take! channel))
+        (await (async/take! channel))
+        (await (async/take! channel))])))
+
+#?(:clj
+   (defn merge-roundtrip []
+     (let [first  (async/to-chan! [1 2])
+           second (async/to-chan! [3])
+           output (async/merge [first second] 3)]
+       (sort [(async/<!! output)
+              (async/<!! output)
+              (async/<!! output)])))
+
+   :lpy
+   (defasync merge-roundtrip []
+     (let [first  (async/to-chan! [1 2])
+           second (async/to-chan! [3])
+           output (async/merge [first second] 3)]
+       (sort [(await (async/take! output))
+              (await (async/take! output))
+              (await (async/take! output))]))))
+
+#?(:clj
+   (defn split-roundtrip []
+     (let [[even odd] (async/split even? (async/to-chan! [1 2 3 4]) 2 2)]
+       [(async/<!! even)
+        (async/<!! even)
+        (async/<!! even)
+        (async/<!! odd)
+        (async/<!! odd)
+        (async/<!! odd)]))
+
+   :lpy
+   (defasync split-roundtrip []
+     (let [[even odd] (async/split even? (async/to-chan! [1 2 3 4]) 2 2)]
+       [(await (async/take! even))
+        (await (async/take! even))
+        (await (async/take! even))
+        (await (async/take! odd))
+        (await (async/take! odd))
+        (await (async/take! odd))])))
+
+#?(:clj
+   (defn take-roundtrip []
+     (let [output (async/take 2 (async/to-chan! [1 2 3]) 2)]
+       [(async/<!! output)
+        (async/<!! output)
+        (async/<!! output)]))
+
+   :lpy
+   (defasync take-roundtrip []
+     (let [output (async/take 2 (async/to-chan! [1 2 3]) 2)]
+       [(await (async/take! output))
+        (await (async/take! output))
+        (await (async/take! output))])))
+
+#?(:clj
+   (defn fold-roundtrip []
+     [(async/<!! (async/into [] (async/to-chan! [1 2 3])))
+      (async/<!! (async/reduce + 0 (async/to-chan! [1 2 3])))
+      (async/<!! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3])))])
+
+   :lpy
+   (defasync fold-roundtrip []
+     [(await (async/take! (async/into [] (async/to-chan! [1 2 3]))))
+      (await (async/take! (async/reduce + 0 (async/to-chan! [1 2 3]))))
+      (await (async/take! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3]))))]))
 
 #?(:clj
    (defn fixed-buffer-roundtrip []
@@ -222,3 +322,17 @@
                     (asyncio/run (timeout-roundtrip))
                     (asyncio/run (pipe-roundtrip))
                     (asyncio/run (pipeline-roundtrip))]))
+
+(emit-case :core-async-collection-combinators
+           #?(:clj [(to-chan-roundtrip)
+                    (onto-chan-roundtrip)
+                    (merge-roundtrip)
+                    (split-roundtrip)
+                    (take-roundtrip)
+                    (fold-roundtrip)]
+              :lpy [(asyncio/run (to-chan-roundtrip))
+                    (asyncio/run (onto-chan-roundtrip))
+                    (asyncio/run (merge-roundtrip))
+                    (asyncio/run (split-roundtrip))
+                    (asyncio/run (take-roundtrip))
+                    (asyncio/run (fold-roundtrip))]))

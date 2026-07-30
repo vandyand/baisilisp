@@ -156,9 +156,8 @@ into one of these states:
        ``alts!`` outside ``go`` as an awaitable extension
    * - Runtime work
      - Requires new channel combinators but not compiler transformation.
-     - ``pipe``, ``pipeline``, ``pipeline-blocking``, ``to-chan!``,
-       ``onto-chan!``, ``merge``, ``split``, ``take``, ``into``,
-       ``reduce``, ``transduce``
+     - ``pipeline-blocking``, ``pipeline-async`` and larger lifecycle
+       combinators
    * - Compiler work
      - Requires ``go``/parking context or macro lowering.
      - ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, ``ioc-alts!``
@@ -344,13 +343,6 @@ Phase 5: Higher-Level Channel Operations
 After the facade and basic ``go`` subset, the best parity wins are the
 combinators that appear in real Clojure code:
 
-* ``to-chan!`` / ``onto-chan!``
-* ``merge``
-* ``split``
-* ``take``
-* ``into``
-* ``reduce``
-* ``transduce``
 * ``pipeline-async``
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
 * ``mult`` / ``tap`` / ``untap`` / ``untap-all``
@@ -425,6 +417,9 @@ The initial implementation now covers:
 * Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, blocking ops, and
   advanced combinators absent until they can be implemented or rejected with a
   stable support matrix.
+* Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
+  ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
+  These return channels and run their work in caller-owned ``asyncio`` tasks.
 
 Why this tranche first:
 
@@ -447,11 +442,11 @@ compiler-level ``go`` support:
 * Add JVM differential fixtures for buffer close/drain behavior, nil
   rejection, ``alts!`` priority/default behavior, ``pipe``, and ``pipeline``
   output order. ``tests/conformance/core_async_cases.cljc`` now covers this
-  first fixture tranche.
+  first fixture tranche plus the collection/channel combinators.
 * Decide whether ``put!``/``take!`` callback return values should remain
   strict Clojure-compatible ``nil`` or expose a BaisiLisp task handle through a
   separate Python-native name.
 * Add rejection tests for channel transducers, blocking operations from an
   event-loop thread, and unavailable parking macros.
-* Only then choose between the blocking bridge tranche and the minimal
-  coroutine-backed ``go`` tranche.
+* Only then choose between the blocking bridge tranche, higher-level routing
+  combinators, and the minimal coroutine-backed ``go`` tranche.

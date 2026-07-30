@@ -390,6 +390,11 @@ The staged design for moving from this Python-native surface toward a
 ``clojure.core.async`` compatibility namespace is captured in
 :ref:`core_async_design`.
 
+The facade now also includes the lower-risk non-``go`` collection/channel
+combinators ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``,
+``into``, ``reduce``, and ``transduce``. These are still ``asyncio`` task-backed
+helpers and do not imply blocking or parking support.
+
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^
 

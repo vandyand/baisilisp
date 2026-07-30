@@ -81,13 +81,58 @@
        (await (async/take! destination))
        (await (async/take! destination))])))
 
+(defasync core-async-to-chan-roundtrip []
+  (let [channel (async/to-chan! [1 2 3])]
+    [(await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-onto-chan-roundtrip []
+  (let [channel    (async/chan 2)
+        completion (async/onto-chan! channel [:first :second])]
+    (await (async/take! completion))
+    [(await (async/take! channel))
+     (await (async/take! channel))
+     (await (async/take! channel))]))
+
+(defasync core-async-merge-roundtrip []
+  (let [first  (async/to-chan! [1 2])
+        second (async/to-chan! [3])
+        output (async/merge [first second] 3)]
+    (sort [(await (async/take! output))
+           (await (async/take! output))
+           (await (async/take! output))])))
+
+(defasync core-async-split-roundtrip []
+  (let [[even odd] (async/split even? (async/to-chan! [1 2 3 4]) 2 2)]
+    [(await (async/take! even))
+     (await (async/take! even))
+     (await (async/take! even))
+     (await (async/take! odd))
+     (await (async/take! odd))
+     (await (async/take! odd))]))
+
+(defasync core-async-take-roundtrip []
+  (let [output (async/take 2 (async/to-chan! [1 2 3]) 2)]
+    [(await (async/take! output))
+     (await (async/take! output))
+     (await (async/take! output))]))
+
+(defasync core-async-fold-roundtrip []
+  [(await (async/take! (async/into [] (async/to-chan! [1 2 3]))))
+   (await (async/take! (async/reduce + 0 (async/to-chan! [1 2 3]))))
+   (await (async/take! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3]))))])
+
 (deftest namespace-alias-test
   (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
 
 (deftest public-surface-test
   (let [supported #{"buffer" "dropping-buffer" "sliding-buffer"
                     "chan" "close!" "offer!" "poll!" "put!" "take!"
-                    "alts!" "timeout" "pipe" "pipeline"}
+                    "alts!" "timeout" "pipe" "pipeline"
+                    "to-chan!" "onto-chan!" "merge" "split" "take"
+                    "into" "reduce" "transduce"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
     (is (= supported publics))
     (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
@@ -118,4 +163,17 @@
     (is (= [:first :second nil]
            (asyncio/run (core-async-pipe-roundtrip))))
     (is (= [2 3 4 nil]
-           (asyncio/run (core-async-pipeline-roundtrip))))))
+           (asyncio/run (core-async-pipeline-roundtrip)))))
+  (testing "collection and channel combinators"
+    (is (= [1 2 3 nil]
+           (asyncio/run (core-async-to-chan-roundtrip))))
+    (is (= [:first :second nil]
+           (asyncio/run (core-async-onto-chan-roundtrip))))
+    (is (= [1 2 3]
+           (asyncio/run (core-async-merge-roundtrip))))
+    (is (= [2 4 nil 1 3 nil]
+           (asyncio/run (core-async-split-roundtrip))))
+    (is (= [1 2 nil]
+           (asyncio/run (core-async-take-roundtrip))))
+    (is (= [[1 2 3] 6 9]
+           (asyncio/run (core-async-fold-roundtrip))))))
