@@ -20,11 +20,12 @@
      mult tap untap untap-all
      pub sub unsub unsub-all
      mix admix unmix unmix-all
-     toggle solo-mode})
+     toggle solo-mode
+     <!! >!! alts!!
+     thread thread-call})
 
 (def unsupported-parking-and-blocking-publics
   '#{go go-loop <! >! alt!
-     <!! >!! alts!! thread thread-call
      pipeline-async pipeline-blocking})
 
 (defn current-publics []
@@ -552,6 +553,56 @@
          (async/toggle mx {x {:pause false}})
          [before (await (async/take! out))]))))
 
+#?(:clj
+   (defn blocking-roundtrip []
+     (let [channel (async/chan 1)
+           first   (async/chan 1)
+           second  (async/chan 1)]
+       [(async/>!! channel :value)
+        (async/<!! channel)
+        (do
+          (async/>!! first :first)
+          (async/>!! second :second)
+          (let [[value selected] (async/alts!! [second first] :priority true)
+                [fallback port]  (async/alts!! [(async/chan)] :default :fallback)]
+            [value (identical? selected second) fallback port]))]))
+
+   :lpy
+   (defn blocking-roundtrip []
+     (let [channel (async/chan 1)
+           first   (async/chan 1)
+           second  (async/chan 1)]
+       [(async/>!! channel :value)
+        (async/<!! channel)
+        (do
+          (async/>!! first :first)
+          (async/>!! second :second)
+          (let [[value selected] (async/alts!! [second first] :priority true)
+                [fallback port]  (async/alts!! [(async/chan)] :default :fallback)]
+            [value (identical? selected second) fallback port]))])))
+
+#?(:clj
+   (defn thread-roundtrip []
+     (let [from-call (async/thread-call (fn [] :thread-call-result))
+           from-body (async/thread :thread-result)
+           from-nil  (async/thread nil)]
+       [(async/<!! from-call)
+        (async/<!! from-call)
+        (async/<!! from-body)
+        (async/<!! from-body)
+        (async/<!! from-nil)]))
+
+   :lpy
+   (defn thread-roundtrip []
+     (let [from-call (async/thread-call (fn [] :thread-call-result))
+           from-body (async/thread :thread-result)
+           from-nil  (async/thread nil)]
+       [(async/<!! from-call)
+        (async/<!! from-call)
+        (async/<!! from-body)
+        (async/<!! from-body)
+        (async/<!! from-nil)])))
+
 (emit-case :core-async-public-surface
            (supported-public-surface))
 
@@ -604,3 +655,7 @@
                     (asyncio/run (mix-roundtrip))
                     (asyncio/run (mix-solo-roundtrip))
                     (asyncio/run (mix-toggle-add-roundtrip))]))
+
+(emit-case :core-async-blocking-bridges
+           [(blocking-roundtrip)
+            (thread-roundtrip)])

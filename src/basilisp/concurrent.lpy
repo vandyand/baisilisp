@@ -1,9 +1,15 @@
 (ns basilisp.concurrent
   "Python-native concurrency helpers for Basilisp applications."
-  (:import asyncio
+  (:import atexit
+           asyncio
            basilisp.concurrent_channel
            inspect
            [basilisp.lang.futures :as futures]))
+
+(def ^:private core-async-thread-executor
+  (futures/ThreadPoolExecutor ** :thread-name-prefix "basilisp-core-async-thread"))
+
+(atexit/register #(.shutdown core-async-thread-executor ** :wait false))
 
 (defn thread-executor
   "Create a thread executor for application-owned concurrent work."
@@ -94,6 +100,41 @@
 
 (defn poll! [channel]
   (.poll channel))
+
+(defn blocking-put! [channel value]
+  (basilisp.concurrent_channel/blocking_put channel value))
+
+(defn blocking-take! [channel]
+  (basilisp.concurrent_channel/blocking_take channel))
+
+(defn blocking-close! [channel]
+  (basilisp.concurrent_channel/blocking_close channel))
+
+(defn blocking-alts!
+  [ports & {:keys [priority default] :as opts}]
+  (let [[value port] (basilisp.concurrent_channel/blocking_alts
+                      ports
+                      ** :priority (boolean priority)
+                      :default default
+                      :has-default (contains? opts :default))]
+    [value port]))
+
+(defn- deliver-thread-call-result! [output f]
+  (try
+    (let [result (f)]
+      (when (some? result)
+        (blocking-put! output result)))
+    (finally
+      (blocking-close! output))))
+
+(defn thread-call!
+  "Run zero-argument ``f`` in a worker thread and return a channel receiving
+  its non-``nil`` result before close."
+  [f]
+  (let [output (chan 1)]
+    (.submit core-async-thread-executor
+             (bound-fn* (fn [] (deliver-thread-call-result! output f))))
+    output))
 
 (defasync alts!
   "Await exactly one take channel or ``[channel value]`` put operation.

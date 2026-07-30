@@ -95,8 +95,14 @@ also provides task-backed routing combinators ``mult``, ``tap``, ``untap``,
 ``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``,
 ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and ``solo-mode``. Source
 close propagation is performed by the router task on the owning event loop.
-The facade does not advertise ``go``, ``go-loop``, ``<!``, ``>!``, blocking
-``<!!``/``>!!``/``alts!!``, ``thread``, or async pipeline variants.
+The facade does not advertise ``go``, ``go-loop``, parking ``<!``/``>!``/
+``alt!`` forms, or async pipeline variants.
+
+The Clojure blocking bridge names ``<!!``, ``>!!``, and ``alts!!`` are
+available for synchronous callers. They reject calls from the channel's owning
+running event loop to avoid deadlock. ``thread`` and ``thread-call`` run work
+on a worker thread and return a channel which receives the non-``nil`` result
+before close.
 
 Transactions
 ------------

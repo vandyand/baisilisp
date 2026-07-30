@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import random
+import threading
 from collections import deque
 from collections.abc import Callable, Iterable, Sequence
 from typing import Any
@@ -16,6 +17,8 @@ _BLOCKED = object()
 _MISSING = object()
 _NOT_READY = object()
 DEFAULT_PORT = keyword("default")
+_BLOCKING_LOOP: asyncio.AbstractEventLoop | None = None
+_BLOCKING_LOOP_LOCK = threading.Lock()
 
 
 class _Selection:
@@ -234,6 +237,108 @@ def _parse_port(port: Any) -> tuple[Channel, Any | object]:
         raise TypeError("an alts put operation must be a [channel value] pair")
     Channel._validate_value(port[1])
     return port[0], port[1]
+
+
+def _run_loop_forever(loop: asyncio.AbstractEventLoop) -> None:
+    asyncio.set_event_loop(loop)
+    loop.run_forever()
+
+
+def _blocking_loop() -> asyncio.AbstractEventLoop:
+    global _BLOCKING_LOOP  # pylint: disable=global-statement
+    with _BLOCKING_LOOP_LOCK:
+        if _BLOCKING_LOOP is None or _BLOCKING_LOOP.is_closed():
+            loop = asyncio.new_event_loop()
+            thread = threading.Thread(
+                target=_run_loop_forever,
+                args=(loop,),
+                name="basilisp-channel-blocking-loop",
+                daemon=True,
+            )
+            thread.start()
+            _BLOCKING_LOOP = loop
+        return _BLOCKING_LOOP
+
+
+def _current_running_loop() -> asyncio.AbstractEventLoop | None:
+    try:
+        return asyncio.get_running_loop()
+    except RuntimeError:
+        return None
+
+
+def _owner_loop(channels: Iterable[Channel]) -> asyncio.AbstractEventLoop:
+    owner: asyncio.AbstractEventLoop | None = None
+    for channel in channels:
+        loop = channel._loop  # pylint: disable=protected-access
+        if loop is None:
+            continue
+        if loop.is_closed() or not loop.is_running():
+            raise RuntimeError("channel owner event loop is not running")
+        if owner is None:
+            owner = loop
+        elif owner is not loop:
+            raise RuntimeError(
+                "blocking channel operations require one owner event loop"
+            )
+    return owner if owner is not None else _blocking_loop()
+
+
+def _run_blocking(
+    awaitable_factory: Callable[[], Any],
+    loop: asyncio.AbstractEventLoop,
+    operation: str,
+) -> Any:
+    current = _current_running_loop()
+    if current is loop:
+        raise RuntimeError(f"{operation} cannot block the owning event loop")
+    return asyncio.run_coroutine_threadsafe(awaitable_factory(), loop).result()
+
+
+def blocking_put(channel: Channel, value: Any) -> bool:
+    """Block until ``value`` is put on ``channel`` or the channel is closed."""
+    loop = _owner_loop([channel])
+    return bool(_run_blocking(lambda: channel.put(value), loop, "blocking put"))
+
+
+def blocking_take(channel: Channel) -> Any | None:
+    """Block until a value is taken from ``channel`` or it closes."""
+    loop = _owner_loop([channel])
+    return _run_blocking(channel.take, loop, "blocking take")
+
+
+async def _close_channel(channel: Channel) -> None:
+    channel.close()
+
+
+def blocking_close(channel: Channel) -> None:
+    """Close ``channel`` from a blocking caller."""
+    loop = _owner_loop([channel])
+    _run_blocking(lambda: _close_channel(channel), loop, "blocking close")
+
+
+def blocking_alts(
+    ports: Iterable[Any],
+    *,
+    priority: bool = False,
+    default: Any = _MISSING,
+    has_default: bool | None = None,
+) -> tuple[Any, Channel | Keyword]:
+    """Blocking counterpart to :func:`alts`."""
+    port_list = list(ports)
+    operations = [_parse_port(port) for port in port_list]
+    if has_default is None:
+        has_default = default is not _MISSING
+    if not operations and not has_default:
+        raise ValueError("alts requires a port or a default value")
+    loop = _owner_loop(channel for channel, _ in operations)
+    return _run_blocking(
+        lambda: alts(
+            port_list, priority=priority, default=default, has_default=has_default
+        ),
+        loop,
+        "blocking alts",
+    )
 
 
 async def alts(

@@ -2,9 +2,8 @@
   "Compatibility facade for the portable subset of ``clojure.core.async``.
 
   This namespace intentionally wraps Basilisp's ``asyncio``-native
-  ``basilisp.concurrent`` channel runtime. Parking macros, blocking operations,
-  async pipeline variants, and compiler-backed ``go`` blocks are not
-  implemented here yet."
+  ``basilisp.concurrent`` channel runtime. Parking macros, async pipeline
+  variants, and compiler-backed ``go`` blocks are not implemented here yet."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
   (:import asyncio))
@@ -137,6 +136,43 @@
    (concurrent/take! channel))
   ([channel callback]
    (schedule-callback! (concurrent/take! channel) callback)))
+
+(defn >!!
+  "Blocking put of ``value`` onto ``channel``.
+
+  This is a synchronous bridge for Clojure source compatibility. It rejects
+  calls that would block the owning running event loop."
+  [channel value]
+  (concurrent/blocking-put! channel value))
+
+(defn <!!
+  "Blocking take from ``channel``.
+
+  Returns ``nil`` when the channel is closed and drained. Calls from the owning
+  running event loop are rejected to avoid deadlock."
+  [channel]
+  (concurrent/blocking-take! channel))
+
+(defn alts!!
+  "Blocking counterpart to ``alts!``."
+  [ports & opts]
+  (apply concurrent/blocking-alts! ports opts))
+
+(defn thread-call
+  "Run zero-argument ``f`` in another thread and return a channel receiving the
+  result before close. The optional ``workload`` argument is accepted for
+  Clojure-shaped compatibility and currently does not change executor
+  selection."
+  ([f]
+   (concurrent/thread-call! f))
+  ([f _workload]
+   (thread-call f)))
+
+(defmacro thread
+  "Execute ``body`` in another thread, returning a channel which receives the
+  result before close."
+  [& body]
+  `(thread-call (fn* [] ~@body)))
 
 (defasync alts!
   "Await exactly one take channel or ``[channel value]`` put operation.
