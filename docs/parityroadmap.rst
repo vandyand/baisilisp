@@ -164,9 +164,9 @@ Near-term deliverable:
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
-  ``data.json``, ``data.xml``, ``data.codec.base64``, ``core.match``,
-  ``tools.namespace``, ``tools.reader``, ``tools.logging``, and
-  ``test.check``. The
+  ``data.json``, ``data.xml``, ``data.priority-map``,
+  ``data.codec.base64``, ``core.match``, ``tools.namespace``,
+  ``tools.reader``, ``tools.logging``, and ``test.check``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -211,6 +211,13 @@ Near-term deliverable:
   event constructors, parse/emit/indent round trips, PRXML conversion, event
   tree reconstruction, and 64 deterministic generated namespaced XML tree
   cases while avoiding host-specific invalid-parser eagerness claims.
+  The ``data.priority-map`` proof uses the published
+  ``org.clojure/data.priority-map`` 1.2.0 artifact on the JVM side and
+  Basilisp's production ``clojure.data.priority-map`` alias on the Basilisp
+  side; it locks public surface, priority queue ordering, ``keys``/``vals``
+  order, comparator/keyfn constructors, public positional construction,
+  metadata, ``subseq``/``rsubseq`` bounds, ``into``/``conj`` updates, boundary
+  errors, and 96 deterministic generated unique-priority queue/keyfn cases.
   The ``data.codec.base64`` proof uses the published
   ``org.clojure/data.codec`` 0.1.1 artifact on the JVM side and Basilisp's
   production ``clojure.data.codec.base64`` alias on the Basilisp side; it locks
@@ -1479,6 +1486,19 @@ Completed locally:
   namespaced tree/event round trips. Invalid parser eagerness and ambiguous
   PRXML error boundaries remain outside the portable contract because the JVM
   and Python XML backends surface those failures at different times.
+* source-level ``data.priority-map`` acceptance added as an ordered-collection
+  real-library probe; it runs a multi-file portable workflow against
+  ``org.clojure/data.priority-map`` 1.2.0 and Basilisp's production
+  ``clojure.data.priority-map`` alias. The probe locks public surface,
+  priority queue sequence/reverse sequence/peek/pop behavior, ``keys`` and
+  ``vals`` priority order, comparator and key-function constructors,
+  positional ``->PersistentPriorityMap`` construction, metadata preservation,
+  ``priority->set-of-items``, ``subseq``/``rsubseq`` bounds including the
+  5-arity reverse bound semantics, ``into``/``conj`` updates, odd-argument and
+  empty-pop boundaries, and 96 deterministic generated unique-priority
+  queue/keyfn cases. This tranche also fixed Basilisp runtime dispatch for
+  ``keys``/``vals`` over persistent maps, avoided losing priority-map ordering
+  through ``into`` transients, and aligned 5-arity ``rsubseq`` with upstream.
 * source-level ``data.codec.base64`` acceptance added as a compact
   real-library probe; it runs a multi-file portable workflow against
   ``org.clojure/data.codec`` 0.1.1 and Basilisp's production

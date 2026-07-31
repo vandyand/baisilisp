@@ -10,6 +10,8 @@ from immutables import Map as _Map
 
 from basilisp.lang import map as lmap
 from basilisp.lang import set as lset
+from basilisp.lang.equality import key as equivalence_key
+from basilisp.lang.equality import unkey as public_key
 from basilisp.lang.interfaces import IMapEntry, IPersistentMap, IReversible
 from basilisp.lang.map import MapEntry, PersistentMap, PersistentSortedMap, map_lrepr
 from basilisp.lang.reduced import Reduced
@@ -62,7 +64,12 @@ class PersistentPriorityMap(PersistentMap, IReversible):
         def compare_entries(left: tuple[Any, Any], right: tuple[Any, Any]) -> int:
             return compare(self._priority(left[1]), self._priority(right[1]))
 
-        return sorted(self._inner.items(), key=functools.cmp_to_key(compare_entries))
+        return [
+            (public_key(key), value)
+            for key, value in sorted(
+                self._inner.items(), key=functools.cmp_to_key(compare_entries)
+            )
+        ]
 
     def _new(self, inner: _Map, meta: IPersistentMap | None = None):
         return PersistentPriorityMap(
@@ -75,6 +82,12 @@ class PersistentPriorityMap(PersistentMap, IReversible):
     def __iter__(self):
         for key, _ in self._sorted_items():
             yield key
+
+    def items(self):
+        return tuple(self._sorted_items())
+
+    def values(self):
+        return tuple(value for _, value in self._sorted_items())
 
     def _lrepr(self, **kwargs):
         return map_lrepr(
@@ -89,14 +102,14 @@ class PersistentPriorityMap(PersistentMap, IReversible):
             raise ValueError("Priority map assoc requires an even number of arguments")
         with self._inner.mutate() as mutable:
             for key, value in partition(kvs, 2):
-                mutable[key] = value
+                mutable[equivalence_key(key)] = value
             return self._new(mutable.finish())
 
     def dissoc(self, *keys):
         with self._inner.mutate() as mutable:
             for key in keys:
                 try:
-                    del mutable[key]
+                    del mutable[equivalence_key(key)]
                 except KeyError:
                     pass
             return self._new(mutable.finish())
@@ -156,10 +169,11 @@ class PersistentPriorityMap(PersistentMap, IReversible):
         grouped: dict[Any, Any] = {}
         for item, value in self._inner.items():
             priority = self._priority(value)
+            public_item = public_key(item)
             grouped[priority] = (
-                lset.s(item)
+                lset.s(public_item)
                 if priority not in grouped
-                else grouped[priority].cons(item)
+                else grouped[priority].cons(public_item)
             )
         return PersistentSortedMap(_Map(grouped), self._comparator)
 
@@ -289,10 +303,20 @@ def rsubseq(
     if end_test is None:
         return _entry_seq(entries)
     compare = lmap._comparator_fn(priority_map.comparator)
+    entries = [
+        MapEntry.of(item, value)
+        for item, value in reversed(priority_map._sorted_items())
+        if compare(priority_map._priority(value), end_key) <= 0
+    ]
+    entries = [
+        entry
+        for entry in entries
+        if end_test(compare(priority_map._priority(entry.value), end_key), 0)
+    ]
     return _entry_seq(
         [
             entry
             for entry in entries
-            if end_test(compare(priority_map._priority(entry.value), end_key), 0)
+            if start_test(compare(priority_map._priority(entry.value), start_key), 0)
         ]
     )
