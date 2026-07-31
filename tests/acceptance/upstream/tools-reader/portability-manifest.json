@@ -1,0 +1,93 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "bf59de521ed27fe0ae8bcf079c0f0e6fcca22f2e265965e32584e1b0752070c1"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/tools_reader/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "String",
+        "a",
+        "b",
+        "case",
+        "clojure.string",
+        "clojure.tools.reader",
+        "clojure.tools.reader.default-data-readers",
+        "clojure.tools.reader.edn",
+        "clojure.tools.reader.impl.commons",
+        "clojure.tools.reader.impl.errors",
+        "clojure.tools.reader.impl.inspect",
+        "clojure.tools.reader.impl.utils",
+        "clojure.tools.reader.reader-types",
+        "cond-source",
+        "entry",
+        "f",
+        "false",
+        "form",
+        "java.io",
+        "nil",
+        "ns-sym",
+        "peeked",
+        "public-names",
+        "r",
+        "rdr",
+        "read-one",
+        "reader",
+        "remaining",
+        "s",
+        "s1",
+        "seed",
+        "source",
+        "starts-first",
+        "stream-reader",
+        "summary",
+        "tag",
+        "tr",
+        "validating-vector",
+        "value"
+      ],
+      "sha256": "3a0bd7e74561c97daffd97b9a7496e54c78f08de0d4bed699f22af825fe27884"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/tools_reader/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.tools-reader.workflow"
+      ],
+      "sha256": "192f55242e0999e4661bf3d995e978fa3b9802ead62c838eddb10d25226d823e"
+    }
+  ],
+  "substitutions": [
+    "clojure.tools.reader -> basilisp.tools.reader"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/tools.reader 1.5.2 Maven artifact",
+  "upstream_url": "https://github.com/clojure/tools.reader"
+}

@@ -213,6 +213,18 @@ def test_data_codec_base64_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_tools_reader_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "tools-reader"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.tools.reader -> basilisp.tools.reader" in manifest
+    assert "org.clojure/tools.reader 1.5.2 Maven artifact" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_core_match_acceptance_manifest_is_portable_and_checked_in():
     library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-match"
     manifest = acceptance_manifest(library_root)
