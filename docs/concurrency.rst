@@ -95,8 +95,10 @@ operations, awaitable ``put!``/``take!`` with optional callback scheduling,
 ``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``,
 ``pipeline-blocking``, ``pipeline-async``, and the non-``go``
 collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
-``split``, ``take``, ``into``, ``reduce``, ``transduce``, ``map<``, ``map>``,
-``filter<``, ``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and
+``split``, ``take``, ``into``, ``reduce``, ``transduce``, ``promise-chan``,
+``to-chan``, ``to-chan!!``, ``onto-chan``, ``onto-chan!!``, ``map``,
+``partition``, ``partition-by``, ``unique``, ``unblocking-buffer?``, ``map<``,
+``map>``, ``filter<``, ``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and
 ``mapcat>``. It also provides
 task-backed routing combinators ``mult``, ``tap``, ``untap``, ``untap-all``,
 ``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``, ``admix``, ``unmix``,

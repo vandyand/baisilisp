@@ -91,6 +91,18 @@
                                       :xform xform
                                       :error-handler error-handler)))
 
+(defn promise-chan
+  "Create a promise channel which realizes one non-``nil`` value and returns it
+  repeatedly to takers."
+  ([]
+   (basilisp.concurrent_channel/PromiseChannel))
+  ([xform]
+   (basilisp.concurrent_channel/PromiseChannel ** :xform xform))
+  ([xform error-handler]
+   (basilisp.concurrent_channel/PromiseChannel
+    ** :xform xform
+       :error-handler error-handler)))
+
 (defn put! [channel value]
   (.put channel value))
 

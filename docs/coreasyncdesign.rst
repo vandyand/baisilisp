@@ -199,6 +199,14 @@ Proposed public functions/macros:
 * ``pipeline``
 * ``pipeline-blocking``
 * ``pipeline-async``
+* ``promise-chan``
+* ``to-chan`` / ``to-chan!`` / ``to-chan!!``
+* ``onto-chan`` / ``onto-chan!`` / ``onto-chan!!``
+* ``map``
+* ``partition``
+* ``partition-by``
+* ``unique``
+* ``unblocking-buffer?``
 * ``map<`` / ``map>``
 * ``filter<`` / ``filter>``
 * ``remove<`` / ``remove>``
@@ -429,6 +437,11 @@ The initial implementation now covers:
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
+* Add the second collection/channel tranche: ``promise-chan``, ``to-chan``,
+  ``to-chan!!``, ``onto-chan``, ``onto-chan!!``, ``map``, ``partition``,
+  ``partition-by``, ``unique``, and ``unblocking-buffer?``. ``promise-chan``
+  realizes one value and returns it repeatedly; the other combinators are
+  covered by shared JVM fixtures.
 * Add transform-direction combinators: ``map<``, ``map>``, ``filter<``,
   ``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and ``mapcat>``. The
   ``<`` variants derive output channels from source channels; the ``>``

@@ -92,6 +92,17 @@
   ([buf-or-n xform ex-handler]
    (make-channel buf-or-n xform ex-handler)))
 
+(defn promise-chan
+  "Create a channel which realizes the first accepted non-``nil`` value and
+  returns that value to every take. Closing before realization makes takes
+  return ``nil``."
+  ([]
+   (concurrent/promise-chan))
+  ([xform]
+   (concurrent/promise-chan xform))
+  ([xform ex-handler]
+   (concurrent/promise-chan xform ex-handler)))
+
 (defn close!
   "Close ``channel``."
   [channel]
@@ -216,6 +227,17 @@
     (asyncio/create-task (copy-coll-to-channel! channel coll true nil))
     channel))
 
+(defn to-chan
+  "Alias for ``to-chan!`` retained for Clojure source compatibility."
+  [coll]
+  (to-chan! coll))
+
+(defn to-chan!!
+  "Blocking-shaped alias for ``to-chan!`` retained for Clojure source
+  compatibility."
+  [coll]
+  (to-chan! coll))
+
 (defn onto-chan!
   "Put the contents of ``coll`` into ``channel``.
 
@@ -228,6 +250,21 @@
    (let [completion (chan)]
      (asyncio/create-task (copy-coll-to-channel! channel coll close? completion))
      completion)))
+
+(defn onto-chan
+  "Alias for ``onto-chan!`` retained for Clojure source compatibility."
+  ([channel coll]
+   (onto-chan! channel coll))
+  ([channel coll close?]
+   (onto-chan! channel coll close?)))
+
+(defn onto-chan!!
+  "Blocking-shaped alias for ``onto-chan!`` retained for Clojure source
+  compatibility."
+  ([channel coll]
+   (onto-chan! channel coll))
+  ([channel coll close?]
+   (onto-chan! channel coll close?)))
 
 (defasync ^:private merge-one!
   [source output]
@@ -444,6 +481,12 @@
    (mapcat> f channel nil))
   ([f channel buf-or-n]
    (transform-puts (mapcat f) channel buf-or-n)))
+
+(defn unblocking-buffer?
+  "Return true for dropping and sliding buffer descriptors."
+  [buf]
+  (and (buffer-descriptor? buf)
+       (contains? #{:dropping :sliding} (:policy buf))))
 
 (defn- close-registered-channels!
   [registrations]
@@ -786,3 +829,111 @@
   ([parallelism to af from close?]
    (concurrent/pipeline-async! parallelism from to af
                                :close-output close?)))
+
+(defasync ^:private map-channel-values!
+  [f channels output]
+  (try
+    (loop []
+      (let [tasks  (doall (basilisp.core/map #(asyncio/create-task (take! %))
+                                             channels))
+            values (await (apply asyncio/gather tasks))]
+        (when-not (some nil? values)
+          (when (await (put! output (apply f values)))
+            (recur)))))
+    (finally
+      (close! output))))
+
+(defn map
+  "Return a channel containing ``(apply f values)`` across one value from each
+  channel in ``channels``. The output closes when any source closes."
+  ([f channels]
+   (map f channels nil))
+  ([f channels buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (map-channel-values! f channels output))
+     output)))
+
+(defasync ^:private partition-values!
+  [n channel output]
+  (try
+    (loop [acc   []
+           value (await (take! channel))]
+      (if (some? value)
+        (let [next-acc (conj acc value)]
+          (if (= n (count next-acc))
+            (when (await (put! output next-acc))
+              (recur [] (await (take! channel))))
+            (recur next-acc (await (take! channel)))))
+        (when (seq acc)
+          (await (put! output acc)))))
+    (finally
+      (close! output))))
+
+(defn partition
+  "Return a channel containing vectors of up to ``n`` consecutive values from
+  ``channel``. A final partial partition is emitted before close."
+  ([n channel]
+   (partition n channel nil))
+  ([n channel buf-or-n]
+   (when-not (pos-int? n)
+     (throw (ex-info "partition expects a positive integer size" {:n n})))
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (partition-values! n channel output))
+     output)))
+
+(defasync ^:private partition-by-values!
+  [f channel output]
+  (try
+    (loop [acc       []
+           prior-key ::none
+           value     (await (take! channel))]
+      (if (some? value)
+        (let [current-key (f value)]
+          (cond
+            (= prior-key ::none)
+            (recur [value] current-key (await (take! channel)))
+
+            (= prior-key current-key)
+            (recur (conj acc value) prior-key (await (take! channel)))
+
+            (await (put! output acc))
+            (recur [value] current-key (await (take! channel)))
+
+            :else
+            nil))
+        (when (seq acc)
+          (await (put! output acc)))))
+    (finally
+      (close! output))))
+
+(defn partition-by
+  "Return a channel containing vectors of consecutive values from ``channel``
+  grouped while ``(f value)`` remains equal."
+  ([f channel]
+   (partition-by f channel nil))
+  ([f channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (partition-by-values! f channel output))
+     output)))
+
+(defasync ^:private unique-values!
+  [channel output]
+  (try
+    (loop [prior ::none
+           value (await (take! channel))]
+      (when (some? value)
+        (if (= prior value)
+          (recur prior (await (take! channel)))
+          (when (await (put! output value))
+            (recur value (await (take! channel)))))))
+    (finally
+      (close! output))))
+
+(defn unique
+  "Return a channel suppressing consecutive duplicate values from ``channel``."
+  ([channel]
+   (unique channel nil))
+  ([channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (asyncio/create-task (unique-values! channel output))
+     output)))

@@ -15,9 +15,14 @@
   '#{buffer dropping-buffer sliding-buffer
      chan close! offer! poll! put! take!
      alts! timeout pipe pipeline
+     promise-chan
      pipeline-async pipeline-blocking
-     to-chan! onto-chan! merge split take
+     to-chan to-chan! to-chan!!
+     onto-chan onto-chan! onto-chan!!
+     merge split take
      into reduce transduce
+     map partition partition-by unique
+     unblocking-buffer?
      map< map> filter< filter>
      remove< remove> mapcat< mapcat>
      mult tap untap untap-all
@@ -69,37 +74,77 @@
 
 #?(:clj
    (defn to-chan-roundtrip []
-     (let [channel (async/to-chan! [1 2 3])]
-       [(async/<!! channel)
-        (async/<!! channel)
-        (async/<!! channel)
-        (async/<!! channel)]))
+     (let [channel      (async/to-chan! [1 2 3])
+           alias        (async/to-chan [4 5])
+           bang-alias   (async/to-chan!! [6 7])]
+       [[(async/<!! channel)
+         (async/<!! channel)
+         (async/<!! channel)
+         (async/<!! channel)]
+        [(async/<!! alias)
+         (async/<!! alias)
+         (async/<!! alias)]
+        [(async/<!! bang-alias)
+         (async/<!! bang-alias)
+         (async/<!! bang-alias)]]))
 
    :lpy
    (defasync to-chan-roundtrip []
-     (let [channel (async/to-chan! [1 2 3])]
-       [(await (async/take! channel))
-        (await (async/take! channel))
-        (await (async/take! channel))
-        (await (async/take! channel))])))
+     (let [channel      (async/to-chan! [1 2 3])
+           alias        (async/to-chan [4 5])
+           bang-alias   (async/to-chan!! [6 7])]
+       [[(await (async/take! channel))
+         (await (async/take! channel))
+         (await (async/take! channel))
+         (await (async/take! channel))]
+        [(await (async/take! alias))
+         (await (async/take! alias))
+         (await (async/take! alias))]
+        [(await (async/take! bang-alias))
+         (await (async/take! bang-alias))
+         (await (async/take! bang-alias))]])))
 
 #?(:clj
    (defn onto-chan-roundtrip []
-     (let [channel    (async/chan 2)
-           completion (async/onto-chan! channel [:first :second])]
+     (let [channel      (async/chan 2)
+           completion   (async/onto-chan! channel [:first :second])
+           alias        (async/chan 2)
+           alias-done   (async/onto-chan alias [:third :fourth])
+           bang         (async/chan 2)
+           bang-done    (async/onto-chan!! bang [:fifth :sixth])]
        (async/<!! completion)
-       [(async/<!! channel)
-        (async/<!! channel)
-        (async/<!! channel)]))
+       (async/<!! alias-done)
+       (async/<!! bang-done)
+       [[(async/<!! channel)
+         (async/<!! channel)
+         (async/<!! channel)]
+        [(async/<!! alias)
+         (async/<!! alias)
+         (async/<!! alias)]
+        [(async/<!! bang)
+         (async/<!! bang)
+         (async/<!! bang)]]))
 
    :lpy
    (defasync onto-chan-roundtrip []
-     (let [channel    (async/chan 2)
-           completion (async/onto-chan! channel [:first :second])]
+     (let [channel      (async/chan 2)
+           completion   (async/onto-chan! channel [:first :second])
+           alias        (async/chan 2)
+           alias-done   (async/onto-chan alias [:third :fourth])
+           bang         (async/chan 2)
+           bang-done    (async/onto-chan!! bang [:fifth :sixth])]
        (await (async/take! completion))
-       [(await (async/take! channel))
-        (await (async/take! channel))
-        (await (async/take! channel))])))
+       (await (async/take! alias-done))
+       (await (async/take! bang-done))
+       [[(await (async/take! channel))
+         (await (async/take! channel))
+         (await (async/take! channel))]
+        [(await (async/take! alias))
+         (await (async/take! alias))
+         (await (async/take! alias))]
+        [(await (async/take! bang))
+         (await (async/take! bang))
+         (await (async/take! bang))]])))
 
 #?(:clj
    (defn merge-roundtrip []
@@ -164,6 +209,80 @@
      [(await (async/take! (async/into [] (async/to-chan! [1 2 3]))))
       (await (async/take! (async/reduce + 0 (async/to-chan! [1 2 3]))))
       (await (async/take! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3]))))]))
+
+#?(:clj
+   (defn promise-channel-roundtrip []
+     (let [basic       (async/promise-chan)
+           closed      (async/promise-chan)
+           transformed (async/promise-chan (map inc))]
+       [(async/>!! basic :value)
+        (async/>!! basic :ignored)
+        (async/<!! basic)
+        (async/<!! basic)
+        (do
+          (async/close! closed)
+          [(async/>!! closed :late)
+           (async/<!! closed)])
+        (async/>!! transformed 1)
+        (async/<!! transformed)
+        (async/<!! transformed)]))
+
+   :lpy
+   (defn promise-channel-roundtrip []
+     (let [basic       (async/promise-chan)
+           closed      (async/promise-chan)
+           transformed (async/promise-chan (map inc))]
+       [(async/>!! basic :value)
+        (async/>!! basic :ignored)
+        (async/<!! basic)
+        (async/<!! basic)
+        (do
+          (async/close! closed)
+          [(async/>!! closed :late)
+           (async/<!! closed)])
+        (async/>!! transformed 1)
+        (async/<!! transformed)
+        (async/<!! transformed)])))
+
+#?(:clj
+   (defn collection-wave2-roundtrip []
+     (let [mapped       (async/map + [(async/to-chan [1 2 3])
+                                      (async/to-chan!! [10 20 30])]
+                                   3)
+           mapped-short (async/map + [(async/to-chan! [1 2])
+                                      (async/to-chan! [10])]
+                                   2)
+           partitioned  (async/partition 3 (async/to-chan! [1 2 3 4 5]) 2)
+           by-key       (async/partition-by odd? (async/to-chan! [1 3 2 4 5]) 2)
+           unique       (async/unique (async/to-chan! [1 1 2 2 1 1]) 2)]
+       [(drain-channel mapped)
+        (drain-channel mapped-short)
+        (drain-channel partitioned)
+        (drain-channel by-key)
+        (drain-channel unique)
+        [(async/unblocking-buffer? (async/buffer 1))
+         (async/unblocking-buffer? (async/sliding-buffer 1))
+         (async/unblocking-buffer? (async/dropping-buffer 1))]]))
+
+   :lpy
+   (defasync collection-wave2-roundtrip []
+     (let [mapped       (async/map + [(async/to-chan [1 2 3])
+                                      (async/to-chan!! [10 20 30])]
+                                   3)
+           mapped-short (async/map + [(async/to-chan! [1 2])
+                                      (async/to-chan! [10])]
+                                   2)
+           partitioned  (async/partition 3 (async/to-chan! [1 2 3 4 5]) 2)
+           by-key       (async/partition-by odd? (async/to-chan! [1 3 2 4 5]) 2)
+           unique       (async/unique (async/to-chan! [1 1 2 2 1 1]) 2)]
+       [(await (drain-channel mapped))
+        (await (drain-channel mapped-short))
+        (await (drain-channel partitioned))
+        (await (drain-channel by-key))
+        (await (drain-channel unique))
+        [(async/unblocking-buffer? (async/buffer 1))
+         (async/unblocking-buffer? (async/sliding-buffer 1))
+         (async/unblocking-buffer? (async/dropping-buffer 1))]])))
 
 #?(:clj
    (defn transform-combinators-roundtrip []
@@ -1025,9 +1144,11 @@
 
 (emit-case :core-async-close-and-nil
            #?(:clj [(close-drains-buffer-roundtrip)
-                    (nil-put-rejected?)]
+                    (nil-put-rejected?)
+                    (promise-channel-roundtrip)]
               :lpy [(asyncio/run (close-drains-buffer-roundtrip))
-                    (asyncio/run (nil-put-rejected?))]))
+                    (asyncio/run (nil-put-rejected?))
+                    (promise-channel-roundtrip)]))
 
 (emit-case :core-async-selection-timeout-pipe-pipeline
            #?(:clj [(alts-priority-and-default-roundtrip)
@@ -1052,14 +1173,16 @@
                     (split-roundtrip)
                     (take-roundtrip)
                     (fold-roundtrip)
-                    (transform-combinators-roundtrip)]
+                    (transform-combinators-roundtrip)
+                    (collection-wave2-roundtrip)]
               :lpy [(asyncio/run (to-chan-roundtrip))
                     (asyncio/run (onto-chan-roundtrip))
                     (asyncio/run (merge-roundtrip))
                     (asyncio/run (split-roundtrip))
                     (asyncio/run (take-roundtrip))
                     (asyncio/run (fold-roundtrip))
-                    (asyncio/run (transform-combinators-roundtrip))]))
+                    (asyncio/run (transform-combinators-roundtrip))
+                    (asyncio/run (collection-wave2-roundtrip))]))
 
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)
