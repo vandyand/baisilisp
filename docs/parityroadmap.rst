@@ -164,8 +164,8 @@ Near-term deliverable:
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
-  ``data.json``, ``data.codec.base64``, ``core.match``, and
-  ``tools.namespace``. The
+  ``data.json``, ``data.codec.base64``, ``core.match``,
+  ``tools.namespace``, and ``tools.reader``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -226,6 +226,13 @@ Near-term deliverable:
   intentionally classified as host-adapted because the fixture uses Java
   filesystem/JAR setup on the JVM side and Python filesystem/ZIP setup on the
   Basilisp side while emitting normalized cross-runtime results.
+  The ``tools.reader`` proof uses the published ``org.clojure/tools.reader``
+  1.5.2 artifact on the JVM side and Basilisp's production
+  ``clojure.tools.reader`` aliases on the Basilisp side; it locks the reader,
+  EDN reader, default data readers, reader-types, and implementation helper
+  surfaces plus source/EDN reading, tagged literals, reader conditionals,
+  source logging, indexing/pushback readers, timestamp/UUID readers, helper
+  predicates, error boundaries, and 96 deterministic generated reader forms.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1471,6 +1478,18 @@ Completed locally:
   rewrites. The manifest remains host-adapted because the setup code must use
   JVM filesystem/JAR APIs on Clojure and Python filesystem/ZIP APIs on
   Basilisp, but the emitted acceptance contract is normalized data.
+* source-level ``tools.reader`` acceptance added as a foundational
+  source-portability probe; it runs a multi-file portable workflow against
+  ``org.clojure/tools.reader`` 1.5.2 and Basilisp's production
+  ``clojure.tools.reader`` aliases. The probe locks public surfaces for
+  ``clojure.tools.reader``, ``edn``, ``default-data-readers``,
+  ``reader-types``, and selected implementation helpers; it covers
+  ``read``/``read-string``, EDN-only rejection boundaries, tagged literals,
+  dynamic data readers, reader conditionals and splicing, pushback/indexing/
+  source-logging reader contracts, numeric/symbol helper parsing,
+  timestamp/UUID default readers, normalized reader-error boundaries, inspect
+  helpers, utility predicates, and 96 deterministic generated source forms
+  plus adversarial rejection cases.
 * ``Throwable->map`` diagnostics hardening now differentially locks thrown
   exception chains with ``:clojure.error/phase`` data, preserving Clojure's
   top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``
