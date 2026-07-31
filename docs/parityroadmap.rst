@@ -257,7 +257,16 @@ Near-term deliverable:
   interaction, nested ``alt!`` choices, close/result races, and
   exception-driven result-channel close behavior, plus local runtime tests for
   current-loop ``go`` scheduling and same-owner-loop blocking rejection inside
-  ``go``.
+  ``go``. The stream-helper hardening follow-up fixes sentinel collisions in
+  ``partition-by`` and ``unique`` when user data equals the old internal
+  keyword sentinel, and adds JVM fixtures for zero-source ``map`` close
+  behavior plus Clojure's current batch semantics when one mapped source closes
+  while another source is still idle. It also adds a generated mixed-value
+  stream-helper corpus for ``map``, ``partition``, ``partition-by``, and
+  ``unique``, extends the source-level ``core.async`` acceptance workflow with
+  those helpers, and removes a race in the shared ``mix`` fixture by allowing
+  toggle signals to reach the routing loop before asserting muted/paused
+  output.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

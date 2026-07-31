@@ -98,7 +98,27 @@
            [even odd] (async/split even? (async/to-chan! (range 6)) 3 3)
            mapped     (async/mapcat< (fn [value] [value (* value value)])
                                      (async/to-chan! [1 2 3])
-                                     6)]
+                                     6)
+           stream-values [:basilisp.core.async/none
+                          :alpha
+                          :alpha
+                          :beta
+                          4
+                          4
+                          :gamma]
+           pairwise      (async/map vector
+                                    [(async/to-chan! (range 4))
+                                     (async/to-chan! (range 10 14))]
+                                    4)
+           partitioned   (async/partition 3
+                                           (async/to-chan! stream-values)
+                                           4)
+           by-key        (async/partition-by #(if (keyword? %)
+                                                %
+                                                (mod % 3))
+                                             (async/to-chan! stream-values)
+                                             4)
+           deduped       (async/unique (async/to-chan! stream-values) 4)]
        [[:merge     (vec (sort (async/<! (drain-go merged))))]
         [:split     [(async/<! (drain-go even)) (async/<! (drain-go odd))]]
         [:into      (async/<! (async/into [] (async/to-chan! [1 2 3])))]
@@ -107,7 +127,11 @@
                                                +
                                                0
                                                (async/to-chan! [1 2 3])))]
-        [:transform (async/<! (drain-go mapped))]]))))
+        [:transform (async/<! (drain-go mapped))]
+        [:stream    [[:map          (async/<! (drain-go pairwise))]
+                     [:partition    (async/<! (drain-go partitioned))]
+                     [:partition-by (async/<! (drain-go by-key))]
+                     [:unique       (async/<! (drain-go deduped))]]]]))))
 
 (defn routing-summary
   "Exercise finite mult and pub routing with deterministic data."

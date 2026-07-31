@@ -258,6 +258,38 @@
         (async/<!! transformed)])))
 
 #?(:clj
+   (defn map-source-close-roundtrip []
+     (let [closed (async/chan)
+           idle   (async/chan)
+           mapped (async/map vector [closed idle] 1)
+           empty  (async/map (fn [] :called) [] 1)]
+       (async/close! closed)
+       (let [[closed-value closed-port] (async/alts!! [mapped (async/timeout 200)]
+                                                      :priority true)
+             [empty-value empty-port]   (async/alts!! [empty (async/timeout 200)]
+                                                      :priority true)]
+         [(nil? closed-value)
+          (identical? closed-port mapped)
+          (nil? empty-value)
+          (identical? empty-port empty)])))
+
+   :lpy
+   (defasync map-source-close-roundtrip []
+     (let [closed (async/chan)
+           idle   (async/chan)
+           mapped (async/map vector [closed idle] 1)
+           empty  (async/map (fn [] :called) [] 1)]
+       (async/close! closed)
+       (let [[closed-value closed-port] (await (async/alts! [mapped (async/timeout 200)]
+                                                            :priority true))
+             [empty-value empty-port]   (await (async/alts! [empty (async/timeout 200)]
+                                                            :priority true))]
+         [(nil? closed-value)
+          (identical? closed-port mapped)
+          (nil? empty-value)
+          (identical? empty-port empty)]))))
+
+#?(:clj
    (defn collection-wave2-roundtrip []
      (let [mapped       (async/map + [(async/to-chan [1 2 3])
                                       (async/to-chan!! [10 20 30])]
@@ -296,6 +328,99 @@
         [(async/unblocking-buffer? (async/buffer 1))
          (async/unblocking-buffer? (async/sliding-buffer 1))
          (async/unblocking-buffer? (async/dropping-buffer 1))]])))
+
+#?(:clj
+   (defn stream-helper-sentinel-collision-roundtrip []
+     [(drain-channel
+       (async/partition-by identity
+                           (async/to-chan! [:basilisp.core.async/none
+                                            :basilisp.core.async/none
+                                            :x])
+                           4))
+      (drain-channel
+       (async/unique
+        (async/to-chan! [:basilisp.core.async/none
+                         :basilisp.core.async/none
+                         :x
+                         :basilisp.core.async/none])
+        4))])
+
+   :lpy
+   (defasync stream-helper-sentinel-collision-roundtrip []
+     [(await (drain-channel
+              (async/partition-by identity
+                                  (async/to-chan! [:basilisp.core.async/none
+                                                   :basilisp.core.async/none
+                                                   :x])
+                                  4)))
+      (await (drain-channel
+              (async/unique
+               (async/to-chan! [:basilisp.core.async/none
+                                :basilisp.core.async/none
+                                :x
+                                :basilisp.core.async/none])
+               4)))]))
+
+(defn generated-stream-values []
+  (vec
+   (map (fn [idx]
+          (case (mod idx 10)
+            0 :basilisp.core.async/none
+            1 :alpha
+            2 :alpha
+            3 :beta
+            4 idx
+            5 idx
+            6 (- idx)
+            7 :gamma
+            8 :gamma
+            9 (mod idx 3)))
+        (range 48))))
+
+(defn stream-helper-key [value]
+  (if (keyword? value)
+    value
+    (mod value 5)))
+
+#?(:clj
+   (defn stream-helper-generated-roundtrip []
+     (let [values      (generated-stream-values)
+           mapped      (async/map vector
+                                  [(async/to-chan! (range 18))
+                                   (async/to-chan! (range 100 112))
+                                   (async/to-chan! (range 1000 1030))]
+                                  8)
+           partitioned (async/partition 5 (async/to-chan! values) 4)
+           singles     (async/partition 1 (async/to-chan! (take 8 values)) 2)
+           by-key      (async/partition-by stream-helper-key
+                                           (async/to-chan! values)
+                                           4)
+           deduped     (async/unique (async/to-chan! values) 8)]
+       [(drain-channel mapped)
+        (drain-channel partitioned)
+        (drain-channel singles)
+        (drain-channel by-key)
+        (drain-channel deduped)]))
+
+   :lpy
+   (defasync stream-helper-generated-roundtrip []
+     (let [values      (generated-stream-values)
+           mapped      (async/map vector
+                                  [(async/to-chan! (range 18))
+                                   (async/to-chan! (range 100 112))
+                                   (async/to-chan! (range 1000 1030))]
+                                  8)
+           partitioned (async/partition 5 (async/to-chan! values) 4)
+           singles     (async/partition 1 (async/to-chan! (take 8 values)) 2)
+           by-key      (async/partition-by stream-helper-key
+                                           (async/to-chan! values)
+                                           4)
+           deduped     (async/unique (async/to-chan! values) 8)]
+       [(await (drain-channel mapped))
+        (await (drain-channel partitioned))
+        (await (drain-channel singles))
+        (await (drain-channel by-key))
+        (await (drain-channel deduped))])))
 
 #?(:clj
    (defn transform-combinators-roundtrip []
@@ -1205,6 +1330,7 @@
        (async/>!! x :x1)
        (let [basic (async/<!! out)]
          (async/toggle mx {x {:mute true}})
+         (Thread/sleep 50)
          (async/>!! x :x-muted)
          (async/>!! y :y-after-mute)
          (let [mute [(async/<!! out)
@@ -1212,6 +1338,7 @@
                        (Thread/sleep 50)
                        (async/poll! out))]]
            (async/toggle mx {x {:mute false :pause true}})
+           (Thread/sleep 50)
            (async/>!! x :x-paused)
            (async/>!! y :y-after-pause)
            (let [pause-before [(async/<!! out)
@@ -1232,6 +1359,7 @@
        (await (async/put! x :x1))
        (let [basic (await (async/take! out))]
          (async/toggle mx {x {:mute true}})
+         (await (asyncio/sleep 0))
          (await (async/put! x :x-muted))
          (await (async/put! y :y-after-mute))
          (let [mute [(await (async/take! out))
@@ -1239,6 +1367,7 @@
                        (await (asyncio/sleep 0))
                        (async/poll! out))]]
            (async/toggle mx {x {:mute false :pause true}})
+           (await (asyncio/sleep 0))
            (await (async/put! x :x-paused))
            (await (async/put! y :y-after-pause))
            (let [pause-before [(await (async/take! out))
@@ -1540,16 +1669,22 @@
                     (split-roundtrip)
                     (take-roundtrip)
                     (fold-roundtrip)
+                    (map-source-close-roundtrip)
                     (transform-combinators-roundtrip)
-                    (collection-wave2-roundtrip)]
+                    (collection-wave2-roundtrip)
+                    (stream-helper-sentinel-collision-roundtrip)
+                    (stream-helper-generated-roundtrip)]
               :lpy [(asyncio/run (to-chan-roundtrip))
                     (asyncio/run (onto-chan-roundtrip))
                     (asyncio/run (merge-roundtrip))
                     (asyncio/run (split-roundtrip))
                     (asyncio/run (take-roundtrip))
                     (asyncio/run (fold-roundtrip))
+                    (asyncio/run (map-source-close-roundtrip))
                     (asyncio/run (transform-combinators-roundtrip))
-                    (asyncio/run (collection-wave2-roundtrip))]))
+                    (asyncio/run (collection-wave2-roundtrip))
+                    (asyncio/run (stream-helper-sentinel-collision-roundtrip))
+                    (asyncio/run (stream-helper-generated-roundtrip))]))
 
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)
