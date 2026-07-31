@@ -1,0 +1,70 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "740a90ca2b3ec8abb3071f40d6756042d925d1e00e34609e492d1a560ee6b83d"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/tools_logging/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "case",
+        "clojure.string",
+        "clojure.tools.logging",
+        "clojure.tools.logging.impl",
+        "clojure.tools.logging.readable",
+        "enabled-levels",
+        "f",
+        "factory",
+        "idx",
+        "level",
+        "log",
+        "ns-sym",
+        "records",
+        "remaining",
+        "s1",
+        "seed"
+      ],
+      "sha256": "fd6100861be2854671e3cb61051ea2b606188739c8f489a82418a82d63acac2f"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/tools_logging/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.tools-logging.workflow"
+      ],
+      "sha256": "34c174622948a8eb940f41a382e79a1fd27c61b7d9f0506897b3adc8e4626409"
+    }
+  ],
+  "substitutions": [
+    "clojure.tools.logging -> basilisp.tools.logging"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/tools.logging 1.3.0 Maven artifact",
+  "upstream_url": "https://github.com/clojure/tools.logging"
+}

@@ -225,6 +225,18 @@ def test_tools_reader_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_tools_logging_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "tools-logging"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.tools.logging -> basilisp.tools.logging" in manifest
+    assert "org.clojure/tools.logging 1.3.0 Maven artifact" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_test_check_acceptance_manifest_is_portable_and_checked_in():
     library_root = Path(__file__).parent / "acceptance" / "upstream" / "test-check"
     manifest = acceptance_manifest(library_root)
