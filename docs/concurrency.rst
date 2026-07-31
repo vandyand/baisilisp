@@ -102,9 +102,11 @@ collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
 ``mapcat>``. It also provides
 task-backed routing combinators ``mult``, ``tap``, ``untap``, ``untap-all``,
 ``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``, ``admix``, ``unmix``,
-``unmix-all``, ``toggle``, and ``solo-mode``. Source close propagation is
-performed by the router task on the owning event loop. The facade does not
-advertise ``go``, ``go-loop``, or parking ``<!``/``>!``/``alt!`` forms.
+``unmix-all``, ``toggle``, and ``solo-mode`` plus the Clojure protocol helper
+surface ``Mux``, ``Mult``, ``Pub``, ``Mix``, ``muxch*``, and the corresponding
+``tap*``/``sub*``/``admix*`` families. Source close propagation is performed by
+the router task on the owning event loop. The facade does not advertise ``go``,
+``go-loop``, or parking ``<!``/``>!``/``alt!`` forms.
 
 The Clojure blocking bridge names ``<!!``, ``>!!``, and ``alts!!`` are
 available for synchronous callers. They reject calls from the channel's owning

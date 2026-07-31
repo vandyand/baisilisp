@@ -225,7 +225,11 @@ Near-term deliverable:
   task-backed routing combinators ``mult``,
   ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
   ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
-  ``solo-mode`` with shared JVM fixtures. The stacked blocking-bridge tranche
+  ``solo-mode`` plus the routing protocol helper surface ``Mux``, ``Mult``,
+  ``Pub``, ``Mix``, ``muxch*``, ``tap*``, ``untap*``, ``untap-all*``, ``sub*``,
+  ``unsub*``, ``unsub-all*``, ``admix*``, ``unmix*``, ``unmix-all*``,
+  ``toggle*``, and ``solo-mode*`` with shared JVM fixtures. The stacked
+  blocking-bridge tranche
   adds ``<!!``, ``>!!``, ``alts!!``, ``thread``, ``thread-call``, and
   ``io-thread`` with explicit same-owner-loop rejection for blocking channel
   calls. The stacked pipeline-variants tranche

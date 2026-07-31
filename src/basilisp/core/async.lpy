@@ -9,6 +9,10 @@
   (:import asyncio))
 
 (def ^:private buffer-key :basilisp.core.async/buffer)
+(def Mux :basilisp.core.async/Mux)
+(def Mult :basilisp.core.async/Mult)
+(def Pub :basilisp.core.async/Pub)
+(def Mix :basilisp.core.async/Mix)
 (def ^:private fixed-policy :fixed)
 (def ^:private dropping-policy :dropping)
 (def ^:private sliding-policy :sliding)
@@ -542,6 +546,11 @@
      :taps   taps
      :task   (asyncio/create-task (distribute-mult! channel taps))}))
 
+(defn muxch*
+  "Return the source/output channel associated with a mult, pub, or mix."
+  [mux]
+  (or (:source mux) (:output mux)))
+
 (defn tap
   "Copy values from ``mult`` onto ``channel``.
 
@@ -553,17 +562,33 @@
    (swap! (:taps mult) assoc channel close?)
    channel))
 
+(defn tap*
+  "Low-level tap helper mirroring Clojure's ``Mult`` protocol method."
+  [mult channel close?]
+  (tap mult channel close?)
+  nil)
+
 (defn untap
   "Disconnect ``channel`` from ``mult``."
   [mult channel]
   (swap! (:taps mult) dissoc channel)
   nil)
 
+(defn untap*
+  "Low-level untap helper mirroring Clojure's ``Mult`` protocol method."
+  [mult channel]
+  (untap mult channel))
+
 (defn untap-all
   "Disconnect every target channel from ``mult``."
   [mult]
   (reset! (:taps mult) {})
   nil)
+
+(defn untap-all*
+  "Low-level untap-all helper mirroring Clojure's ``Mult`` protocol method."
+  [mult]
+  (untap-all mult))
 
 (defasync ^:private route-topic!
   [topics topic value]
@@ -613,11 +638,21 @@
    (swap! (:topics pub) update topic #(assoc (or % {}) channel close?))
    channel))
 
+(defn sub*
+  "Low-level subscription helper mirroring Clojure's ``Pub`` protocol method."
+  [pub topic channel close?]
+  (sub pub topic channel close?))
+
 (defn unsub
   "Unsubscribe ``channel`` from ``topic`` in publication ``pub``."
   [pub topic channel]
   (swap! (:topics pub) update topic dissoc channel)
   nil)
+
+(defn unsub*
+  "Low-level unsubscribe helper mirroring Clojure's ``Pub`` protocol method."
+  [pub topic channel]
+  (unsub pub topic channel))
 
 (defn unsub-all
   "Unsubscribe all channels from publication ``pub``, or all channels from one
@@ -628,6 +663,15 @@
   ([pub topic]
    (swap! (:topics pub) dissoc topic)
    nil))
+
+(defn unsub-all*
+  "Low-level unsub-all helper mirroring Clojure's ``Pub`` protocol method."
+  ([pub]
+   (unsub-all pub)
+   {})
+  ([pub topic]
+   (unsub-all pub topic)
+   {}))
 
 (defn- mix-state?
   [state mode]
@@ -737,17 +781,33 @@
   (swap! (:inputs mix) update channel #(or % {}))
   (signal-mix! mix))
 
+(defn admix*
+  "Low-level admix helper mirroring Clojure's ``Mix`` protocol method."
+  [mix channel]
+  (admix mix channel))
+
 (defn unmix
   "Remove ``channel`` as an input from ``mix``."
   [mix channel]
   (swap! (:inputs mix) dissoc channel)
   (signal-mix! mix))
 
+(defn unmix*
+  "Low-level unmix helper mirroring Clojure's ``Mix`` protocol method."
+  [mix channel]
+  (unmix mix channel))
+
 (defn unmix-all
   "Remove all inputs from ``mix``."
   [mix]
   (reset! (:inputs mix) {})
   (signal-mix! mix))
+
+(defn unmix-all*
+  "Low-level unmix-all helper mirroring Clojure's ``Mix`` protocol method."
+  [mix]
+  (unmix-all mix)
+  true)
 
 (defn toggle
   "Merge channel state updates into ``mix``.
@@ -770,6 +830,11 @@
                inputs))))
   (signal-mix! mix))
 
+(defn toggle*
+  "Low-level toggle helper mirroring Clojure's ``Mix`` protocol method."
+  [mix state-map]
+  (toggle mix state-map))
+
 (defn solo-mode
   "Set ``mix`` solo mode to ``:mute`` or ``:pause``."
   [mix mode]
@@ -777,6 +842,11 @@
     (throw (ex-info "solo-mode expects :mute or :pause" {:mode mode})))
   (reset! (:solo-mode mix) mode)
   (signal-mix! mix))
+
+(defn solo-mode*
+  "Low-level solo-mode helper mirroring Clojure's ``Mix`` protocol method."
+  [mix mode]
+  (solo-mode mix mode))
 
 (defn timeout
   "Create a channel that closes after ``delay-ms`` milliseconds."

@@ -211,10 +211,15 @@ Proposed public functions/macros:
 * ``filter<`` / ``filter>``
 * ``remove<`` / ``remove>``
 * ``mapcat<`` / ``mapcat>``
+* ``Mux`` / ``Mult`` / ``Pub`` / ``Mix`` protocol markers
+* ``muxch*``
 * ``mult`` / ``tap`` / ``untap`` / ``untap-all``
+* ``tap*`` / ``untap*`` / ``untap-all*``
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
+* ``sub*`` / ``unsub*`` / ``unsub-all*``
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
   ``solo-mode``
+* ``admix*`` / ``unmix*`` / ``unmix-all*`` / ``toggle*`` / ``solo-mode*``
 * ``<!!`` / ``>!!`` / ``alts!!``
 * ``thread`` / ``thread-call`` / ``io-thread``
 
@@ -451,6 +456,10 @@ The initial implementation now covers:
   ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. The current
   publication implementation accepts ``buf-fn`` for source compatibility but
   does not yet model per-topic internal buffers.
+* Add the routing protocol helper surface: ``Mux``, ``Mult``, ``Pub``,
+  ``Mix``, ``muxch*``, and the ``tap*``/``sub*``/``admix*`` helper families.
+  These delegate to the existing map-backed routing state and preserve the
+  portable return values covered by JVM fixtures.
 * Add the ``mix`` routing family: ``mix``, ``admix``, ``unmix``,
   ``unmix-all``, ``toggle``, and ``solo-mode``. The implementation supports
   Clojure's ``:mute``, ``:pause``, and ``:solo`` state maps, including both

@@ -410,9 +410,11 @@ and rejects nil emitted values.
 The facade additionally includes task-backed routing combinators ``mult``,
 ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
 ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
-``solo-mode``. These preserve the portable fan-out/topic-routing contracts
-against JVM fixtures. The blocking bridge names ``<!!``, ``>!!``, ``alts!!``,
-``thread``, ``thread-call``, and ``io-thread`` are also supported with explicit
+``solo-mode`` plus the routing protocol helper surface ``Mux``, ``Mult``,
+``Pub``, ``Mix``, ``muxch*``, and the ``tap*``/``sub*``/``admix*`` families.
+These preserve the portable fan-out/topic-routing contracts against JVM
+fixtures. The blocking bridge names ``<!!``, ``>!!``, ``alts!!``, ``thread``,
+``thread-call``, and ``io-thread`` are also supported with explicit
 same-owner-loop deadlock rejection for blocking channel calls. The pipeline
 variant names ``pipeline-blocking`` and ``pipeline-async`` are also supported
 and covered by JVM fixtures. ``go``
