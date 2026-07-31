@@ -1,0 +1,14 @@
+{
+  "source_root": ".",
+  "upstream_url": "https://github.com/clojure/tools.namespace",
+  "upstream_revision": "org.clojure/tools.namespace 1.5.0 Maven artifact",
+  "clojure_deps": {
+    "org.clojure/tools.namespace": "1.5.0"
+  },
+  "substitutions": [
+    "clojure.tools.namespace -> basilisp.tools.namespace",
+    "clojure.tools.reader -> basilisp.tools.reader",
+    "clojure.java.io -> basilisp.io",
+    "clojure.string -> basilisp.string"
+  ]
+}

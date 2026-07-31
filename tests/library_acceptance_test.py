@@ -57,6 +57,19 @@ def test_tools_cli_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_tools_namespace_acceptance_manifest_is_host_adapted_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "tools-namespace"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "jvm-only"' in manifest
+    assert "clojure.tools.namespace -> basilisp.tools.namespace" in manifest
+    assert "org.clojure/tools.namespace 1.5.0 Maven artifact" in manifest
+    assert "java-interop" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_math_combinatorics_acceptance_manifest_is_portable_and_checked_in():
     library_root = (
         Path(__file__).parent / "acceptance" / "upstream" / "math-combinatorics"
