@@ -175,6 +175,69 @@
   [ports & opts]
   (apply concurrent/blocking-alts! ports opts))
 
+(defn do-alt
+  "Return the macro expansion shared by ``alt!!`` and, eventually, parking
+  ``alt!``. ``alts`` is the selection function symbol and ``clauses`` is the
+  alternating channel-operation/result-expression form sequence."
+  [alts clauses]
+  (assert (even? (count clauses)) "unbalanced clauses")
+  (let [clause-pairs (basilisp.core/partition 2 clauses)
+        option?      #(keyword? (first %))
+        opts         (basilisp.core/filter option? clause-pairs)
+        clauses      (basilisp.core/remove option? clause-pairs)
+        [clauses bindings]
+        (basilisp.core/reduce
+         (fn [[clauses bindings] [ports expr]]
+           (let [ports (if (vector? ports) ports [ports])
+                 [ports bindings]
+                 (basilisp.core/reduce
+                  (fn [[ports bindings] port]
+                    (if (vector? port)
+                      (let [[port val] port
+                            gp         (gensym)
+                            gv         (gensym)]
+                        [(conj ports [gp gv])
+                         (conj bindings [gp port] [gv val])])
+                      (let [gp (gensym)]
+                        [(conj ports gp)
+                         (conj bindings [gp port])])))
+                  [[] bindings]
+                  ports)]
+             [(conj clauses [ports expr]) bindings]))
+         [[] []]
+         clauses)
+        value-sym (gensym "value")
+        port-sym  (gensym "port")
+        ret-sym   (gensym "ret")]
+    `(let [~@(basilisp.core/mapcat identity bindings)
+           [~value-sym ~port-sym :as ~ret-sym] (~alts [~@(apply concat (basilisp.core/map first clauses))]
+                                                    ~@(apply concat opts))]
+       (cond
+         ~@(basilisp.core/mapcat
+            (fn [[ports expr]]
+              [`(or ~@(basilisp.core/map
+                       (fn [port]
+                         `(= ~port-sym ~(if (vector? port)
+                                          (first port)
+                                          port)))
+                       ports))
+               (if (and (seq? expr) (vector? (first expr)))
+                 `(let [~(first expr) ~ret-sym] ~@(rest expr))
+                 expr)])
+            clauses)
+         (= ~port-sym :default) ~value-sym))))
+
+(defmacro alt!!
+  "Blocking choice macro over channel operations.
+
+  Each clause is ``channel-op[s] result-expr``. Channel ops match Clojure
+  ``core.async/alt!!``: a take channel, a vector of take channels and/or
+  ``[put-channel value]`` operations, plus ``:default`` and ``:priority``
+  options. A result expression beginning with a vector binds the ``[value
+  port]`` result from ``alts!!``."
+  [& clauses]
+  (do-alt `alts!! clauses))
+
 (defn thread-call
   "Run zero-argument ``f`` in another thread and return a channel receiving the
   result before close. The optional ``workload`` argument is accepted for

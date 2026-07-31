@@ -508,6 +508,22 @@
              [fallback port]  (async/alts!! [(async/chan)] :default :fallback)]
          [value (identical? selected second) fallback port]))]))
 
+(defn core-async-alt-blocking-macro-roundtrip []
+  (let [first  (async/chan 1)
+        second (async/chan 1)
+        target (async/chan 1)]
+    (async/>!! first :first)
+    (async/>!! second :second)
+    [(async/alt!! second ([value port] [value (identical? port second)])
+                  first :first-branch
+                  :priority true)
+     (async/<!! first)
+     (async/alt!! [[target :written]]
+                  ([accepted? port]
+                   [accepted? (identical? port target) (async/<!! target)]))
+     (async/alt!! (async/chan) :unreachable
+                  :default :fallback)]))
+
 (defn core-async-promise-channel-roundtrip []
   (let [basic      (async/promise-chan)
         closed     (async/promise-chan)
@@ -630,7 +646,7 @@
                     "pub" "sub" "sub*" "unsub" "unsub*" "unsub-all" "unsub-all*"
                     "mix" "admix" "admix*" "unmix" "unmix*" "unmix-all" "unmix-all*"
                     "toggle" "toggle*" "solo-mode" "solo-mode*"
-                    "<!!" ">!!" "alts!!"
+                    "<!!" ">!!" "alts!!" "alt!!" "do-alt"
                     "thread" "thread-call" "io-thread"
                     "pipeline-async" "pipeline-blocking"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
@@ -752,6 +768,8 @@
   (testing "blocking operations and thread helpers"
     (is (= [true :value [:second true :fallback :default]]
            (core-async-blocking-roundtrip)))
+    (is (= [[:second true] :first [true true :written] :fallback]
+           (core-async-alt-blocking-macro-roundtrip)))
     (is (= [:thread-call-result nil :thread-result nil nil]
            (core-async-thread-roundtrip)))
     (is (= [:io-thread-result nil nil]

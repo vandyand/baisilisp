@@ -108,13 +108,15 @@ surface ``Mux``, ``Mult``, ``Pub``, ``Mix``, ``muxch*``, and the corresponding
 the router task on the owning event loop. The facade does not advertise ``go``,
 ``go-loop``, or parking ``<!``/``>!``/``alt!`` forms.
 
-The Clojure blocking bridge names ``<!!``, ``>!!``, and ``alts!!`` are
+The Clojure blocking bridge names ``<!!``, ``>!!``, ``alts!!``, and ``alt!!`` are
 available for synchronous callers. They reject calls from the channel's owning
-running event loop to avoid deadlock. ``thread`` and ``thread-call`` run work
-on a worker thread and return a channel which receives the non-``nil`` result
-before close. ``io-thread`` preserves Clojure's public macro shape and uses the
-same worker-thread executor while passing the I/O workload hint through the
-facade.
+running event loop to avoid deadlock. ``alt!!`` expands to the existing
+blocking ``alts!!`` selection bridge and supports Clojure-shaped result
+bindings, ``:default``, ``:priority``, take clauses, and put clauses. ``thread``
+and ``thread-call`` run work on a worker thread and return a channel which
+receives the non-``nil`` result before close. ``io-thread`` preserves Clojure's
+public macro shape and uses the same worker-thread executor while passing the
+I/O workload hint through the facade.
 
 Transactions
 ------------

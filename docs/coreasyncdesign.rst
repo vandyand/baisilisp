@@ -163,10 +163,10 @@ into one of these states:
    * - Blocking bridge
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
-     - Covered locally for ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
-       ``thread-call``/``io-thread``. ``io-thread`` currently preserves the
-       public macro shape and routes through the same worker-thread executor as
-       ``thread``.
+     - Covered locally for ``<!!``, ``>!!``, ``alts!!``, ``alt!!``,
+       ``thread``, and ``thread-call``/``io-thread``. ``alt!!`` is a source
+       macro over ``alts!!``. ``io-thread`` currently preserves the public macro
+       shape and routes through the same worker-thread executor as ``thread``.
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
      - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
@@ -464,9 +464,11 @@ The initial implementation now covers:
   ``unmix-all``, ``toggle``, and ``solo-mode``. The implementation supports
   Clojure's ``:mute``, ``:pause``, and ``:solo`` state maps, including both
   default solo muting and ``solo-mode :pause``.
-* Add blocking/thread bridges: ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
-  ``thread-call``. Blocking calls run against the channel's owner loop from
-  synchronous callers and reject calls from that owner loop to avoid deadlock.
+* Add blocking/thread bridges: ``<!!``, ``>!!``, ``alts!!``, ``alt!!``,
+  ``thread``, and ``thread-call``. Blocking calls run against the channel's
+  owner loop from synchronous callers and reject calls from that owner loop to
+  avoid deadlock. ``alt!!`` uses the public ``do-alt`` expansion helper and
+  delegates to ``alts!!``.
 * Add pipeline variants: ``pipeline-blocking`` delegates to the bounded
   worker-thread transducer pipeline, while ``pipeline-async`` accepts
   callback-shaped asynchronous work, preserves input order, handles fan-out,
