@@ -109,7 +109,7 @@
   [pattern occurrence]
   (compile-vector-like-pattern (vec pattern)
                                occurrence
-                               true
+                               `(seqable? ~occurrence)
                                `(count (vec ~occurrence))
                                (fn [idx] `(nth (vec ~occurrence) ~idx))
                                (fn [idx] `(drop ~idx ~occurrence))

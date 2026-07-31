@@ -53,6 +53,17 @@
              [([a b] :as whole)] [a b whole]
              :else :bad)))))
 
+(deftest seq-pattern-scalar-fallback-test
+  (testing "seq patterns fail instead of coercing non-seqable scalar values"
+    (is (= [:fallback 41]
+           (match [41]
+             [([1 2] :seq)] :bad
+             :else [:fallback 41])))
+    (is (= [:fallback :keyword]
+           (match [:keyword]
+             [([:a :b] :seq)] :bad
+             :else [:fallback :keyword])))))
+
 (deftest compatibility-wrapper-macros-test
   (is (= 2
          (matchv :vector [[1 2]]

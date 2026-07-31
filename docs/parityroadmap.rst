@@ -163,7 +163,8 @@ Near-term deliverable:
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
-  ``core-unify``, ``core-cache-memoize``, ``core.async``, and ``data.csv``. The
+  ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``, and
+  ``core.match``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -194,6 +195,13 @@ Near-term deliverable:
   reader/writer interop, delimiter/quote/newline options, scalar row coercion,
   and deterministic generated round trips with commas, quotes, CR/LF text, and
   custom separators.
+  The ``core.match`` proof uses the published ``org.clojure/core.match`` 1.1.1
+  artifact on the JVM side and Basilisp's production ``clojure.core.match``
+  alias on the Basilisp side; it locks the user-facing portable macro subset
+  across literals, bindings, vector/map/seq patterns, rest patterns,
+  application patterns, as-patterns, ``matchv``, ``matchm``, ``match-let``, and
+  no-match boundaries while keeping JVM/CLJS implementation helper namespaces
+  outside the current contract.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1398,14 +1406,17 @@ Completed locally:
   delimiter entrypoints, custom separator/quote/newline behavior, scalar
   coercion, invalid-option parity, and deterministic generated round trips over
   comma, quote, CR, LF, CRLF, semicolon, and empty-field values.
-* ``basilisp.core.match`` now provides a Basilisp-native portable subset of
-  ``clojure.core.match`` covering ``match``, ``matchm``, ``matchv``,
-  ``match-let``, literals, wildcards, named bindings, vector/map/seq patterns,
-  vector and seq rest patterns, application patterns, and as-patterns. The
-  shared fixture compares this subset against ``org.clojure/core.match``
-  1.1.1. The upstream snapshot remains too JVM/CLJS-compiler-specific to port
-  wholesale, so extension namespaces such as ``array``, ``java``, and ``regex``
-  stay outside the claimed compatibility contract.
+* source-level ``core.match`` acceptance added as a macro-heavy real-library
+  probe; it runs a multi-file portable workflow against
+  ``org.clojure/core.match`` 1.1.1 and Basilisp's production
+  ``clojure.core.match`` alias. The probe locks the Basilisp-native portable
+  subset covering ``match``, ``matchm``, ``matchv``, ``match-let``, literals,
+  wildcards, named bindings, vector/map/seq patterns, vector and seq rest
+  patterns, application patterns, as-patterns, generated mixed-value
+  classification, and no-match boundaries. The upstream snapshot remains too
+  JVM/CLJS-compiler-specific to port wholesale, so extension namespaces such as
+  ``array``, ``java``, and ``regex`` stay outside the claimed compatibility
+  contract.
 * ``Throwable->map`` diagnostics hardening now differentially locks thrown
   exception chains with ``:clojure.error/phase`` data, preserving Clojure's
   top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``
