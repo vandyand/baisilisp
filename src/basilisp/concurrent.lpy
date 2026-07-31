@@ -139,6 +139,19 @@
                       :has-default (contains? opts :default))]
     [value port]))
 
+(defn try-alts!
+  "Try one ready take or put operation without enqueuing waiters.
+
+  Returns ``[true [value port]]`` for an immediate operation or default, and
+  ``[false nil]`` when the operation would need to wait."
+  [ports opts]
+  (let [[ready? result] (basilisp.concurrent_channel/try_alts
+                         ports
+                         ** :priority (boolean (:priority opts))
+                         :default (:default opts)
+                         :has-default (contains? opts :default))]
+    [ready? (when ready? [(first result) (second result)])]))
+
 (defn- deliver-thread-call-result! [output f]
   (try
     (let [result (f)]

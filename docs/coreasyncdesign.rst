@@ -164,9 +164,12 @@ into one of these states:
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
      - Covered locally for ``<!!``, ``>!!``, ``alts!!``, ``alt!!``,
+       ``fn-handler``, ``do-alts``, ``do-alt``, ``defblockingop``,
        ``thread``, and ``thread-call``/``io-thread``. ``alt!!`` is a source
-       macro over ``alts!!``. ``io-thread`` currently preserves the public macro
-       shape and routes through the same worker-thread executor as ``thread``.
+       macro over ``alts!!``. ``do-alts`` exposes the immediate-or-enqueued
+       helper shape used by Clojure's IOC layer. ``io-thread`` currently
+       preserves the public macro shape and routes through the same
+       worker-thread executor as ``thread``.
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
      - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
@@ -436,9 +439,9 @@ The initial implementation now covers:
 * Provide and test the phase-1 callback/awaitable behavior for ``put!`` and
   ``take!``: no callback returns an awaitable; callback calls schedule on the
   current event loop and return ``nil``.
-* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, and advanced flow
-  combinators absent until they can be implemented or rejected with a stable
-  support matrix.
+* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, ``ioc-alts!``, and
+  advanced flow combinators absent until they can be implemented or rejected
+  with a stable support matrix.
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
@@ -464,11 +467,13 @@ The initial implementation now covers:
   ``unmix-all``, ``toggle``, and ``solo-mode``. The implementation supports
   Clojure's ``:mute``, ``:pause``, and ``:solo`` state maps, including both
   default solo muting and ``solo-mode :pause``.
-* Add blocking/thread bridges: ``<!!``, ``>!!``, ``alts!!``, ``alt!!``,
-  ``thread``, and ``thread-call``. Blocking calls run against the channel's
-  owner loop from synchronous callers and reject calls from that owner loop to
-  avoid deadlock. ``alt!!`` uses the public ``do-alt`` expansion helper and
-  delegates to ``alts!!``.
+* Add blocking/thread bridges and helper publics: ``<!!``, ``>!!``,
+  ``alts!!``, ``alt!!``, ``fn-handler``, ``do-alts``, ``do-alt``,
+  ``defblockingop``, ``thread``, and ``thread-call``. Blocking calls run
+  against the channel's owner loop from synchronous callers and reject calls
+  from that owner loop to avoid deadlock. ``alt!!`` uses the public ``do-alt``
+  expansion helper and delegates to ``alts!!``. ``do-alts`` covers the public
+  immediate/enqueued helper contract used by the eventual IOC layer.
 * Add pipeline variants: ``pipeline-blocking`` delegates to the bounded
   worker-thread transducer pipeline, while ``pipeline-async`` accepts
   callback-shaped asynchronous work, preserves input order, handles fan-out,
@@ -492,7 +497,10 @@ Recommended Next Tranche
 ------------------------
 
 The next tranche should start the minimal coroutine-backed ``go``/parking
-design rather than broaden the runtime facade further:
+design rather than broaden the runtime facade further. After the helper-publics
+tranche, the remaining ``clojure.core.async`` public gap is the six
+parking/compiler names: ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, and
+``ioc-alts!``:
 
 * Keep the maintained public support matrix for ``clojure.core.async`` exact.
   The current test gate asserts the supported non-``go`` public set and the
