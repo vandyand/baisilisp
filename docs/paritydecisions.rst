@@ -421,8 +421,11 @@ helper-publics tranche also exposes ``fn-handler``, ``do-alts``, and
 ``defblockingop``; ``do-alts`` returns a derefable immediate selection or
 enqueues a callback-backed selection on the owning event loop. The pipeline
 variant names ``pipeline-blocking`` and ``pipeline-async`` are also supported
-and covered by JVM fixtures. ``go`` parking forms remain outside the advertised
-surface.
+and covered by JVM fixtures. The parking names ``go``, ``go-loop``, ``<!``,
+``>!``, and ``alt!`` are supported as a coroutine-backed compatibility subset,
+and ``ioc-alts!`` is present as an explicit unsupported direct-call boundary.
+This closes the public surface gap while still deferring full Clojure
+IOC/state-machine parity.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -625,11 +628,11 @@ is:
    only after a shared fixture and manifest pass. Preserve the tested Ref
    history-control contract; add an adaptive snapshot queue only if a workload
    demonstrates starvation or snapshot-retention pressure.
-2. Do not add a ``go`` macro until resumable-state-machine semantics have a
-   separate proof and rejection model. ``basilisp.concurrent`` remains the
-   Python-native async/channel boundary, while ``clojure.core.async`` now
-   exposes the tested non-``go`` facade subset. Core.async parking macros are
-   not advertised as public parity surface.
+2. ``go`` is available as a coroutine-backed source-compatibility subset.
+   ``basilisp.concurrent`` remains the Python-native async/channel boundary for
+   application code. Full Clojure resumable-state-machine/IOC parity still
+   requires a separate proof and rejection model and must not be implied by the
+   public surface match.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 

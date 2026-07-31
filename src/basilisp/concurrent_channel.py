@@ -582,6 +582,14 @@ def _run_blocking(
     return asyncio.run_coroutine_threadsafe(awaitable_factory(), loop).result()
 
 
+def submit_coroutine(coro: Any) -> Any:
+    """Schedule ``coro`` on the current loop or the background blocking loop."""
+    current = _current_running_loop()
+    if current is not None:
+        return current.create_task(coro)
+    return asyncio.run_coroutine_threadsafe(coro, _blocking_loop())
+
+
 def blocking_put(channel: Channel, value: Any) -> bool:
     """Block until ``value`` is put on ``channel`` or the channel is closed."""
     loop = _owner_loop([channel])

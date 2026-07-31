@@ -52,6 +52,12 @@
 (defn task [awaitable]
   (asyncio/create-task awaitable))
 
+(defn submit-task!
+  "Schedule ``awaitable`` on the current running event loop or on the
+  background channel loop when called from synchronous code."
+  [awaitable]
+  (basilisp.concurrent_channel/submit_coroutine awaitable))
+
 (defn task? [value]
   (instance? asyncio/Task value))
 
@@ -110,7 +116,10 @@
   (.take channel))
 
 (defn close! [channel]
-  (.close channel))
+  (try
+    (.close channel)
+    (catch RuntimeError _
+      (basilisp.concurrent_channel/blocking_close channel))))
 
 (defn closed? [channel]
   (.-closed channel))

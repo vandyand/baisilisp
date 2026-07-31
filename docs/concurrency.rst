@@ -88,8 +88,8 @@ compatibility path.
 ``clojure.core.async`` Compatibility Facade
 -------------------------------------------
 
-``clojure.core.async`` requires are rewritten to ``basilisp.core.async`` for
-the currently supported non-``go`` subset. The facade provides Clojure-shaped
+``clojure.core.async`` requires are rewritten to ``basilisp.core.async``. The
+facade provides Clojure-shaped
 buffer constructors, ``chan`` argument handling, close and non-blocking
 operations, awaitable ``put!``/``take!`` with optional callback scheduling,
 ``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``,
@@ -105,8 +105,7 @@ task-backed routing combinators ``mult``, ``tap``, ``untap``, ``untap-all``,
 ``unmix-all``, ``toggle``, and ``solo-mode`` plus the Clojure protocol helper
 surface ``Mux``, ``Mult``, ``Pub``, ``Mix``, ``muxch*``, and the corresponding
 ``tap*``/``sub*``/``admix*`` families. Source close propagation is performed by
-the router task on the owning event loop. The facade does not advertise ``go``,
-``go-loop``, or parking ``<!``/``>!``/``alt!`` forms.
+the router task on the owning event loop.
 
 The Clojure blocking bridge names ``<!!``, ``>!!``, ``alts!!``, and ``alt!!`` are
 available for synchronous callers. They reject calls from the channel's owning
@@ -120,6 +119,16 @@ on the owning event loop. ``thread`` and ``thread-call`` run work on a worker
 thread and return a channel which receives the non-``nil`` result before close.
 ``io-thread`` preserves Clojure's public macro shape and uses the same
 worker-thread executor while passing the I/O workload hint through the facade.
+
+The parking surface ``go``, ``go-loop``, ``<!``, ``>!``, and ``alt!`` is
+available as a coroutine-backed compatibility subset. ``go`` schedules work on
+the current running event loop, or on the background channel loop when called
+from synchronous code, and returns a channel which receives the non-``nil`` body
+result before close. This closes the public ``clojure.core.async`` surface gap
+for ordinary portable examples, but it is not a full Clojure IOC/state-machine
+implementation. The public ``ioc-alts!`` name is present and rejects direct
+calls with an explicit error because BaisiLisp does not expose Clojure's
+compiler-generated IOC state representation.
 
 Transactions
 ------------

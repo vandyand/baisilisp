@@ -219,11 +219,8 @@
        (fn ~arglist
          ~@body))))
 
-(defn do-alt
-  "Return the macro expansion shared by ``alt!!`` and, eventually, parking
-  ``alt!``. ``alts`` is the selection function symbol and ``clauses`` is the
-  alternating channel-operation/result-expression form sequence."
-  [alts clauses]
+(defn- do-alt*
+  [alts clauses await?]
   (assert (even? (count clauses)) "unbalanced clauses")
   (let [clause-pairs (basilisp.core/partition 2 clauses)
         option?      #(keyword? (first %))
@@ -252,10 +249,13 @@
          clauses)
         value-sym (gensym "value")
         port-sym  (gensym "port")
-        ret-sym   (gensym "ret")]
+        ret-sym   (gensym "ret")
+        alts-call `(~alts [~@(apply concat (basilisp.core/map first clauses))]
+                      ~@(apply concat opts))]
     `(let [~@(basilisp.core/mapcat identity bindings)
-           [~value-sym ~port-sym :as ~ret-sym] (~alts [~@(apply concat (basilisp.core/map first clauses))]
-                                                    ~@(apply concat opts))]
+           [~value-sym ~port-sym :as ~ret-sym] ~(if await?
+                                                  `(await ~alts-call)
+                                                  alts-call)]
        (cond
          ~@(basilisp.core/mapcat
             (fn [[ports expr]]
@@ -271,6 +271,13 @@
             clauses)
          (= ~port-sym :default) ~value-sym))))
 
+(defn do-alt
+  "Return the macro expansion shared by ``alt!!`` and parking ``alt!``.
+  ``alts`` is the selection function symbol and ``clauses`` is the alternating
+  channel-operation/result-expression form sequence."
+  [alts clauses]
+  (do-alt* alts clauses false))
+
 (defmacro alt!!
   "Blocking choice macro over channel operations.
 
@@ -281,6 +288,63 @@
   port]`` result from ``alts!!``."
   [& clauses]
   (do-alt `alts!! clauses))
+
+(defasync ^:private run-go-body!
+  [result-channel body-fn]
+  (try
+    (let [result (await (body-fn))]
+      (when (some? result)
+        (await (put! result-channel result))))
+    (finally
+      (close! result-channel))))
+
+(defmacro go
+  "Run ``body`` in a caller-owned ``asyncio`` task and return a channel which
+  receives the non-``nil`` body result before close.
+
+  This is a coroutine-backed source-compatibility subset of Clojure
+  ``core.async/go``. Parking operations ``<!``, ``>!``, and ``alt!`` lower to
+  ``await`` over the existing channel runtime."
+  [& body]
+  (let [body-fn (with-meta (concat '(fn []) body) {:async true})]
+    `(let [result-channel# (chan 1)]
+       (concurrent/submit-task!
+        (@#'basilisp.core.async/run-go-body! result-channel# ~body-fn))
+       result-channel#)))
+
+(defmacro go-loop
+  "Coroutine-backed ``go`` plus ``loop``."
+  [bindings & body]
+  `(go (loop ~bindings ~@body)))
+
+(defmacro <!
+  "Take from ``port`` inside the coroutine-backed parking subset."
+  [port]
+  `(await (take! ~port)))
+
+(defmacro >!
+  "Put ``value`` on ``port`` inside the coroutine-backed parking subset."
+  [port value]
+  `(await (put! ~port ~value)))
+
+(defmacro alt!
+  "Parking choice macro over channel operations in the coroutine-backed
+  ``go`` subset."
+  [& clauses]
+  (do-alt* `alts! clauses true))
+
+(defn ioc-alts!
+  "Clojure exposes this helper for compiler-generated IOC state machines.
+
+  BaisiLisp's current ``go`` tranche is coroutine-backed, so there is no public
+  IOC state-machine representation to resume here. The public name is present
+  for source compatibility and rejects direct calls deterministically."
+  [state cont-block ports & opts]
+  (throw (ex-info "ioc-alts! requires Clojure-style IOC state-machine support"
+                  {:state state
+                   :cont-block cont-block
+                   :ports ports
+                   :opts opts})))
 
 (defn thread-call
   "Run zero-argument ``f`` in another thread and return a channel receiving the
