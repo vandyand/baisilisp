@@ -1,0 +1,74 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "52b802fad7f420f7eddd1bdffaaffdb849bbc7af6a851f7b846390aa2af937f1"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/data_codec_base64/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "bs",
+        "bytes",
+        "case",
+        "clojure.data.codec.base64",
+        "encoded",
+        "f",
+        "java.io",
+        "length",
+        "n",
+        "next",
+        "out",
+        "plain",
+        "plain-bytes",
+        "remaining",
+        "s",
+        "s1",
+        "seed",
+        "size",
+        "source",
+        "xs"
+      ],
+      "sha256": "4e65118fcb85d939216a29b797354384b9bafbd1e0e27d74c50eb7a458389079"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/data_codec_base64/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.data-codec-base64.workflow"
+      ],
+      "sha256": "923b9ec0ca814b81a1c6c40f747a5d77cc103c33c8273afe7a7b9d1375559939"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.codec.base64 -> basilisp.data.codec.base64"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/data.codec 0.1.1 Maven artifact",
+  "upstream_url": "https://github.com/clojure/data.codec"
+}
