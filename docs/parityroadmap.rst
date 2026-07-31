@@ -163,8 +163,8 @@ Near-term deliverable:
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
-  ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``, and
-  ``core.match``. The
+  ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
+  ``core.match``, and ``tools.namespace``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -202,6 +202,15 @@ Near-term deliverable:
   application patterns, as-patterns, ``matchv``, ``matchm``, ``match-let``, and
   no-match boundaries while keeping JVM/CLJS implementation helper namespaces
   outside the current contract.
+  The ``tools.namespace`` proof uses the published
+  ``org.clojure/tools.namespace`` 1.5.0 artifact on the JVM side and Basilisp's
+  production ``clojure.tools.namespace`` aliases on the Basilisp side; it locks
+  selected public facades, namespace parsing, dependency graphs, tracker
+  ordering, generated acyclic graph stress cases, file/dir/JAR source
+  discovery, and namespace move/rewrite boundaries. The acceptance manifest is
+  intentionally classified as host-adapted because the fixture uses Java
+  filesystem/JAR setup on the JVM side and Python filesystem/ZIP setup on the
+  Basilisp side while emitting normalized cross-runtime results.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1417,6 +1426,18 @@ Completed locally:
   JVM/CLJS-compiler-specific to port wholesale, so extension namespaces such as
   ``array``, ``java``, and ``regex`` stay outside the claimed compatibility
   contract.
+* source-level ``tools.namespace`` acceptance added as a host-adapted
+  real-library probe; it runs a multi-file workflow against
+  ``org.clojure/tools.namespace`` 1.5.0 and Basilisp's production
+  ``clojure.tools.namespace`` aliases. The probe locks selected public
+  facades, parser behavior for comments, docstrings, metadata, prefixed
+  libspecs, aliases, ``:as-alias``, ``:use``, ``:require-macros``, and
+  reader-conditionals, dependency graph updates, tracker load/unload ordering,
+  48 deterministic generated acyclic graph cases, file/dir/JAR discovery, root
+  facade behavior, namespace file moves, and token-boundary-aware namespace
+  rewrites. The manifest remains host-adapted because the setup code must use
+  JVM filesystem/JAR APIs on Clojure and Python filesystem/ZIP APIs on
+  Basilisp, but the emitted acceptance contract is normalized data.
 * ``Throwable->map`` diagnostics hardening now differentially locks thrown
   exception chains with ``:clojure.error/phase`` data, preserving Clojure's
   top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``
