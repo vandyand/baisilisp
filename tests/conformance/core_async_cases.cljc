@@ -35,7 +35,7 @@
      admix* unmix* unmix-all*
      toggle solo-mode
      toggle* solo-mode*
-     <!! >!! alts!!
+     <!! >!! alts!! alt!! do-alt
      thread thread-call io-thread})
 
 (def unsupported-parking-and-blocking-publics
@@ -647,6 +647,22 @@
        (let [[value selected] (await (async/alts! [second first] :priority true))
              [fallback port]  (await (async/alts! [(async/chan)] :default :fallback))]
          [value (identical? selected second) fallback port]))))
+
+(defn alt-blocking-macro-roundtrip []
+  (let [first  (async/chan 1)
+        second (async/chan 1)
+        target (async/chan 1)]
+    (async/>!! first :first)
+    (async/>!! second :second)
+    [(async/alt!! second ([value port] [value (identical? port second)])
+                  first :first-branch
+                  :priority true)
+     (async/<!! first)
+     (async/alt!! [[target :written]]
+                  ([accepted? port]
+                   [accepted? (identical? port target) (async/<!! target)]))
+     (async/alt!! (async/chan) :unreachable
+                  :default :fallback)]))
 
 #?(:clj
    (defn timeout-roundtrip []
@@ -1276,5 +1292,6 @@
 
 (emit-case :core-async-blocking-bridges
            [(blocking-roundtrip)
+            (alt-blocking-macro-roundtrip)
             (thread-roundtrip)
             (io-thread-roundtrip)])
