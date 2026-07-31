@@ -165,7 +165,8 @@ Near-term deliverable:
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
   ``data.json``, ``data.codec.base64``, ``core.match``,
-  ``tools.namespace``, ``tools.reader``, and ``test.check``. The
+  ``tools.namespace``, ``tools.reader``, ``tools.logging``, and
+  ``test.check``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -233,6 +234,13 @@ Near-term deliverable:
   surfaces plus source/EDN reading, tagged literals, reader conditionals,
   source logging, indexing/pushback readers, timestamp/UUID readers, helper
   predicates, error boundaries, and 96 deterministic generated reader forms.
+  The ``tools.logging`` proof uses the published
+  ``org.clojure/tools.logging`` 1.3.0 artifact on the JVM side and Basilisp's
+  production ``clojure.tools.logging`` aliases on the Basilisp side; it locks
+  logging, implementation, and readable facades, factory discovery boundaries,
+  macro gating/laziness, formatting, throwable arities, stream/capture helpers,
+  explicit log arities, readable string rendering, and 48 deterministic
+  generated enabled-level cases.
   The ``test.check`` proof uses the published ``org.clojure/test.check`` 1.1.1
   artifact on the JVM side and Basilisp's production ``clojure.test.check``
   aliases on the Basilisp side; it locks the portable generator, property,
@@ -1496,6 +1504,17 @@ Completed locally:
   timestamp/UUID default readers, normalized reader-error boundaries, inspect
   helpers, utility predicates, and 96 deterministic generated source forms
   plus adversarial rejection cases.
+* source-level ``tools.logging`` acceptance added as a logging facade
+  real-library probe; it runs a multi-file portable workflow against
+  ``org.clojure/tools.logging`` 1.3.0 and Basilisp's production
+  ``clojure.tools.logging`` aliases. The probe locks public surfaces for the
+  root logging namespace, ``impl``, and ``readable``; it covers disabled and
+  discovered logger factories, host-adapted backend discovery boundaries,
+  enabled-level macro gating and laziness, formatted and plain messages,
+  ``spy``/``spyf`` return values, stream/capture helpers, readable facade
+  rendering, explicit ``log`` arities, throwable arity boundaries, disabled
+  path non-realization, and 48 deterministic generated enabled-level logging
+  cases.
 * source-level ``test.check`` acceptance added as a property-testing
   real-library probe; it runs a multi-file portable workflow against
   ``org.clojure/test.check`` 1.1.1 and Basilisp's production

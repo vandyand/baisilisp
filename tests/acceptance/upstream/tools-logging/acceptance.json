@@ -1,0 +1,11 @@
+{
+  "source_root": ".",
+  "upstream_url": "https://github.com/clojure/tools.logging",
+  "upstream_revision": "org.clojure/tools.logging 1.3.0 Maven artifact",
+  "clojure_deps": {
+    "org.clojure/tools.logging": "1.3.0"
+  },
+  "substitutions": [
+    "clojure.tools.logging -> basilisp.tools.logging"
+  ]
+}
