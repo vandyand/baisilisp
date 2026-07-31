@@ -1,0 +1,80 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "8a66276c79576c5e5f0bab2a86c39883e7f0c70f5226d2750fdbc2b5fe3967f5"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/data_xml/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "CDATA",
+        "actual",
+        "case",
+        "clojure.data.xml",
+        "clojure.data.xml.event",
+        "clojure.data.xml.tree",
+        "clojure.string",
+        "el",
+        "event",
+        "f",
+        "java.io",
+        "k",
+        "name",
+        "nil",
+        "node",
+        "ns-sym",
+        "remaining",
+        "s",
+        "s1",
+        "seed",
+        "source",
+        "space-uri",
+        "start",
+        "tree",
+        "writer",
+        "y"
+      ],
+      "sha256": "a437d3b6e894a29b1a40fe5b7ec30bd0e212666fbdb046d229fb1a603fbc5aa5"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/data_xml/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.data-xml.workflow"
+      ],
+      "sha256": "9b7226fb523a69c6871e828092629029abda0e96aaedc45f11a36218efea9a51"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.xml -> basilisp.data.xml"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/data.xml 0.2.0-alpha11 Maven artifact",
+  "upstream_url": "https://github.com/clojure/data.xml"
+}
