@@ -32,9 +32,11 @@
         "inputs",
         "left-only",
         "merged",
+        "muted",
         "priority-first",
         "published",
         "result",
+        "return-contracts",
         "second-value",
         "source",
         "target",
@@ -42,7 +44,7 @@
         "unsubbed",
         "value"
       ],
-      "sha256": "c0f9d95881aed2008c6644e639beb25031c54e3a21da5820fa277aa846724cd6"
+      "sha256": "30151cea4474eeeda7627952cf193ef867f603b5ecb1d2c88b07e0e4a5a3dc27"
     },
     {
       "blockers": [],

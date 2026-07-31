@@ -134,7 +134,7 @@
                      [:unique       (async/<! (drain-go deduped))]]]]))))
 
 (defn routing-summary
-  "Exercise finite mult and pub routing with deterministic data."
+  "Exercise finite mult, pub, and mix routing with deterministic data."
   []
   (async/<!!
    (async/go
@@ -145,7 +145,14 @@
            pub-source (async/chan 4)
            p          (async/pub pub-source :topic)
            alpha      (async/chan 2)
-           beta       (async/chan 2)]
+           beta       (async/chan 2)
+           return-out (async/chan 4)
+           return-mx  (async/mix return-out)
+           return-in  (async/chan 4)
+           mix-out    (async/chan 8)
+           mx         (async/mix mix-out)
+           x          (async/chan 8)
+           y          (async/chan 8)]
        (async/tap m left)
        (async/tap m right)
        (async/>! source :one)
@@ -162,10 +169,33 @@
              (async/unsub p :b beta)
              (async/>! pub-source {:topic :b :value [:b 4]})
              (let [unsubbed (async/poll! beta)]
-               (async/close! source)
-               (async/close! pub-source)
-               [[:mult [first-pair left-only]]
-                [:pub  [(mapv :value published) unsubbed]]]))))))))
+               (let [return-contracts [(true? (async/admix return-mx return-in))
+                                       (true? (async/toggle return-mx {return-in {:mute true}}))
+                                       (true? (async/solo-mode return-mx :pause))
+                                       (true? (async/unmix return-mx return-in))
+                                       (true? (async/unmix-all return-mx))
+                                       (true? (async/admix* return-mx return-in))
+                                       (true? (async/toggle* return-mx {return-in {:mute false}}))
+                                       (true? (async/solo-mode* return-mx :mute))
+                                       (true? (async/unmix* return-mx return-in))
+                                       (true? (async/unmix-all* return-mx))]]
+                   (async/admix mx x)
+                   (async/admix mx y)
+                   (async/toggle mx {x {:mute true}})
+                   (async/>! x :x-muted)
+                   (async/>! y :y-live)
+                   (let [muted [(async/<! mix-out) (async/poll! mix-out)]]
+                     (async/close! source)
+                     (async/close! pub-source)
+                     (async/close! return-out)
+                     (async/admix return-mx return-in)
+                     (async/>! return-in :shutdown)
+                     (async/close! mix-out)
+                     (async/>! y :shutdown)
+                     (async/<! (async/timeout 1))
+                     [[:mult [first-pair left-only]]
+                      [:pub  [(mapv :value published) unsubbed]]
+                      [:mix  [return-contracts muted]]]))))))))))
 
 (defn stress-summary
   "Run a deterministic go-parking stress probe over independent channels."

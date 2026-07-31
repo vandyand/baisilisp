@@ -188,9 +188,10 @@ Near-term deliverable:
   ``org.clojure/core.async`` 1.9.865 artifact on the JVM side and Basilisp's
   production ``clojure.core.async`` facade on the Basilisp side; it locks
   multi-file source-level usage of ``go``/``go-loop`` parking, ``alt!``,
-  timeout selection, pipelines, collection/channel combinators, finite mult/pub
-  routing, and a deterministic generated parking stress corpus while keeping
-  direct IOC state-machine integration explicitly outside the current contract.
+  timeout selection, pipelines, collection/channel combinators, finite
+  mult/pub/mix routing, mix mutation return contracts, and a deterministic
+  generated parking stress corpus while keeping direct IOC state-machine
+  integration explicitly outside the current contract.
   The ``data.csv`` proof uses the published ``org.clojure/data.csv`` 1.1.0
   artifact on the JVM side and Basilisp's production ``clojure.data.csv`` alias
   on the Basilisp side; it locks multi-file source-level read/write workflows,
@@ -339,7 +340,11 @@ Near-term deliverable:
   ``unique``, extends the source-level ``core.async`` acceptance workflow with
   those helpers, and removes a race in the shared ``mix`` fixture by allowing
   toggle signals to reach the routing loop before asserting muted/paused
-  output.
+  output. The routing contract hardening tranche now aligns ``mix`` mutation
+  helpers with JVM ``core.async`` return values, fixes ``pub`` ``unsub-all``
+  return values, extends the shared JVM fixture with direct mult/pub/mix helper
+  return-contract checks, and adds an adversarial mix route covering mute,
+  pause, solo ``:mute``, solo ``:pause``, ``unmix``, and ``unmix-all``.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,
