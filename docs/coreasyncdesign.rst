@@ -348,11 +348,10 @@ boundary:
 * On normal completion, a non-``nil`` result is placed on the result channel
   and then the result channel is closed.
 * If the body returns ``nil``, the result channel closes without a value.
-
-Open question: exact exception reporting from Clojure ``go`` should be
-confirmed with JVM fixtures before finalizing. The first safe BaisiLisp
-behavior is to close the result channel and let the owning Python task report
-the exception according to normal ``asyncio`` task rules.
+* If the body throws, the result channel closes without a value. Shared JVM
+  fixtures cover the observable channel result; BaisiLisp still reports the
+  task exception according to normal Python task/future rules rather than
+  exposing a Clojure IOC exception channel.
 
 This phase should be documented as a source-compatibility subset. It provides
 ordinary ``go`` examples, but it does not claim full IOC/state-machine parity.
@@ -452,6 +451,12 @@ The initial implementation now covers:
   ``>!``, and ``alt!``. ``ioc-alts!`` is public and rejects direct calls
   deterministically because the current implementation does not expose a
   Clojure-style IOC state machine.
+* Harden the coroutine-backed parking subset with shared JVM fixtures for
+  closed-channel takes, puts to closed channels, timeout interaction, nested
+  ``alt!`` choices, close/result races, and exception-driven result-channel
+  close behavior. Local runtime tests also cover current-loop ``go`` scheduling
+  and deterministic same-owner-loop rejection when blocking calls are invoked
+  from inside ``go``.
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
@@ -506,17 +511,20 @@ Why this tranche first:
 Recommended Next Tranche
 ------------------------
 
-The next tranche should harden the coroutine-backed ``go``/parking subset and
-decide whether deeper compiler-produced IOC parity is worth the complexity. The
-``clojure.core.async`` public surface is closed on this branch, but public
-surface parity is not the same as full implementation parity:
+The next tranche should decide whether deeper compiler-produced IOC parity is
+worth the complexity or whether the coroutine-backed ``go`` subset is the
+intended long-term compatibility boundary. The ``clojure.core.async`` public
+surface is closed on this branch, but public surface parity is not the same as
+full implementation parity:
 
 * Keep the maintained public support matrix for ``clojure.core.async`` exact:
   no missing and no extra public names.
-* Extend JVM differential fixtures for additional portable ``go`` examples:
-  cancellation/close races, nested parking choices, exception behavior, and
-  timeout interaction.
+* Extend JVM differential fixtures only where behavior is portable and
+  observable from channels; the current hardening tranche already covers closed
+  channels, timeout interaction, nested parking choices, close/result races, and
+  exception result-channel lifecycle.
 * Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary or
   invest in a compiler-produced state-machine representation.
-* Add deterministic rejection or compatibility tests for blocking operations
-  inside ``go``, nil channel values, and unsupported flow APIs.
+* Add deterministic rejection or compatibility tests for any remaining
+  unsupported flow APIs and for unsupported parking/compiler forms if deeper IOC
+  work begins.

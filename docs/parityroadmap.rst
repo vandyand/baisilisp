@@ -246,7 +246,12 @@ Near-term deliverable:
   ``go-loop``, ``<!``, ``>!``, and ``alt!`` plus an explicit ``ioc-alts!``
   rejection boundary. This gives public surface parity for ordinary portable
   examples while full Clojure IOC/state-machine parity remains a deeper
-  compiler project.
+  compiler project. The follow-up hardening tranche now adds shared JVM
+  fixtures for closed-channel takes, puts to closed channels, timeout
+  interaction, nested ``alt!`` choices, close/result races, and
+  exception-driven result-channel close behavior, plus local runtime tests for
+  current-loop ``go`` scheduling and same-owner-loop blocking rejection inside
+  ``go``.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,
