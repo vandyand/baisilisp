@@ -213,10 +213,11 @@ Near-term deliverable:
   ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
   forms remain absent. The follow-up fixture now compares the
   implemented subset against JVM ``core.async`` for buffers, close/drain, nil
-  rejection, selection, timeout, pipe, pipeline order, pipeline variants, and
-  the non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
-  ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. The
-  follow-up local tranche now adds task-backed routing combinators ``mult``,
+  rejection, channel transducers, selection, timeout, pipe, pipeline order,
+  pipeline variants, and the non-``go`` collection/channel combinators
+  ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``, ``into``,
+  ``reduce``, and ``transduce``. The follow-up local tranche now adds
+  task-backed routing combinators ``mult``,
   ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
   ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
   ``solo-mode`` with shared JVM fixtures. The stacked blocking-bridge tranche
@@ -224,6 +225,10 @@ Near-term deliverable:
   explicit same-owner-loop rejection. The stacked pipeline-variants tranche
   adds ``pipeline-blocking`` and ``pipeline-async`` with ordered fan-out,
   ``close?`` behavior, early destination-close handling, and JVM fixtures.
+  The stacked channel-transducer tranche adds ``chan`` xform/ex-handler support
+  with put-time transforms, stateful completion flush, fan-out, early
+  transducer completion, nil-output rejection, local seeded stress, and JVM
+  fixtures.
   ``go``/parking forms remain outside the supported surface.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise

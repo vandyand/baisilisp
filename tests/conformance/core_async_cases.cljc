@@ -188,6 +188,174 @@
         (await (async/take! channel))])))
 
 #?(:clj
+   (defn channel-transducer-roundtrip []
+     (let [fanned      (async/chan 8 (mapcat (fn [value] [value (* value 10)])))
+           filtered    (async/chan 4 (filter even?))
+           partitioned (async/chan 4 (partition-all 2))]
+       (async/>!! fanned 1)
+       (async/>!! fanned 2)
+       (async/close! fanned)
+       (async/>!! filtered 1)
+       (async/>!! filtered 2)
+       (async/>!! filtered 3)
+       (async/>!! filtered 4)
+       (async/close! filtered)
+       (async/>!! partitioned 1)
+       (async/>!! partitioned 2)
+       (async/>!! partitioned 3)
+       (async/close! partitioned)
+       [[(async/<!! fanned)
+         (async/<!! fanned)
+         (async/<!! fanned)
+         (async/<!! fanned)
+         (async/<!! fanned)]
+        [(async/<!! filtered)
+         (async/<!! filtered)
+         (async/<!! filtered)]
+        [(vec (async/<!! partitioned))
+         (vec (async/<!! partitioned))
+         (async/<!! partitioned)]]))
+
+   :lpy
+   (defasync channel-transducer-roundtrip []
+     (let [fanned      (async/chan 8 (mapcat (fn [value] [value (* value 10)])))
+           filtered    (async/chan 4 (filter even?))
+           partitioned (async/chan 4 (partition-all 2))]
+       (await (async/put! fanned 1))
+       (await (async/put! fanned 2))
+       (async/close! fanned)
+       (await (async/put! filtered 1))
+       (await (async/put! filtered 2))
+       (await (async/put! filtered 3))
+       (await (async/put! filtered 4))
+       (async/close! filtered)
+       (await (async/put! partitioned 1))
+       (await (async/put! partitioned 2))
+       (await (async/put! partitioned 3))
+       (async/close! partitioned)
+       [[(await (async/take! fanned))
+         (await (async/take! fanned))
+         (await (async/take! fanned))
+         (await (async/take! fanned))
+         (await (async/take! fanned))]
+        [(await (async/take! filtered))
+         (await (async/take! filtered))
+         (await (async/take! filtered))]
+        [(vec (await (async/take! partitioned)))
+         (vec (await (async/take! partitioned)))
+         (await (async/take! partitioned))]])))
+
+#?(:clj
+   (defn channel-transducer-completion-roundtrip []
+     (let [limited (async/chan 4 (take 2))
+           handled (async/chan 4
+                               (map (fn [value]
+                                      (if (even? value)
+                                        (throw (ex-info "bad" {}))
+                                        value)))
+                               (fn [_] :handled))
+           dropped (async/chan 4
+                               (map (fn [value]
+                                      (if (even? value)
+                                        (throw (ex-info "bad" {}))
+                                        value)))
+                               (fn [_] nil))
+           puts    [(async/>!! limited :first)
+                    (async/>!! limited :second)
+                    (async/>!! limited :third)]]
+       (async/>!! handled 1)
+       (async/>!! dropped 1)
+       (async/>!! handled 2)
+       (async/>!! dropped 2)
+       (async/>!! handled 3)
+       (async/>!! dropped 3)
+       (async/close! handled)
+       (async/close! dropped)
+       [puts
+        [(async/<!! limited)
+         (async/<!! limited)
+         (async/<!! limited)]
+        [(async/<!! handled)
+         (async/<!! handled)
+         (async/<!! handled)
+         (async/<!! handled)]
+        [(async/<!! dropped)
+         (async/<!! dropped)
+         (async/<!! dropped)]]))
+
+   :lpy
+   (defasync channel-transducer-completion-roundtrip []
+     (let [limited (async/chan 4 (take 2))
+           handled (async/chan 4
+                               (map (fn [value]
+                                      (if (even? value)
+                                        (throw (ex-info "bad" {}))
+                                        value)))
+                               (fn [_] :handled))
+           dropped (async/chan 4
+                               (map (fn [value]
+                                      (if (even? value)
+                                        (throw (ex-info "bad" {}))
+                                        value)))
+                               (fn [_] nil))
+           puts    [(await (async/put! limited :first))
+                    (await (async/put! limited :second))
+                    (await (async/put! limited :third))]]
+       (await (async/put! handled 1))
+       (await (async/put! dropped 1))
+       (await (async/put! handled 2))
+       (await (async/put! dropped 2))
+       (await (async/put! handled 3))
+       (await (async/put! dropped 3))
+       (async/close! handled)
+       (async/close! dropped)
+       [puts
+        [(await (async/take! limited))
+         (await (async/take! limited))
+         (await (async/take! limited))]
+        [(await (async/take! handled))
+         (await (async/take! handled))
+         (await (async/take! handled))
+         (await (async/take! handled))]
+        [(await (async/take! dropped))
+         (await (async/take! dropped))
+         (await (async/take! dropped))]])))
+
+#?(:clj
+   (defn channel-transducer-backpressure-roundtrip []
+     (let [partitioned (async/chan 1 (partition-all 2))]
+       (async/>!! partitioned 1)
+       (async/>!! partitioned 2)
+       (let [putter (future (async/>!! partitioned 3))]
+         (Thread/sleep 50)
+         (let [blocked-before? (not (realized? putter))
+               first-output    (vec (async/<!! partitioned))
+               put-result      @putter]
+           (async/close! partitioned)
+           [blocked-before?
+            first-output
+            put-result
+            (vec (async/<!! partitioned))
+            (async/<!! partitioned)]))))
+
+   :lpy
+   (defasync channel-transducer-backpressure-roundtrip []
+     (let [partitioned (async/chan 1 (partition-all 2))]
+       (await (async/put! partitioned 1))
+       (await (async/put! partitioned 2))
+       (let [putter (asyncio/create-task (async/put! partitioned 3))]
+         (await (asyncio/sleep 0))
+         (let [blocked-before? (not (.done putter))
+               first-output    (vec (await (async/take! partitioned)))
+               put-result      (await putter)]
+           (async/close! partitioned)
+           [blocked-before?
+            first-output
+            put-result
+            (vec (await (async/take! partitioned)))
+            (await (async/take! partitioned))])))))
+
+#?(:clj
    (defn close-drains-buffer-roundtrip []
      (let [channel (async/chan 1)]
        (async/>!! channel :buffered)
@@ -714,10 +882,16 @@
 (emit-case :core-async-buffers
            #?(:clj [(fixed-buffer-roundtrip)
                     (sliding-buffer-roundtrip)
-                    (dropping-buffer-roundtrip)]
+                    (dropping-buffer-roundtrip)
+                    (channel-transducer-roundtrip)
+                    (channel-transducer-completion-roundtrip)
+                    (channel-transducer-backpressure-roundtrip)]
               :lpy [(asyncio/run (fixed-buffer-roundtrip))
                     (asyncio/run (sliding-buffer-roundtrip))
-                    (asyncio/run (dropping-buffer-roundtrip))]))
+                    (asyncio/run (dropping-buffer-roundtrip))
+                    (asyncio/run (channel-transducer-roundtrip))
+                    (asyncio/run (channel-transducer-completion-roundtrip))
+                    (asyncio/run (channel-transducer-backpressure-roundtrip))]))
 
 (emit-case :core-async-close-and-nil
            #?(:clj [(close-drains-buffer-roundtrip)

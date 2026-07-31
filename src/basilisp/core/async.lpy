@@ -2,8 +2,8 @@
   "Compatibility facade for the portable subset of ``clojure.core.async``.
 
   This namespace intentionally wraps Basilisp's ``asyncio``-native
-  ``basilisp.concurrent`` channel runtime. Parking macros, async pipeline
-  variants, and compiler-backed ``go`` blocks are not implemented here yet."
+  ``basilisp.concurrent`` channel runtime. Parking macros and compiler-backed
+  ``go`` blocks are not implemented here yet."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
   (:import asyncio))
@@ -49,10 +49,28 @@
   [capacity]
   (buffer-descriptor sliding-policy capacity))
 
-(defn- unsupported-channel-transducer
-  [xform]
-  (throw (ex-info "clojure.core.async channel transducers are not implemented; use pipeline for now"
-                  {:xform xform})))
+(defn- channel-capacity-policy
+  [buf-or-n]
+  (cond
+    (nil? buf-or-n)
+    [0 fixed-policy]
+
+    (pos-int? buf-or-n)
+    [buf-or-n fixed-policy]
+
+    (buffer-descriptor? buf-or-n)
+    [(:capacity buf-or-n) (:policy buf-or-n)]
+
+    :else
+    (throw (ex-info "chan expects nil, a positive integer capacity, or a buffer descriptor"
+                    {:value buf-or-n}))))
+
+(defn- make-channel
+  [buf-or-n xform ex-handler]
+  (let [[capacity policy] (channel-capacity-policy buf-or-n)]
+    (if (nil? xform)
+      (concurrent/chan capacity policy)
+      (concurrent/chan capacity policy xform ex-handler))))
 
 (defn chan
   "Create an ``asyncio``-native channel with Clojure-shaped buffer arguments.
@@ -64,31 +82,15 @@
   * ``(chan (buffer n))``
   * ``(chan (dropping-buffer n))``
   * ``(chan (sliding-buffer n))``
-
-  Channel transducers at construction time are not implemented yet."
+  * ``(chan buf-or-n xform)``
+  * ``(chan buf-or-n xform ex-handler)``"
   ([] (concurrent/chan))
   ([buf-or-n]
-   (cond
-     (nil? buf-or-n)
-     (concurrent/chan)
-
-     (pos-int? buf-or-n)
-     (concurrent/chan buf-or-n)
-
-     (buffer-descriptor? buf-or-n)
-     (concurrent/chan (:capacity buf-or-n) (:policy buf-or-n))
-
-     :else
-     (throw (ex-info "chan expects nil, a positive integer capacity, or a buffer descriptor"
-                     {:value buf-or-n}))))
+   (make-channel buf-or-n nil nil))
   ([buf-or-n xform]
-   (if (nil? xform)
-     (chan buf-or-n)
-     (unsupported-channel-transducer xform)))
-  ([buf-or-n xform _ex-handler]
-   (if (nil? xform)
-     (chan buf-or-n)
-     (unsupported-channel-transducer xform))))
+   (make-channel buf-or-n xform nil))
+  ([buf-or-n xform ex-handler]
+   (make-channel buf-or-n xform ex-handler)))
 
 (defn close!
   "Close ``channel``."
