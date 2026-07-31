@@ -16,6 +16,7 @@
 (def ^:private fixed-policy :fixed)
 (def ^:private dropping-policy :dropping)
 (def ^:private sliding-policy :sliding)
+(def ^:private no-prior-value (python/object))
 
 (defn- positive-capacity
   [capacity buffer-kind]
@@ -1074,13 +1075,14 @@
 (defasync ^:private map-channel-values!
   [f channels output]
   (try
-    (loop []
-      (let [tasks  (doall (basilisp.core/map #(asyncio/create-task (take! %))
-                                             channels))
-            values (await (apply asyncio/gather tasks))]
-        (when-not (some nil? values)
-          (when (await (put! output (apply f values)))
-            (recur)))))
+    (when (seq channels)
+      (loop []
+        (let [tasks  (doall (basilisp.core/map #(asyncio/create-task (take! %))
+                                               channels))
+              values (await (apply asyncio/gather tasks))]
+          (when-not (some nil? values)
+            (when (await (put! output (apply f values)))
+              (recur))))))
     (finally
       (close! output))))
 
@@ -1126,12 +1128,12 @@
   [f channel output]
   (try
     (loop [acc       []
-           prior-key ::none
+           prior-key no-prior-value
            value     (await (take! channel))]
       (if (some? value)
         (let [current-key (f value)]
           (cond
-            (= prior-key ::none)
+            (identical? prior-key no-prior-value)
             (recur [value] current-key (await (take! channel)))
 
             (= prior-key current-key)
@@ -1160,10 +1162,11 @@
 (defasync ^:private unique-values!
   [channel output]
   (try
-    (loop [prior ::none
+    (loop [prior no-prior-value
            value (await (take! channel))]
       (when (some? value)
-        (if (= prior value)
+        (if (and (not (identical? prior no-prior-value))
+                 (= prior value))
           (recur prior (await (take! channel)))
           (when (await (put! output value))
             (recur value (await (take! channel)))))))

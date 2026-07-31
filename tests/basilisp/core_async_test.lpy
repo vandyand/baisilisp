@@ -397,6 +397,7 @@
     (await (async/put! x :x1))
     (let [basic (await (async/take! out))]
       (async/toggle mx {x {:mute true}})
+      (await (asyncio/sleep 0))
       (await (async/put! x :x-muted))
       (await (async/put! y :y-after-mute))
       (let [mute [(await (async/take! out))
@@ -404,6 +405,7 @@
                     (await (asyncio/sleep 0))
                     (async/poll! out))]]
         (async/toggle mx {x {:mute false :pause true}})
+        (await (asyncio/sleep 0))
         (await (async/put! x :x-paused))
         (await (async/put! y :y-after-pause))
         (let [pause-before [(await (async/take! out))
@@ -714,6 +716,76 @@
      (await (drain-channel! runs))
      (await (drain-channel! deduped))]))
 
+(defn generated-stream-values []
+  (vec
+   (map (fn [idx]
+          (case (mod idx 10)
+            0 :basilisp.core.async/none
+            1 :alpha
+            2 :alpha
+            3 :beta
+            4 idx
+            5 idx
+            6 (- idx)
+            7 :gamma
+            8 :gamma
+            9 (mod idx 3)))
+        (range 48))))
+
+(defn stream-helper-key [value]
+  (if (keyword? value)
+    value
+    (mod value 5)))
+
+(defasync core-async-stream-helper-generated-roundtrip []
+  (let [values      (generated-stream-values)
+        mapped      (async/map vector
+                               [(async/to-chan! (range 18))
+                                (async/to-chan! (range 100 112))
+                                (async/to-chan! (range 1000 1030))]
+                               8)
+        partitioned (async/partition 5 (async/to-chan! values) 4)
+        singles     (async/partition 1 (async/to-chan! (take 8 values)) 2)
+        by-key      (async/partition-by stream-helper-key
+                                        (async/to-chan! values)
+                                        4)
+        deduped     (async/unique (async/to-chan! values) 8)]
+    [(await (drain-channel! mapped))
+     (await (drain-channel! partitioned))
+     (await (drain-channel! singles))
+     (await (drain-channel! by-key))
+     (await (drain-channel! deduped))]))
+
+(defasync core-async-map-source-close-roundtrip []
+  (let [closed (async/chan)
+        idle   (async/chan)
+        mapped (async/map vector [closed idle] 1)
+        empty  (async/map (fn [] :called) [] 1)]
+    (async/close! closed)
+    (let [[closed-value closed-port] (await (async/alts! [mapped (async/timeout 200)]
+                                                         :priority true))
+          [empty-value empty-port]   (await (async/alts! [empty (async/timeout 200)]
+                                                         :priority true))]
+      [(nil? closed-value)
+       (identical? closed-port mapped)
+       (nil? empty-value)
+       (identical? empty-port empty)])))
+
+(defasync core-async-stream-helper-sentinel-collision-roundtrip []
+  [(await (drain-channel!
+           (async/partition-by identity
+                               (async/to-chan! [:basilisp.core.async/none
+                                                :basilisp.core.async/none
+                                                :x])
+                               4)))
+   (await (drain-channel!
+           (async/unique
+            (async/to-chan! [:basilisp.core.async/none
+                             :basilisp.core.async/none
+                             :x
+                             :basilisp.core.async/none])
+            4)))])
+
 (defasync core-async-same-loop-blocking-rejected []
   (let [channel (async/chan 1)]
     (await (async/put! channel :value))
@@ -955,7 +1027,24 @@
              [35 36 37 38 39]]
             [[0 5 10] [1 6] [2] [3 8 13]]
             [1 2 3 1 4]]
-           (asyncio/run (core-async-collection-wave2-stress-roundtrip))))))
+           (asyncio/run (core-async-collection-wave2-stress-roundtrip))))
+    (is (= [true false true true]
+           (asyncio/run (core-async-map-source-close-roundtrip))))
+    (is (= [[[:basilisp.core.async/none :basilisp.core.async/none]
+             [:x]]
+            [:basilisp.core.async/none :x :basilisp.core.async/none]]
+           (asyncio/run (core-async-stream-helper-sentinel-collision-roundtrip)))))
+  (testing "generated stream-helper corpus"
+    (let [values (generated-stream-values)]
+      (is (= [(vec (map vector
+                        (range 12)
+                        (range 100 112)
+                        (range 1000 1012)))
+              (vec (map vec (partition-all 5 values)))
+              (vec (map vector (take 8 values)))
+              (vec (map vec (partition-by stream-helper-key values)))
+              (vec (dedupe values))]
+             (asyncio/run (core-async-stream-helper-generated-roundtrip)))))))
 
 (deftest core-async-routing-combinators-test
   (testing "routing combinators"
