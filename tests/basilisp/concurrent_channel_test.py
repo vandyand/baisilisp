@@ -15,6 +15,7 @@ from basilisp.concurrent_channel import (
     pipe,
     pipeline,
     pipeline_async,
+    submit_coroutine,
     timeout,
     try_alts,
 )
@@ -489,6 +490,26 @@ def test_try_alts_selects_immediate_operations_without_enqueuing():
 
         with pytest.raises(ValueError, match="nil"):
             try_alts([(target, None)])
+
+    run(scenario())
+
+
+def test_submit_coroutine_runs_without_current_event_loop():
+    async def value():
+        return "done"
+
+    future = submit_coroutine(value())
+    assert future.result(timeout=2) == "done"
+
+
+def test_submit_coroutine_uses_current_event_loop_when_available():
+    async def scenario():
+        async def value():
+            return "done"
+
+        task = submit_coroutine(value())
+        assert isinstance(task, asyncio.Task)
+        assert await task == "done"
 
     run(scenario())
 

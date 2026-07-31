@@ -81,9 +81,10 @@ The implementation is intentionally ``asyncio``-native:
 * Closed puts return ``false``.
 
 This is the right substrate. BaisiLisp now has an initial
-``clojure.core.async`` facade for the non-``go`` subset, backed by
-``basilisp.core.async`` and the existing channel runtime. The important
-remaining missing piece is compiler support for ``go`` parking forms.
+``clojure.core.async`` facade backed by ``basilisp.core.async`` and the
+existing channel runtime. The public surface is now closed by a
+coroutine-backed ``go``/parking subset; the important remaining caveat is that
+this is not Clojure's compiler-produced IOC state-machine implementation.
 
 Design Principles
 -----------------
@@ -159,7 +160,10 @@ into one of these states:
        Larger lifecycle combinators remain separate design work.
    * - Compiler work
      - Requires ``go``/parking context or macro lowering.
-     - ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, ``ioc-alts!``
+     - Public surface covered locally by coroutine-backed ``go``, ``go-loop``,
+       ``<!``, ``>!``, and ``alt!``. Full Clojure IOC/state-machine parity,
+       including meaningful direct ``ioc-alts!`` integration, remains deeper
+       compiler work.
    * - Blocking bridge
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
@@ -327,12 +331,17 @@ Conceptually lowers to:
      result-ch)
 
 This gets a useful amount of source compatibility but is not a full Clojure
-state-machine implementation. The macro must therefore be strict:
+state-machine implementation. The current tranche therefore documents a clear
+boundary:
 
-* ``<!`` expands only inside ``go`` and only to an await of ``take!``.
-* ``>!`` expands only inside ``go`` and only to an await of ``put!``.
-* ``alts!`` and ``alt!`` inside ``go`` expand to awaitable selection.
-* ``<!!``, ``>!!``, and ``alts!!`` inside ``go`` are compile-time errors.
+* ``<!`` expands to an await of ``take!`` and is valid where Basilisp permits
+  ``await``. Portable Clojure-shaped use should keep it inside ``go``.
+* ``>!`` expands to an await of ``put!`` and is valid where Basilisp permits
+  ``await``. Portable Clojure-shaped use should keep it inside ``go``.
+* ``alt!`` expands to awaitable selection over ``alts!``.
+* ``<!!``, ``>!!``, and ``alts!!`` inside ``go`` are not currently rejected at
+  macro-expansion time; they retain the existing same-owner-loop deadlock
+  rejection when invoked.
 * Arbitrary Python blocking calls cannot be detected reliably; docs should
   warn that they block the event loop or task runner.
 * ``go`` returns a channel immediately.
@@ -439,9 +448,10 @@ The initial implementation now covers:
 * Provide and test the phase-1 callback/awaitable behavior for ``put!`` and
   ``take!``: no callback returns an awaitable; callback calls schedule on the
   current event loop and return ``nil``.
-* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, ``ioc-alts!``, and
-  advanced flow combinators absent until they can be implemented or rejected
-  with a stable support matrix.
+* Add the coroutine-backed parking surface ``go``, ``go-loop``, ``<!``,
+  ``>!``, and ``alt!``. ``ioc-alts!`` is public and rejects direct calls
+  deterministically because the current implementation does not expose a
+  Clojure-style IOC state machine.
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
@@ -496,19 +506,17 @@ Why this tranche first:
 Recommended Next Tranche
 ------------------------
 
-The next tranche should start the minimal coroutine-backed ``go``/parking
-design rather than broaden the runtime facade further. After the helper-publics
-tranche, the remaining ``clojure.core.async`` public gap is the six
-parking/compiler names: ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, and
-``ioc-alts!``:
+The next tranche should harden the coroutine-backed ``go``/parking subset and
+decide whether deeper compiler-produced IOC parity is worth the complexity. The
+``clojure.core.async`` public surface is closed on this branch, but public
+surface parity is not the same as full implementation parity:
 
-* Keep the maintained public support matrix for ``clojure.core.async`` exact.
-  The current test gate asserts the supported non-``go`` public set and the
-  absence of unsupported parking names.
-* Extend JVM differential fixtures only when the new ``go`` work exposes
-  portable observable behavior.
-* Decide the expansion model for ``go``, ``go-loop``, ``<!``, ``>!``,
-  ``alts!`` in a parking context, and ``alt!`` before adding any public names.
-* Add deterministic rejection tests for unsupported parking contexts,
-  blocking operations inside ``go``, nil channel values, and unsupported flow
-  APIs.
+* Keep the maintained public support matrix for ``clojure.core.async`` exact:
+  no missing and no extra public names.
+* Extend JVM differential fixtures for additional portable ``go`` examples:
+  cancellation/close races, nested parking choices, exception behavior, and
+  timeout interaction.
+* Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary or
+  invest in a compiler-produced state-machine representation.
+* Add deterministic rejection or compatibility tests for blocking operations
+  inside ``go``, nil channel values, and unsupported flow APIs.

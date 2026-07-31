@@ -241,8 +241,12 @@ Near-term deliverable:
   The stacked channel-transducer tranche adds ``chan`` xform/ex-handler support
   with put-time transforms, stateful completion flush, fan-out, early
   transducer completion, nil-output rejection, local seeded stress, and JVM
-  fixtures.
-  ``go``/parking forms remain outside the supported surface.
+  fixtures. The stacked minimal-go tranche closes the remaining
+  ``clojure.core.async`` public-surface gap with coroutine-backed ``go``,
+  ``go-loop``, ``<!``, ``>!``, and ``alt!`` plus an explicit ``ioc-alts!``
+  rejection boundary. This gives public surface parity for ordinary portable
+  examples while full Clojure IOC/state-machine parity remains a deeper
+  compiler project.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

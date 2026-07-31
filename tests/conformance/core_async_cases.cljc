@@ -42,10 +42,11 @@
      toggle* solo-mode*
      <!! >!! alts!! alt!! do-alt
      fn-handler do-alts defblockingop
+     go go-loop <! >! alt! ioc-alts!
      thread thread-call io-thread})
 
 (def unsupported-parking-and-blocking-publics
-  '#{go go-loop <! >! alt!})
+  '#{})
 
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
@@ -669,6 +670,57 @@
                    [accepted? (identical? port target) (async/<!! target)]))
      (async/alt!! (async/chan) :unreachable
                   :default :fallback)]))
+
+(defn go-parking-roundtrip []
+  (let [input  (async/chan 4)
+        output (async/chan 4)
+        target (async/chan 1)
+        first  (async/chan 1)
+        second (async/chan 1)]
+    (async/>!! input 1)
+    (async/>!! input 2)
+    (async/>!! input 3)
+    (async/close! input)
+    (async/>!! first :first)
+    (async/>!! second :second)
+    [(async/<!! (async/go :result))
+     (async/<!! (async/go nil))
+     (do
+       (async/go
+         (async/>! output (inc (async/<! input)))
+         (async/>! output (inc (async/<! input)))
+         :done)
+       [(async/<!! output)
+        (async/<!! output)])
+     (async/<!! (async/go-loop [acc []
+                                value (async/<! input)]
+                  (if (some? value)
+                    (recur (conj acc value) (async/<! input))
+                    acc)))
+     (async/<!! (async/go
+                  (async/alt! second ([value port] [value (identical? port second)])
+                              first :first-branch
+                              :priority true)))
+     (let [put-result (async/<!! (async/go
+                                   (async/alt! [[target :written]]
+                                               ([accepted? port]
+                                                [accepted? (identical? port target)]))))]
+       [put-result (async/<!! target)])
+     (async/<!! (async/go
+                  (async/alt! (async/chan) :unreachable
+                              :default :fallback)))]))
+
+(defn go-parking-generated-roundtrip []
+  (let [n       32
+        inputs  (doall (map (fn [idx]
+                              (let [channel (async/chan 1)]
+                                (async/>!! channel idx)
+                                channel))
+                            (range n)))
+        results (doall (map (fn [channel]
+                              (async/go (inc (async/<! channel))))
+                            inputs))]
+    (vec (doall (map async/<!! results)))))
 
 #?(:clj
    (defn helper-publics-roundtrip []
@@ -1489,5 +1541,7 @@
                :lpy (asyncio/run (helper-publics-roundtrip)))
             #?(:clj (helper-publics-generated-roundtrip)
                :lpy (asyncio/run (helper-publics-generated-roundtrip)))
+            (go-parking-roundtrip)
+            (go-parking-generated-roundtrip)
             (thread-roundtrip)
             (io-thread-roundtrip)])
