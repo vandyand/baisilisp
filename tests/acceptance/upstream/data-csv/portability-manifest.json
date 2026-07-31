@@ -1,0 +1,68 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "4ebdc8cd6db108afad29bfde16828b36481f08f3e3817f398cc91b1eaa7a4eb7"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/data_csv/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "clojure.data.csv",
+        "clojure.string",
+        "default-output",
+        "f",
+        "java.io",
+        "nil",
+        "remaining",
+        "rows",
+        "s",
+        "s1",
+        "seed",
+        "source",
+        "writer"
+      ],
+      "sha256": "873f5773790ae56b6ff84d30fa71858e8a14b89bb8628f22081d60ff53573518"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/data_csv/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.data-csv.workflow"
+      ],
+      "sha256": "0e70b211fb6576704a567f163f0498249d9909020ea484a909edff11bd9e93b5"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.csv -> basilisp.data.csv",
+    "clojure.string -> basilisp.string"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/data.csv 1.1.0 Maven artifact",
+  "upstream_url": "https://github.com/clojure/data.csv"
+}

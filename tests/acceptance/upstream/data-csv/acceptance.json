@@ -1,0 +1,15 @@
+{
+  "source_root": ".",
+  "upstream_url": "https://github.com/clojure/data.csv",
+  "upstream_revision": "org.clojure/data.csv 1.1.0 Maven artifact",
+  "clojure_deps": {
+    "org.clojure/data.csv": "1.1.0"
+  },
+  "substitutions": [
+    "clojure.data.csv -> basilisp.data.csv",
+    "clojure.string -> basilisp.string"
+  ],
+  "blockers": [
+    "portable source examples only; host reader/writer constructors remain reader-conditional"
+  ]
+}
