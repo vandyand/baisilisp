@@ -412,6 +412,17 @@
      (async/<!! from-body)
      (async/<!! from-nil)]))
 
+(defn core-async-io-thread-roundtrip []
+  (let [from-body (async/io-thread :io-thread-result)
+        from-nil  (async/io-thread nil)]
+    [(async/<!! from-body)
+     (async/<!! from-body)
+     (async/<!! from-nil)]))
+
+(defn core-async-io-thread-stress-roundtrip []
+  (let [channels (doall (map (fn [n] (async/io-thread n)) (range 32)))]
+    (doall (map async/<!! channels))))
+
 (defasync core-async-same-loop-blocking-rejected []
   (let [channel (async/chan 1)]
     (await (async/put! channel :value))
@@ -445,7 +456,7 @@
                     "mix" "admix" "unmix" "unmix-all"
                     "toggle" "solo-mode"
                     "<!!" ">!!" "alts!!"
-                    "thread" "thread-call"
+                    "thread" "thread-call" "io-thread"
                     "pipeline-async" "pipeline-blocking"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
     (is (= supported publics))
@@ -525,7 +536,11 @@
     (is (= [true :value [:second true :fallback :default]]
            (core-async-blocking-roundtrip)))
     (is (= [:thread-call-result nil :thread-result nil nil]
-           (core-async-thread-roundtrip))))
+           (core-async-thread-roundtrip)))
+    (is (= [:io-thread-result nil nil]
+           (core-async-io-thread-roundtrip)))
+    (is (= (range 32)
+           (core-async-io-thread-stress-roundtrip))))
   (testing "same-loop blocking is rejected"
     (is (= [true true true]
            (asyncio/run (core-async-same-loop-blocking-rejected))))))

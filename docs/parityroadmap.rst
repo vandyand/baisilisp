@@ -221,8 +221,9 @@ Near-term deliverable:
   ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
   ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
   ``solo-mode`` with shared JVM fixtures. The stacked blocking-bridge tranche
-  adds ``<!!``, ``>!!``, ``alts!!``, ``thread``, and ``thread-call`` with
-  explicit same-owner-loop rejection. The stacked pipeline-variants tranche
+  adds ``<!!``, ``>!!``, ``alts!!``, ``thread``, ``thread-call``, and
+  ``io-thread`` with explicit same-owner-loop rejection for blocking channel
+  calls. The stacked pipeline-variants tranche
   adds ``pipeline-blocking`` and ``pipeline-async`` with ordered fan-out,
   ``close?`` behavior, early destination-close handling, and JVM fixtures.
   The stacked channel-transducer tranche adds ``chan`` xform/ex-handler support

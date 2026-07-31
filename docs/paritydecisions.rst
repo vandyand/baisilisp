@@ -408,9 +408,10 @@ The facade additionally includes task-backed routing combinators ``mult``,
 ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
 ``solo-mode``. These preserve the portable fan-out/topic-routing contracts
 against JVM fixtures. The blocking bridge names ``<!!``, ``>!!``, ``alts!!``,
-``thread``, and ``thread-call`` are also supported with explicit same-owner-loop
-deadlock rejection. The pipeline variant names ``pipeline-blocking`` and
-``pipeline-async`` are also supported and covered by JVM fixtures. ``go``
+``thread``, ``thread-call``, and ``io-thread`` are also supported with explicit
+same-owner-loop deadlock rejection for blocking channel calls. The pipeline
+variant names ``pipeline-blocking`` and ``pipeline-async`` are also supported
+and covered by JVM fixtures. ``go``
 parking forms remain outside the advertised surface.
 
 AnyIO And Task Ownership
