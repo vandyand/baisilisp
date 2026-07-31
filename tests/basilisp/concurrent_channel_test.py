@@ -16,6 +16,7 @@ from basilisp.concurrent_channel import (
     pipeline_async,
     timeout,
 )
+from basilisp.lang.reduced import Reduced
 
 
 def run(coro):
@@ -49,6 +50,71 @@ def mapcat_xform(function):
             result, value = args
             for emitted in function(value):
                 result = reducing_function(result, emitted)
+            return result
+
+        return reducing
+
+    return xform
+
+
+def filter_xform(predicate):
+    def xform(reducing_function):
+        def reducing(*args):
+            if not args:
+                return reducing_function()
+            if len(args) == 1:
+                return reducing_function(args[0])
+            result, value = args
+            if predicate(value):
+                return reducing_function(result, value)
+            return result
+
+        return reducing
+
+    return xform
+
+
+def take_xform(limit):
+    def xform(reducing_function):
+        remaining = limit
+
+        def reducing(*args):
+            nonlocal remaining
+            if not args:
+                return reducing_function()
+            if len(args) == 1:
+                return reducing_function(args[0])
+            result, value = args
+            if remaining <= 0:
+                return Reduced(result)
+            remaining -= 1
+            result = reducing_function(result, value)
+            return Reduced(result) if remaining == 0 else result
+
+        return reducing
+
+    return xform
+
+
+def partition_all_xform(size):
+    def xform(reducing_function):
+        partition = []
+
+        def reducing(*args):
+            nonlocal partition
+            if not args:
+                return reducing_function()
+            if len(args) == 1:
+                result = args[0]
+                if partition:
+                    result = reducing_function(result, tuple(partition))
+                    partition = []
+                return reducing_function(result)
+            result, value = args
+            partition.append(value)
+            if len(partition) == size:
+                result = reducing_function(result, tuple(partition))
+                partition = []
             return result
 
         return reducing
@@ -93,6 +159,163 @@ def test_nonblocking_buffer_policies(policy, expected):
         for value in ("first", "second", "third"):
             assert await channel.put(value) is True
         assert [await channel.take(), await channel.take()] == expected
+
+    run(scenario())
+
+
+def test_transducing_channel_maps_filters_fans_out_and_flushes_on_close():
+    async def scenario():
+        mapped = Channel(4, xform=map_xform(lambda value: value + 1))
+        assert await mapped.put(1)
+        assert await mapped.put(2)
+        mapped.close()
+        assert [await mapped.take(), await mapped.take(), await mapped.take()] == [
+            2,
+            3,
+            None,
+        ]
+
+        filtered = Channel(4, xform=filter_xform(lambda value: value % 2 == 0))
+        for value in range(5):
+            assert await filtered.put(value)
+        filtered.close()
+        assert [
+            await filtered.take(),
+            await filtered.take(),
+            await filtered.take(),
+        ] == [
+            0,
+            2,
+            4,
+        ]
+        assert await filtered.take() is None
+
+        fanned = Channel(8, xform=mapcat_xform(lambda value: (value, value * 10)))
+        assert await fanned.put(1)
+        assert await fanned.put(2)
+        fanned.close()
+        assert [await fanned.take() for _ in range(5)] == [1, 10, 2, 20, None]
+
+        partitioned = Channel(4, xform=partition_all_xform(2))
+        for value in (1, 2, 3):
+            assert await partitioned.put(value)
+        partitioned.close()
+        assert [await partitioned.take(), await partitioned.take()] == [(1, 2), (3,)]
+        assert await partitioned.take() is None
+
+    run(scenario())
+
+
+def test_transducing_channel_completion_error_handler_and_nil_rejection():
+    async def scenario():
+        limited = Channel(4, xform=take_xform(2))
+        assert await limited.put("first") is True
+        assert await limited.put("second") is True
+        assert await limited.put("third") is False
+        assert [await limited.take(), await limited.take(), await limited.take()] == [
+            "first",
+            "second",
+            None,
+        ]
+
+        def fail_on_even(value):
+            if value % 2 == 0:
+                raise RuntimeError(f"bad:{value}")
+            return value
+
+        handled = Channel(
+            4,
+            xform=map_xform(fail_on_even),
+            error_handler=lambda error: f"{type(error).__name__}:{error}",
+        )
+        for value in (1, 2, 3):
+            assert await handled.put(value)
+        handled.close()
+        assert [await handled.take() for _ in range(4)] == [
+            1,
+            "RuntimeError:bad:2",
+            3,
+            None,
+        ]
+
+        dropped = Channel(
+            4,
+            xform=map_xform(fail_on_even),
+            error_handler=lambda _error: None,
+        )
+        for value in (1, 2, 3):
+            assert await dropped.put(value)
+        dropped.close()
+        assert [await dropped.take(), await dropped.take(), await dropped.take()] == [
+            1,
+            3,
+            None,
+        ]
+
+        nil_output = Channel(1, xform=map_xform(lambda _value: None))
+        with pytest.raises(ValueError, match="nil values"):
+            await nil_output.put("input")
+
+    run(scenario())
+
+
+def test_transducing_channel_respects_output_backpressure_before_input_admission():
+    async def scenario():
+        channel = Channel(1, xform=partition_all_xform(2))
+        assert await channel.put(1)
+        assert await channel.put(2)
+
+        blocked = asyncio.create_task(channel.put(3))
+        await asyncio.sleep(0)
+        assert not blocked.done()
+
+        assert await channel.take() == (1, 2)
+        assert await blocked is True
+        channel.close()
+        assert await channel.take() == (3,)
+        assert await channel.take() is None
+
+    run(scenario())
+
+
+def test_transducing_channel_offer_is_atomic_around_backpressure_and_fanout():
+    async def scenario():
+        partitioned = Channel(1, xform=partition_all_xform(2))
+        assert partitioned.offer(1) is True
+        assert partitioned.offer(2) is True
+        assert partitioned.offer(3) is False
+        partitioned.close()
+        assert await partitioned.take() == (1, 2)
+        assert await partitioned.take() is None
+
+        fanned = Channel(1, xform=mapcat_xform(lambda value: (value, value * 10)))
+        assert fanned.offer(1) is True
+        assert await fanned.take() == 1
+        assert await fanned.take() == 10
+
+    run(scenario())
+
+
+def test_transducing_channel_seeded_stress_matches_reference_model():
+    async def scenario():
+        rng = random.Random(8675309)
+        for _ in range(50):
+            values = [rng.randrange(20) for _ in range(25)]
+            channel = Channel(
+                len(values) * 2,
+                xform=mapcat_xform(
+                    lambda value: (value, value + 100) if value % 3 else ()
+                ),
+            )
+            for value in values:
+                assert await channel.put(value)
+            channel.close()
+            expected = [
+                item for value in values if value % 3 for item in (value, value + 100)
+            ]
+            observed = [await channel.take() for _ in expected]
+            assert observed == expected
+            assert await channel.take() is None
 
     run(scenario())
 

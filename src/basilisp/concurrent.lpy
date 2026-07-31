@@ -75,13 +75,21 @@
   (.empty queue))
 
 (defn chan
-  "Create an awaitable channel with an optional capacity and buffer policy.
+  "Create an awaitable channel with optional capacity, buffer policy, and
+  transducer.
 
   A zero-capacity channel is a rendezvous channel. Positive-capacity channels
   use ``:fixed`` (the default), ``:sliding``, or ``:dropping`` buffering."
   ([] (basilisp.concurrent_channel/Channel))
   ([capacity] (basilisp.concurrent_channel/Channel capacity))
-  ([capacity policy] (basilisp.concurrent_channel/Channel capacity ** :policy (name policy))))
+  ([capacity policy] (basilisp.concurrent_channel/Channel capacity ** :policy (name policy)))
+  ([capacity policy xform]
+   (basilisp.concurrent_channel/Channel capacity ** :policy (name policy) :xform xform))
+  ([capacity policy xform error-handler]
+   (basilisp.concurrent_channel/Channel capacity
+                                      ** :policy (name policy)
+                                      :xform xform
+                                      :error-handler error-handler)))
 
 (defn put! [channel value]
   (.put channel value))

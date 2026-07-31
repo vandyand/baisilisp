@@ -222,9 +222,10 @@ objects that describe policy and capacity:
    (chan (sliding-buffer 10))
    (chan (dropping-buffer 10))
 
-Transducer arguments should be validated in phase 1 but may be rejected if the
-current channel cannot apply xforms at put time. Rejection must be explicit:
-"channel transducers are not implemented; use pipeline for now".
+Transducer arguments are supported for synchronous xforms. The channel applies
+the xform at put time, supports zero/one/many emitted values, honors
+``ex-handler`` replacement/drop behavior, and flushes completing transducers on
+``close!`` where the output can be delivered to the channel.
 
 ``put!`` and ``take!`` are tricky because Clojure's public functions are
 callback-oriented and return immediately, while BaisiLisp's current functions
@@ -393,8 +394,8 @@ Every phase should add tests before broadening the public surface.
 
 4. Rejection tests
    Unsupported parking forms, blocking calls in ``go``, same-loop blocking
-   bridge calls, channel transducers before support, and unsupported flow APIs
-   should fail with stable messages.
+   bridge calls, nil channel values, and unsupported flow APIs should fail with
+   stable messages.
 
 5. Documentation tests
    Examples in ``docs/concurrency.rst`` and this design should compile or be
@@ -435,6 +436,10 @@ The initial implementation now covers:
   callback-shaped asynchronous work, preserves input order, handles fan-out,
   honors ``close?``, and stops admitting source values when the destination is
   closed.
+* Add channel transducers for ``chan``: synchronous xforms run at put time,
+  preserve state across puts, may emit zero/one/many values, flush completion
+  output on close, honor ``ex-handler`` replacement/drop behavior, and close
+  the channel when a completing xform such as ``take`` terminates.
 
 Why this tranche first:
 
@@ -459,4 +464,5 @@ design rather than broaden the runtime facade further:
 * Decide the expansion model for ``go``, ``go-loop``, ``<!``, ``>!``,
   ``alts!`` in a parking context, and ``alt!`` before adding any public names.
 * Add deterministic rejection tests for unsupported parking contexts,
-  blocking operations inside ``go``, and channel transducers before support.
+  blocking operations inside ``go``, nil channel values, and unsupported flow
+  APIs.

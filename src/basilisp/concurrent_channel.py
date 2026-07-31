@@ -22,6 +22,10 @@ _BLOCKING_LOOP: asyncio.AbstractEventLoop | None = None
 _BLOCKING_LOOP_LOCK = threading.Lock()
 
 
+class _NilTransducerOutput(ValueError):
+    """Raised internally when a channel transducer emits nil."""
+
+
 class _Selection:
     """The one-shot winner shared by every operation in an ``alts`` call."""
 
@@ -73,13 +77,24 @@ class _Waiter:
 class Channel:
     """A loop-bound channel with Clojure-style close and buffering semantics."""
 
-    def __init__(self, capacity: int = 0, *, policy: str = "fixed"):
+    def __init__(
+        self,
+        capacity: int = 0,
+        *,
+        policy: str = "fixed",
+        xform: Callable[..., Any] | None = None,
+        error_handler: Callable[[BaseException], Any] | None = None,
+    ):
         if capacity < 0:
             raise ValueError("channel capacity must be non-negative")
         if policy not in _POLICIES:
             raise ValueError(f"unsupported channel buffer policy: {policy}")
         if capacity == 0 and policy != "fixed":
             raise ValueError("sliding and dropping buffers require positive capacity")
+        if xform is not None and not callable(xform):
+            raise TypeError("channel transducer must be callable")
+        if error_handler is not None and not callable(error_handler):
+            raise TypeError("channel transducer error handler must be callable")
 
         self._capacity = capacity
         self._policy = policy
@@ -88,6 +103,15 @@ class Channel:
         self._buffer: deque[Any] = deque()
         self._puts: deque[tuple[Any, _Waiter]] = deque()
         self._takes: deque[_Waiter] = deque()
+        self._xform_waiters: deque[asyncio.Future[None]] = deque()
+        self._xform_lock: asyncio.Lock | None = None
+        self._xform_reducing = xform(self._xform_emit) if xform is not None else None
+        self._xform_state = (
+            self._xform_reducing() if self._xform_reducing is not None else None
+        )
+        self._xform_error_handler = error_handler
+        self._xform_emitted: list[Any] | None = None
+        self._xform_done = False
 
     @property
     def closed(self) -> bool:
@@ -97,17 +121,24 @@ class Channel:
         self._bind_loop()
         if self._closed:
             return
+        self._emit_transformed_values(self._complete_xform())
         self._closed = True
         self._discard_inactive()
         while self._puts:
             _, waiter = self._puts.popleft()
             waiter.resolve(False)
+        while self._xform_waiters:
+            waiter = self._xform_waiters.popleft()
+            if not waiter.done():
+                waiter.set_result(None)
         if not self._buffer:
             while self._takes:
                 self._takes.popleft().resolve(None)
 
     def offer(self, value: Any) -> bool:
         """Try to put ``value`` without waiting."""
+        if self._xform_reducing is not None:
+            return self._offer_transformed(value)
         return self._try_put(value) is True
 
     def poll(self) -> Any | None:
@@ -116,6 +147,11 @@ class Channel:
         return None if value is _NOT_READY else value
 
     async def put(self, value: Any) -> bool:
+        if self._xform_reducing is not None:
+            return await self._put_transformed(value)
+        return await self._put_raw(value)
+
+    async def _put_raw(self, value: Any) -> bool:
         result = self._try_put(value)
         if result is not _BLOCKED:
             return bool(result)
@@ -126,12 +162,42 @@ class Channel:
         finally:
             self._discard_inactive()
 
+    async def _put_transformed(self, value: Any) -> bool:
+        Channel._validate_value(value)
+        async with self._get_xform_lock():
+            if self._closed or self._xform_done:
+                return False
+            await self._wait_for_xform_admission()
+            if self._closed or self._xform_done:
+                return False
+            emitted, done = self._transform_value(value)
+            self._emit_transformed_values(emitted)
+            if done:
+                self.close()
+            return True
+
+    def _offer_transformed(self, value: Any) -> bool:
+        Channel._validate_value(value)
+        if (
+            self._closed
+            or self._xform_done
+            or not self._can_admit_xform_input()
+            or self._has_live_xform_waiters()
+        ):
+            return False
+        emitted, done = self._transform_value(value)
+        self._emit_transformed_values(emitted)
+        if done:
+            self.close()
+        return True
+
     async def take(self) -> Any | None:
         value = self._try_take()
         if value is not _NOT_READY:
             return value
         future: asyncio.Future[Any] = asyncio.get_running_loop().create_future()
         self._takes.append(_Waiter(self, future=future))
+        self._wake_xform_waiter()
         try:
             return await future
         finally:
@@ -165,10 +231,12 @@ class Channel:
         if self._buffer:
             value = self._buffer.popleft()
             self._fill_buffer()
+            self._wake_xform_waiter()
             return value
         while self._puts:
             value, waiter = self._puts.popleft()
             if waiter.resolve(True):
+                self._wake_xform_waiter()
                 return value
         if self._closed:
             return None
@@ -181,6 +249,7 @@ class Channel:
     def _enqueue_take(self, selection: _Selection) -> None:
         self._bind_loop()
         self._takes.append(_Waiter(self, selection=selection))
+        self._wake_xform_waiter()
 
     def _fill_buffer(self) -> None:
         self._discard_inactive()
@@ -188,6 +257,115 @@ class Channel:
             value, waiter = self._puts.popleft()
             if waiter.resolve(True):
                 self._buffer.append(value)
+
+    def _get_xform_lock(self) -> asyncio.Lock:
+        if self._xform_lock is None:
+            self._xform_lock = asyncio.Lock()
+        return self._xform_lock
+
+    def _has_live_xform_waiters(self) -> bool:
+        self._discard_inactive_xform_waiters()
+        return bool(self._xform_waiters)
+
+    def _discard_inactive_xform_waiters(self) -> None:
+        self._xform_waiters = deque(
+            waiter for waiter in self._xform_waiters if not waiter.done()
+        )
+
+    def _can_admit_xform_input(self) -> bool:
+        self._discard_inactive()
+        if self._closed or self._xform_done:
+            return False
+        if self._takes:
+            return True
+        if self._capacity == 0:
+            return False
+        if self._policy in {"sliding", "dropping"}:
+            return True
+        return len(self._buffer) < self._capacity
+
+    async def _wait_for_xform_admission(self) -> None:
+        while not self._can_admit_xform_input():
+            if self._closed or self._xform_done:
+                return
+            future: asyncio.Future[None] = asyncio.get_running_loop().create_future()
+            self._xform_waiters.append(future)
+            try:
+                await future
+            finally:
+                self._discard_inactive_xform_waiters()
+
+    def _wake_xform_waiter(self) -> None:
+        if not self._can_admit_xform_input():
+            return
+        self._discard_inactive_xform_waiters()
+        while self._xform_waiters:
+            waiter = self._xform_waiters.popleft()
+            if not waiter.done():
+                waiter.set_result(None)
+                return
+
+    def _emit_transformed_values(self, values: Iterable[Any]) -> None:
+        for value in values:
+            self._validate_value(value)
+            self._discard_inactive()
+            delivered = False
+            while self._takes:
+                if self._takes.popleft().resolve(value):
+                    delivered = True
+                    break
+            if not delivered:
+                self._buffer.append(value)
+
+    def _xform_emit(self, *args: Any) -> Any:
+        if not args:
+            return []
+        if len(args) == 1:
+            return args[0]
+        result, item = args
+        if item is None:
+            raise _NilTransducerOutput("channels do not accept nil values")
+        assert self._xform_emitted is not None
+        self._xform_emitted.append(item)
+        return result
+
+    def _transform_value(self, value: Any) -> tuple[list[Any], bool]:
+        assert self._xform_reducing is not None
+        self._xform_emitted = []
+        try:
+            result = self._xform_reducing(self._xform_state, value)
+        except _NilTransducerOutput:
+            raise
+        except BaseException as error:
+            if self._xform_error_handler is None:
+                return [], False
+            replacement = self._xform_error_handler(error)
+            if replacement is not None:
+                self._validate_value(replacement)
+                self._xform_emitted.append(replacement)
+            return self._xform_emitted, False
+        finally:
+            emitted = self._xform_emitted
+            self._xform_emitted = None
+
+        if isinstance(result, Reduced):
+            self._xform_state = result.value
+            self._xform_done = True
+            return emitted, True
+        self._xform_state = result
+        return emitted, False
+
+    def _complete_xform(self) -> list[Any]:
+        if self._xform_reducing is None or self._xform_done:
+            return []
+        self._xform_done = True
+        self._xform_emitted = []
+        try:
+            result = self._xform_reducing(self._xform_state)
+            self._xform_state = result.value if isinstance(result, Reduced) else result
+            return self._xform_emitted
+        finally:
+            self._xform_emitted = None
 
     def _discard_inactive(self) -> None:
         self._puts = deque(

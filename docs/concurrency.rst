@@ -77,8 +77,10 @@ its pending operations.
 helpers. ``pipeline!`` applies a synchronous transducer with bounded
 parallelism while preserving output order; ``pipeline-async!`` accepts a
 callback-shaped asynchronous function that writes each input's results to a
-per-input result channel. Channel transducers at ``chan`` construction time and
-a ``go`` macro are not yet implemented. ``defasync`` and ``await`` remain the
+per-input result channel. Channel transducers at ``chan`` construction time are
+supported for synchronous xforms with optional ``ex-handler`` replacement/drop
+semantics and completion flush on close. A ``go`` macro is not yet implemented.
+``defasync`` and ``await`` remain the
 intended Python-native equivalent of the initial ``go``-block use case. See
 :ref:`core_async_design` for the proposed ``clojure.core.async``
 compatibility path.

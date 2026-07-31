@@ -397,6 +397,12 @@ combinators ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``,
 ``into``, ``reduce``, and ``transduce``. These are still ``asyncio`` task-backed
 helpers and do not imply blocking or parking support.
 
+``chan`` also supports synchronous xforms with optional ``ex-handler``. The
+runtime applies the transducer at put time, preserves transducer state across
+puts, supports fan-out and filtering, flushes completing transducers on close
+when output can be delivered, closes after early completion such as ``take``,
+and rejects nil emitted values.
+
 The facade additionally includes task-backed routing combinators ``mult``,
 ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
 ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
