@@ -1955,6 +1955,7 @@ def _keys_none(_: None) -> None:
     return None
 
 
+@keys.register(IPersistentMap)
 @keys.register(collections.abc.Iterable)
 @keys.register(ISeqable)
 def _keys_iterable(o: ISeqable | Iterable) -> ISeq | None:
@@ -2001,7 +2002,8 @@ def _vals_str(o: str) -> None:
     raise TypeError(f"Object of type {type(o)} cannot be coerced to a value sequence")
 
 
-@keys.register(collections.abc.Iterable)
+@vals.register(IPersistentMap)
+@vals.register(collections.abc.Iterable)
 @vals.register(ISeqable)
 def _vals_iterable(o: ISeqable | Iterable) -> ISeq | None:
     return vals(to_seq(o))

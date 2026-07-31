@@ -11,6 +11,10 @@
     (is (= 3 (count base)))
     (is (= 2 (:a base)))
     (is (= [[:b 1] [:a 2] [:c 3]] (vec base)))
+    (is (= [:b :a :c] (vec (keys base))))
+    (is (= [1 2 3] (vec (vals base))))
+    (is (= [[:x 1] [:y 2] [:z 3]]
+           (vec (into (pm/priority-map) [[:z 3] [:x 1] [:y 2]]))))
     (is (= [:b 1] (peek base)))
     (is (= [[:a 2] [:c 3]] (vec (pop base))))
     (is (= [[:c 3] [:a 2] [:b 1]] (vec (rseq base))))
@@ -32,6 +36,12 @@
            (vec (pm/subseq (pm/priority-map :a 2 :b 1 :c 3) < 3))))
     (is (= [[:c 3] [:a 2]]
            (vec (pm/rsubseq (pm/priority-map :a 2 :b 1 :c 3) >= 2))))
+    (is (= [[:d 4] [:c 3] [:a 2]]
+           (vec (pm/rsubseq (pm/priority-map :a 2 :b 1 :c 3 :d 4 :e 5)
+                            >= 2 < 5))))
+    (is (= []
+           (vec (pm/rsubseq (pm/priority-map :a 2 :b 1 :c 3 :d 4 :e 5)
+                            <= 3 > 1))))
     (is (= [[:a 2]]
            (vec (pm/subseq (pm/priority-map :a 2 :b 1 :c 3) >= 2 < 3))))
     (is (= {1 #{:b} 2 #{:a :c}}

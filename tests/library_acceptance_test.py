@@ -211,6 +211,20 @@ def test_data_xml_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_data_priority_map_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "data-priority-map"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.data.priority-map -> basilisp.data.priority-map" in manifest
+    assert "org.clojure/data.priority-map 1.2.0 Maven artifact" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_data_codec_base64_acceptance_manifest_is_portable_and_checked_in():
     library_root = (
         Path(__file__).parent / "acceptance" / "upstream" / "data-codec-base64"

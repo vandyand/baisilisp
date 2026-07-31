@@ -1,0 +1,69 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "e76222a5c50a8f1d6734639e05585c71802b26a282c660dce0ad0abe298a934b"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/data_priority_map/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "actual",
+        "ascending",
+        "case",
+        "clojure.data.priority-map",
+        "f",
+        "index",
+        "k",
+        "keyfn",
+        "p",
+        "pairs",
+        "remaining",
+        "s1",
+        "seed",
+        "size",
+        "v"
+      ],
+      "sha256": "bb08ad006efd444f5b10946253c717917975dcd269e0c7bf6b4ff553266a923b"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/data_priority_map/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.data-priority-map.workflow"
+      ],
+      "sha256": "202039fe244719a48c4133e75381a49615d6999a53f16a27fe9eb45632dbde79"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.priority-map -> basilisp.data.priority-map"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/data.priority-map 1.2.0 Maven artifact",
+  "upstream_url": "https://github.com/clojure/data.priority-map"
+}
