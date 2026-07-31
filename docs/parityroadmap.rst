@@ -164,7 +164,8 @@ Near-term deliverable:
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
-  ``data.json``, ``core.match``, and ``tools.namespace``. The
+  ``data.json``, ``data.codec.base64``, ``core.match``, and
+  ``tools.namespace``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -202,6 +203,13 @@ Near-term deliverable:
   extension, extra-data/error boundaries, JavaScript separator escaping, pretty
   output round trips, raw Unicode/slash options, and 96 deterministic generated
   compact/pretty/raw round trips.
+  The ``data.codec.base64`` proof uses the published
+  ``org.clojure/data.codec`` 0.1.1 artifact on the JVM side and Basilisp's
+  production ``clojure.data.codec.base64`` alias on the Basilisp side; it locks
+  public surface, length arithmetic, known vectors, offset/mutable-destination
+  APIs, permissive decoder boundary behavior, transfer buffer sizing, split
+  buffer failures, and 128 deterministic generated encode/decode and
+  encode!/decode! byte round trips.
   The ``core.match`` proof uses the published ``org.clojure/core.match`` 1.1.1
   artifact on the JVM side and Basilisp's production ``clojure.core.match``
   alias on the Basilisp side; it locks the user-facing portable macro subset
@@ -1431,6 +1439,15 @@ Completed locally:
   round trips, raw Unicode/slash options, and 96 deterministic generated
   compact/pretty/raw round trips over nested strings, booleans, nils, vectors,
   maps, escaped separators, quotes, and slashes.
+* source-level ``data.codec.base64`` acceptance added as a compact
+  real-library probe; it runs a multi-file portable workflow against
+  ``org.clojure/data.codec`` 0.1.1 and Basilisp's production
+  ``clojure.data.codec.base64`` alias. The probe locks public surface, length
+  arithmetic, RFC known vectors, offset reads, ``encode!``/``decode!`` mutable
+  destination behavior including tail preservation, permissive low-byte decode
+  behavior, high-byte decoder table rejection, streaming transfer buffer
+  boundaries, split/same-buffer failure output, and 128 deterministic generated
+  encode/decode plus encode!/decode! byte round trips.
 * source-level ``core.match`` acceptance added as a macro-heavy real-library
   probe; it runs a multi-file portable workflow against
   ``org.clojure/core.match`` 1.1.1 and Basilisp's production

@@ -199,6 +199,20 @@ def test_data_json_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_data_codec_base64_acceptance_manifest_is_portable_and_checked_in():
+    library_root = (
+        Path(__file__).parent / "acceptance" / "upstream" / "data-codec-base64"
+    )
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.data.codec.base64 -> basilisp.data.codec.base64" in manifest
+    assert "org.clojure/data.codec 0.1.1 Maven artifact" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_core_match_acceptance_manifest_is_portable_and_checked_in():
     library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-match"
     manifest = acceptance_manifest(library_root)
