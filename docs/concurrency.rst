@@ -79,11 +79,11 @@ parallelism while preserving output order; ``pipeline-async!`` accepts a
 callback-shaped asynchronous function that writes each input's results to a
 per-input result channel. Channel transducers at ``chan`` construction time are
 supported for synchronous xforms with optional ``ex-handler`` replacement/drop
-semantics and completion flush on close. A ``go`` macro is not yet implemented.
-``defasync`` and ``await`` remain the
-intended Python-native equivalent of the initial ``go``-block use case. See
-:ref:`core_async_design` for the proposed ``clojure.core.async``
-compatibility path.
+semantics and completion flush on close. ``defasync`` and ``await`` remain the
+recommended Python-native interface for application code. The
+``clojure.core.async`` facade also provides a coroutine-backed ``go`` subset for
+Clojure source compatibility; see :ref:`core_async_design` for the exact
+boundary.
 
 ``clojure.core.async`` Compatibility Facade
 -------------------------------------------
@@ -128,7 +128,11 @@ result before close. This closes the public ``clojure.core.async`` surface gap
 for ordinary portable examples, but it is not a full Clojure IOC/state-machine
 implementation. The public ``ioc-alts!`` name is present and rejects direct
 calls with an explicit error because BaisiLisp does not expose Clojure's
-compiler-generated IOC state representation.
+compiler-generated IOC state representation. Shared JVM fixtures now cover
+ordinary result channels, ``go-loop``, parking puts/takes, ``alt!`` take and put
+clauses, default and priority selection, closed-channel takes, puts to closed
+channels, timeout interaction, nested parking choices, close/result races, and
+exception-driven result-channel close behavior.
 
 Transactions
 ------------

@@ -722,6 +722,37 @@
                             inputs))]
     (vec (doall (map async/<!! results)))))
 
+(defn go-parking-edge-roundtrip []
+  (let [closed-input  (async/chan)
+        closed-output (async/chan)
+        first         (async/chan 1)
+        second        (async/chan 1)
+        close-race    (async/chan)]
+    (async/close! closed-input)
+    (async/close! closed-output)
+    (async/>!! first :first)
+    (async/>!! second :second)
+    [(async/<!! (async/go
+                  [(nil? (async/<! closed-input))
+                   (async/>! closed-output :late)]))
+     (async/<!! (async/go
+                  (let [timer (async/timeout 1)]
+                    (async/alt! timer ([value port]
+                                       [(nil? value) (identical? port timer)])))))
+     (async/<!! (async/go
+                  (async/alt! first ([first-value first-port]
+                                    (async/alt! second ([second-value second-port]
+                                                       [first-value
+                                                        (identical? first-port first)
+                                                        second-value
+                                                        (identical? second-port second)])))
+                              :priority true)))
+     (let [result (async/go [(nil? (async/<! close-race))])]
+       (async/close! close-race)
+       (async/<!! result))
+     (async/<!! (async/go
+                  (throw (ex-info "go failure" {:kind :fixture}))))]))
+
 #?(:clj
    (defn helper-publics-roundtrip []
      (let [ready          (async/chan 1)
@@ -1543,5 +1574,6 @@
                :lpy (asyncio/run (helper-publics-generated-roundtrip)))
             (go-parking-roundtrip)
             (go-parking-generated-roundtrip)
+            (go-parking-edge-roundtrip)
             (thread-roundtrip)
             (io-thread-roundtrip)])
