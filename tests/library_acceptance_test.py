@@ -174,6 +174,18 @@ def test_data_csv_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_core_match_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-match"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.core.match -> basilisp.core.match" in manifest
+    assert "org.clojure/core.match 1.1.1 Maven artifact" in manifest
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_acceptance_library_roots_discovers_checked_in_libraries(tmp_path):
     first = tmp_path / "portable"
     second = tmp_path / "upstream" / "library"

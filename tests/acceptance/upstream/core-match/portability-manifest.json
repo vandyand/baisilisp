@@ -1,0 +1,63 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "b2233b92a1c24339b57dd273b21f10eb28dfd1083260e57151c6ef0575063b36"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/core_match/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "a",
+        "clojure.core.match",
+        "f",
+        "match",
+        "nil",
+        "sample",
+        "sym",
+        "value",
+        "x"
+      ],
+      "sha256": "e5075e1a7a91d94b52e4f43e8797e50089b0e168b497cd160d8b8b8aea4aaf1e"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/core_match/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.core-match.workflow"
+      ],
+      "sha256": "f1cb4ab38e791e429eef9ef25edb15ff14c7f7ea4cdb25d6ea5f0762d23b85c0"
+    }
+  ],
+  "substitutions": [
+    "clojure.core.match -> basilisp.core.match"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/core.match 1.1.1 Maven artifact",
+  "upstream_url": "https://github.com/clojure/core.match"
+}

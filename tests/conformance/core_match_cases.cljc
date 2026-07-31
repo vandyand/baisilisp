@@ -54,6 +54,14 @@
               [([1 & [2 x]] :seq)] x
               :else :bad)])
 
+(emit-case :seq-pattern-scalar-fallback
+           [(match [41]
+              [([1 2] :seq)] :bad
+              :else [:fallback 41])
+            (match [:keyword]
+              [([:a :b] :seq)] :bad
+              :else [:fallback :keyword])])
+
 (emit-case :application-and-as-patterns
            [(match [[1 2 3]]
               [[1 (3 :<< inc) 3]] :app
