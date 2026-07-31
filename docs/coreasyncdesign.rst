@@ -199,6 +199,10 @@ Proposed public functions/macros:
 * ``pipeline``
 * ``pipeline-blocking``
 * ``pipeline-async``
+* ``map<`` / ``map>``
+* ``filter<`` / ``filter>``
+* ``remove<`` / ``remove>``
+* ``mapcat<`` / ``mapcat>``
 * ``mult`` / ``tap`` / ``untap`` / ``untap-all``
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
@@ -419,12 +423,17 @@ The initial implementation now covers:
 * Provide and test the phase-1 callback/awaitable behavior for ``put!`` and
   ``take!``: no callback returns an awaitable; callback calls schedule on the
   current event loop and return ``nil``.
-* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, blocking ops, and
-  advanced combinators absent until they can be implemented or rejected with a
-  stable support matrix.
+* Leave ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, and advanced flow
+  combinators absent until they can be implemented or rejected with a stable
+  support matrix.
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
   These return channels and run their work in caller-owned ``asyncio`` tasks.
+* Add transform-direction combinators: ``map<``, ``map>``, ``filter<``,
+  ``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and ``mapcat>``. The
+  ``<`` variants derive output channels from source channels; the ``>``
+  variants return writable channels that transform/filter/fan-out into the
+  supplied target channel.
 * Add task-backed routing combinators: ``mult``, ``tap``, ``untap``,
   ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. The current
   publication implementation accepts ``buf-fn`` for source compatibility but

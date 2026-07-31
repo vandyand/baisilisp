@@ -18,6 +18,8 @@
      pipeline-async pipeline-blocking
      to-chan! onto-chan! merge split take
      into reduce transduce
+     map< map> filter< filter>
+     remove< remove> mapcat< mapcat>
      mult tap untap untap-all
      pub sub unsub unsub-all
      mix admix unmix unmix-all
@@ -36,6 +38,34 @@
    :unsupported-absent-in-basilisp?  #?(:clj true
                             :lpy (not-any? (current-publics)
                                            unsupported-parking-and-blocking-publics))})
+
+#?(:clj
+   (defn drain-channel [channel]
+     (loop [acc   []
+            value (async/<!! channel)]
+       (if (some? value)
+         (recur (conj acc value) (async/<!! channel))
+         acc)))
+
+   :lpy
+   (defasync drain-channel [channel]
+     (loop [acc   []
+            value (await (async/take! channel))]
+       (if (some? value)
+         (recur (conj acc value) (await (async/take! channel)))
+         acc))))
+
+#?(:clj
+   (defn put-values [channel values]
+     (doseq [value values]
+       (async/>!! channel value)))
+
+   :lpy
+   (defasync put-values [channel values]
+     (loop [items (seq values)]
+       (when items
+         (await (async/put! channel (first items)))
+         (recur (next items))))))
 
 #?(:clj
    (defn to-chan-roundtrip []
@@ -134,6 +164,90 @@
      [(await (async/take! (async/into [] (async/to-chan! [1 2 3]))))
       (await (async/take! (async/reduce + 0 (async/to-chan! [1 2 3]))))
       (await (async/take! (async/transduce (map inc) + 0 (async/to-chan! [1 2 3]))))]))
+
+#?(:clj
+   (defn transform-combinators-roundtrip []
+     (let [map-in      (async/to-chan! [1 2])
+           map-out     (async/map< #(* 10 %) map-in)
+           filter-in   (async/to-chan! [1 2 3 4])
+           filter-out  (async/filter< even? filter-in 4)
+           remove-in   (async/to-chan! [1 2 3 4])
+           remove-out  (async/remove< even? remove-in 4)
+           cat-in      (async/to-chan! [1 2])
+           cat-out     (async/mapcat< (fn [value] [value (* value 10)])
+                                      cat-in
+                                      4)
+           target-map  (async/chan 4)
+           input-map   (async/map> #(* 10 %) target-map)
+           target-fil  (async/chan 4)
+           input-fil   (async/filter> even? target-fil)
+           target-rem  (async/chan 4)
+           input-rem   (async/remove> even? target-rem)
+           target-cat  (async/chan 4)
+           input-cat   (async/mapcat> (fn [value] [value (* value 10)])
+                                      target-cat
+                                      4)]
+       (put-values input-map [1 2])
+       (async/close! input-map)
+       (let [filter-puts (vec (doall (map #(async/>!! input-fil %)
+                                          [1 2 3 4])))]
+         (async/close! input-fil)
+         (put-values input-rem [1 2 3 4])
+         (async/close! input-rem)
+         (put-values input-cat [1 2])
+         (async/close! input-cat)
+         [(drain-channel map-out)
+          (drain-channel filter-out)
+          (drain-channel remove-out)
+          (drain-channel cat-out)
+          (drain-channel target-map)
+          filter-puts
+          (drain-channel target-fil)
+          (drain-channel target-rem)
+          (drain-channel target-cat)])))
+
+   :lpy
+   (defasync transform-combinators-roundtrip []
+     (let [map-in      (async/to-chan! [1 2])
+           map-out     (async/map< #(* 10 %) map-in)
+           filter-in   (async/to-chan! [1 2 3 4])
+           filter-out  (async/filter< even? filter-in 4)
+           remove-in   (async/to-chan! [1 2 3 4])
+           remove-out  (async/remove< even? remove-in 4)
+           cat-in      (async/to-chan! [1 2])
+           cat-out     (async/mapcat< (fn [value] [value (* value 10)])
+                                      cat-in
+                                      4)
+           target-map  (async/chan 4)
+           input-map   (async/map> #(* 10 %) target-map)
+           target-fil  (async/chan 4)
+           input-fil   (async/filter> even? target-fil)
+           target-rem  (async/chan 4)
+           input-rem   (async/remove> even? target-rem)
+           target-cat  (async/chan 4)
+           input-cat   (async/mapcat> (fn [value] [value (* value 10)])
+                                      target-cat
+                                      4)]
+       (await (put-values input-map [1 2]))
+       (async/close! input-map)
+       (let [filter-puts (doall [(await (async/put! input-fil 1))
+                                 (await (async/put! input-fil 2))
+                                 (await (async/put! input-fil 3))
+                                 (await (async/put! input-fil 4))])]
+         (async/close! input-fil)
+         (await (put-values input-rem [1 2 3 4]))
+         (async/close! input-rem)
+         (await (put-values input-cat [1 2]))
+         (async/close! input-cat)
+         [(await (drain-channel map-out))
+          (await (drain-channel filter-out))
+          (await (drain-channel remove-out))
+          (await (drain-channel cat-out))
+          (await (drain-channel target-map))
+          filter-puts
+          (await (drain-channel target-fil))
+          (await (drain-channel target-rem))
+          (await (drain-channel target-cat))]))))
 
 #?(:clj
    (defn fixed-buffer-roundtrip []
@@ -937,13 +1051,15 @@
                     (merge-roundtrip)
                     (split-roundtrip)
                     (take-roundtrip)
-                    (fold-roundtrip)]
+                    (fold-roundtrip)
+                    (transform-combinators-roundtrip)]
               :lpy [(asyncio/run (to-chan-roundtrip))
                     (asyncio/run (onto-chan-roundtrip))
                     (asyncio/run (merge-roundtrip))
                     (asyncio/run (split-roundtrip))
                     (asyncio/run (take-roundtrip))
-                    (asyncio/run (fold-roundtrip))]))
+                    (asyncio/run (fold-roundtrip))
+                    (asyncio/run (transform-combinators-roundtrip))]))
 
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)

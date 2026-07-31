@@ -377,6 +377,74 @@
     (asyncio/create-task (transduce-result! xform f init channel output))
     output))
 
+(defn map<
+  "Return a channel containing ``(f value)`` for each value taken from
+  ``channel``. The returned channel closes after ``channel`` closes."
+  [f channel]
+  (let [output (chan)]
+    (concurrent/pipeline! 1 channel output (map f))
+    output))
+
+(defn filter<
+  "Return a channel containing values from ``channel`` for which ``pred``
+  returns truthy."
+  ([pred channel]
+   (filter< pred channel nil))
+  ([pred channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (concurrent/pipeline! 1 channel output (filter pred))
+     output)))
+
+(defn remove<
+  "Return a channel containing values from ``channel`` for which ``pred``
+  returns falsey."
+  ([pred channel]
+   (remove< pred channel nil))
+  ([pred channel buf-or-n]
+   (filter< (complement pred) channel buf-or-n)))
+
+(defn mapcat<
+  "Return a channel containing the concatenated results of applying ``f`` to
+  each value taken from ``channel``."
+  ([f channel]
+   (mapcat< f channel nil))
+  ([f channel buf-or-n]
+   (let [output (chan buf-or-n)]
+     (concurrent/pipeline! 1 channel output (mapcat f))
+     output)))
+
+(defn- transform-puts
+  [xform target buf-or-n]
+  (let [input (chan buf-or-n xform)]
+    (concurrent/pipe! input target :close-output true)
+    input))
+
+(defn map>
+  "Return a channel which applies ``f`` to each put value and forwards the
+  result to ``channel``. Closing the returned channel closes ``channel``."
+  [f channel]
+  (transform-puts (map f) channel nil))
+
+(defn filter>
+  "Return a channel which forwards put values to ``channel`` only when ``pred``
+  returns truthy. Filtered values are accepted and dropped."
+  [pred channel]
+  (transform-puts (filter pred) channel nil))
+
+(defn remove>
+  "Return a channel which forwards put values to ``channel`` only when ``pred``
+  returns falsey. Filtered values are accepted and dropped."
+  [pred channel]
+  (filter> (complement pred) channel))
+
+(defn mapcat>
+  "Return a channel which applies ``f`` to each put value and forwards each
+  value from the returned collection to ``channel``."
+  ([f channel]
+   (mapcat> f channel nil))
+  ([f channel buf-or-n]
+   (transform-puts (mapcat f) channel buf-or-n)))
+
 (defn- close-registered-channels!
   [registrations]
   (doseq [[channel close?] registrations]
