@@ -13,6 +13,7 @@
 
 (def supported-non-go-publics
   '#{buffer dropping-buffer sliding-buffer
+     Mux Mult Pub Mix
      chan close! offer! poll! put! take!
      alts! timeout pipe pipeline
      promise-chan
@@ -25,10 +26,15 @@
      unblocking-buffer?
      map< map> filter< filter>
      remove< remove> mapcat< mapcat>
+     muxch*
      mult tap untap untap-all
+     tap* untap* untap-all*
      pub sub unsub unsub-all
+     sub* unsub* unsub-all*
      mix admix unmix unmix-all
+     admix* unmix* unmix-all*
      toggle solo-mode
+     toggle* solo-mode*
      <!! >!! alts!!
      thread thread-call io-thread})
 
@@ -1060,6 +1066,76 @@
          [before (await (async/take! out))]))))
 
 #?(:clj
+   (defn routing-protocol-helper-roundtrip []
+     (let [mult-source (async/chan 4)
+           m           (async/mult mult-source)
+           tapped      (async/chan 4)
+           pub-source  (async/chan 4)
+           p           (async/pub pub-source :topic)
+           subbed      (async/chan 4)
+           mix-out     (async/chan 4)
+           mx          (async/mix mix-out)
+           mix-in      (async/chan 4)]
+       (async/tap* m tapped true)
+       (async/>!! mult-source :mult-value)
+       (let [mult-value (async/<!! tapped)]
+         (async/untap* m tapped)
+         (async/untap-all* m)
+         (async/sub* p :a subbed true)
+         (async/>!! pub-source {:topic :a :value 1})
+         (let [pub-value (async/<!! subbed)
+               unsub-one (async/unsub-all* p :a)
+               unsub-all (async/unsub-all* p)]
+           (async/admix* mx mix-in)
+           (async/toggle* mx {mix-in {:mute true}})
+           (async/solo-mode* mx :pause)
+           (async/unmix* mx mix-in)
+           (let [unmix-all (async/unmix-all* mx)]
+             [(identical? mult-source (async/muxch* m))
+              mult-value
+              (identical? pub-source (async/muxch* p))
+              pub-value
+              unsub-one
+              unsub-all
+              (identical? mix-out (async/muxch* mx))
+              unmix-all])))))
+
+   :lpy
+   (defasync routing-protocol-helper-roundtrip []
+     (let [mult-source (async/chan 4)
+           m           (async/mult mult-source)
+           tapped      (async/chan 4)
+           pub-source  (async/chan 4)
+           p           (async/pub pub-source :topic)
+           subbed      (async/chan 4)
+           mix-out     (async/chan 4)
+           mx          (async/mix mix-out)
+           mix-in      (async/chan 4)]
+       (async/tap* m tapped true)
+       (await (async/put! mult-source :mult-value))
+       (let [mult-value (await (async/take! tapped))]
+         (async/untap* m tapped)
+         (async/untap-all* m)
+         (async/sub* p :a subbed true)
+         (await (async/put! pub-source {:topic :a :value 1}))
+         (let [pub-value (await (async/take! subbed))
+               unsub-one (async/unsub-all* p :a)
+               unsub-all (async/unsub-all* p)]
+           (async/admix* mx mix-in)
+           (async/toggle* mx {mix-in {:mute true}})
+           (async/solo-mode* mx :pause)
+           (async/unmix* mx mix-in)
+           (let [unmix-all (async/unmix-all* mx)]
+             [(identical? mult-source (async/muxch* m))
+              mult-value
+              (identical? pub-source (async/muxch* p))
+              pub-value
+              unsub-one
+              unsub-all
+              (identical? mix-out (async/muxch* mx))
+              unmix-all]))))))
+
+#?(:clj
    (defn blocking-roundtrip []
      (let [channel (async/chan 1)
            first   (async/chan 1)
@@ -1189,12 +1265,14 @@
                     (pub-roundtrip)
                     (mix-roundtrip)
                     (mix-solo-roundtrip)
-                    (mix-toggle-add-roundtrip)]
+                    (mix-toggle-add-roundtrip)
+                    (routing-protocol-helper-roundtrip)]
               :lpy [(asyncio/run (mult-roundtrip))
                     (asyncio/run (pub-roundtrip))
                     (asyncio/run (mix-roundtrip))
                     (asyncio/run (mix-solo-roundtrip))
-                    (asyncio/run (mix-toggle-add-roundtrip))]))
+                    (asyncio/run (mix-toggle-add-roundtrip))
+                    (asyncio/run (routing-protocol-helper-roundtrip))]))
 
 (emit-case :core-async-blocking-bridges
            [(blocking-roundtrip)
