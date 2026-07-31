@@ -831,10 +831,10 @@
   ``topic``."
   ([pub]
    (reset! (:topics pub) {})
-   nil)
+   {})
   ([pub topic]
    (swap! (:topics pub) dissoc topic)
-   nil))
+   {}))
 
 (defn unsub-all*
   "Low-level unsub-all helper mirroring Clojure's ``Pub`` protocol method."
@@ -951,29 +951,34 @@
   "Add ``channel`` as an input to ``mix``."
   [mix channel]
   (swap! (:inputs mix) update channel #(or % {}))
-  (signal-mix! mix))
+  (signal-mix! mix)
+  true)
 
 (defn admix*
   "Low-level admix helper mirroring Clojure's ``Mix`` protocol method."
   [mix channel]
-  (admix mix channel))
+  (admix mix channel)
+  true)
 
 (defn unmix
   "Remove ``channel`` as an input from ``mix``."
   [mix channel]
   (swap! (:inputs mix) dissoc channel)
-  (signal-mix! mix))
+  (signal-mix! mix)
+  true)
 
 (defn unmix*
   "Low-level unmix helper mirroring Clojure's ``Mix`` protocol method."
   [mix channel]
-  (unmix mix channel))
+  (unmix mix channel)
+  true)
 
 (defn unmix-all
   "Remove all inputs from ``mix``."
   [mix]
   (reset! (:inputs mix) {})
-  (signal-mix! mix))
+  (signal-mix! mix)
+  true)
 
 (defn unmix-all*
   "Low-level unmix-all helper mirroring Clojure's ``Mix`` protocol method."
@@ -1000,12 +1005,14 @@
                                 (get inputs channel {})
                                 state))))
                inputs))))
-  (signal-mix! mix))
+  (signal-mix! mix)
+  true)
 
 (defn toggle*
   "Low-level toggle helper mirroring Clojure's ``Mix`` protocol method."
   [mix state-map]
-  (toggle mix state-map))
+  (toggle mix state-map)
+  true)
 
 (defn solo-mode
   "Set ``mix`` solo mode to ``:mute`` or ``:pause``."
@@ -1013,12 +1020,14 @@
   (when-not (contains? #{:mute :pause} mode)
     (throw (ex-info "solo-mode expects :mute or :pause" {:mode mode})))
   (reset! (:solo-mode mix) mode)
-  (signal-mix! mix))
+  (signal-mix! mix)
+  true)
 
 (defn solo-mode*
   "Low-level solo-mode helper mirroring Clojure's ``Mix`` protocol method."
   [mix mode]
-  (solo-mode mix mode))
+  (solo-mode mix mode)
+  true)
 
 (defn timeout
   "Create a channel that closes after ``delay-ms`` milliseconds."

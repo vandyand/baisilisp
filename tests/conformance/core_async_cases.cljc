@@ -1486,6 +1486,197 @@
          [before (await (async/take! out))]))))
 
 #?(:clj
+   (defn routing-return-contract-roundtrip []
+     (let [mult-source (async/chan 4)
+           m           (async/mult mult-source)
+           tapped      (async/chan 4)
+           pub-source  (async/chan 4)
+           p           (async/pub pub-source :topic)
+           subbed      (async/chan 4)
+           mix-out     (async/chan 4)
+           mx          (async/mix mix-out)
+           mix-in      (async/chan 4)]
+       {:mult [(identical? tapped (async/tap m tapped))
+               (nil? (async/tap* m tapped true))
+               (nil? (async/untap m tapped))
+               (nil? (async/untap* m tapped))
+               (nil? (async/untap-all m))
+               (nil? (async/untap-all* m))]
+        :pub  [(identical? subbed (async/sub p :a subbed))
+               (identical? subbed (async/sub* p :a subbed true))
+               (nil? (async/unsub p :a subbed))
+               (nil? (async/unsub* p :a subbed))
+               (= {} (async/unsub-all p))
+               (= {} (async/unsub-all p :a))
+               (= {} (async/unsub-all* p))
+               (= {} (async/unsub-all* p :a))]
+        :mix  [(true? (async/admix mx mix-in))
+               (true? (async/admix* mx mix-in))
+               (true? (async/toggle mx {mix-in {:mute true}}))
+               (true? (async/toggle* mx {mix-in {:mute false}}))
+               (true? (async/solo-mode mx :pause))
+               (true? (async/solo-mode* mx :mute))
+               (true? (async/unmix mx mix-in))
+               (true? (async/unmix* mx mix-in))
+               (true? (async/unmix-all mx))
+               (true? (async/unmix-all* mx))]}))
+
+   :lpy
+   (defasync routing-return-contract-roundtrip []
+     (let [mult-source (async/chan 4)
+           m           (async/mult mult-source)
+           tapped      (async/chan 4)
+           pub-source  (async/chan 4)
+           p           (async/pub pub-source :topic)
+           subbed      (async/chan 4)
+           mix-out     (async/chan 4)
+           mx          (async/mix mix-out)
+           mix-in      (async/chan 4)
+           cleanup     (async/chan 4)
+           result      {:mult [(identical? tapped (async/tap m tapped))
+                               (nil? (async/tap* m tapped true))
+                               (nil? (async/untap m tapped))
+                               (nil? (async/untap* m tapped))
+                               (nil? (async/untap-all m))
+                               (nil? (async/untap-all* m))]
+                        :pub  [(identical? subbed (async/sub p :a subbed))
+                               (identical? subbed (async/sub* p :a subbed true))
+                               (nil? (async/unsub p :a subbed))
+                               (nil? (async/unsub* p :a subbed))
+                               (= {} (async/unsub-all p))
+                               (= {} (async/unsub-all p :a))
+                               (= {} (async/unsub-all* p))
+                               (= {} (async/unsub-all* p :a))]
+                        :mix  [(true? (async/admix mx mix-in))
+                               (true? (async/admix* mx mix-in))
+                               (true? (async/toggle mx {mix-in {:mute true}}))
+                               (true? (async/toggle* mx {mix-in {:mute false}}))
+                               (true? (async/solo-mode mx :pause))
+                               (true? (async/solo-mode* mx :mute))
+                               (true? (async/unmix mx mix-in))
+                               (true? (async/unmix* mx mix-in))
+                               (true? (async/unmix-all mx))
+                               (true? (async/unmix-all* mx))]}]
+       (async/close! mult-source)
+       (async/close! pub-source)
+       (await (:task m))
+       (await (:task p))
+       (async/close! mix-out)
+       (async/admix mx cleanup)
+       (await (async/put! cleanup :shutdown))
+       (await (:task mx))
+       result)))
+
+#?(:clj
+   (defn mix-adversarial-routing-roundtrip []
+     (let [out (async/chan 16)
+           x   (async/chan 16)
+           y   (async/chan 16)
+           z   (async/chan 16)
+           mx  (async/mix out)]
+       (async/admix mx x)
+       (async/admix mx y)
+       (async/admix mx z)
+       (async/toggle mx {x {:mute true}
+                         y {:pause true}})
+       (Thread/sleep 50)
+       (async/>!! x :x-muted)
+       (async/>!! y :y-paused)
+       (async/>!! z :z-live)
+       (let [muted-paused [(async/<!! out)
+                           (do (Thread/sleep 50)
+                               (async/poll! out))]]
+         (async/toggle mx {x {:mute false :solo true}
+                           y {:pause false}})
+         (Thread/sleep 50)
+         (async/>!! y :y-muted-by-solo)
+         (async/>!! x :x-solo)
+         (let [solo-muted [(async/<!! out)
+                           (do (Thread/sleep 50)
+                               (async/poll! out))]]
+           (async/solo-mode mx :pause)
+           (async/toggle mx {x {:solo true}})
+           (Thread/sleep 50)
+           (async/>!! y :y-paused-by-solo)
+           (async/>!! x :x-pause-solo)
+           (let [solo-paused-before [(async/<!! out)
+                                     (do (Thread/sleep 50)
+                                         (async/poll! out))]]
+             (async/toggle mx {x {:solo false}})
+             (let [solo-paused-after (async/<!! out)]
+               (async/unmix mx z)
+               (Thread/sleep 50)
+               (async/>!! z :z-unmixed)
+               (let [unmixed (do (Thread/sleep 50)
+                                 (async/poll! out))]
+                 (async/unmix-all mx)
+                 (async/>!! x :x-after-unmix-all)
+                 [muted-paused
+                  solo-muted
+                  solo-paused-before
+                  solo-paused-after
+                  unmixed
+                  (do (Thread/sleep 50)
+                      (async/poll! out))])))))))
+
+   :lpy
+   (defasync mix-adversarial-routing-roundtrip []
+     (let [out (async/chan 16)
+           x   (async/chan 16)
+           y   (async/chan 16)
+           z   (async/chan 16)
+           mx  (async/mix out)]
+       (async/admix mx x)
+       (async/admix mx y)
+       (async/admix mx z)
+       (async/toggle mx {x {:mute true}
+                         y {:pause true}})
+       (await (asyncio/sleep 0))
+       (await (async/put! x :x-muted))
+       (await (async/put! y :y-paused))
+       (await (async/put! z :z-live))
+       (let [muted-paused [(await (async/take! out))
+                           (do (await (asyncio/sleep 0))
+                               (async/poll! out))]]
+         (async/toggle mx {x {:mute false :solo true}
+                           y {:pause false}})
+         (await (asyncio/sleep 0))
+         (await (async/put! y :y-muted-by-solo))
+         (await (async/put! x :x-solo))
+         (let [solo-muted [(await (async/take! out))
+                           (do (await (asyncio/sleep 0))
+                               (async/poll! out))]]
+           (async/solo-mode mx :pause)
+           (async/toggle mx {x {:solo true}})
+           (await (asyncio/sleep 0))
+           (await (async/put! y :y-paused-by-solo))
+           (await (async/put! x :x-pause-solo))
+           (let [solo-paused-before [(await (async/take! out))
+                                     (do (await (asyncio/sleep 0))
+                                         (async/poll! out))]]
+             (async/toggle mx {x {:solo false}})
+             (let [solo-paused-after (await (async/take! out))]
+               (async/unmix mx z)
+               (await (asyncio/sleep 0))
+               (await (async/put! z :z-unmixed))
+               (let [unmixed (do (await (asyncio/sleep 0))
+                                 (async/poll! out))]
+                 (async/unmix-all mx)
+                 (await (async/put! x :x-after-unmix-all))
+                 (let [after-unmix-all (do (await (asyncio/sleep 0))
+                                           (async/poll! out))]
+                   (async/close! out)
+                   (async/admix mx x)
+                   (await (async/put! x :shutdown))
+                   (await (:task mx))
+                   [muted-paused
+                    solo-muted
+                    solo-paused-before
+                    solo-paused-after
+                    unmixed
+                    after-unmix-all])))))))))
+
+#?(:clj
    (defn routing-protocol-helper-roundtrip []
      (let [mult-source (async/chan 4)
            m           (async/mult mult-source)
@@ -1689,15 +1880,19 @@
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)
                     (pub-roundtrip)
+                    (routing-return-contract-roundtrip)
                     (mix-roundtrip)
                     (mix-solo-roundtrip)
                     (mix-toggle-add-roundtrip)
+                    (mix-adversarial-routing-roundtrip)
                     (routing-protocol-helper-roundtrip)]
               :lpy [(asyncio/run (mult-roundtrip))
                     (asyncio/run (pub-roundtrip))
+                    (asyncio/run (routing-return-contract-roundtrip))
                     (asyncio/run (mix-roundtrip))
                     (asyncio/run (mix-solo-roundtrip))
                     (asyncio/run (mix-toggle-add-roundtrip))
+                    (asyncio/run (mix-adversarial-routing-roundtrip))
                     (asyncio/run (routing-protocol-helper-roundtrip))]))
 
 (emit-case :core-async-blocking-bridges
