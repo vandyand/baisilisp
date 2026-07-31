@@ -1,0 +1,69 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "1fa8cf9831a0fc9f58a666f65aae607e9d54fc6f8aa6b50efd9d22306d6c0560"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/data_json/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "case",
+        "clojure.data.json",
+        "clojure.string",
+        "f",
+        "fixture",
+        "java.io",
+        "key",
+        "line-separator",
+        "remaining",
+        "s1",
+        "seed",
+        "source",
+        "value",
+        "writer"
+      ],
+      "sha256": "9f865568c7a756277e23d144520df1eab4a63f71d5881e3ffdc971b7efbcb3ab"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/data_json/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.data-json.workflow"
+      ],
+      "sha256": "73078515773bad42423263e9b8fad78e7cc01ac7f3cdb5dfbc7c9c92f1f065a6"
+    }
+  ],
+  "substitutions": [
+    "clojure.data.json -> basilisp.data.json",
+    "clojure.string -> basilisp.string"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/data.json 2.5.1 Maven artifact",
+  "upstream_url": "https://github.com/clojure/data.json"
+}

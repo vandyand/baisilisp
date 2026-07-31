@@ -164,7 +164,7 @@ Near-term deliverable:
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
-  ``core.match``, and ``tools.namespace``. The
+  ``data.json``, ``core.match``, and ``tools.namespace``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -195,6 +195,13 @@ Near-term deliverable:
   reader/writer interop, delimiter/quote/newline options, scalar row coercion,
   and deterministic generated round trips with commas, quotes, CR/LF text, and
   custom separators.
+  The ``data.json`` proof uses the published ``org.clojure/data.json`` 2.5.1
+  artifact on the JVM side and Basilisp's production ``clojure.data.json``
+  alias on the Basilisp side; it locks public surface, default option maps,
+  stream and string reads, legacy helpers, value/key callbacks, protocol
+  extension, extra-data/error boundaries, JavaScript separator escaping, pretty
+  output round trips, raw Unicode/slash options, and 96 deterministic generated
+  compact/pretty/raw round trips.
   The ``core.match`` proof uses the published ``org.clojure/core.match`` 1.1.1
   artifact on the JVM side and Basilisp's production ``clojure.core.match``
   alias on the Basilisp side; it locks the user-facing portable macro subset
@@ -1415,6 +1422,15 @@ Completed locally:
   delimiter entrypoints, custom separator/quote/newline behavior, scalar
   coercion, invalid-option parity, and deterministic generated round trips over
   comma, quote, CR, LF, CRLF, semicolon, and empty-field values.
+* source-level ``data.json`` acceptance added as a compact real-library probe;
+  it runs a multi-file portable workflow against ``org.clojure/data.json``
+  2.5.1 and Basilisp's production ``clojure.data.json`` alias. The probe locks
+  public surface, default read/write option maps, string and stream reading,
+  legacy helpers, key/value callbacks, protocol extension, extra-data and
+  malformed-token boundaries, JavaScript separator escaping, pretty output
+  round trips, raw Unicode/slash options, and 96 deterministic generated
+  compact/pretty/raw round trips over nested strings, booleans, nils, vectors,
+  maps, escaped separators, quotes, and slashes.
 * source-level ``core.match`` acceptance added as a macro-heavy real-library
   probe; it runs a multi-file portable workflow against
   ``org.clojure/core.match`` 1.1.1 and Basilisp's production
