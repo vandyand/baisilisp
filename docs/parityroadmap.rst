@@ -216,7 +216,9 @@ Near-term deliverable:
   rejection, channel transducers, selection, timeout, pipe, pipeline order,
   pipeline variants, and the non-``go`` collection/channel combinators
   ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``, ``into``,
-  ``reduce``, and ``transduce``. The follow-up local tranche now adds
+  ``reduce``, ``transduce``, ``map<``, ``map>``, ``filter<``, ``filter>``,
+  ``remove<``, ``remove>``, ``mapcat<``, and ``mapcat>``. The follow-up local
+  tranche now adds
   task-backed routing combinators ``mult``,
   ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
   ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
