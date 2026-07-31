@@ -474,6 +474,22 @@
              [fallback port]  (async/alts!! [(async/chan)] :default :fallback)]
          [value (identical? selected second) fallback port]))]))
 
+(defn core-async-promise-channel-roundtrip []
+  (let [basic      (async/promise-chan)
+        closed     (async/promise-chan)
+        transformed (async/promise-chan (map inc))]
+    [(async/>!! basic :value)
+     (async/>!! basic :ignored)
+     (async/<!! basic)
+     (async/<!! basic)
+     (do
+       (async/close! closed)
+       [(async/>!! closed :late)
+        (async/<!! closed)])
+     (async/>!! transformed 1)
+     (async/<!! transformed)
+     (async/<!! transformed)]))
+
 (defn core-async-thread-roundtrip []
   (let [from-call (async/thread-call (fn [] :thread-call-result))
         from-body (async/thread :thread-result)
@@ -494,6 +510,50 @@
 (defn core-async-io-thread-stress-roundtrip []
   (let [channels (doall (map (fn [n] (async/io-thread n)) (range 32)))]
     (doall (map async/<!! channels))))
+
+(defasync core-async-collection-wave2-roundtrip []
+  (let [mapped       (async/map + [(async/to-chan [1 2 3])
+                                   (async/to-chan!! [10 20 30])]
+                                3)
+        mapped-short (async/map + [(async/to-chan! [1 2])
+                                   (async/to-chan! [10])]
+                                2)
+        partitioned  (async/partition 3 (async/to-chan! [1 2 3 4 5]) 2)
+        by-key       (async/partition-by odd? (async/to-chan! [1 3 2 4 5]) 2)
+        unique       (async/unique (async/to-chan! [1 1 2 2 1 1]) 2)
+        onto-target  (async/chan 2)
+        onto-done    (async/onto-chan onto-target [:a :b])
+        onto-bang-target (async/chan 2)
+        onto-bang-done   (async/onto-chan!! onto-bang-target [:c :d])]
+    (await (async/take! onto-done))
+    (await (async/take! onto-bang-done))
+    [(await (drain-channel! mapped))
+     (await (drain-channel! mapped-short))
+     (await (drain-channel! partitioned))
+     (await (drain-channel! by-key))
+     (await (drain-channel! unique))
+     (await (drain-channel! onto-target))
+     (await (drain-channel! onto-bang-target))
+     [(async/unblocking-buffer? (async/buffer 1))
+      (async/unblocking-buffer? (async/sliding-buffer 1))
+      (async/unblocking-buffer? (async/dropping-buffer 1))]]))
+
+(defasync core-async-collection-wave2-stress-roundtrip []
+  (let [values      (range 40)
+        mapped      (async/map (fn [a b c] (+ a b c))
+                               [(async/to-chan! values)
+                                (async/to-chan! (map #(* 10 %) values))
+                                (async/to-chan! (map #(- %) values))]
+                               16)
+        partitions  (async/partition 7 (async/to-chan! values) 8)
+        runs        (async/partition-by #(mod % 5)
+                                        (async/to-chan! [0 5 10 1 6 2 3 8 13])
+                                        4)
+        deduped     (async/unique (async/to-chan! [1 1 1 2 2 3 1 1 4]) 4)]
+    [(await (drain-channel! mapped))
+     (await (drain-channel! partitions))
+     (await (drain-channel! runs))
+     (await (drain-channel! deduped))]))
 
 (defasync core-async-same-loop-blocking-rejected []
   (let [channel (async/chan 1)]
@@ -521,8 +581,13 @@
   (let [supported #{"buffer" "dropping-buffer" "sliding-buffer"
                     "chan" "close!" "offer!" "poll!" "put!" "take!"
                     "alts!" "timeout" "pipe" "pipeline"
-                    "to-chan!" "onto-chan!" "merge" "split" "take"
+                    "promise-chan"
+                    "to-chan" "to-chan!" "to-chan!!"
+                    "onto-chan" "onto-chan!" "onto-chan!!"
+                    "merge" "split" "take"
                     "into" "reduce" "transduce"
+                    "map" "partition" "partition-by" "unique"
+                    "unblocking-buffer?"
                     "map<" "map>" "filter<" "filter>"
                     "remove<" "remove>" "mapcat<" "mapcat>"
                     "mult" "tap" "untap" "untap-all"
@@ -604,7 +669,27 @@
                          (range 64)))
             (vec (filter #(not= 0 (mod % 7)) (range 64)))
             (vec (mapcat (fn [value] [value (* value value)]) (range 32)))]
-           (asyncio/run (core-async-transform-combinators-stress-roundtrip))))))
+           (asyncio/run (core-async-transform-combinators-stress-roundtrip))))
+    (is (= [[11 22 33]
+            [11]
+            [[1 2 3] [4 5]]
+            [[1 3] [2 4] [5]]
+            [1 2 1]
+            [:a :b]
+            [:c :d]
+            [false true true]]
+           (asyncio/run (core-async-collection-wave2-roundtrip))))
+    (is (= [(vec (map (fn [value] (+ value (* 10 value) (- value)))
+                      (range 40)))
+            [[0 1 2 3 4 5 6]
+             [7 8 9 10 11 12 13]
+             [14 15 16 17 18 19 20]
+             [21 22 23 24 25 26 27]
+             [28 29 30 31 32 33 34]
+             [35 36 37 38 39]]
+            [[0 5 10] [1 6] [2] [3 8 13]]
+            [1 2 3 1 4]]
+           (asyncio/run (core-async-collection-wave2-stress-roundtrip))))))
 
 (deftest core-async-routing-combinators-test
   (testing "routing combinators"
@@ -632,6 +717,9 @@
            (core-async-io-thread-roundtrip)))
     (is (= (range 32)
            (core-async-io-thread-stress-roundtrip))))
+  (testing "promise channels"
+    (is (= [true true :value :value [false nil] true 2 2]
+           (core-async-promise-channel-roundtrip))))
   (testing "same-loop blocking is rejected"
     (is (= [true true true]
            (asyncio/run (core-async-same-loop-blocking-rejected))))))

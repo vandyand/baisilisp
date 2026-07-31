@@ -394,9 +394,12 @@ The staged design for moving from this Python-native surface toward a
 
 The facade now also includes the lower-risk non-``go`` collection/channel
 combinators ``to-chan!``, ``onto-chan!``, ``merge``, ``split``, ``take``,
-``into``, ``reduce``, ``transduce``, ``map<``, ``map>``, ``filter<``,
-``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and ``mapcat>``. These are
-still ``asyncio`` task-backed helpers and do not imply parking support.
+``into``, ``reduce``, ``transduce``, ``promise-chan``, ``to-chan``,
+``to-chan!!``, ``onto-chan``, ``onto-chan!!``, ``map``, ``partition``,
+``partition-by``, ``unique``, ``unblocking-buffer?``, ``map<``, ``map>``,
+``filter<``, ``filter>``, ``remove<``, ``remove>``, ``mapcat<``, and
+``mapcat>``. These are still ``asyncio`` task-backed helpers and do not imply
+parking support.
 
 ``chan`` also supports synchronous xforms with optional ``ex-handler``. The
 runtime applies the transducer at put time, preserves transducer state across

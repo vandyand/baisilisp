@@ -407,6 +407,114 @@ class TimeoutChannel(Channel):
         super().close()
 
 
+class PromiseChannel(Channel):
+    """A channel which realizes at most one value and returns it repeatedly."""
+
+    def __init__(
+        self,
+        *,
+        xform: Callable[..., Any] | None = None,
+        error_handler: Callable[[BaseException], Any] | None = None,
+    ):
+        super().__init__(xform=xform, error_handler=error_handler)
+        self._has_value = False
+        self._value: Any = None
+
+    def _bind_optional_loop(self) -> None:
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        if self._loop is None:
+            self._loop = loop
+        elif self._loop is not loop:
+            raise RuntimeError("a channel cannot be shared across event loops")
+
+    def close(self) -> None:
+        self._bind_optional_loop()
+        if self._closed:
+            return
+        if not self._has_value:
+            emitted = self._complete_xform()
+            if emitted:
+                self._realize(emitted[0])
+        self._closed = True
+        self._discard_inactive()
+        while self._puts:
+            _, waiter = self._puts.popleft()
+            waiter.resolve(False)
+        while self._takes:
+            self._takes.popleft().resolve(self._value if self._has_value else None)
+
+    def _realize(self, value: Any) -> None:
+        self._validate_value(value)
+        self._has_value = True
+        self._value = value
+        self._closed = True
+        self._discard_inactive()
+        while self._takes:
+            self._takes.popleft().resolve(value)
+
+    def _try_put(self, value: Any) -> bool | object:
+        self._bind_optional_loop()
+        self._validate_value(value)
+        if self._has_value:
+            return True
+        if self._closed:
+            return False
+        self._realize(value)
+        return True
+
+    async def _put_transformed(self, value: Any) -> bool:
+        Channel._validate_value(value)
+        async with self._get_xform_lock():
+            if self._has_value:
+                return True
+            if self._closed or self._xform_done:
+                return False
+            emitted, done = self._transform_value(value)
+            if emitted:
+                self._realize(emitted[0])
+            elif done:
+                self.close()
+            else:
+                return False
+            return True
+
+    def _offer_transformed(self, value: Any) -> bool:
+        Channel._validate_value(value)
+        if self._has_value:
+            return True
+        if self._closed or self._xform_done:
+            return False
+        emitted, done = self._transform_value(value)
+        if emitted:
+            self._realize(emitted[0])
+            return True
+        if done:
+            self.close()
+            return False
+        return False
+
+    def _try_take(self) -> Any | object:
+        self._bind_optional_loop()
+        self._discard_inactive()
+        if self._has_value:
+            return self._value
+        if self._closed:
+            return None
+        return _NOT_READY
+
+    def _enqueue_take(self, selection: _Selection) -> None:
+        self._bind_loop()
+        if self._has_value:
+            selection.resolve(self._value, self)
+        elif self._closed:
+            selection.resolve(None, self)
+        else:
+            self._takes.append(_Waiter(self, selection=selection))
+
+
 def _parse_port(port: Any) -> tuple[Channel, Any | object]:
     if isinstance(port, Channel):
         return port, _MISSING

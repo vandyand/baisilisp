@@ -7,6 +7,7 @@ import pytest
 from basilisp.concurrent_channel import (
     DEFAULT_PORT,
     Channel,
+    PromiseChannel,
     alts,
     blocking_alts,
     blocking_put,
@@ -202,6 +203,48 @@ def test_transducing_channel_maps_filters_fans_out_and_flushes_on_close():
         partitioned.close()
         assert [await partitioned.take(), await partitioned.take()] == [(1, 2), (3,)]
         assert await partitioned.take() is None
+
+    run(scenario())
+
+
+def test_promise_channel_realizes_once_and_repeats_value():
+    async def scenario():
+        channel = PromiseChannel()
+        assert channel.offer("first") is True
+        assert channel.offer("ignored") is True
+        assert channel.poll() == "first"
+        assert channel.poll() == "first"
+        assert await channel.put("also-ignored") is True
+        assert [await channel.take(), await channel.take()] == ["first", "first"]
+
+    run(scenario())
+
+
+def test_promise_channel_close_empty_and_transducer_mapping():
+    async def scenario():
+        closed = PromiseChannel()
+        closed.close()
+        assert closed.offer("late") is False
+        assert closed.poll() is None
+        assert await closed.put("late") is False
+        assert await closed.take() is None
+
+        transformed = PromiseChannel(xform=map_xform(lambda value: value + 1))
+        assert await transformed.put(1) is True
+        assert await transformed.put(2) is True
+        assert [await transformed.take(), await transformed.take()] == [2, 2]
+
+    run(scenario())
+
+
+def test_promise_channel_participates_in_alts_after_realization_and_close():
+    async def scenario():
+        realized = PromiseChannel()
+        empty_closed = PromiseChannel()
+        assert await realized.put("ready") is True
+        empty_closed.close()
+        assert await alts([realized], priority=True) == ("ready", realized)
+        assert await alts([empty_closed], priority=True) == (None, empty_closed)
 
     run(scenario())
 
