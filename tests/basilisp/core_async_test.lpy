@@ -81,6 +81,58 @@
        (await (async/take! destination))
        (await (async/take! destination))])))
 
+(defasync core-async-pipeline-blocking-roundtrip []
+  (let [source      (async/chan 3)
+        destination (async/chan 3)]
+    (await (async/put! source 1))
+    (await (async/put! source 2))
+    (await (async/put! source 3))
+    (async/close! source)
+    (let [runner (async/pipeline-blocking 2 destination (map inc) source)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(defasync emit-async-pipeline-value [value out]
+  (await (asyncio/sleep (/ (- 4 value) 100)))
+  (await (async/put! out value))
+  (await (async/put! out (* value 10)))
+  (async/close! out))
+
+(defn async-pipeline-fn [value out]
+  (asyncio/create-task (emit-async-pipeline-value value out)))
+
+(defasync core-async-pipeline-async-roundtrip []
+  (let [source      (async/chan 3)
+        destination (async/chan 8)]
+    (await (async/put! source 1))
+    (await (async/put! source 2))
+    (await (async/put! source 3))
+    (async/close! source)
+    (let [runner (async/pipeline-async 2 destination async-pipeline-fn source)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+(defasync core-async-pipeline-async-close-false-roundtrip []
+  (let [source      (async/chan 1)
+        destination (async/chan 2)]
+    (await (async/put! source 1))
+    (async/close! source)
+    (let [runner (async/pipeline-async 1 destination async-pipeline-fn source false)]
+      (await runner)
+      [(await (async/take! destination))
+       (await (async/take! destination))
+       (async/poll! destination)
+       (await (async/put! destination :manual))])))
+
 (defasync core-async-to-chan-roundtrip []
   (let [channel (async/to-chan! [1 2 3])]
     [(await (async/take! channel))
@@ -320,11 +372,11 @@
                     "mix" "admix" "unmix" "unmix-all"
                     "toggle" "solo-mode"
                     "<!!" ">!!" "alts!!"
-                    "thread" "thread-call"}
+                    "thread" "thread-call"
+                    "pipeline-async" "pipeline-blocking"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
     (is (= supported publics))
-    (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"
-                           "pipeline-async" "pipeline-blocking"]))))
+    (is (not-any? publics ["go" "go-loop" "<!" ">!" "alt!"]))))
 
 (deftest buffer-validation-test
   (is (thrown? Exception (async/buffer 0)))
@@ -350,6 +402,13 @@
            (asyncio/run (core-async-pipe-roundtrip))))
     (is (= [2 3 4 nil]
            (asyncio/run (core-async-pipeline-roundtrip)))))
+  (testing "async and blocking pipeline variants"
+    (is (= [2 3 4 nil]
+           (asyncio/run (core-async-pipeline-blocking-roundtrip))))
+    (is (= [1 10 2 20 3 30 nil]
+           (asyncio/run (core-async-pipeline-async-roundtrip))))
+    (is (= [1 10 nil true]
+           (asyncio/run (core-async-pipeline-async-close-false-roundtrip)))))
   (testing "collection and channel combinators"
     (is (= [1 2 3 nil]
            (asyncio/run (core-async-to-chan-roundtrip))))

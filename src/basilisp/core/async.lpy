@@ -680,3 +680,30 @@
   (concurrent/pipeline! parallelism from to xform
                         :close-output close?
                         :on-error ex-handler))
+
+(defn pipeline-blocking
+  "Run a blocking synchronous transducer over channel values with bounded
+  parallelism.
+
+  This shares BaisiLisp's worker-thread pipeline runtime with ``pipeline``."
+  ([parallelism to xform from]
+   (pipeline-blocking parallelism to xform from true nil))
+  ([parallelism to xform from close?]
+   (pipeline-blocking parallelism to xform from close? nil))
+  ([parallelism to xform from close? ex-handler]
+   (concurrent/pipeline! parallelism from to xform
+                         :close-output close?
+                         :on-error ex-handler)))
+
+(defn pipeline-async
+  "Run callback-shaped async work over channel values with bounded parallelism.
+
+  ``af`` receives an input value and a result channel. It should arrange to put
+  zero or more results on that channel and close it. Results are emitted to
+  ``to`` in source order. ``close?`` controls whether ``to`` closes when the
+  source is drained."
+  ([parallelism to af from]
+   (pipeline-async parallelism to af from true))
+  ([parallelism to af from close?]
+   (concurrent/pipeline-async! parallelism from to af
+                               :close-output close?)))

@@ -73,9 +73,11 @@ returns ``[value :default]`` without waiting. ``timeout`` creates a one-shot
 channel that closes after its delay. A cancelled ``alts!`` call removes all of
 its pending operations.
 
-``pipe!`` and ``pipeline!`` provide the first channel pipeline helpers;
-``pipeline!`` applies a synchronous transducer with bounded parallelism while
-preserving output order. Channel transducers at ``chan`` construction time and
+``pipe!``, ``pipeline!``, and ``pipeline-async!`` provide channel pipeline
+helpers. ``pipeline!`` applies a synchronous transducer with bounded
+parallelism while preserving output order; ``pipeline-async!`` accepts a
+callback-shaped asynchronous function that writes each input's results to a
+per-input result channel. Channel transducers at ``chan`` construction time and
 a ``go`` macro are not yet implemented. ``defasync`` and ``await`` remain the
 intended Python-native equivalent of the initial ``go``-block use case. See
 :ref:`core_async_design` for the proposed ``clojure.core.async``
@@ -88,15 +90,15 @@ compatibility path.
 the currently supported non-``go`` subset. The facade provides Clojure-shaped
 buffer constructors, ``chan`` argument handling, close and non-blocking
 operations, awaitable ``put!``/``take!`` with optional callback scheduling,
-``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``, and the
-non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
-``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. It
-also provides task-backed routing combinators ``mult``, ``tap``, ``untap``,
-``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``,
-``admix``, ``unmix``, ``unmix-all``, ``toggle``, and ``solo-mode``. Source
-close propagation is performed by the router task on the owning event loop.
-The facade does not advertise ``go``, ``go-loop``, parking ``<!``/``>!``/
-``alt!`` forms, or async pipeline variants.
+``alts!``, ``timeout``, ``pipe``, Clojure-ordered ``pipeline``,
+``pipeline-blocking``, ``pipeline-async``, and the non-``go``
+collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
+``split``, ``take``, ``into``, ``reduce``, and ``transduce``. It also provides
+task-backed routing combinators ``mult``, ``tap``, ``untap``, ``untap-all``,
+``pub``, ``sub``, ``unsub``, ``unsub-all``, ``mix``, ``admix``, ``unmix``,
+``unmix-all``, ``toggle``, and ``solo-mode``. Source close propagation is
+performed by the router task on the owning event loop. The facade does not
+advertise ``go``, ``go-loop``, or parking ``<!``/``>!``/``alt!`` forms.
 
 The Clojure blocking bridge names ``<!!``, ``>!!``, and ``alts!!`` are
 available for synchronous callers. They reject calls from the channel's owning

@@ -1,4 +1,5 @@
 import asyncio
+import random
 import threading
 
 import pytest
@@ -12,6 +13,7 @@ from basilisp.concurrent_channel import (
     blocking_take,
     pipe,
     pipeline,
+    pipeline_async,
     timeout,
 )
 
@@ -366,6 +368,96 @@ def test_pipeline_retains_order_supports_fanout_and_closes_after_drain():
     run(scenario())
 
 
+def test_pipeline_async_retains_order_with_out_of_order_callbacks():
+    async def scenario():
+        source = Channel(4)
+        destination = Channel(8)
+        for value in range(4):
+            assert await source.put(value)
+        source.close()
+
+        async def emit(value, output):
+            await asyncio.sleep((3 - value) * 0.01)
+            assert await output.put(value)
+            assert await output.put(value + 10)
+            output.close()
+
+        def async_function(value, output):
+            return asyncio.create_task(emit(value, output))
+
+        task = pipeline_async(4, source, destination, async_function)
+        assert [await destination.take() for _ in range(8)] == [
+            0,
+            10,
+            1,
+            11,
+            2,
+            12,
+            3,
+            13,
+        ]
+        assert await task is None
+        assert destination.closed
+        assert await destination.take() is None
+
+    run(scenario())
+
+
+def test_pipeline_async_close_output_false_and_closed_destination():
+    async def scenario():
+        async def emit(value, output):
+            assert await output.put(value)
+            output.close()
+
+        source = Channel(1)
+        destination = Channel(1)
+        assert await source.put("owned")
+        source.close()
+        task = pipeline_async(1, source, destination, emit, close_output=False)
+        assert await destination.take() == "owned"
+        assert await task is None
+        assert not destination.closed
+
+        source = Channel(2)
+        destination = Channel(1)
+        assert await source.put("first")
+        assert await source.put("second")
+        destination.close()
+        task = pipeline_async(1, source, destination, emit)
+        assert await task is None
+        assert await source.take() == "second"
+
+    run(scenario())
+
+
+def test_pipeline_async_seeded_stress_preserves_order_and_no_duplicates():
+    async def scenario():
+        rng = random.Random(1729)
+        for _ in range(20):
+            values = list(range(12))
+            delays = {value: rng.random() / 200 for value in values}
+            source = Channel(len(values))
+            destination = Channel(len(values) * 2)
+            for value in values:
+                assert await source.put(value)
+            source.close()
+
+            async def emit(value, output):
+                await asyncio.sleep(delays[value])
+                assert await output.put(value)
+                assert await output.put(("done", value))
+                output.close()
+
+            task = pipeline_async(3, source, destination, emit)
+            expected = [item for value in values for item in (value, ("done", value))]
+            observed = [await destination.take() for _ in expected]
+            assert observed == expected
+            assert await task is None
+            assert await destination.take() is None
+
+    run(scenario())
+
+
 def test_pipeline_handler_and_closed_output_stop_admission():
     async def scenario():
         source = Channel(3)
@@ -406,5 +498,14 @@ def test_pipeline_validates_parallelism(parallelism):
     async def scenario():
         with pytest.raises((TypeError, ValueError), match="positive integer"):
             pipeline(parallelism, Channel(), Channel(), map_xform(lambda value: value))
+
+    run(scenario())
+
+
+@pytest.mark.parametrize("parallelism", [0, -1, True, 1.5])
+def test_pipeline_async_validates_parallelism(parallelism):
+    async def scenario():
+        with pytest.raises((TypeError, ValueError), match="positive integer"):
+            pipeline_async(parallelism, Channel(), Channel(), lambda _value, _out: None)
 
     run(scenario())
