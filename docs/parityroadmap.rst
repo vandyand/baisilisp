@@ -163,7 +163,7 @@ Near-term deliverable:
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
-  ``core-unify``, ``core-cache-memoize``, and ``core.async``. The
+  ``core-unify``, ``core-cache-memoize``, ``core.async``, and ``data.csv``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -188,6 +188,12 @@ Near-term deliverable:
   timeout selection, pipelines, collection/channel combinators, finite mult/pub
   routing, and a deterministic generated parking stress corpus while keeping
   direct IOC state-machine integration explicitly outside the current contract.
+  The ``data.csv`` proof uses the published ``org.clojure/data.csv`` 1.1.0
+  artifact on the JVM side and Basilisp's production ``clojure.data.csv`` alias
+  on the Basilisp side; it locks multi-file source-level read/write workflows,
+  reader/writer interop, delimiter/quote/newline options, scalar row coercion,
+  and deterministic generated round trips with commas, quotes, CR/LF text, and
+  custom separators.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1385,6 +1391,13 @@ Completed locally:
   It also extends the acceptance harness so a library can declare extra Clojure
   Maven deps and request code-loaded entrypoint execution when direct script
   execution would leave runtime-owned async tasks alive.
+* source-level ``data.csv`` acceptance added as a compact real-library probe;
+  it runs a multi-file portable workflow against ``org.clojure/data.csv`` 1.1.0
+  and Basilisp's production ``clojure.data.csv`` alias. The probe locks public
+  surface, basic string/reader reads, writer output, ``read-csv-from`` integer
+  delimiter entrypoints, custom separator/quote/newline behavior, scalar
+  coercion, invalid-option parity, and deterministic generated round trips over
+  comma, quote, CR, LF, CRLF, semicolon, and empty-field values.
 * ``basilisp.core.match`` now provides a Basilisp-native portable subset of
   ``clojure.core.match`` covering ``match``, ``matchm``, ``matchv``,
   ``match-let``, literals, wildcards, named bindings, vector/map/seq patterns,
