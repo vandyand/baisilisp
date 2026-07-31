@@ -1,0 +1,91 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "5ea29b2ee9f7429d447afef5bc2211c1b7817d7c30db9c0ba241e7759e738c95"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/test_check/workflow.cljc",
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
+      "requires": [
+        "before",
+        "case",
+        "ch",
+        "check-results",
+        "clojure.test",
+        "clojure.test.check",
+        "clojure.test.check.clojure-test",
+        "clojure.test.check.clojure-test.assertions",
+        "clojure.test.check.clojure-test.assertions.cljs",
+        "clojure.test.check.generators",
+        "clojure.test.check.impl",
+        "clojure.test.check.properties",
+        "clojure.test.check.random",
+        "clojure.test.check.results",
+        "clojure.test.check.rose-tree",
+        "f",
+        "gen",
+        "get-current-time-millis",
+        "inner",
+        "m",
+        "n",
+        "ns-sym",
+        "pass",
+        "passing",
+        "pred",
+        "publics",
+        "quick-check",
+        "remaining",
+        "result",
+        "rng",
+        "s1",
+        "seed",
+        "size",
+        "size-generator",
+        "t1",
+        "x",
+        "xs"
+      ],
+      "sha256": "7d3c3031a621e6c7106ba8fe5659b428bd0f56cab297ef468dc856a5341e8313"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/test_check/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.test-check.workflow"
+      ],
+      "sha256": "5d470415d227020cfb7b7c6fa009413c3dd396b13083b4f418d85e028a6eac11"
+    }
+  ],
+  "substitutions": [
+    "clojure.test.check -> basilisp.test.check"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "org.clojure/test.check 1.1.1 Maven artifact",
+  "upstream_url": "https://github.com/clojure/test.check"
+}
