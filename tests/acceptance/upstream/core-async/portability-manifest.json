@@ -1,0 +1,75 @@
+{
+  "classification": "portable",
+  "known_deviations": [],
+  "schema_version": 1,
+  "source_root": ".",
+  "sources": [
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "run.cljc",
+      "reader_features": [],
+      "requires": [],
+      "sha256": "5b63045917c7024db751387cadc1610dfe110e7deb66994a504b4a676db4fe39"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "src/acceptance/core_async/workflow.cljc",
+      "reader_features": [],
+      "requires": [
+        "acc",
+        "accepted",
+        "channel",
+        "clojure.core.async",
+        "even",
+        "first-pair",
+        "first-value",
+        "idx",
+        "input",
+        "inputs",
+        "left-only",
+        "merged",
+        "priority-first",
+        "published",
+        "result",
+        "second-value",
+        "source",
+        "target",
+        "timer",
+        "unsubbed",
+        "value"
+      ],
+      "sha256": "2252f88b695667af1baa192afdd648d51d3a8615b031fe01a4ed89ccd4831aec"
+    },
+    {
+      "blockers": [],
+      "classification": "portable",
+      "language": "cljc",
+      "path": "test/acceptance/core_async/checks.cljc",
+      "reader_features": [],
+      "requires": [
+        "acceptance.core-async.workflow",
+        "go-transform"
+      ],
+      "sha256": "ae8451a80dfd442e5536e384563b2948ee43224b49f8db522808e2eed8af5a61"
+    }
+  ],
+  "substitutions": [
+    "clojure.core.async -> basilisp.core.async",
+    "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
+    "portable source examples only; direct ioc-alts! state-machine integration remains excluded"
+  ],
+  "supported_python": [
+    "3.10",
+    "3.11",
+    "3.12",
+    "3.13",
+    "3.14"
+  ],
+  "test_command": "uv run python scripts/library_acceptance.py",
+  "upstream_revision": "core.async 1.9.865 Maven artifact",
+  "upstream_url": "https://github.com/clojure/core.async"
+}

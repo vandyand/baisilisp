@@ -163,7 +163,7 @@ Near-term deliverable:
   and a shared parsing/defaults/errors/subcommand acceptance contract. The
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
-  ``core-unify``, and ``core-cache-memoize``. The
+  ``core-unify``, ``core-cache-memoize``, and ``core.async``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -181,7 +181,13 @@ Near-term deliverable:
   exercising Basilisp's production cache and memoize namespaces; it locks
   portable stateful cache policy, memoization snapshot/manipulation,
   constructor, and protocol interop without claiming JVM ``SoftReference``
-  support.
+  support. The ``core.async`` proof uses the published
+  ``org.clojure/core.async`` 1.9.865 artifact on the JVM side and Basilisp's
+  production ``clojure.core.async`` facade on the Basilisp side; it locks
+  multi-file source-level usage of ``go``/``go-loop`` parking, ``alt!``,
+  timeout selection, pipelines, collection/channel combinators, finite mult/pub
+  routing, and a deterministic generated parking stress corpus while keeping
+  direct IOC state-machine integration explicitly outside the current contract.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1361,6 +1367,15 @@ Completed locally:
   portable cache policy behavior, memoized-function snapshots and mutation
   helpers, cache/memoizer constructors, and protocol interop while keeping
   ``SoftReference`` support classified as JVM-only.
+* source-level ``core.async`` acceptance added as an async real-library probe;
+  it runs a multi-file portable workflow against ``org.clojure/core.async``
+  1.9.865 and Basilisp's production facade. The probe covers coroutine-backed
+  ``go``/``go-loop`` parking transforms, ``alt!`` priority/nested/put/timeout
+  selection, ordered pipelines, collection/channel combinators, finite
+  ``mult``/``pub`` routing, and a deterministic generated parking stress corpus.
+  It also extends the acceptance harness so a library can declare extra Clojure
+  Maven deps and request code-loaded entrypoint execution when direct script
+  execution would leave runtime-owned async tasks alive.
 * ``basilisp.core.match`` now provides a Basilisp-native portable subset of
   ``clojure.core.match`` covering ``match``, ``matchm``, ``matchv``,
   ``match-let``, literals, wildcards, named bindings, vector/map/seq patterns,
