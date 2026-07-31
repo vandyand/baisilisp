@@ -176,6 +176,15 @@
   [& body]
   `(thread-call (fn* [] ~@body)))
 
+(defmacro io-thread
+  "Execute ``body`` in another thread for blocking I/O work, returning a
+  channel which receives the non-``nil`` result before close.
+
+  BaisiLisp currently routes this through the same worker-thread executor as
+  ``thread`` while preserving Clojure's public macro shape."
+  [& body]
+  `(thread-call (fn* [] ~@body) :io))
+
 (defasync alts!
   "Await exactly one take channel or ``[channel value]`` put operation.
 

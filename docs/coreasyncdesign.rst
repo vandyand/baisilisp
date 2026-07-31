@@ -164,7 +164,9 @@ into one of these states:
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
      - Covered locally for ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
-       ``thread-call``. ``io-thread`` remains out of the advertised surface.
+       ``thread-call``/``io-thread``. ``io-thread`` currently preserves the
+       public macro shape and routes through the same worker-thread executor as
+       ``thread``.
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
      - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
@@ -202,7 +204,7 @@ Proposed public functions/macros:
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
   ``solo-mode``
 * ``<!!`` / ``>!!`` / ``alts!!``
-* ``thread`` / ``thread-call``
+* ``thread`` / ``thread-call`` / ``io-thread``
 
 The buffer constructors should return small Basilisp data objects or Python
 objects that describe policy and capacity:
@@ -267,13 +269,16 @@ Design:
 * Tests should cover cross-thread success, same-loop rejection, timeout/cancel
   cleanup, closed channels, and rendezvous deadlock prevention.
 
-``thread`` and ``thread-call`` can be mapped to the existing executor helpers.
-They should return a one-value channel and close it when the function exits.
-Like Clojure, a ``nil`` result means there is no value to put and the channel
-closes. Exceptions should be specified and tested against Clojure behavior
-before implementation; the safe first policy is to close the channel and route
-the exception to the Python task/thread exception handler rather than placing
-an exception object on the channel.
+``thread``, ``thread-call``, and ``io-thread`` can be mapped to the existing
+executor helpers. They should return a one-value channel and close it when the
+function exits. Like Clojure, a ``nil`` result means there is no value to put
+and the channel closes. ``io-thread`` preserves Clojure's macro shape and
+passes the ``:io`` workload hint through ``thread-call``; BaisiLisp currently
+uses the same worker-thread executor for both workloads. Exceptions should be
+specified and tested against Clojure behavior before implementation; the safe
+first policy is to close the channel and route the exception to the Python
+task/thread exception handler rather than placing an exception object on the
+channel.
 
 Phase 3: Minimal ``go`` As Coroutine Lowering
 ---------------------------------------------

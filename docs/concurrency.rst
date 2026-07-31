@@ -106,7 +106,9 @@ The Clojure blocking bridge names ``<!!``, ``>!!``, and ``alts!!`` are
 available for synchronous callers. They reject calls from the channel's owning
 running event loop to avoid deadlock. ``thread`` and ``thread-call`` run work
 on a worker thread and return a channel which receives the non-``nil`` result
-before close.
+before close. ``io-thread`` preserves Clojure's public macro shape and uses the
+same worker-thread executor while passing the I/O workload hint through the
+facade.
 
 Transactions
 ------------

@@ -23,7 +23,7 @@
      mix admix unmix unmix-all
      toggle solo-mode
      <!! >!! alts!!
-     thread thread-call})
+     thread thread-call io-thread})
 
 (def unsupported-parking-and-blocking-publics
   '#{go go-loop <! >! alt!})
@@ -876,6 +876,22 @@
         (async/<!! from-body)
         (async/<!! from-nil)])))
 
+#?(:clj
+   (defn io-thread-roundtrip []
+     (let [from-body (async/io-thread :io-thread-result)
+           from-nil  (async/io-thread nil)]
+       [(async/<!! from-body)
+        (async/<!! from-body)
+        (async/<!! from-nil)]))
+
+   :lpy
+   (defn io-thread-roundtrip []
+     (let [from-body (async/io-thread :io-thread-result)
+           from-nil  (async/io-thread nil)]
+       [(async/<!! from-body)
+        (async/<!! from-body)
+        (async/<!! from-nil)])))
+
 (emit-case :core-async-public-surface
            (supported-public-surface))
 
@@ -943,4 +959,5 @@
 
 (emit-case :core-async-blocking-bridges
            [(blocking-roundtrip)
-            (thread-roundtrip)])
+            (thread-roundtrip)
+            (io-thread-roundtrip)])
