@@ -1591,6 +1591,11 @@ Completed locally:
   source timestamp and size header. This preserves normal cached imports while
   recovering from interrupted writes or stale local cache artifacts by
   recompiling source and replacing the cache with a valid code-object payload.
+* Structured exception diagnostics now expose source locations consistently
+  for reader syntax errors, compiler exceptions, nested causes, and Python
+  syntax errors. This keeps CLI/pREPL-facing diagnostic maps useful for
+  source-aware tooling while preserving the existing human-readable traceback
+  format.
 
 Near-term deliverable:
 

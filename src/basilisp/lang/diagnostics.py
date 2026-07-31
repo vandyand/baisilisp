@@ -26,6 +26,10 @@ _SOURCE_KEYS = (
     kw.keyword("end-col"),
     _FORM,
 )
+_LINE = kw.keyword("line")
+_COL = kw.keyword("col")
+_END_LINE = kw.keyword("end-line")
+_END_COL = kw.keyword("end-col")
 
 
 def exception_data(
@@ -67,13 +71,10 @@ def _exception_data(
 
         if data is not None:
             diagnostic[_DATA] = data
-            source = {
-                key: data.val_at(key)
-                for key in _SOURCE_KEYS
-                if data.val_at(key) is not None
-            }
-            if source:
-                diagnostic[_SOURCE] = lmap.map(source)
+
+        source = _source_data(exc, data)
+        if source:
+            diagnostic[_SOURCE] = lmap.map(source)
 
         if cause := _cause(exc):
             diagnostic[_CAUSES] = vec.vector(
@@ -90,3 +91,29 @@ def _cause(exc: BaseException) -> BaseException | None:
     if exc.__suppress_context__:
         return None
     return exc.__context__
+
+
+def _source_data(
+    exc: BaseException, data: IPersistentMap | None
+) -> dict[kw.Keyword, Any]:
+    source = (
+        {key: data.val_at(key) for key in _SOURCE_KEYS if data.val_at(key) is not None}
+        if data is not None
+        else {}
+    )
+
+    def setdefault_from_attrs(key: kw.Keyword, *attrs: str) -> None:
+        if key in source:
+            return
+        for attr in attrs:
+            value = getattr(exc, attr, None)
+            if value is not None:
+                source[key] = value
+                return
+
+    setdefault_from_attrs(_FILE, "filename", "file")
+    setdefault_from_attrs(_LINE, "line", "lineno")
+    setdefault_from_attrs(_COL, "col", "offset")
+    setdefault_from_attrs(_END_LINE, "end_line", "end_lineno")
+    setdefault_from_attrs(_END_COL, "end_col", "end_offset")
+    return source
