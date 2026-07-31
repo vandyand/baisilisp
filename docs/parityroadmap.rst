@@ -164,7 +164,7 @@ Near-term deliverable:
   checked-in upstream acceptance corpus also covers ``math-combinatorics``,
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
-  ``data.json``, ``data.codec.base64``, ``core.match``,
+  ``data.json``, ``data.xml``, ``data.codec.base64``, ``core.match``,
   ``tools.namespace``, ``tools.reader``, ``tools.logging``, and
   ``test.check``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
@@ -204,6 +204,13 @@ Near-term deliverable:
   extension, extra-data/error boundaries, JavaScript separator escaping, pretty
   output round trips, raw Unicode/slash options, and 96 deterministic generated
   compact/pretty/raw round trips.
+  The ``data.xml`` proof uses the published ``org.clojure/data.xml``
+  0.2.0-alpha11 artifact on the JVM side and Basilisp's production
+  ``clojure.data.xml`` aliases on the Basilisp side; it locks the XML, event,
+  and tree public surfaces, QName/URI helpers, namespace metadata, element and
+  event constructors, parse/emit/indent round trips, PRXML conversion, event
+  tree reconstruction, and 64 deterministic generated namespaced XML tree
+  cases while avoiding host-specific invalid-parser eagerness claims.
   The ``data.codec.base64`` proof uses the published
   ``org.clojure/data.codec`` 0.1.1 artifact on the JVM side and Basilisp's
   production ``clojure.data.codec.base64`` alias on the Basilisp side; it locks
@@ -1460,6 +1467,18 @@ Completed locally:
   round trips, raw Unicode/slash options, and 96 deterministic generated
   compact/pretty/raw round trips over nested strings, booleans, nils, vectors,
   maps, escaped separators, quotes, and slashes.
+* source-level ``data.xml`` acceptance added as a structured-data
+  real-library probe; it runs a multi-file portable workflow against
+  ``org.clojure/data.xml`` 0.2.0-alpha11 and Basilisp's production
+  ``clojure.data.xml`` aliases. The probe locks XML/event/tree public surface
+  coverage, QName and URI helper behavior, namespace alias/file helpers,
+  metadata-preserving elements, namespace aggregation, event constructors,
+  ``event-node``/``event-element`` behavior, flatten/event-tree round trips,
+  parse/emit/indent round trips with namespaces, attributes, CDATA, comments,
+  and writer output, PRXML conversion, and 64 deterministic generated
+  namespaced tree/event round trips. Invalid parser eagerness and ambiguous
+  PRXML error boundaries remain outside the portable contract because the JVM
+  and Python XML backends surface those failures at different times.
 * source-level ``data.codec.base64`` acceptance added as a compact
   real-library probe; it runs a multi-file portable workflow against
   ``org.clojure/data.codec`` 0.1.1 and Basilisp's production
