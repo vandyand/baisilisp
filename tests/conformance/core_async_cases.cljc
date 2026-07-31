@@ -8,6 +8,11 @@
 
 #?(:lpy (import asyncio))
 
+(async/defblockingop helper-defined-blocking-op
+  "fixture blocking op"
+  [value]
+  [:helper value])
+
 (defn emit-case [case value]
   (println (pr-str {:case case :value value})))
 
@@ -36,6 +41,7 @@
      toggle solo-mode
      toggle* solo-mode*
      <!! >!! alts!! alt!! do-alt
+     fn-handler do-alts defblockingop
      thread thread-call io-thread})
 
 (def unsupported-parking-and-blocking-publics
@@ -663,6 +669,192 @@
                    [accepted? (identical? port target) (async/<!! target)]))
      (async/alt!! (async/chan) :unreachable
                   :default :fallback)]))
+
+#?(:clj
+   (defn helper-publics-roundtrip []
+     (let [ready          (async/chan 1)
+           default-source (async/chan)
+           later          (async/chan)
+           events         (atom [])]
+       (async/>!! ready :ready)
+       (let [immediate (async/do-alts #(swap! events conj [:unexpected %])
+                                      [ready]
+                                      {})
+             defaulted (async/do-alts identity
+                                      [default-source]
+                                      {:default :fallback})
+             enqueued  (async/do-alts #(swap! events conj [:later %])
+                                      [later]
+                                      {})]
+         (async/>!! later :later)
+         (Thread/sleep 50)
+         (let [[immediate-value immediate-port] @immediate
+               [default-value default-port]     @defaulted
+               [_ [later-value later-port]]     (first @events)]
+           [(identical? immediate-port ready)
+            immediate-value
+            default-value
+            default-port
+            (nil? enqueued)
+            later-value
+            (identical? later-port later)
+            (boolean (async/fn-handler identity))
+            (boolean (async/fn-handler identity false))
+            (helper-defined-blocking-op 42)
+            (:doc (meta #'helper-defined-blocking-op))
+            (:arglists (meta #'helper-defined-blocking-op))]))))
+
+   :lpy
+   (defasync helper-publics-roundtrip []
+     (let [ready          (async/chan 1)
+           default-source (async/chan)
+           later          (async/chan)
+           events         (atom [])]
+       (await (async/put! ready :ready))
+       (let [immediate (async/do-alts #(swap! events conj [:unexpected %])
+                                      [ready]
+                                      {})
+             defaulted (async/do-alts identity
+                                      [default-source]
+                                      {:default :fallback})
+             enqueued  (async/do-alts #(swap! events conj [:later %])
+                                      [later]
+                                      {})]
+         (await (async/put! later :later))
+         (await (asyncio/sleep 0))
+         (await (asyncio/sleep 0))
+         (let [[immediate-value immediate-port] @immediate
+               [default-value default-port]     @defaulted
+               [_ [later-value later-port]]     (first @events)]
+           [(identical? immediate-port ready)
+            immediate-value
+            default-value
+            default-port
+            (nil? enqueued)
+            later-value
+            (identical? later-port later)
+            (boolean (async/fn-handler identity))
+            (boolean (async/fn-handler identity false))
+            (helper-defined-blocking-op 42)
+            (:doc (meta #'helper-defined-blocking-op))
+            (:arglists (meta #'helper-defined-blocking-op))])))))
+
+#?(:clj
+   (defn helper-publics-generated-roundtrip []
+     (let [n          16
+           immediate  (vec
+                       (doall
+                        (for [idx (range n)]
+                          (let [channel (async/chan 1)]
+                            (async/>!! channel idx)
+                            (let [[value port] @(async/do-alts identity
+                                                              [channel]
+                                                              {})]
+                              [value (identical? port channel)])))))
+           put-target (async/chan n)
+           puts       (vec
+                       (doall
+                        (for [idx (range n)]
+                          (let [[accepted? port] @(async/do-alts identity
+                                                                 [[put-target idx]]
+                                                                 {})]
+                            [accepted? (identical? port put-target)]))))
+           put-values (vec (doall (repeatedly n #(async/<!! put-target))))
+           defaults   (vec
+                       (doall
+                        (for [idx (range 4)]
+                          @(async/do-alts identity
+                                          [(async/chan)]
+                                          {:default [:fallback idx]}))))
+           events     (atom [])
+           enqueued   (doall
+                       (for [idx (range n)]
+                         (let [channel (async/chan)]
+                           [idx channel
+                            (async/do-alts #(swap! events conj %)
+                                           [channel]
+                                           {})])))]
+       (doseq [[idx channel _ret] enqueued]
+         (async/>!! channel idx))
+       (Thread/sleep 100)
+       [immediate
+        puts
+        put-values
+        defaults
+        (nil? (last (first enqueued)))
+        (sort (map first @events))
+        (try
+          (async/do-alts identity [[put-target nil]] {})
+          false
+          (catch Throwable _
+            true))]))
+
+   :lpy
+   (defasync helper-publics-generated-roundtrip []
+     (let [n          16
+           immediate  (loop [idx 0
+                              acc []]
+                        (if (< idx n)
+                          (let [channel (async/chan 1)]
+                            (await (async/put! channel idx))
+                            (let [[value port] @(async/do-alts identity
+                                                               [channel]
+                                                               {})]
+                              (recur (inc idx)
+                                     (conj acc [value (identical? port channel)]))))
+                          acc))
+           put-target (async/chan n)
+           puts       (loop [idx 0
+                              acc []]
+                        (if (< idx n)
+                          (let [[accepted? port] @(async/do-alts identity
+                                                                 [[put-target idx]]
+                                                                 {})]
+                            (recur (inc idx)
+                                   (conj acc [accepted? (identical? port put-target)])))
+                          acc))
+           put-values (loop [idx 0
+                              acc []]
+                        (if (< idx n)
+                          (recur (inc idx) (conj acc (await (async/take! put-target))))
+                          acc))
+           defaults   (loop [idx 0
+                              acc []]
+                        (if (< idx 4)
+                          (recur (inc idx)
+                                 (conj acc @(async/do-alts identity
+                                                           [(async/chan)]
+                                                           {:default [:fallback idx]})))
+                          acc))
+           events     (atom [])
+           enqueued   (loop [idx 0
+                              acc []]
+                        (if (< idx n)
+                          (let [channel (async/chan)]
+                            (recur (inc idx)
+                                   (conj acc [idx channel
+                                              (async/do-alts #(swap! events conj %)
+                                                             [channel]
+                                                             {})])))
+                          acc))]
+       (loop [items (seq enqueued)]
+         (when items
+           (let [[idx channel _ret] (first items)]
+             (await (async/put! channel idx))
+             (recur (next items)))))
+       (await (asyncio/sleep 0))
+       (await (asyncio/sleep 0))
+       [immediate
+        puts
+        put-values
+        defaults
+        (nil? (last (first enqueued)))
+        (sort (map first @events))
+        (try
+          (async/do-alts identity [[put-target nil]] {})
+          false
+          (catch Exception _
+            true))])))
 
 #?(:clj
    (defn timeout-roundtrip []
@@ -1293,5 +1485,9 @@
 (emit-case :core-async-blocking-bridges
            [(blocking-roundtrip)
             (alt-blocking-macro-roundtrip)
+            #?(:clj (helper-publics-roundtrip)
+               :lpy (asyncio/run (helper-publics-roundtrip)))
+            #?(:clj (helper-publics-generated-roundtrip)
+               :lpy (asyncio/run (helper-publics-generated-roundtrip)))
             (thread-roundtrip)
             (io-thread-roundtrip)])

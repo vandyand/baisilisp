@@ -628,6 +628,31 @@ def blocking_alts(
     )
 
 
+def try_alts(
+    ports: Iterable[Any],
+    *,
+    priority: bool = False,
+    default: Any = _MISSING,
+    has_default: bool | None = None,
+) -> tuple[bool, tuple[Any, Channel | Keyword] | None]:
+    """Try one ready take or put operation without enqueuing waiters."""
+    operations = [_parse_port(port) for port in ports]
+    if has_default is None:
+        has_default = default is not _MISSING
+    if not operations and not has_default:
+        raise ValueError("alts requires a port or a default value")
+
+    if not priority:
+        random.shuffle(operations)
+    for channel, value in operations:
+        result = channel._try_take() if value is _MISSING else channel._try_put(value)
+        if result is not _NOT_READY and result is not _BLOCKED:
+            return True, (result, channel)
+    if has_default:
+        return True, (default, DEFAULT_PORT)
+    return False, None
+
+
 async def alts(
     ports: Iterable[Any],
     *,

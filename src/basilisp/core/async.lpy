@@ -175,6 +175,50 @@
   [ports & opts]
   (apply concurrent/blocking-alts! ports opts))
 
+(defn fn-handler
+  "Return an opaque BaisiLisp handler descriptor for ``f``.
+
+  Clojure exposes this lower-level helper for its channel implementation. The
+  BaisiLisp facade keeps the public shape available for source compatibility;
+  direct channel operations use Python-native callbacks instead of Clojure's
+  handler protocol."
+  ([f]
+   (fn-handler f true))
+  ([f blockable]
+   {:basilisp.core.async/handler true
+    :f f
+    :blockable blockable}))
+
+(defn- alts-task!
+  [fret ports opts]
+  (let [task (asyncio/create-task
+              (apply concurrent/alts! ports (apply concat opts)))]
+    (.add_done_callback task (fn [completed]
+                               (fret (.result completed))))
+    nil))
+
+(defn do-alts
+  "Return a derefable ``[value port]`` if a channel operation is immediately
+  ready; otherwise enqueue the operation and return ``nil``.
+
+  When enqueued, ``fret`` is called later with the selected ``[value port]``.
+  This mirrors Clojure's public helper shape for the direct channel runtime;
+  full ``go``/IOC integration remains a compiler tranche."
+  [fret ports opts]
+  (assert (pos? (count ports)) "alts must have at least one channel operation")
+  (let [[ready? result] (concurrent/try-alts! ports opts)]
+    (if ready?
+      (delay result)
+      (alts-task! fret ports opts))))
+
+(defmacro defblockingop
+  "Define a blocking operation with Clojure-shaped public metadata."
+  [op doc arglist & body]
+  (let [arglists-meta (list 'quote (list arglist))]
+    `(def ~(with-meta op {:arglists arglists-meta :doc doc})
+       (fn ~arglist
+         ~@body))))
+
 (defn do-alt
   "Return the macro expansion shared by ``alt!!`` and, eventually, parking
   ``alt!``. ``alts`` is the selection function symbol and ``clauses`` is the

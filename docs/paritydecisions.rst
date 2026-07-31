@@ -417,9 +417,12 @@ fixtures. The blocking bridge names ``<!!``, ``>!!``, ``alts!!``, ``alt!!``,
 ``do-alt``, ``thread``, ``thread-call``, and ``io-thread`` are also supported
 with explicit same-owner-loop deadlock rejection for blocking channel calls.
 ``alt!!`` is a source macro over ``alts!!`` and is covered by JVM fixtures. The
-pipeline variant names ``pipeline-blocking`` and ``pipeline-async`` are also
-supported and covered by JVM fixtures. ``go`` parking forms remain outside the
-advertised surface.
+helper-publics tranche also exposes ``fn-handler``, ``do-alts``, and
+``defblockingop``; ``do-alts`` returns a derefable immediate selection or
+enqueues a callback-backed selection on the owning event loop. The pipeline
+variant names ``pipeline-blocking`` and ``pipeline-async`` are also supported
+and covered by JVM fixtures. ``go`` parking forms remain outside the advertised
+surface.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^

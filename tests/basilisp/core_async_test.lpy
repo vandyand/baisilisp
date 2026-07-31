@@ -3,6 +3,11 @@
   (:require [basilisp.test :refer [deftest is testing]]
             [clojure.core.async :as async]))
 
+(async/defblockingop helper-defined-blocking-op
+  "fixture blocking op"
+  [value]
+  [:helper value])
+
 (defasync core-async-rendezvous-roundtrip []
   (let [channel (async/chan)
         putter  (asyncio/create-task (async/put! channel :value))]
@@ -524,6 +529,110 @@
      (async/alt!! (async/chan) :unreachable
                   :default :fallback)]))
 
+(defasync core-async-helper-publics-roundtrip []
+  (let [ready          (async/chan 1)
+        default-source (async/chan)
+        later          (async/chan)
+        events         (atom [])
+        handler        (async/fn-handler identity)
+        fixed-handler  (async/fn-handler inc false)]
+    (await (async/put! ready :ready))
+    (let [immediate (async/do-alts #(swap! events conj [:unexpected %])
+                                   [ready]
+                                   {})
+          defaulted (async/do-alts identity
+                                   [default-source]
+                                   {:default :fallback})
+          enqueued  (async/do-alts #(swap! events conj [:later %])
+                                   [later]
+                                   {})]
+      (await (async/put! later :later))
+      (await (asyncio/sleep 0))
+      (await (asyncio/sleep 0))
+      (let [[immediate-value immediate-port] @immediate
+            [default-value default-port]     @defaulted
+            [_ [later-value later-port]]     (first @events)]
+        [(identical? immediate-port ready)
+         immediate-value
+         default-value
+         default-port
+         (nil? enqueued)
+         later-value
+         (identical? later-port later)
+         (:blockable handler)
+         (:blockable fixed-handler)
+         ((:f handler) :handled)
+         ((:f fixed-handler) 1)
+         (helper-defined-blocking-op 42)
+         (:doc (meta #'helper-defined-blocking-op))
+         (:arglists (meta #'helper-defined-blocking-op))]))))
+
+(defasync core-async-helper-publics-stress-roundtrip []
+  (let [n          16
+        immediate  (loop [idx 0
+                           acc []]
+                     (if (< idx n)
+                       (let [channel (async/chan 1)]
+                         (await (async/put! channel idx))
+                         (let [[value port] @(async/do-alts identity
+                                                            [channel]
+                                                            {})]
+                           (recur (inc idx)
+                                  (conj acc [value (identical? port channel)]))))
+                       acc))
+        put-target (async/chan n)
+        puts       (loop [idx 0
+                           acc []]
+                     (if (< idx n)
+                       (let [[accepted? port] @(async/do-alts identity
+                                                              [[put-target idx]]
+                                                              {})]
+                         (recur (inc idx)
+                                (conj acc [accepted? (identical? port put-target)])))
+                       acc))
+        put-values (loop [idx 0
+                           acc []]
+                     (if (< idx n)
+                       (recur (inc idx) (conj acc (await (async/take! put-target))))
+                       acc))
+        defaults   (loop [idx 0
+                           acc []]
+                     (if (< idx 4)
+                       (recur (inc idx)
+                              (conj acc @(async/do-alts identity
+                                                        [(async/chan)]
+                                                        {:default [:fallback idx]})))
+                       acc))
+        events     (atom [])
+        enqueued   (loop [idx 0
+                           acc []]
+                     (if (< idx n)
+                       (let [channel (async/chan)]
+                         (recur (inc idx)
+                                (conj acc [idx channel
+                                           (async/do-alts #(swap! events conj %)
+                                                          [channel]
+                                                          {})])))
+                       acc))]
+    (loop [items (seq enqueued)]
+      (when items
+        (let [[idx channel _ret] (first items)]
+          (await (async/put! channel idx))
+          (recur (next items)))))
+    (await (asyncio/sleep 0))
+    (await (asyncio/sleep 0))
+    [immediate
+     puts
+     put-values
+     defaults
+     (nil? (last (first enqueued)))
+     (sort (map first @events))
+     (try
+       (async/do-alts identity [[put-target nil]] {})
+       false
+       (catch Exception _
+         true))]))
+
 (defn core-async-promise-channel-roundtrip []
   (let [basic      (async/promise-chan)
         closed     (async/promise-chan)
@@ -646,7 +755,8 @@
                     "pub" "sub" "sub*" "unsub" "unsub*" "unsub-all" "unsub-all*"
                     "mix" "admix" "admix*" "unmix" "unmix*" "unmix-all" "unmix-all*"
                     "toggle" "toggle*" "solo-mode" "solo-mode*"
-                    "<!!" ">!!" "alts!!" "alt!!" "do-alt"
+                    "<!!" ">!!" "alts!!" "alt!!"
+                    "fn-handler" "do-alts" "defblockingop" "do-alt"
                     "thread" "thread-call" "io-thread"
                     "pipeline-async" "pipeline-blocking"}
         publics   (set (map name (keys (ns-publics 'clojure.core.async))))]
@@ -770,6 +880,18 @@
            (core-async-blocking-roundtrip)))
     (is (= [[:second true] :first [true true :written] :fallback]
            (core-async-alt-blocking-macro-roundtrip)))
+    (is (= [true :ready :fallback :default true :later true
+            true false :handled 2 [:helper 42]
+            "fixture blocking op" '([value])]
+           (asyncio/run (core-async-helper-publics-roundtrip))))
+    (is (= [(vec (map (fn [idx] [idx true]) (range 16)))
+            (vec (repeat 16 [true true]))
+            (vec (range 16))
+            (vec (map (fn [idx] [[:fallback idx] :default]) (range 4)))
+            true
+            (vec (range 16))
+            true]
+           (asyncio/run (core-async-helper-publics-stress-roundtrip))))
     (is (= [:thread-call-result nil :thread-result nil nil]
            (core-async-thread-roundtrip)))
     (is (= [:io-thread-result nil nil]

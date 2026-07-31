@@ -233,7 +233,9 @@ Near-term deliverable:
   adds ``<!!``, ``>!!``, ``alts!!``, ``alt!!``, ``do-alt``, ``thread``,
   ``thread-call``, and ``io-thread`` with explicit same-owner-loop rejection
   for blocking channel calls. ``alt!!`` expands to the existing ``alts!!``
-  bridge. The stacked pipeline-variants tranche
+  bridge. The stacked helper-publics tranche adds ``fn-handler``, ``do-alts``,
+  and ``defblockingop`` with JVM fixtures for the immediate/enqueued
+  ``do-alts`` contract and macro metadata. The stacked pipeline-variants tranche
   adds ``pipeline-blocking`` and ``pipeline-async`` with ordered fan-out,
   ``close?`` behavior, early destination-close handling, and JVM fixtures.
   The stacked channel-transducer tranche adds ``chan`` xform/ex-handler support

@@ -16,6 +16,7 @@ from basilisp.concurrent_channel import (
     pipeline,
     pipeline_async,
     timeout,
+    try_alts,
 )
 from basilisp.lang.reduced import Reduced
 
@@ -460,6 +461,34 @@ def test_alts_selects_ready_take_by_priority_and_returns_default_without_waiting
         assert await alts([second, first], priority=True) == ("second", second)
         assert await alts([first], default="fallback") == ("first", first)
         assert await alts([Channel()], default="fallback") == ("fallback", DEFAULT_PORT)
+
+    run(scenario())
+
+
+def test_try_alts_selects_immediate_operations_without_enqueuing():
+    async def scenario():
+        first = Channel(1)
+        second = Channel(1)
+        second.offer("second")
+
+        assert try_alts([first, second], priority=True) == (True, ("second", second))
+        assert try_alts([first], default="fallback") == (
+            True,
+            ("fallback", DEFAULT_PORT),
+        )
+        assert try_alts([first]) == (False, None)
+        assert first.offer("after-try") is True
+        assert first.poll() == "after-try"
+
+        target = Channel(1)
+        assert try_alts([(target, "written")], priority=True) == (
+            True,
+            (True, target),
+        )
+        assert target.poll() == "written"
+
+        with pytest.raises(ValueError, match="nil"):
+            try_alts([(target, None)])
 
     run(scenario())
 

@@ -112,11 +112,14 @@ The Clojure blocking bridge names ``<!!``, ``>!!``, ``alts!!``, and ``alt!!`` ar
 available for synchronous callers. They reject calls from the channel's owning
 running event loop to avoid deadlock. ``alt!!`` expands to the existing
 blocking ``alts!!`` selection bridge and supports Clojure-shaped result
-bindings, ``:default``, ``:priority``, take clauses, and put clauses. ``thread``
-and ``thread-call`` run work on a worker thread and return a channel which
-receives the non-``nil`` result before close. ``io-thread`` preserves Clojure's
-public macro shape and uses the same worker-thread executor while passing the
-I/O workload hint through the facade.
+bindings, ``:default``, ``:priority``, take clauses, and put clauses. The
+lower-level helper publics ``fn-handler``, ``do-alts``, ``do-alt``, and
+``defblockingop`` are also exposed for source compatibility. ``do-alts``
+returns a derefable immediate selection or enqueues a callback-backed selection
+on the owning event loop. ``thread`` and ``thread-call`` run work on a worker
+thread and return a channel which receives the non-``nil`` result before close.
+``io-thread`` preserves Clojure's public macro shape and uses the same
+worker-thread executor while passing the I/O workload hint through the facade.
 
 Transactions
 ------------
