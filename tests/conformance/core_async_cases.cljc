@@ -15,6 +15,7 @@
   '#{buffer dropping-buffer sliding-buffer
      chan close! offer! poll! put! take!
      alts! timeout pipe pipeline
+     pipeline-async pipeline-blocking
      to-chan! onto-chan! merge split take
      into reduce transduce
      mult tap untap untap-all
@@ -25,8 +26,7 @@
      thread thread-call})
 
 (def unsupported-parking-and-blocking-publics
-  '#{go go-loop <! >! alt!
-     pipeline-async pipeline-blocking})
+  '#{go go-loop <! >! alt!})
 
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
@@ -297,9 +297,114 @@
        (async/close! source)
        (await (async/pipeline 2 destination (map inc) source))
        [(await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))
+       (await (async/take! destination))])))
+
+#?(:clj
+   (defn pipeline-blocking-roundtrip []
+     (let [source      (async/chan 3)
+           destination (async/chan 3)]
+       (async/>!! source 1)
+       (async/>!! source 2)
+       (async/>!! source 3)
+       (async/close! source)
+       (async/pipeline-blocking 2 destination (map inc) source)
+       [(async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)]))
+
+   :lpy
+   (defasync pipeline-blocking-roundtrip []
+     (let [source      (async/chan 3)
+           destination (async/chan 3)]
+       (await (async/put! source 1))
+       (await (async/put! source 2))
+       (await (async/put! source 3))
+       (async/close! source)
+       (await (async/pipeline-blocking 2 destination (map inc) source))
+       [(await (async/take! destination))
         (await (async/take! destination))
         (await (async/take! destination))
         (await (async/take! destination))])))
+
+#?(:clj
+   (defn emit-async-pipeline-value [value out]
+     (async/thread
+       (Thread/sleep (* (- 4 value) 10))
+       (async/>!! out value)
+       (async/>!! out (* value 10))
+       (async/close! out)))
+
+   :lpy
+   (defasync emit-async-pipeline-value [value out]
+     (await (asyncio/sleep (/ (- 4 value) 100)))
+     (await (async/put! out value))
+     (await (async/put! out (* value 10)))
+     (async/close! out)))
+
+(defn async-pipeline-fn [value out]
+  #?(:clj (emit-async-pipeline-value value out)
+     :lpy (asyncio/create-task (emit-async-pipeline-value value out))))
+
+#?(:clj
+   (defn pipeline-async-roundtrip []
+     (let [source      (async/chan 3)
+           destination (async/chan 8)]
+       (async/>!! source 1)
+       (async/>!! source 2)
+       (async/>!! source 3)
+       (async/close! source)
+       (async/pipeline-async 2 destination async-pipeline-fn source)
+       [(async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)
+        (async/<!! destination)]))
+
+   :lpy
+   (defasync pipeline-async-roundtrip []
+     (let [source      (async/chan 3)
+           destination (async/chan 8)]
+       (await (async/put! source 1))
+       (await (async/put! source 2))
+       (await (async/put! source 3))
+       (async/close! source)
+       (await (async/pipeline-async 2 destination async-pipeline-fn source))
+       [(await (async/take! destination))
+        (await (async/take! destination))
+        (await (async/take! destination))
+        (await (async/take! destination))
+        (await (async/take! destination))
+        (await (async/take! destination))
+        (await (async/take! destination))])))
+
+#?(:clj
+   (defn pipeline-async-close-false-roundtrip []
+     (let [source      (async/chan 1)
+           destination (async/chan 2)]
+       (async/>!! source 1)
+       (async/close! source)
+       (async/pipeline-async 1 destination async-pipeline-fn source false)
+       [(async/<!! destination)
+        (async/<!! destination)
+        (async/poll! destination)
+        (async/>!! destination :manual)]))
+
+   :lpy
+   (defasync pipeline-async-close-false-roundtrip []
+     (let [source      (async/chan 1)
+           destination (async/chan 2)]
+       (await (async/put! source 1))
+       (async/close! source)
+       (await (async/pipeline-async 1 destination async-pipeline-fn source false))
+       [(await (async/take! destination))
+        (await (async/take! destination))
+        (async/poll! destination)
+        (await (async/put! destination :manual))])))
 
 #?(:clj
    (defn mult-roundtrip []
@@ -624,11 +729,17 @@
            #?(:clj [(alts-priority-and-default-roundtrip)
                     (timeout-roundtrip)
                     (pipe-roundtrip)
-                    (pipeline-roundtrip)]
+                    (pipeline-roundtrip)
+                    (pipeline-blocking-roundtrip)
+                    (pipeline-async-roundtrip)
+                    (pipeline-async-close-false-roundtrip)]
               :lpy [(asyncio/run (alts-priority-and-default-roundtrip))
                     (asyncio/run (timeout-roundtrip))
                     (asyncio/run (pipe-roundtrip))
-                    (asyncio/run (pipeline-roundtrip))]))
+                    (asyncio/run (pipeline-roundtrip))
+                    (asyncio/run (pipeline-blocking-roundtrip))
+                    (asyncio/run (pipeline-async-roundtrip))
+                    (asyncio/run (pipeline-async-close-false-roundtrip))]))
 
 (emit-case :core-async-collection-combinators
            #?(:clj [(to-chan-roundtrip)

@@ -211,18 +211,20 @@ Near-term deliverable:
   for the non-``go`` subset: Clojure-shaped buffers and ``chan``, close and
   non-blocking operations, awaitable/callback ``put!`` and ``take!``,
   ``alts!``, ``timeout``, ``pipe``, and Clojure-ordered ``pipeline``. Parking
-  and blocking forms remain absent. The follow-up fixture now compares the
+  forms remain absent. The follow-up fixture now compares the
   implemented subset against JVM ``core.async`` for buffers, close/drain, nil
-  rejection, selection, timeout, pipe, pipeline order, and the non-``go``
-  collection/channel combinators ``to-chan!``, ``onto-chan!``, ``merge``,
-  ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. The follow-up
-  local tranche now adds task-backed routing combinators ``mult``, ``tap``,
-  ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``, ``unsub-all``,
-  ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
+  rejection, selection, timeout, pipe, pipeline order, pipeline variants, and
+  the non-``go`` collection/channel combinators ``to-chan!``, ``onto-chan!``,
+  ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``. The
+  follow-up local tranche now adds task-backed routing combinators ``mult``,
+  ``tap``, ``untap``, ``untap-all``, ``pub``, ``sub``, ``unsub``,
+  ``unsub-all``, ``mix``, ``admix``, ``unmix``, ``unmix-all``, ``toggle``, and
   ``solo-mode`` with shared JVM fixtures. The stacked blocking-bridge tranche
   adds ``<!!``, ``>!!``, ``alts!!``, ``thread``, and ``thread-call`` with
-  explicit same-owner-loop rejection; async pipeline variants and ``go`` remain
-  outside the supported surface.
+  explicit same-owner-loop rejection. The stacked pipeline-variants tranche
+  adds ``pipeline-blocking`` and ``pipeline-async`` with ordered fan-out,
+  ``close?`` behavior, early destination-close handling, and JVM fixtures.
+  ``go``/parking forms remain outside the supported surface.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

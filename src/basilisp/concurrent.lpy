@@ -174,3 +174,11 @@
   (basilisp.concurrent_channel/pipeline parallelism source destination xform
                                         ** :close-output close-output
                                         :error-handler on-error))
+
+(defn pipeline-async!
+  "Run callback-shaped async channel work with bounded parallelism and ordered
+  output."
+  [parallelism source destination f & {:keys [close-output]
+                                       :or {close-output true}}]
+  (basilisp.concurrent_channel/pipeline_async parallelism source destination f
+                                              ** :close-output close-output))

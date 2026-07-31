@@ -355,15 +355,15 @@ claim only the explicitly implemented ``clojure.core.async`` facade subset,
 and do not add a ``go`` alias until parking semantics are explicitly
 implemented.
 
-The first API should live in ``basilisp.concurrent`` and be deliberately
-small: a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
-transducer, and a separately named asynchronous pipeline when a real consumer
-requires one. ``pipeline!`` accepts a concurrency limit, input and output
-channels, a transducer, an explicit close-output option, and an explicit error
-handler. It returns an application-owned task or supervisor handle rather than
-hiding background work. Each input is transformed independently, may produce
-zero or more results, and output order is retained by sequence number. This
-matches the important contract of `core.async pipeline
+The first API lives in ``basilisp.concurrent`` and remains deliberately small:
+a ``pipe!`` forwarding task, an ordered ``pipeline!`` for a synchronous
+transducer, and ``pipeline-async!`` for callback-shaped asynchronous work.
+``pipeline!`` accepts a concurrency limit, input and output channels, a
+transducer, an explicit close-output option, and an explicit error handler. It
+returns an application-owned task or supervisor handle rather than hiding
+background work. Each input is transformed independently, may produce zero or
+more results, and output order is retained by sequence number. This matches
+the important contract of `core.async pipeline
 <https://clojure.github.io/core.async/reference.html>`_ without pretending that
 the execution substrate is the JVM.
 
@@ -380,8 +380,10 @@ The required test suite is deterministic first: ordered fan-out, reduced
 completion, early output close, input close while work is pending, and handler
 failure. It then needs randomized producer/consumer cancellation schedules
 that prove no duplicate, lost, or post-close values and that every task is
-joined. Only after that is stable should asynchronous mapping be considered.
-``defasync`` and ``await`` remain the supported spelling for async work.
+joined. The asynchronous pipeline variant follows the same ownership model:
+the callback receives a per-input result channel, closes it when done, and the
+pipeline drains those result channels in input order. ``defasync`` and
+``await`` remain the supported spelling for general async work.
 Implementing ``go`` correctly would require a compiler-produced resumable state
 machine and defined rejection for unsupported Python control flow; a macro that
 merely wraps ``defasync`` would misrepresent that contract.
@@ -401,8 +403,9 @@ The facade additionally includes task-backed routing combinators ``mult``,
 ``solo-mode``. These preserve the portable fan-out/topic-routing contracts
 against JVM fixtures. The blocking bridge names ``<!!``, ``>!!``, ``alts!!``,
 ``thread``, and ``thread-call`` are also supported with explicit same-owner-loop
-deadlock rejection, while async pipeline variants and ``go`` parking forms
-remain outside the advertised surface.
+deadlock rejection. The pipeline variant names ``pipeline-blocking`` and
+``pipeline-async`` are also supported and covered by JVM fixtures. ``go``
+parking forms remain outside the advertised surface.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^
@@ -608,8 +611,8 @@ is:
 2. Do not add a ``go`` macro until resumable-state-machine semantics have a
    separate proof and rejection model. ``basilisp.concurrent`` remains the
    Python-native async/channel boundary, while ``clojure.core.async`` now
-   exposes the tested non-``go`` facade subset. Core.async parking/blocking
-   macros are not advertised as public parity surface.
+   exposes the tested non-``go`` facade subset. Core.async parking macros are
+   not advertised as public parity surface.
 3. Defer Pydantic and AnyIO adapters until there is a consumer; both require a
    separately tested conversion and ownership contract.
 

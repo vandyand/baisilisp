@@ -82,9 +82,8 @@ The implementation is intentionally ``asyncio``-native:
 
 This is the right substrate. BaisiLisp now has an initial
 ``clojure.core.async`` facade for the non-``go`` subset, backed by
-``basilisp.core.async`` and the existing channel runtime. The important missing
-pieces are async pipeline variants and compiler support for ``go`` parking
-forms.
+``basilisp.core.async`` and the existing channel runtime. The important
+remaining missing piece is compiler support for ``go`` parking forms.
 
 Design Principles
 -----------------
@@ -156,8 +155,8 @@ into one of these states:
        ``alts!`` outside ``go`` as an awaitable extension
    * - Runtime work
      - Requires new channel combinators but not compiler transformation.
-     - ``pipeline-blocking``, ``pipeline-async`` and larger lifecycle
-       combinators
+     - Covered locally for ``pipeline-blocking`` and ``pipeline-async``.
+       Larger lifecycle combinators remain separate design work.
    * - Compiler work
      - Requires ``go``/parking context or macro lowering.
      - ``go``, ``go-loop``, ``<!``, ``>!``, ``alt!``, ``ioc-alts!``
@@ -196,6 +195,8 @@ Proposed public functions/macros:
 * ``timeout``
 * ``pipe``
 * ``pipeline``
+* ``pipeline-blocking``
+* ``pipeline-async``
 * ``mult`` / ``tap`` / ``untap`` / ``untap-all``
 * ``pub`` / ``sub`` / ``unsub`` / ``unsub-all``
 * ``mix`` / ``admix`` / ``unmix`` / ``unmix-all`` / ``toggle`` /
@@ -346,15 +347,11 @@ and compatibility namespace have strong tests.
 Phase 5: Higher-Level Channel Operations
 ----------------------------------------
 
-After the facade and basic ``go`` subset, the best parity wins are the
-combinators that appear in real Clojure code:
-
-* ``pipeline-async``
-
-These should be built as ordinary channel processes over the same runtime,
-not as separate concurrency primitives. Each operation needs explicit
-lifecycle rules: whether it closes outputs, whether it owns tasks, what
-happens when consumers close early, and how cancellation propagates.
+The non-``go`` pipeline variants are now built as ordinary channel processes
+over the same runtime, not as separate concurrency primitives. Future
+higher-level operations should follow the same rule: each operation needs
+explicit lifecycle rules for whether it closes outputs, whether it owns tasks,
+what happens when consumers close early, and how cancellation propagates.
 
 Python Primitive Boundaries
 ---------------------------
@@ -433,6 +430,11 @@ The initial implementation now covers:
 * Add blocking/thread bridges: ``<!!``, ``>!!``, ``alts!!``, ``thread``, and
   ``thread-call``. Blocking calls run against the channel's owner loop from
   synchronous callers and reject calls from that owner loop to avoid deadlock.
+* Add pipeline variants: ``pipeline-blocking`` delegates to the bounded
+  worker-thread transducer pipeline, while ``pipeline-async`` accepts
+  callback-shaped asynchronous work, preserves input order, handles fan-out,
+  honors ``close?``, and stops admitting source values when the destination is
+  closed.
 
 Why this tranche first:
 
@@ -446,20 +448,15 @@ Why this tranche first:
 Recommended Next Tranche
 ------------------------
 
-The next tranche after the facade should harden this namespace before adding
-compiler-level ``go`` support:
+The next tranche should start the minimal coroutine-backed ``go``/parking
+design rather than broaden the runtime facade further:
 
-* Add a maintained public support matrix for ``clojure.core.async``.
-  The current test gate asserts the exact supported non-``go`` public set and
-  the absence of unsupported parking/blocking names.
-* Add JVM differential fixtures for buffer close/drain behavior, nil
-  rejection, ``alts!`` priority/default behavior, ``pipe``, and ``pipeline``
-  output order. ``tests/conformance/core_async_cases.cljc`` now covers this
-  first fixture tranche plus the collection/channel combinators.
-* Decide whether ``put!``/``take!`` callback return values should remain
-  strict Clojure-compatible ``nil`` or expose a BaisiLisp task handle through a
-  separate Python-native name.
-* Add rejection tests for channel transducers, blocking operations from an
-  event-loop thread, and unavailable parking macros.
-* Only then choose between async-pipeline lifecycle combinators and the minimal
-  coroutine-backed ``go`` tranche.
+* Keep the maintained public support matrix for ``clojure.core.async`` exact.
+  The current test gate asserts the supported non-``go`` public set and the
+  absence of unsupported parking names.
+* Extend JVM differential fixtures only when the new ``go`` work exposes
+  portable observable behavior.
+* Decide the expansion model for ``go``, ``go-loop``, ``<!``, ``>!``,
+  ``alts!`` in a parking context, and ``alt!`` before adding any public names.
+* Add deterministic rejection tests for unsupported parking contexts,
+  blocking operations inside ``go``, and channel transducers before support.

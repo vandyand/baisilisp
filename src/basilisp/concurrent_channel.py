@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import inspect
 import random
 import threading
 from collections import deque
@@ -547,5 +548,126 @@ def pipeline(
             xform,
             close_output=close_output,
             error_handler=error_handler,
+        )
+    )
+
+
+async def _collect_channel(channel: Channel) -> list[Any]:
+    values: list[Any] = []
+    while (value := await channel.take()) is not None:
+        values.append(value)
+    return values
+
+
+async def _call_async_pipeline_function(
+    function: Callable[[Any, Channel], Any], value: Any, output: Channel
+) -> list[Any]:
+    result = function(value, output)
+    if not inspect.isawaitable(result):
+        return await _collect_channel(output)
+
+    runner = asyncio.ensure_future(result)
+    collector = asyncio.create_task(_collect_channel(output))
+    try:
+        done, _ = await asyncio.wait(
+            {runner, collector}, return_when=asyncio.FIRST_EXCEPTION
+        )
+        if runner in done and (exception := runner.exception()) is not None:
+            collector.cancel()
+            await asyncio.gather(collector, return_exceptions=True)
+            raise exception
+        values = await collector
+        await runner
+        return values
+    except BaseException:
+        for task in (runner, collector):
+            if not task.done():
+                task.cancel()
+        await asyncio.gather(runner, collector, return_exceptions=True)
+        raise
+
+
+async def _pipeline_async(
+    parallelism: int,
+    source: Channel,
+    destination: Channel,
+    function: Callable[[Any, Channel], Any],
+    *,
+    close_output: bool,
+) -> None:
+    pending: dict[int, asyncio.Task[list[Any]]] = {}
+    completed: dict[int, list[Any]] = {}
+    input_closed = False
+    next_sequence = 0
+    next_output = 0
+
+    try:
+        while not input_closed or pending:
+            while not input_closed and len(pending) < parallelism:
+                value = await source.take()
+                if value is None:
+                    input_closed = True
+                    break
+                result_channel = Channel(1)
+                pending[next_sequence] = asyncio.create_task(
+                    _call_async_pipeline_function(function, value, result_channel)
+                )
+                next_sequence += 1
+
+            if not pending:
+                continue
+
+            done, _ = await asyncio.wait(
+                pending.values(), return_when=asyncio.FIRST_COMPLETED
+            )
+            for sequence, task in list(pending.items()):
+                if task not in done:
+                    continue
+                del pending[sequence]
+                completed[sequence] = task.result()
+
+            while next_output in completed:
+                for value in completed.pop(next_output):
+                    if not await destination.put(value):
+                        return
+                next_output += 1
+    finally:
+        for task in pending.values():
+            task.cancel()
+        if pending:
+            await asyncio.gather(*pending.values(), return_exceptions=True)
+        if close_output:
+            destination.close()
+
+
+def pipeline_async(
+    parallelism: int,
+    source: Channel,
+    destination: Channel,
+    function: Callable[[Any, Channel], Any],
+    *,
+    close_output: bool = True,
+) -> asyncio.Task[None]:
+    """Run callback-shaped asynchronous channel work with ordered output.
+
+    ``function`` receives ``(input, output_channel)``. It may synchronously
+    arrange work and return, or return a coroutine. Results are read from the
+    per-input output channel until it closes, and then emitted to
+    ``destination`` in source order.
+    """
+
+    if isinstance(parallelism, bool) or not isinstance(parallelism, int):
+        raise TypeError("pipeline parallelism must be a positive integer")
+    if parallelism < 1:
+        raise ValueError("pipeline parallelism must be a positive integer")
+    if not callable(function):
+        raise TypeError("pipeline_async function must be callable")
+    return asyncio.create_task(
+        _pipeline_async(
+            parallelism,
+            source,
+            destination,
+            function,
+            close_output=close_output,
         )
     )
