@@ -1,0 +1,14 @@
+{
+  "source_root": ".",
+  "upstream_url": "https://github.com/clojure/core.async",
+  "upstream_revision": "core.async 1.9.865 Maven artifact",
+  "clojure_deps": {
+    "org.clojure/core.async": "1.9.865"
+  },
+  "run_via_load_file": true,
+  "substitutions": [
+    "clojure.core.async -> basilisp.core.async",
+    "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
+    "portable source examples only; direct ioc-alts! state-machine integration remains excluded"
+  ]
+}

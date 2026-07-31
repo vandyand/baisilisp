@@ -42,14 +42,29 @@ DEFAULT_CLOJURE_SDEPS = (
 )
 
 
-def _default_clojure_command() -> str:
+def _clojure_sdeps(extra_deps: Mapping[str, str] | None = None) -> str:
+    deps = {
+        "org.clojure/clojure": CLOJURE_VERSION,
+        **(extra_deps or {}),
+    }
+    rendered = " ".join(
+        f'{artifact} {{:mvn/version \\"{version}\\"}}'
+        for artifact, version in sorted(deps.items())
+    )
+    return f"{{:deps {{{rendered}}}}}"
+
+
+def _default_clojure_command(
+    extra_deps: Mapping[str, str] | None = None,
+) -> str:
+    sdeps = _clojure_sdeps(extra_deps)
     if configured := os.environ.get("CLOJURE_COMMAND"):
         return configured
     if shutil.which("clojure"):
-        return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
+        return f'clojure -Sdeps "{sdeps}" -M'
     if os.name == "nt" and shutil.which("wsl"):
-        return f'wsl -d Ubuntu-24.04 -- clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
-    return f'clojure -Sdeps "{DEFAULT_CLOJURE_SDEPS}" -M'
+        return f'wsl -d Ubuntu-24.04 -- clojure -Sdeps "{sdeps}" -M'
+    return f'clojure -Sdeps "{sdeps}" -M'
 
 
 def _path_for_command(path: Path, command_prefix: str) -> str:
@@ -61,7 +76,7 @@ def _path_for_command(path: Path, command_prefix: str) -> str:
         drive = resolved.drive.rstrip(":").lower()
         if drive:
             return f"/mnt/{drive}{resolved.as_posix()[2:]}"
-    return str(resolved)
+    return resolved.as_posix()
 
 
 def _run(
@@ -70,14 +85,28 @@ def _run(
     *,
     label: str,
     extra_env: Mapping[str, str] | None = None,
+    load_via_code: bool = False,
 ) -> list[str]:
     env = None
     if extra_env:
         env = os.environ.copy()
         env.update(extra_env)
+    command = shlex.split(command_prefix)
+    runner_path = _path_for_command(runner, command_prefix)
+    if load_via_code:
+        code = f'(load-file "{runner_path}")'
+        if (
+            any(Path(token).name.startswith("basilisp") for token in command)
+            and "run" in command
+        ):
+            command = [*command, "-c", code]
+        else:
+            command = [*command, "-e", code]
+    else:
+        command = [*command, runner_path]
     try:
         result = subprocess.run(
-            [*shlex.split(command_prefix), _path_for_command(runner, command_prefix)],
+            command,
             cwd=ROOT,
             check=False,
             capture_output=True,
@@ -110,12 +139,19 @@ def _normalize_edn(line: str) -> str:
 
 def _acceptance_settings(
     library_root: Path,
-) -> tuple[Path, tuple[str, ...], str | None, str | None]:
+) -> tuple[
+    Path,
+    tuple[str, ...],
+    str | None,
+    str | None,
+    dict[str, str],
+    bool,
+]:
     """Read optional per-library manifest settings without executing source."""
 
     config_path = library_root / ACCEPTANCE_CONFIG_NAME
     if not config_path.is_file():
-        return library_root, _SUBSTITUTIONS, None, None
+        return library_root, _SUBSTITUTIONS, None, None, {}, False
     try:
         config = json.loads(config_path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as exc:
@@ -135,8 +171,10 @@ def _acceptance_settings(
         ) from exc
     if not source_root.is_dir():
         raise RuntimeError(f"acceptance source root does not exist: {source_root}")
-    substitutions = config.get("substitutions", _SUBSTITUTIONS)
-    if not isinstance(substitutions, list) or not all(
+    substitutions = config.get("substitutions")
+    if substitutions is None:
+        substitutions = _SUBSTITUTIONS
+    elif not isinstance(substitutions, list) or not all(
         isinstance(substitution, str) for substitution in substitutions
     ):
         raise RuntimeError(f"acceptance substitutions must be strings: {config_path}")
@@ -148,14 +186,34 @@ def _acceptance_settings(
         raise RuntimeError(
             f"acceptance upstream_revision must be a string: {config_path}"
         )
-    return source_root, tuple(substitutions), upstream_url, upstream_revision
+    clojure_deps = config.get("clojure_deps", {})
+    if not isinstance(clojure_deps, dict) or not all(
+        isinstance(artifact, str) and isinstance(version, str)
+        for artifact, version in clojure_deps.items()
+    ):
+        raise RuntimeError(
+            f"acceptance clojure_deps must map artifact strings to version strings: {config_path}"
+        )
+    run_via_load_file = config.get("run_via_load_file", False)
+    if not isinstance(run_via_load_file, bool):
+        raise RuntimeError(
+            f"acceptance run_via_load_file must be a boolean: {config_path}"
+        )
+    return (
+        source_root,
+        tuple(substitutions),
+        upstream_url,
+        upstream_revision,
+        clojure_deps,
+        run_via_load_file,
+    )
 
 
 def acceptance_manifest(library_root: Path) -> str:
     """Create a stable manifest for a checked-in acceptance library."""
 
-    source_root, substitutions, upstream_url, upstream_revision = _acceptance_settings(
-        library_root
+    source_root, substitutions, upstream_url, upstream_revision, _, _ = (
+        _acceptance_settings(library_root)
     )
     manifest = portability.inspect_source_tree(
         source_root,
@@ -239,12 +297,21 @@ def _accept_library(
         manifest_path.write_text(manifest, encoding="utf-8", newline="\n")
     else:
         manifest = verify_manifest(library_root, manifest_path)
-    clojure = _run(clojure_command, runner, label="Clojure")
+    _, _, _, _, clojure_deps, run_via_load_file = _acceptance_settings(library_root)
+    if clojure_deps and clojure_command == _default_clojure_command():
+        clojure_command = _default_clojure_command(clojure_deps)
+    clojure = _run(
+        clojure_command,
+        runner,
+        label="Clojure",
+        load_via_code=run_via_load_file,
+    )
     basilisp = _run(
         basilisp_command,
         runner,
         label="Basilisp",
         extra_env=basilisp_env,
+        load_via_code=run_via_load_file,
     )
     if clojure != basilisp:
         print("Portable-library acceptance mismatch", file=sys.stderr)

@@ -91,9 +91,7 @@ def test_medley_acceptance_manifest_is_portable_and_checked_in():
 
 
 def test_algo_generic_acceptance_manifest_is_portable_and_checked_in():
-    library_root = (
-        Path(__file__).parent / "acceptance" / "upstream" / "algo-generic"
-    )
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "algo-generic"
     manifest = acceptance_manifest(library_root)
 
     assert '"classification": "portable"' in manifest
@@ -149,6 +147,21 @@ def test_core_cache_memoize_acceptance_manifest_is_portable_and_checked_in():
     )
 
 
+def test_core_async_acceptance_manifest_is_portable_and_checked_in():
+    library_root = Path(__file__).parent / "acceptance" / "upstream" / "core-async"
+    manifest = acceptance_manifest(library_root)
+
+    assert '"classification": "portable"' in manifest
+    assert "clojure.core.async -> basilisp.core.async" in manifest
+    assert (
+        "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset"
+        in manifest
+    )
+    assert manifest == verify_manifest(
+        library_root, library_root / "portability-manifest.json"
+    )
+
+
 def test_acceptance_library_roots_discovers_checked_in_libraries(tmp_path):
     first = tmp_path / "portable"
     second = tmp_path / "upstream" / "library"
@@ -171,6 +184,18 @@ def test_default_clojure_command_pins_verified_clojure_version(monkeypatch):
     assert "clojure -Sdeps" in command
     assert "org.clojure/clojure" in command
     assert acceptance.CLOJURE_VERSION in command
+
+
+def test_default_clojure_command_accepts_library_extra_deps(monkeypatch):
+    monkeypatch.delenv("CLOJURE_COMMAND", raising=False)
+    monkeypatch.setattr(acceptance.shutil, "which", lambda name: name == "clojure")
+
+    command = acceptance._default_clojure_command({"org.clojure/core.async": "1.9.865"})
+
+    assert "org.clojure/clojure" in command
+    assert acceptance.CLOJURE_VERSION in command
+    assert "org.clojure/core.async" in command
+    assert "1.9.865" in command
 
 
 def test_shard_library_roots_selects_stable_modulo_shards():
@@ -281,6 +306,37 @@ def test_main_all_applies_sharding_and_basilisp_cache_disable(monkeypatch, tmp_p
     }
 
 
+def test_accept_library_adds_configured_clojure_deps(monkeypatch, tmp_path):
+    library = tmp_path / "library"
+    library.mkdir()
+    runner = library / "run.cljc"
+    runner.write_text("(println {:ok true})", encoding="utf-8")
+    (library / "acceptance.json").write_text(
+        '{"clojure_deps": {"org.clojure/core.async": "1.9.865"}}',
+        encoding="utf-8",
+    )
+    (library / "portability-manifest.json").write_text("manifest", encoding="utf-8")
+    observed_commands = []
+
+    monkeypatch.setattr(acceptance, "verify_manifest", lambda *_: "manifest")
+    monkeypatch.setattr(acceptance.shutil, "which", lambda name: name == "clojure")
+
+    def fake_run(command, runner_path, **kwargs):
+        observed_commands.append((command, runner_path, kwargs))
+        return ["{:ok true}"]
+
+    monkeypatch.setattr(acceptance, "_run", fake_run)
+
+    assert acceptance._accept_library(
+        library,
+        library / "portability-manifest.json",
+        clojure_command=acceptance._default_clojure_command(),
+        basilisp_command="basilisp run",
+    )
+    assert "org.clojure/core.async" in observed_commands[0][0]
+    assert observed_commands[1][0] == "basilisp run"
+
+
 def test_main_all_stops_on_first_acceptance_mismatch(monkeypatch, tmp_path):
     first = tmp_path / "first"
     second = tmp_path / "second"
@@ -318,6 +374,9 @@ def test_main_single_library_rejects_sharding(tmp_path):
         ("[]", "must be an object"),
         ('{"source_root": ".."}', "must stay within the library"),
         ('{"substitutions": ["valid", 1]}', "substitutions must be strings"),
+        ('{"clojure_deps": ["not-a-map"]}', "clojure_deps must map"),
+        ('{"clojure_deps": {"org.clojure/core.async": 1}}', "clojure_deps must map"),
+        ('{"run_via_load_file": "yes"}', "run_via_load_file must be a boolean"),
     ],
 )
 def test_acceptance_settings_reject_invalid_configuration(tmp_path, config, message):
@@ -384,6 +443,80 @@ def test_acceptance_run_merges_extra_environment(monkeypatch, tmp_path):
 
     assert seen_env["BASILISP_EXISTING_ENV"] == "preserved"
     assert seen_env["BASILISP_DO_NOT_CACHE_NAMESPACES"] == "true"
+
+
+def test_acceptance_run_can_load_entrypoint_as_code(monkeypatch, tmp_path):
+    runner = tmp_path / "run.cljc"
+    runner.write_text("(println {:pass 1})", encoding="utf-8")
+    observed = {}
+
+    def fake_run(args, **kwargs):
+        observed["args"] = args
+        return CompletedProcess(args, 0, stdout="{:pass 1}\n", stderr="")
+
+    monkeypatch.setattr(acceptance.subprocess, "run", fake_run)
+
+    acceptance._run(
+        "uv run basilisp run",
+        runner,
+        label="Basilisp",
+        load_via_code=True,
+    )
+
+    assert observed["args"][-2:] == [
+        "-c",
+        f'(load-file "{runner.resolve().as_posix()}")',
+    ]
+
+
+def test_acceptance_run_load_entrypoint_detects_path_qualified_basilisp(
+    monkeypatch, tmp_path
+):
+    runner = tmp_path / "run.cljc"
+    runner.write_text("(println {:pass 1})", encoding="utf-8")
+    observed = {}
+
+    def fake_run(args, **kwargs):
+        observed["args"] = args
+        return CompletedProcess(args, 0, stdout="{:pass 1}\n", stderr="")
+
+    monkeypatch.setattr(acceptance.subprocess, "run", fake_run)
+
+    acceptance._run(
+        ".tox/py314/bin/basilisp run",
+        runner,
+        label="Basilisp",
+        load_via_code=True,
+    )
+
+    assert observed["args"][-2:] == [
+        "-c",
+        f'(load-file "{runner.resolve().as_posix()}")',
+    ]
+
+
+def test_acceptance_run_load_entrypoint_uses_clojure_eval(monkeypatch, tmp_path):
+    runner = tmp_path / "run.cljc"
+    runner.write_text("(println {:pass 1})", encoding="utf-8")
+    observed = {}
+
+    def fake_run(args, **kwargs):
+        observed["args"] = args
+        return CompletedProcess(args, 0, stdout="{:pass 1}\n", stderr="")
+
+    monkeypatch.setattr(acceptance.subprocess, "run", fake_run)
+
+    acceptance._run(
+        "clojure -M",
+        runner,
+        label="Clojure",
+        load_via_code=True,
+    )
+
+    assert observed["args"][-2:] == [
+        "-e",
+        f'(load-file "{runner.resolve().as_posix()}")',
+    ]
 
 
 @pytest.mark.parametrize("output", ["", "Testing example\n{:pass 1} {:fail 0}\n"])
