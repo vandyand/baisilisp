@@ -1,0 +1,11 @@
+{
+  "source_root": ".",
+  "upstream_url": "https://github.com/clojure/test.check",
+  "upstream_revision": "org.clojure/test.check 1.1.1 Maven artifact",
+  "clojure_deps": {
+    "org.clojure/test.check": "1.1.1"
+  },
+  "substitutions": [
+    "clojure.test.check -> basilisp.test.check"
+  ]
+}

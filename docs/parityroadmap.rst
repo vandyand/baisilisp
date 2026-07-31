@@ -165,7 +165,7 @@ Near-term deliverable:
   ``medley``, ``tools-macro``, ``algo-generic``, ``algo-monads``,
   ``core-unify``, ``core-cache-memoize``, ``core.async``, ``data.csv``,
   ``data.json``, ``data.codec.base64``, ``core.match``,
-  ``tools.namespace``, and ``tools.reader``. The
+  ``tools.namespace``, ``tools.reader``, and ``test.check``. The
   ``algo-generic`` proof exercises host-adapted multimethod dispatch across
   comparison, arithmetic, collection, functor, future/delay, and math-function
   contracts, and is pinned to ``clojure/algo.generic`` revision
@@ -233,6 +233,12 @@ Near-term deliverable:
   surfaces plus source/EDN reading, tagged literals, reader conditionals,
   source logging, indexing/pushback readers, timestamp/UUID readers, helper
   predicates, error boundaries, and 96 deterministic generated reader forms.
+  The ``test.check`` proof uses the published ``org.clojure/test.check`` 1.1.1
+  artifact on the JVM side and Basilisp's production ``clojure.test.check``
+  aliases on the Basilisp side; it locks the portable generator, property,
+  random, result, rose-tree, ``clojure.test`` assertion, and implementation
+  helper surfaces while comparing invariant classes rather than exact RNG
+  values, including 48 deterministic generated property cases.
 
 4. Standard Namespace Coverage
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
@@ -1490,6 +1496,20 @@ Completed locally:
   timestamp/UUID default readers, normalized reader-error boundaries, inspect
   helpers, utility predicates, and 96 deterministic generated source forms
   plus adversarial rejection cases.
+* source-level ``test.check`` acceptance added as a property-testing
+  real-library probe; it runs a multi-file portable workflow against
+  ``org.clojure/test.check`` 1.1.1 and Basilisp's production
+  ``clojure.test.check`` aliases. The probe locks portable public surfaces for
+  root quick-check, generators, properties, random, results, rose trees,
+  ``clojure-test`` integration, assertion helpers, and implementation helpers;
+  it covers primitive/text/bytes/collection generators, generator combinators,
+  sizing and shrinking boundaries, random splitting, rose-tree helper shapes,
+  quick-check pass/fail/exception result maps, ``defspec`` and
+  ``process-options`` behavior, assertion integration, adversarial constructor
+  rejections, and 48 deterministic generated property/invariant cases. Exact
+  RNG sample values remain outside the contract because Basilisp uses a
+  Python-hosted deterministic RNG while JVM ``test.check`` uses Java RNG
+  internals.
 * ``Throwable->map`` diagnostics hardening now differentially locks thrown
   exception chains with ``:clojure.error/phase`` data, preserving Clojure's
   top-level ``:phase``, root-cause ``:cause``/``:data``, ordered ``:via``
