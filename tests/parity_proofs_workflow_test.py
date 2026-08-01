@@ -27,6 +27,7 @@ def test_parity_proofs_workflow_runs_sharded_library_acceptance():
     assert "scripts/library_acceptance.py" in workflow
     assert "scripts/prefetch_clojure_deps.py library" in workflow
     assert "--all" in workflow
+    assert "--verify-inventory" in workflow
     assert "--disable-basilisp-ns-cache" in workflow
     assert "--shard-count 3" in workflow
     assert "--shard-index ${{ matrix.shard-index }}" in workflow
