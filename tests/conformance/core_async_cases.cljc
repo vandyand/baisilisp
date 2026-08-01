@@ -52,10 +52,36 @@
   (set (keys (ns-publics 'clojure.core.async))))
 
 (defn supported-public-surface []
-  {:supported-present?   (every? (current-publics) supported-non-go-publics)
-   :unsupported-absent-in-basilisp?  #?(:clj true
-                            :lpy (not-any? (current-publics)
-                                           unsupported-parking-and-blocking-publics))})
+  (let [publics (current-publics)]
+    {:supported-present?  (every? publics supported-non-go-publics)
+     :exact-publics?      (= publics supported-non-go-publics)
+     :missing-publics     (vec (sort (remove publics supported-non-go-publics)))
+     :extra-publics       (vec (sort (remove supported-non-go-publics publics)))
+     :unsupported-absent-in-basilisp?
+     #?(:clj true
+        :lpy (not-any? publics unsupported-parking-and-blocking-publics))}))
+
+(defn ioc-boundary-summary []
+  #?(:clj {:public? true
+           :boundary :unsupported-ioc-state-machine
+           :required :compiler-generated-ioc
+           :retains-inputs? true}
+     :lpy (try
+            (async/ioc-alts! :state :block [:port])
+            {:public? true
+             :boundary :not-rejected
+             :required nil
+             :retains-inputs? false}
+            (catch Exception e
+              (let [data (ex-data e)]
+                {:public? (contains? (current-publics) 'ioc-alts!)
+                 :boundary (:basilisp.core.async/boundary data)
+                 :required (:basilisp.core.async/required data)
+                 :retains-inputs? (= [:state :block [:port] nil]
+                                     [(:state data)
+                                      (:cont-block data)
+                                      (:ports data)
+                                      (:opts data)])})))))
 
 #?(:clj
    (defn drain-channel [channel]
@@ -1814,6 +1840,9 @@
 
 (emit-case :core-async-public-surface
            (supported-public-surface))
+
+(emit-case :core-async-ioc-boundary
+           (ioc-boundary-summary))
 
 (emit-case :core-async-buffers
            #?(:clj [(fixed-buffer-roundtrip)

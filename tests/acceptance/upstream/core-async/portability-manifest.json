@@ -18,12 +18,16 @@
       "classification": "portable",
       "language": "cljc",
       "path": "src/acceptance/core_async/workflow.cljc",
-      "reader_features": [],
+      "reader_features": [
+        "clj",
+        "lpy"
+      ],
       "requires": [
         "acc",
         "accepted",
         "channel",
         "clojure.core.async",
+        "data",
         "even",
         "first-pair",
         "first-value",
@@ -34,6 +38,7 @@
         "merged",
         "muted",
         "priority-first",
+        "publics",
         "published",
         "result",
         "return-contracts",
@@ -44,7 +49,7 @@
         "unsubbed",
         "value"
       ],
-      "sha256": "30151cea4474eeeda7627952cf193ef867f603b5ecb1d2c88b07e0e4a5a3dc27"
+      "sha256": "63a555e8f9dff90ca80951473b782a980b8b5d4203c3003cabe6c0cd23fd5c76"
     },
     {
       "blockers": [],
@@ -54,9 +59,9 @@
       "reader_features": [],
       "requires": [
         "acceptance.core-async.workflow",
-        "go-transform"
+        "surface"
       ],
-      "sha256": "ae8451a80dfd442e5536e384563b2948ee43224b49f8db522808e2eed8af5a61"
+      "sha256": "837d7978acc2af565a803c4b161e7d17d120e35abd0395c3ca7a20d409cd5172"
     }
   ],
   "substitutions": [

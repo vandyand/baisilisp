@@ -2,8 +2,9 @@
   "Compatibility facade for the portable subset of ``clojure.core.async``.
 
   This namespace intentionally wraps Basilisp's ``asyncio``-native
-  ``basilisp.concurrent`` channel runtime. Parking macros and compiler-backed
-  ``go`` blocks are not implemented here yet."
+  ``basilisp.concurrent`` channel runtime. ``go`` and parking operations are
+  coroutine-backed; full compiler-backed IOC state-machine integration remains
+  an explicit unsupported boundary."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
   (:import asyncio))
@@ -342,7 +343,9 @@
   for source compatibility and rejects direct calls deterministically."
   [state cont-block ports & opts]
   (throw (ex-info "ioc-alts! requires Clojure-style IOC state-machine support"
-                  {:state state
+                  {:basilisp.core.async/boundary :unsupported-ioc-state-machine
+                   :basilisp.core.async/required :compiler-generated-ioc
+                   :state state
                    :cont-block cont-block
                    :ports ports
                    :opts opts})))

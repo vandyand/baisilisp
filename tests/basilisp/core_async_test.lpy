@@ -904,10 +904,18 @@
 
 (defn core-async-ioc-alts-direct-call-rejected []
   (try
-    (async/ioc-alts! nil nil [] {})
-    false
-    (catch Exception _
-      true)))
+    (async/ioc-alts! :state :block [:port])
+    {:rejected? false}
+    (catch Exception e
+      (let [data (ex-data e)]
+        {:rejected? true
+         :message (ex-message e)
+         :boundary (:basilisp.core.async/boundary data)
+         :required (:basilisp.core.async/required data)
+         :state (:state data)
+         :cont-block (:cont-block data)
+         :ports (:ports data)
+         :opts (:opts data)}))))
 
 (deftest namespace-alias-test
   (is (= (find-ns 'basilisp.core.async) (find-ns 'clojure.core.async))))
@@ -1107,4 +1115,12 @@
     (is (= 42
            (asyncio/run (core-async-go-current-loop-roundtrip))))
     (is (true? (asyncio/run (core-async-go-blocking-inside-go-rejected))))
-    (is (true? (core-async-ioc-alts-direct-call-rejected)))))
+    (is (= {:rejected? true
+            :message "ioc-alts! requires Clojure-style IOC state-machine support"
+            :boundary :unsupported-ioc-state-machine
+            :required :compiler-generated-ioc
+            :state :state
+            :cont-block :block
+            :ports [:port]
+            :opts nil}
+           (core-async-ioc-alts-direct-call-rejected)))))
