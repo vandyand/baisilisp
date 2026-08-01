@@ -27,13 +27,17 @@
         "accepted",
         "channel",
         "clojure.core.async",
+        "clojure.core.async.impl.ioc-macros",
         "data",
         "even",
+        "f",
         "first-pair",
         "first-value",
         "idx",
         "input",
         "inputs",
+        "ioc",
+        "java.util.concurrent.atomic",
         "left-only",
         "merged",
         "muted",
@@ -44,12 +48,13 @@
         "return-contracts",
         "second-value",
         "source",
+        "state",
         "target",
         "timer",
         "unsubbed",
         "value"
       ],
-      "sha256": "63a555e8f9dff90ca80951473b782a980b8b5d4203c3003cabe6c0cd23fd5c76"
+      "sha256": "d87ee0d5a91aac5d6ee797501cd70ced82a2d9411010fc8d81b86472cc4aa9c1"
     },
     {
       "blockers": [],
@@ -61,13 +66,14 @@
         "acceptance.core-async.workflow",
         "surface"
       ],
-      "sha256": "837d7978acc2af565a803c4b161e7d17d120e35abd0395c3ca7a20d409cd5172"
+      "sha256": "139c63951fb1c00efd0ef18ff81cfcf2f755e2b7fb61edd99b4c3aa8deb0421b"
     }
   ],
   "substitutions": [
     "clojure.core.async -> basilisp.core.async",
+    "clojure.core.async.impl.ioc-macros -> basilisp.core.async.impl.ioc-macros",
     "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
-    "portable source examples only; direct ioc-alts! state-machine integration remains excluded"
+    "portable source examples plus public IOC runtime helpers only; compiler-generated ioc-alts! state-machine integration remains excluded"
   ],
   "supported_python": [
     "3.10",

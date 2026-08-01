@@ -1,0 +1,89 @@
+(ns basilisp.core.async.impl.ioc-macros
+  "Runtime helpers targeted by Clojure core.async IOC state machines.
+
+  This namespace provides the public helper surface shipped by
+  ``clojure.core.async.impl.ioc-macros``. BaisiLisp still does not compile
+  ``go`` bodies into Clojure-style IOC state arrays, but generated or
+  hand-built state machines can use these Python-native helpers directly."
+  (:refer-basilisp :exclude [take! put!])
+  (:require [clojure.core.async.impl.protocols :as impl])
+  (:import [basilisp.core_async_impl :as core-impl]))
+
+(def FN-IDX 0)
+(def STATE-IDX 1)
+(def VALUE-IDX 2)
+(def BINDINGS-IDX 3)
+(def EXCEPTION-FRAMES 4)
+(def USER-START-IDX 5)
+
+(defn aset-object
+  [arr idx o]
+  (aset arr idx o)
+  nil)
+
+(defn aget-object
+  [arr idx]
+  (aget arr idx))
+
+(defmacro aset-all!
+  [arr & more]
+  (assert (even? (count more)) "Must give an even number of args to aset-all!")
+  (let [bindings (partition 2 more)
+        arr-sym  (gensym "statearr-")]
+    `(let [~arr-sym ~arr]
+       ~@(map (fn [[idx val]]
+                `(aset-object ~arr-sym ~idx ~val))
+              bindings)
+       ~arr-sym)))
+
+(defn- fn-handler
+  [f]
+  (core-impl/FnHandler f true))
+
+(defn run-state-machine
+  [state]
+  ((aget-object state FN-IDX) state))
+
+(defn run-state-machine-wrapped
+  [state]
+  (try
+    (run-state-machine state)
+    (catch Exception ex
+      (impl/close! (aget-object state USER-START-IDX))
+      (throw ex))))
+
+(defn take!
+  [state blk c]
+  (if-let [cb (impl/take! c (fn-handler
+                              (fn [x]
+                                (aset-all! state VALUE-IDX x STATE-IDX blk)
+                                (run-state-machine-wrapped state))))]
+    (do
+      (aset-all! state VALUE-IDX @cb STATE-IDX blk)
+      :recur)
+    nil))
+
+(defn put!
+  [state blk c val]
+  (if-let [cb (impl/put! c val (fn-handler
+                                 (fn [ret-val]
+                                   (aset-all! state VALUE-IDX ret-val STATE-IDX blk)
+                                   (run-state-machine-wrapped state))))]
+    (do
+      (aset-all! state VALUE-IDX @cb STATE-IDX blk)
+      :recur)
+    nil))
+
+(defn return-chan
+  [state value]
+  (let [c (aget-object state USER-START-IDX)]
+    (when (some? value)
+      (impl/put! c value (fn-handler (fn [_] nil))))
+    (impl/close! c)
+    c))
+
+(def async-custom-terminators
+  {'clojure.core.async/<! 'clojure.core.async.impl.ioc-macros/take!
+   'clojure.core.async/>! 'clojure.core.async.impl.ioc-macros/put!
+   'clojure.core.async/alts! 'clojure.core.async/ioc-alts!
+   :Return 'clojure.core.async.impl.ioc-macros/return-chan})

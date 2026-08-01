@@ -385,7 +385,13 @@ Near-term deliverable:
   public surfaces, buffer semantics/datafy shape, handler lifecycle, channel
   construction/protocol operations, dispatch workload selection, and explicit
   rejection of unsupported workload tags. Compiler-generated IOC internals and
-  ``impl.ioc-macros`` remain outside the current contract.
+  full ``ioc-alts!`` state-machine selection remain outside the current
+  contract. The IOC-helper follow-up adds the shipped
+  ``clojure.core.async.impl.ioc-macros`` public runtime helper surface, with
+  shared JVM fixtures and source-level acceptance coverage for constants,
+  state-array mutation, one-step state-machine execution, wrapped failure close,
+  ``return-chan``, immediate/enqueued ``take!``/``put!`` continuations, and
+  terminator mappings.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

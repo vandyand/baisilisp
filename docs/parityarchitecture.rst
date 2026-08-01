@@ -310,11 +310,12 @@ a shared winner token so a value is neither lost nor delivered twice. ``pipe!``
 and ``pipeline!`` now cover the first ordered channel pipeline milestone.
 Channel transducers, pub/sub, mult/mix routing, blocking/thread bridges, and a
 coroutine-backed ``go`` parking subset are now covered by staged JVM fixtures;
-the shipped ``clojure.core.async.impl`` protocol, buffer, channel, and dispatch
-source-import surfaces now have Python-native compatibility facades. Deeper
-compiler-produced IOC state-machine parity, including direct
-``impl.ioc-macros`` semantics, remains later work. See :ref:`core_async_design`
-for the staged ``clojure.core.async`` compatibility design.
+the shipped ``clojure.core.async.impl`` protocol, buffer, channel, dispatch,
+and IOC runtime-helper source-import surfaces now have Python-native
+compatibility facades. Deeper compiler-produced IOC state-machine parity,
+including full ``ioc-alts!`` selection integration, remains later work. See
+:ref:`core_async_design` for the staged ``clojure.core.async`` compatibility
+design.
 
 ``(alts! ports & opts)`` accepts take channels and ``[channel value]`` put
 pairs; it returns
