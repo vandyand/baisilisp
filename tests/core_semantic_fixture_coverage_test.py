@@ -124,6 +124,73 @@ def test_coverage_rows_classify_surface_and_semantic_statuses(tmp_path):
     assert rows["extension"].coverage_status == "extension"
 
 
+def test_main_min_coverage_rejects_uncovered_shared_core_var(
+    monkeypatch, tmp_path, capsys
+):
+    fixture = tmp_path / "sample_cases.cljc"
+    fixture.write_text("(ns sample)", encoding="utf-8")
+
+    monkeypatch.setattr(
+        coverage, "_live_clojure_publics", lambda _command: {"covered", "gap"}
+    )
+    monkeypatch.setattr(
+        coverage, "_live_basilisp_publics", lambda _command: {"covered", "gap"}
+    )
+    monkeypatch.setattr(
+        coverage,
+        "direct_core_references",
+        lambda _fixtures, _shared_publics: {
+            "covered": coverage.CoreReference(
+                "covered", {fixture: frozenset({"unqualified-call"})}
+            )
+        },
+    )
+
+    assert 1 == coverage.main(
+        [
+            "--fixture",
+            str(fixture),
+            "--basilisp-command",
+            "unused",
+            "--min-coverage",
+            "100",
+        ]
+    )
+    assert "clojure.core direct coverage 50.0% < 100.0%" in capsys.readouterr().err
+
+
+def test_main_min_coverage_accepts_fully_covered_shared_core_vars(
+    monkeypatch, tmp_path
+):
+    fixture = tmp_path / "sample_cases.cljc"
+    fixture.write_text("(ns sample)", encoding="utf-8")
+
+    publics = {"covered-a", "covered-b"}
+    monkeypatch.setattr(coverage, "_live_clojure_publics", lambda _command: publics)
+    monkeypatch.setattr(coverage, "_live_basilisp_publics", lambda _command: publics)
+    monkeypatch.setattr(
+        coverage,
+        "direct_core_references",
+        lambda _fixtures, _shared_publics: {
+            symbol: coverage.CoreReference(
+                symbol, {fixture: frozenset({"unqualified-call"})}
+            )
+            for symbol in publics
+        },
+    )
+
+    assert 0 == coverage.main(
+        [
+            "--fixture",
+            str(fixture),
+            "--basilisp-command",
+            "unused",
+            "--min-coverage",
+            "100",
+        ]
+    )
+
+
 @given(
     symbols=st.sets(
         st.from_regex(r"[a-z][a-z0-9-]{0,8}[!?]?", fullmatch=True),

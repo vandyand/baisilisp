@@ -901,8 +901,10 @@ the pinned ``clojure.core``/``basilisp.core`` public sets, then scans the shared
 conformance fixtures for explicit qualified core references, ``clojure.core``
 aliases, unqualified call heads, and narrow value references for dynamic Vars.
 The output is an intentionally conservative weak-coverage map for choosing the
-next core behavior tranche; it is not treated as a 100% gate yet because locals,
-macros, quoted forms, and runtime ``resolve`` calls require human review.
+next core behavior tranche. Now that the shared fixture corpus directly covers
+all shared public ``clojure.core`` Vars, CI treats this audit as a 100% gate
+while still requiring human review before using a low-coverage row as evidence
+of an implementation defect.
 
 Full-corpus differential verification must also be reproducible as an
 engineering gate, not just as an ad hoc local loop. ``scripts/differential_conformance.py``
