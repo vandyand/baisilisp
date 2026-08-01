@@ -110,7 +110,7 @@ jobs:
         run: |
           tox exec -e py314 -- python scripts/core_parity_matrix.py --basilisp-command ".tox/py314/bin/basilisp run -c" > core-parity.csv
           tail -n 20 core-parity.csv
-          tox exec -e py314 -- python scripts/core_semantic_fixture_coverage.py --basilisp-command ".tox/py314/bin/basilisp run -c" > core-semantic-coverage.csv
+          tox exec -e py314 -- python scripts/core_semantic_fixture_coverage.py --basilisp-command ".tox/py314/bin/basilisp run -c" --min-coverage 100 > core-semantic-coverage.csv
           head -n 40 core-semantic-coverage.csv
           tox exec -e py314 -- python scripts/semantic_fixture_coverage.py --basilisp-command ".tox/py314/bin/basilisp run -c" --min-coverage 100 > semantic-coverage.csv
           tail -n 20 semantic-coverage.csv

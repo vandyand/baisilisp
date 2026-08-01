@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 WORKFLOW = Path(".github/workflows/run-tests.yml")
@@ -23,8 +24,15 @@ def test_run_tests_workflow_gates_core_and_standard_namespace_parity():
 
     assert "scripts/core_parity_matrix.py" in workflow
     assert "scripts/core_semantic_fixture_coverage.py" in workflow
+    assert re.search(
+        r"scripts/core_semantic_fixture_coverage\.py\b.*--min-coverage 100",
+        workflow,
+    )
     assert "scripts/semantic_fixture_coverage.py" in workflow
-    assert "--min-coverage 100" in workflow
+    assert re.search(
+        r"scripts/semantic_fixture_coverage\.py\b.*--min-coverage 100",
+        workflow,
+    )
     assert "scripts/standard_namespace_surface_matrix.py" in workflow
     assert "scripts/standard_namespace_inventory.py" in workflow
     assert "--verify-clojure --verify-basilisp" in workflow

@@ -1253,6 +1253,12 @@ Near-term deliverable:
   intentional value/syntax references when they appear in shared fixtures.
   Direct ``clojure.core`` semantic fixture coverage is now ``679/679`` shared
   Vars, or ``100.0%``, with no missing Basilisp core publics.
+* **Completed locally:** promote the completed ``clojure.core`` semantic
+  coverage audit from report-only triage to a CI gate. The standard namespace
+  parity audit job now runs ``scripts/core_semantic_fixture_coverage.py`` with
+  ``--min-coverage 100`` alongside the existing public-surface and standard
+  namespace semantic gates, so newly uncovered shared core Vars fail before
+  they can regress silently.
 * **Completed locally:** promote the broad behavioral parity proofs into CI.
   The ``run-parity-proofs`` workflow installs Java, Clojure CLI, Python 3.14,
   and Tox, then runs the cache-disabled differential conformance corpus across
