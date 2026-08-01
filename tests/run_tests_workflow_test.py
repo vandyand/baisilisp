@@ -45,6 +45,16 @@ def test_run_tests_workflow_gates_core_and_standard_namespace_parity():
     assert "standard-namespace-inventory.csv" in workflow
 
 
+def test_run_tests_workflow_gates_packaged_artifacts():
+    workflow = WORKFLOW.read_text(encoding="utf-8")
+    artifact_probe = workflow.index("Run package artifact probe")
+
+    assert "scripts/package_probe.py" in workflow
+    assert "python -m pip install uv" in workflow
+    assert "matrix.os == 'ubuntu-latest' && matrix.version == '3.14'" in workflow
+    assert workflow.index("scripts/package_probe.py") > artifact_probe
+
+
 def test_run_tests_workflow_runs_bounded_pytest_publish_gate():
     workflow = WORKFLOW.read_text(encoding="utf-8")
 

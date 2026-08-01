@@ -117,6 +117,11 @@ jobs:
           tox exec -e py314 -- python scripts/standard_namespace_surface_matrix.py --basilisp-command ".tox/py314/bin/basilisp run -c" > standard-namespace-surface.csv
           tail -n 20 standard-namespace-surface.csv
           tox exec -e py314 -- python scripts/standard_namespace_inventory.py --verify-clojure --verify-basilisp --verify-legacy-source --verify-source-omissions --verify-discovered-resources --basilisp-command ".tox/py314/bin/basilisp run -c" -o standard-namespace-inventory.csv
+      - name: Run package artifact probe
+        if: matrix.os == 'ubuntu-latest' && matrix.version == '3.14'
+        run: |
+          python -m pip install uv
+          python scripts/package_probe.py
       - name: Collect code coverage files
         if: "startsWith (matrix.os, 'ubuntu')"
         run: |

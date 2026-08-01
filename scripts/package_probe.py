@@ -94,10 +94,41 @@ print(core.__file__)
 print(cache_files[0])
 """
 
+_SMOKE_SOURCE = """
+(ns package-probe.sample
+  (:require [clojure.string :as str]
+            [medley.core :as medley]))
 
-def _run(command: list[str], *, cwd: Path) -> None:
+(defn smoke [args]
+  (let [merged (medley/deep-merge {:left {:a 1}} {:left {:b 2}})]
+    (str (str/join ":" args)
+         "|"
+         (get-in merged [:left :a])
+         "|"
+         (get-in merged [:left :b]))))
+"""
+
+_SMOKE_CODE = """
+(do
+  (require '[package-probe.sample :as sample])
+  (println (sample/smoke *command-line-args*)))
+"""
+
+_EXPECTED_SMOKE_OUTPUT = "left:right|1|2"
+
+
+def _run(
+    command: list[str], *, cwd: Path, capture_output: bool = False
+) -> subprocess.CompletedProcess[str]:
     print("+", " ".join(command), flush=True)
-    subprocess.run(command, check=True, cwd=cwd)
+    return subprocess.run(
+        command,
+        check=True,
+        cwd=cwd,
+        text=capture_output,
+        stdout=subprocess.PIPE if capture_output else None,
+        stderr=subprocess.PIPE if capture_output else None,
+    )
 
 
 def _assert_wheel_sources(wheel: Path) -> None:
@@ -124,11 +155,57 @@ def _assert_sdist_sources(sdist: Path) -> None:
         )
 
 
+def _environment_python(environment: Path, os_name: str = os.name) -> Path:
+    return environment / ("Scripts/python.exe" if os_name == "nt" else "bin/python")
+
+
+def _environment_script(environment: Path, script: str, os_name: str = os.name) -> Path:
+    suffix = ".exe" if os_name == "nt" else ""
+    return environment / (
+        f"Scripts/{script}{suffix}" if os_name == "nt" else f"bin/{script}"
+    )
+
+
+def _write_smoke_project(workspace: Path) -> Path:
+    project = workspace / "smoke-project"
+    source_dir = project / "src" / "package_probe"
+    source_dir.mkdir(parents=True, exist_ok=True)
+    (project / "pyproject.toml").write_text(
+        '[tool.basilisp]\nsource-paths = ["src"]\n',
+        encoding="utf-8",
+    )
+    (source_dir / "sample.lpy").write_text(_SMOKE_SOURCE, encoding="utf-8")
+    return project
+
+
 def _verify_install(uv: str, artifact: Path, environment: Path, workdir: Path) -> None:
     _run([uv, "venv", str(environment), "--python", sys.executable], cwd=workdir)
-    python = environment / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
+    python = _environment_python(environment)
     _run([uv, "pip", "install", "--python", str(python), str(artifact)], cwd=workdir)
     _run([str(python), "-c", _VERIFY_INSTALL], cwd=workdir)
+    _verify_cli_smoke(environment, workdir)
+
+
+def _verify_cli_smoke(environment: Path, workdir: Path) -> None:
+    project = _write_smoke_project(workdir)
+    basilisp = _environment_script(environment, "basilisp")
+    result = _run(
+        [
+            str(basilisp),
+            "run",
+            "-c",
+            _SMOKE_CODE,
+            "left",
+            "right",
+        ],
+        cwd=project,
+        capture_output=True,
+    )
+    if _EXPECTED_SMOKE_OUTPUT not in result.stdout.splitlines():
+        raise RuntimeError(
+            "installed Basilisp CLI smoke output mismatch: "
+            f"expected {_EXPECTED_SMOKE_OUTPUT!r}, got {result.stdout!r}"
+        )
 
 
 def main() -> int:
@@ -164,7 +241,10 @@ def main() -> int:
         _verify_install(uv, wheel, workspace / "wheel-venv", workspace)
         _verify_install(uv, sdist, workspace / "sdist-venv", workspace)
 
-    print("package probe passed: wheel and sdist include source and import cleanly")
+    print(
+        "package probe passed: wheel and sdist include source, import cleanly, "
+        "and run the installed CLI"
+    )
     return 0
 
 

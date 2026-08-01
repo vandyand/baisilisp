@@ -242,9 +242,11 @@ for the CLI. **Completed locally:** ``scripts/package_probe.py`` builds the
 current package into an sdist and wheel through Maturin, asserts representative
 ``.lpy`` sources are included, installs each artifact into a clean environment,
 imports ``core``, ``concurrent``, ``datafy``, and ``spec.alpha``, checks the
-async/channel entrypoints, and verifies namespace cache creation. It is
-intentionally a black-box artifact probe rather than a unit test of Maturin
-internals.
+async/channel entrypoints, verifies namespace cache creation, and runs the
+installed ``basilisp`` console script against a temporary ``pyproject.toml``
+source-path project. The main test workflow now gates that probe on the
+Linux/Python 3.14 lane. It is intentionally a black-box artifact probe rather
+than a unit test of Maturin internals.
 
 Only a failing probe justifies ``basilisp.build``. A future wrapper backend
 must delegate to the established native-extension build path, implement the
