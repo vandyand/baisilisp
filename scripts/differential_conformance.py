@@ -150,15 +150,7 @@ EXPECTED_CONFORMANCE_FIXTURE_NAMES = (
     "xml_cases.cljc",
     "zip_cases.cljc",
 )
-DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset(
-    {
-        # ``prepl_cases.cljc`` currently hangs under file-based differential
-        # execution because pREPL/IO-pREPL termination is a stream lifecycle
-        # concern, not a simple finite source-file contract. Keep it available
-        # for explicit investigation without blocking full-corpus proof runs.
-        "prepl_cases.cljc",
-    }
-)
+DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
 CLOJURE_VERSION = "1.12.4"
 DEFAULT_CLOJURE_SDEPS = (
     f'{{:deps {{org.clojure/clojure {{:mvn/version \\"{CLOJURE_VERSION}\\"}} '

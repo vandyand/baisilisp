@@ -542,10 +542,12 @@ effect of copied source files.
 
 The differential conformance corpus is likewise inventory-gated. The checked-in
 ``tests/conformance/*_cases.cljc`` files are pinned in
-``scripts/differential_conformance.py``, including explicitly excluded fixtures
-such as the finite-runner-incompatible pREPL case. ``--verify-inventory`` fails
-before sharded execution when fixture files drift from that manifest, keeping
-fixture corpus changes visible in review.
+``scripts/differential_conformance.py``. The pREPL fixture now runs inside the
+normal full-corpus shard set, so local ``prepl`` and ``io-prepl`` event
+contracts are part of the same JVM/Basilisp differential proof as other
+standard namespaces. ``--verify-inventory`` fails before sharded execution when
+fixture files drift from that manifest, keeping fixture corpus changes visible
+in review.
 
 Pretty Printing
 ^^^^^^^^^^^^^^^
