@@ -49,6 +49,7 @@ from basilisp.lang.interfaces import (
     IPersistentSet,
     IPersistentStack,
     IPersistentVector,
+    IRecord,
     IReduce,
     ISeq,
     ISeqable,
@@ -1955,6 +1956,11 @@ def _keys_none(_: None) -> None:
     return None
 
 
+@keys.register(IRecord)
+def _keys_record(o: IRecord) -> ISeq | None:
+    return to_seq(iter(o))
+
+
 @keys.register(IPersistentMap)
 @keys.register(collections.abc.Iterable)
 @keys.register(ISeqable)
@@ -2000,6 +2006,11 @@ def _vals_str(o: str) -> None:
     if to_seq(o) is None:
         return
     raise TypeError(f"Object of type {type(o)} cannot be coerced to a value sequence")
+
+
+@vals.register(IRecord)
+def _vals_record(o: IRecord) -> ISeq | None:
+    return to_seq(o.val_at(k) for k in o)
 
 
 @vals.register(IPersistentMap)

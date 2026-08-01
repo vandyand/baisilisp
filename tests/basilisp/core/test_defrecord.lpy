@@ -229,6 +229,19 @@
                (pr-str p))
              (pr-str p))))))
 
+(deftest compact-print-dup-uses-record-field-and-extension-values-test
+  (let [p (with-meta (assoc (->Point 1 2 3) :extra 4 :another 5)
+            {:type :ignored-dispatch})]
+    (is (contains? #{"#tests.basilisp.core.test-defrecord.Point[1 2 3 4 5]"
+                     "#tests.basilisp.core.test-defrecord.Point[1 2 3 5 4]"}
+                   (binding [*print-dup* true]
+                     (pr-str p))))
+    (is (str/includes?
+          (binding [*print-dup* true
+                    *verbose-defrecords* true]
+            (pr-str p))
+          ":extra 4"))))
+
 (definterface Shape
   (area []))
 

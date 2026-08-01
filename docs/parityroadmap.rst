@@ -1596,6 +1596,11 @@ Completed locally:
   syntax errors. This keeps CLI/pREPL-facing diagnostic maps useful for
   source-aware tooling while preserving the existing human-readable traceback
   format.
+* Source-aware stacktrace rendering now routes ``basilisp.stacktrace`` and
+  ``clojure.repl/pst`` output through Basilisp's registered exception formatter.
+  Reader/compiler exceptions keep their source diagnostics even when nested
+  under ordinary Python wrapper exceptions, while Python tracebacks keep bounded
+  frame rendering.
 
 Near-term deliverable:
 

@@ -115,6 +115,8 @@ def format_compiler_exception(  # pylint: disable=too-many-branches,unused-argum
     tp: type[Exception] | None = None,
     tb: TracebackType | None = None,
     disable_color: bool | None = None,
+    limit: int | None = None,
+    chain: bool = True,
 ) -> list[str]:
     """Format a compiler exception as a list of newline-terminated strings.
 
