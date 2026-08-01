@@ -38,6 +38,8 @@ def format_exception(  # pylint: disable=unused-argument
     tp: type[BaseException] | None = None,
     tb: TracebackType | None = None,
     disable_color: bool | None = None,
+    limit: int | None = None,
+    chain: bool = True,
 ) -> list[str]:
     """Format an exception into something readable, returning a list of newline
     terminated strings.
@@ -53,7 +55,49 @@ def format_exception(  # pylint: disable=unused-argument
             tp = type(e)
         if tb is None:
             tb = e.__traceback__
-    return traceback.format_exception(tp, e, tb)
+
+        # Python's default chain formatter does not know about Basilisp's registered
+        # exception formatters. Render chains here so nested reader/compiler
+        # exceptions preserve their source-aware diagnostics even when wrapped by an
+        # ordinary Python exception.
+        if chain:
+            lines: list[str] = []
+            if e.__cause__ is not None:
+                lines.extend(
+                    format_exception(
+                        e.__cause__,
+                        type(e.__cause__),
+                        e.__cause__.__traceback__,
+                        disable_color=disable_color,
+                        limit=limit,
+                        chain=True,
+                    )
+                )
+                lines.append(
+                    "\nThe above exception was the direct cause of the following "
+                    "exception:\n\n"
+                )
+            elif e.__context__ is not None and not e.__suppress_context__:
+                lines.extend(
+                    format_exception(
+                        e.__context__,
+                        type(e.__context__),
+                        e.__context__.__traceback__,
+                        disable_color=disable_color,
+                        limit=limit,
+                        chain=True,
+                    )
+                )
+                lines.append(
+                    "\nDuring handling of the above exception, another exception "
+                    "occurred:\n\n"
+                )
+            lines.extend(
+                traceback.format_exception(tp, e, tb, limit=limit, chain=False)
+            )
+            return lines
+
+    return traceback.format_exception(tp, e, tb, limit=limit, chain=False)
 
 
 def print_exception(

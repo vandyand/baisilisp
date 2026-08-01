@@ -1,8 +1,9 @@
 (ns tests.basilisp.test-stacktrace
   (:require [basilisp.stacktrace :as s]
             [basilisp.string :as str]
-            [basilisp.test :refer [deftest are is testing]])
-  (:import traceback))
+            [basilisp.test :refer [deftest is testing]])
+  (:import [basilisp.lang.reader :as reader]
+           traceback))
 
 
 (defn- exception-test []
@@ -83,18 +84,72 @@
       ;; one stack frame
       (let [trace1 (-> (with-out-str (s/print-cause-trace e 1))
                        (str/split-lines))]
-        (doseq [line trace1]
-          (println line))
         (is (= "Traceback (most recent call last):" (first trace1)))
-        (is (every? (set trace1) ["    (try" " ZeroDivisionError: Fraction(5, 0)"])))
+        (is (every? (set trace1) ["    (try" "ZeroDivisionError: Fraction(5, 0)"])))
 
       ;; full stack
       (let [trace (-> (with-out-str (s/print-cause-trace e))
                       (str/split-lines))]
         (is (= "Traceback (most recent call last):" (first trace)))
         (is (= ["    raise ZeroDivisionError('Fraction(%s, 0)' % numerator)"
-                " ZeroDivisionError: Fraction(5, 0)"]
+                "ZeroDivisionError: Fraction(5, 0)"]
                (take-last 2 trace)))))))
+
+(deftest python-cause-trace-preserves-chain-test
+  (try
+    (chained-exception)
+    (catch python/ValueError e
+      (let [stack-trace (with-out-str (s/print-stack-trace e))
+            cause-trace (with-out-str (s/print-cause-trace e))]
+        (is (str/includes? stack-trace "ValueError: Division by zero"))
+        (is (not (str/includes? stack-trace "ZeroDivisionError: float division by zero")))
+        (is (str/includes? cause-trace "ZeroDivisionError: float division by zero"))
+        (is (str/includes?
+              cause-trace
+              "The above exception was the direct cause of the following exception"))
+        (is (str/includes? cause-trace "ValueError: Division by zero"))))))
+
+(deftest source-aware-reader-exception-trace-test
+  (testing "reader exceptions use Basilisp's registered source-aware formatter"
+    (let [error    (reader/SyntaxError "bad stacktrace reader"
+                                       7
+                                       3
+                                       "stacktrace-reader.lpy")
+          rendered (with-out-str (s/print-stack-trace error))]
+      (is (str/includes? rendered
+                         "exception: <class 'basilisp.lang.reader.SyntaxError'>"))
+      (is (str/includes? rendered "message: bad stacktrace reader"))
+      (is (str/includes? rendered "location: stacktrace-reader.lpy:7:3"))
+      (is (not (str/includes? rendered "Traceback (most recent call last):")))))
+
+  (testing "generated source positions render without falling back to Python tracebacks"
+    (doseq [line [1 2 17 128]
+            col  [0 1 13]]
+      (let [file     (str "generated-" line "-" col ".lpy")
+            error    (reader/SyntaxError "generated reader failure" line col file)
+            rendered (with-out-str (s/print-stack-trace error))]
+        (is (str/includes? rendered (str "location: " file ":" line ":" col)))
+        (is (not (str/includes? rendered "Traceback (most recent call last):")))))))
+
+(deftest source-aware-reader-cause-trace-test
+  (let [reader-error (reader/SyntaxError "bad nested reader form"
+                                         4
+                                         2
+                                         "nested-reader.lpy")]
+    (try
+      (throw (python/RuntimeError "outer execution failure") reader-error)
+      (catch python/RuntimeError e
+        (let [stack-trace (with-out-str (s/print-stack-trace e))
+              cause-trace (with-out-str (s/print-cause-trace e))]
+          (is (str/includes? stack-trace "RuntimeError: outer execution failure"))
+          (is (not (str/includes? stack-trace "bad nested reader form")))
+          (is (str/includes? cause-trace "bad nested reader form"))
+          (is (str/includes? cause-trace "location: nested-reader.lpy:4:2"))
+          (is (str/includes?
+                cause-trace
+                "The above exception was the direct cause of the following exception"))
+          (is (str/includes? cause-trace
+                             "RuntimeError: outer execution failure")))))))
 
 (deftest print-throwable
   (try

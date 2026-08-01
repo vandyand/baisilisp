@@ -178,6 +178,8 @@ def format_syntax_error(  # pylint: disable=unused-argument
     tp: type[Exception] | None = None,
     tb: TracebackType | None = None,
     disable_color: bool | None = None,
+    limit: int | None = None,
+    chain: bool = True,
 ) -> list[str]:
     """If `disable_color` is True, no color formatting will be applied to the source
     code."""
