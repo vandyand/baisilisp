@@ -27,7 +27,8 @@ def _looks_like_lpy(filename: str) -> bool:
     """Return whether ``filename`` names a concrete Basilisp source file."""
     if filename.startswith("<") and filename.endswith(">"):
         return False
-    return Path(filename).suffix == _LPY_SUFFIX
+    path = Path(filename)
+    return path.suffix == _LPY_SUFFIX and path.is_file()
 
 
 def _normalize_filename(filename: str) -> str:
@@ -104,13 +105,14 @@ class BasilispFileTracer(FileTracer):
 
     def __init__(self, filename: str) -> None:
         self._filename = _normalize_filename(filename)
+        self._executable_lines = executable_lines(self._filename)
 
     def source_filename(self) -> str:
         return self._filename
 
     def line_number_range(self, frame: FrameType) -> tuple[int, int]:
         line_no = frame.f_lineno
-        if line_no <= 0:
+        if line_no <= 0 or line_no not in self._executable_lines:
             return -1, -1
         return line_no, line_no
 

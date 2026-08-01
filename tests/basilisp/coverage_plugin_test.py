@@ -19,7 +19,7 @@ def _write(path: Path, source: str) -> Path:
 
 def test_file_tracer_accepts_only_concrete_lpy_files(tmp_path: Path) -> None:
     plugin = basilisp_coverage.BasilispCoveragePlugin()
-    lpy_file = tmp_path / "sample.lpy"
+    lpy_file = _write(tmp_path / "sample.lpy", "(ns coverage.sample)\n")
     py_file = tmp_path / "sample.py"
 
     tracer = plugin.file_tracer(str(lpy_file))
@@ -27,6 +27,7 @@ def test_file_tracer_accepts_only_concrete_lpy_files(tmp_path: Path) -> None:
     assert tracer is not None
     assert tracer.source_filename() == str(lpy_file.resolve())
     assert plugin.file_tracer(str(py_file)) is None
+    assert plugin.file_tracer(str(tmp_path / "missing.lpy")) is None
     assert plugin.file_tracer("<REPL Input>") is None
 
 
