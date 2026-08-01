@@ -159,6 +159,108 @@ def test_reflect_public_vars_are_shared_when_implemented():
     assert "basilisp-extension" == statuses["PythonReflector"]
 
 
+def test_allowed_basilisp_extensions_are_sorted_unique_and_audited_namespaces():
+    audited_namespaces = {pair.basilisp_ns for pair in matrix.STANDARD_NAMESPACE_PAIRS}
+
+    assert matrix.ALLOWED_BASILISP_EXTENSIONS
+    assert set(matrix.ALLOWED_BASILISP_EXTENSIONS) <= audited_namespaces
+
+    for namespace, symbols in matrix.ALLOWED_BASILISP_EXTENSIONS.items():
+        assert tuple(sorted(symbols)) == symbols, namespace
+        assert len(set(symbols)) == len(symbols), namespace
+
+
+def test_basilisp_extension_manifest_accepts_exact_observed_set():
+    rows = [
+        {
+            "clojure_namespace": "clojure.string",
+            "basilisp_namespace": "basilisp.string",
+            "symbol": symbol,
+            "clojure": "false",
+            "basilisp": "true",
+            "status": "basilisp-extension",
+        }
+        for symbol in matrix.ALLOWED_BASILISP_EXTENSIONS["basilisp.string"]
+    ]
+    rows.append(
+        {
+            "clojure_namespace": "clojure.string",
+            "basilisp_namespace": "basilisp.string",
+            "symbol": "blank?",
+            "clojure": "true",
+            "basilisp": "true",
+            "status": "shared",
+        }
+    )
+
+    allowed = {"basilisp.string": matrix.ALLOWED_BASILISP_EXTENSIONS["basilisp.string"]}
+    original = matrix.ALLOWED_BASILISP_EXTENSIONS
+    try:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = allowed
+        assert matrix.basilisp_extension_errors(rows) == []
+    finally:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = original
+
+
+def test_basilisp_extension_manifest_rejects_unexpected_extension():
+    rows = [
+        {
+            "clojure_namespace": "clojure.string",
+            "basilisp_namespace": "basilisp.string",
+            "symbol": "new-extra",
+            "clojure": "false",
+            "basilisp": "true",
+            "status": "basilisp-extension",
+        }
+    ]
+
+    allowed = {"basilisp.string": ()}
+    original = matrix.ALLOWED_BASILISP_EXTENSIONS
+    try:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = allowed
+        assert matrix.basilisp_extension_errors(rows) == [
+            "unexpected Basilisp extension(s) in basilisp.string: new-extra"
+        ]
+    finally:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = original
+
+
+def test_basilisp_extension_manifest_rejects_stale_entry():
+    rows = []
+
+    allowed = {"basilisp.string": ("old-extra",)}
+    original = matrix.ALLOWED_BASILISP_EXTENSIONS
+    try:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = allowed
+        assert matrix.basilisp_extension_errors(rows) == [
+            "stale Basilisp extension namespace basilisp.string: old-extra"
+        ]
+    finally:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = original
+
+
+def test_basilisp_extension_manifest_rejects_unmanifested_namespace():
+    rows = [
+        {
+            "clojure_namespace": "clojure.new",
+            "basilisp_namespace": "basilisp.new",
+            "symbol": "extra",
+            "clojure": "false",
+            "basilisp": "true",
+            "status": "basilisp-extension",
+        }
+    ]
+
+    original = matrix.ALLOWED_BASILISP_EXTENSIONS
+    try:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = {}
+        assert matrix.basilisp_extension_errors(rows) == [
+            "unexpected Basilisp extension namespace basilisp.new: extra"
+        ]
+    finally:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = original
+
+
 @given(
     shared=st.sets(st.from_regex(r"[a-z][a-z0-9-]{0,8}", fullmatch=True), max_size=8),
     missing=st.sets(st.from_regex(r"m[a-z0-9-]{0,8}", fullmatch=True), max_size=4),
@@ -199,6 +301,38 @@ def test_generated_surface_rows_ignore_non_portable_artifacts():
         "generated$123": "non-portable-artifact",
         "same": "shared",
     }
+
+
+@given(
+    namespace=st.from_regex(
+        r"basilisp\.[a-z][a-z0-9-]*(\.[a-z][a-z0-9-]*){0,3}",
+        fullmatch=True,
+    ),
+    symbol=st.from_regex(r"[a-z][a-z0-9-?!*]{0,8}", fullmatch=True),
+)
+def test_generated_unmanifested_extension_is_reported(namespace, symbol):
+    if namespace in matrix.ALLOWED_BASILISP_EXTENSIONS:
+        return
+
+    rows = [
+        {
+            "clojure_namespace": namespace.replace("basilisp.", "clojure.", 1),
+            "basilisp_namespace": namespace,
+            "symbol": symbol,
+            "clojure": "false",
+            "basilisp": "true",
+            "status": "basilisp-extension",
+        }
+    ]
+
+    original = matrix.ALLOWED_BASILISP_EXTENSIONS
+    try:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = {}
+        assert matrix.basilisp_extension_errors(rows) == [
+            f"unexpected Basilisp extension namespace {namespace}: {symbol}"
+        ]
+    finally:
+        matrix.ALLOWED_BASILISP_EXTENSIONS = original
 
 
 def test_publics_expr_requires_each_namespace_and_prints_publics():

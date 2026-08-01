@@ -114,7 +114,7 @@ jobs:
           head -n 40 core-semantic-coverage.csv
           tox exec -e py314 -- python scripts/semantic_fixture_coverage.py --basilisp-command ".tox/py314/bin/basilisp run -c" --min-coverage 100 > semantic-coverage.csv
           tail -n 20 semantic-coverage.csv
-          tox exec -e py314 -- python scripts/standard_namespace_surface_matrix.py --basilisp-command ".tox/py314/bin/basilisp run -c" > standard-namespace-surface.csv
+          tox exec -e py314 -- python scripts/standard_namespace_surface_matrix.py --verify-extensions --basilisp-command ".tox/py314/bin/basilisp run -c" > standard-namespace-surface.csv
           tail -n 20 standard-namespace-surface.csv
           tox exec -e py314 -- python scripts/standard_namespace_inventory.py --verify-clojure --verify-basilisp --verify-legacy-source --verify-source-omissions --verify-discovered-resources --basilisp-command ".tox/py314/bin/basilisp run -c" -o standard-namespace-inventory.csv
       - name: Run package artifact probe
