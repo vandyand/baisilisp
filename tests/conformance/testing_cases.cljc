@@ -269,6 +269,62 @@
      (binding [t/*test-output* false]
        (exception-report-payload-body))))
 
+(defn instance-report-actual-summary [actual]
+  (cond
+    #?(:clj (= String actual)
+       :lpy (= python/str actual)) :string-class
+    #?(:clj (= Long actual)
+       :lpy (= python/int actual)) :integer-class
+    (nil? actual) :nil
+    :else (pr-str actual)))
+
+(defn instance-report-expected-matches? [m]
+  (let [string-symbol #?(:clj 'String :lpy 'python/str)]
+    (case (:message m)
+      "instance-pass" (= (:expected m)
+                         (list 'instance? string-symbol "x"))
+      "instance-fail" (= (:expected m)
+                         (list 'instance? string-symbol 1))
+      "instance-nil" (= (:expected m)
+                        (list 'instance? string-symbol nil))
+      "predicate-fail" (= (:expected m) '(string? 1)))))
+
+(defn instance-report-summary [m]
+  {:type (:type m)
+   :message (:message m)
+   :expected-matches-source (instance-report-expected-matches? m)
+   :actual (if (= "predicate-fail" (:message m))
+             (pr-str (:actual m))
+             (instance-report-actual-summary (:actual m)))})
+
+(defn instance-report-payload-body []
+  (let [events (atom [])
+        capture-report (fn [m]
+                         (swap! events conj (instance-report-summary m))
+                         nil)]
+    #?(:clj
+       (with-redefs [t/report capture-report]
+         {:returns [(t/is (instance? String "x") "instance-pass")
+                    (t/is (instance? String 1) "instance-fail")
+                    (t/is (instance? String nil) "instance-nil")
+                    (t/is (string? 1) "predicate-fail")]
+          :events @events})
+       :lpy
+       (binding [t/report capture-report]
+         {:returns [(t/is (instance? python/str "x") "instance-pass")
+                    (t/is (instance? python/str 1) "instance-fail")
+                    (t/is (instance? python/str nil) "instance-nil")
+                    (t/is (string? 1) "predicate-fail")]
+          :events @events}))))
+
+(def instance-report-payload-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)]
+       (instance-report-payload-body))
+     :lpy
+     (binding [t/*test-output* false]
+       (instance-report-payload-body))))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -280,3 +336,4 @@
 (emit-case :is-equality-arity-report-values equality-arity-report-values)
 (emit-case :thrown-with-msg-return-values thrown-with-msg-return-values)
 (emit-case :exception-report-payload-values exception-report-payload-values)
+(emit-case :instance-report-payload-values instance-report-payload-values)

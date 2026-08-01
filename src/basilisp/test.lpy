@@ -279,7 +279,7 @@
                      :expected (quote ~form) :actual (cons (quote ~pred) values#)})
          (do-report {:type :fail :message ~msg
                      :expected (quote ~form)
-                     :actual (list (quote not) (cons (quote ~pred) values#))}))
+                     :actual (list (symbol "not") (cons (quote ~pred) values#))}))
        result#)))
 
 (defn assert-any
@@ -307,6 +307,7 @@
                            (if (symbol? maybe-f)
                              (cond
                                (= 'basilisp.core/= maybe-f) (symbol (name maybe-f))
+                               (= 'basilisp.core/instance? maybe-f) (symbol (name maybe-f))
                                (#{'thrown-with-msg? 'thrown?} (symbol maybe-f))
                                (symbol (name maybe-f))
                                ;; clojure-test-suite defines this portable assertion
@@ -334,6 +335,25 @@
                    :actual (list (symbol "not") actual-form#)
                    :expected (quote ~expr)}))
      result#)))
+
+(defmethod assert-expr 'instance?
+  [msg expr]
+  (let [class-form (second expr)
+        value-form (nth expr 2)]
+    `(let [class# ~class-form
+           value# ~value-form
+           result# (instance? class# value#)
+           actual# (if (nil? value#) nil (python/type value#))]
+       (if result#
+         (do-report {:type :pass
+                     :message ~msg
+                     :actual actual#
+                     :expected (quote ~expr)})
+         (do-report {:type :fail
+                     :message ~msg
+                     :actual actual#
+                     :expected (quote ~expr)}))
+       result#)))
 
 (defmethod assert-expr 'thrown?
   [msg expr]

@@ -1453,6 +1453,12 @@ Near-term deliverable:
   pass, no-throw, wrong-type, regex-match, and regex-mismatch payload summaries
   across JVM Clojure and Basilisp while normalizing only unavoidable host class
   names.
+* **Completed locally:** align ``instance?`` and generic predicate assertion
+  report payloads with Clojure. ``(is (instance? T x))`` now reports the
+  observed runtime class as ``:actual`` and ``nil`` for nil actuals, while
+  generic predicate failures render ``(not (...))`` with the public unqualified
+  ``not`` symbol rather than ``basilisp.core/not``. Shared fixtures cover
+  passing, failing, nil, and generic predicate-failure reports.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
