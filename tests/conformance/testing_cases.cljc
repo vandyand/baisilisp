@@ -325,6 +325,84 @@
      (binding [t/*test-output* false]
        (instance-report-payload-body))))
 
+(defn qualified-report-head-symbols []
+  {:eq #?(:clj 'clojure.core/= :lpy 'basilisp.core/=)
+   :instance #?(:clj 'clojure.core/instance? :lpy 'basilisp.core/instance?)
+   :not #?(:clj 'clojure.core/not :lpy 'basilisp.core/not)})
+
+(defn qualified-report-expected-matches? [m]
+  (let [{eq-symbol :eq instance-symbol :instance not-symbol :not}
+        (qualified-report-head-symbols)]
+    (case (:message m)
+      "fq-eq" (= (:expected m) (list eq-symbol 1 2))
+      "fq-instance-pass" (= (:expected m)
+                            (list instance-symbol
+                                  #?(:clj 'String :lpy 'python/str)
+                                  "x"))
+      "fq-instance-fail" (= (:expected m)
+                            (list instance-symbol
+                                  #?(:clj 'String :lpy 'python/str)
+                                  1))
+      "fq-not" (= (:expected m) (list not-symbol true)))))
+
+(defn qualified-report-generic-actual? [m]
+  (let [{eq-symbol :eq instance-symbol :instance not-symbol :not}
+        (qualified-report-head-symbols)
+        actual (:actual m)]
+    (case (:message m)
+      "fq-eq" (and (seq? actual)
+                   (= 'not (first actual))
+                   (= (list eq-symbol 1 2) (second actual)))
+      "fq-instance-pass" (and (seq? actual)
+                              (= instance-symbol (first actual))
+                              (= :string-class (instance-report-actual-summary (second actual)))
+                              (= "x" (nth actual 2)))
+      "fq-instance-fail" (let [inner (second actual)]
+                           (and (seq? actual)
+                                (= 'not (first actual))
+                                (seq? inner)
+                                (= instance-symbol (first inner))
+                                (= :string-class
+                                   (instance-report-actual-summary (second inner)))
+                                (= 1 (nth inner 2))))
+      "fq-not" (and (seq? actual)
+                    (= 'not (first actual))
+                    (= (list not-symbol true) (second actual))))))
+
+(defn qualified-report-summary [m]
+  {:type (:type m)
+   :message (:message m)
+   :expected-matches-source (qualified-report-expected-matches? m)
+   :actual-is-generic-predicate (qualified-report-generic-actual? m)})
+
+(defn qualified-report-payload-body []
+  (let [events (atom [])
+        capture-report (fn [m]
+                         (swap! events conj (qualified-report-summary m))
+                         nil)]
+    #?(:clj
+       (with-redefs [t/report capture-report]
+         {:returns [(t/is (clojure.core/= 1 2) "fq-eq")
+                    (t/is (clojure.core/instance? String "x") "fq-instance-pass")
+                    (t/is (clojure.core/instance? String 1) "fq-instance-fail")
+                    (t/is (clojure.core/not true) "fq-not")]
+          :events @events})
+       :lpy
+       (binding [t/report capture-report]
+         {:returns [(t/is (basilisp.core/= 1 2) "fq-eq")
+                    (t/is (basilisp.core/instance? python/str "x") "fq-instance-pass")
+                    (t/is (basilisp.core/instance? python/str 1) "fq-instance-fail")
+                    (t/is (basilisp.core/not true) "fq-not")]
+          :events @events}))))
+
+(def qualified-report-payload-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)]
+       (qualified-report-payload-body))
+     :lpy
+     (binding [t/*test-output* false]
+       (qualified-report-payload-body))))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -337,3 +415,4 @@
 (emit-case :thrown-with-msg-return-values thrown-with-msg-return-values)
 (emit-case :exception-report-payload-values exception-report-payload-values)
 (emit-case :instance-report-payload-values instance-report-payload-values)
+(emit-case :qualified-report-payload-values qualified-report-payload-values)

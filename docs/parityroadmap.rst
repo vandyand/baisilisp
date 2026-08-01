@@ -1459,6 +1459,13 @@ Near-term deliverable:
   generic predicate failures render ``(not (...))`` with the public unqualified
   ``not`` symbol rather than ``basilisp.core/not``. Shared fixtures cover
   passing, failing, nil, and generic predicate-failure reports.
+* **Completed locally:** preserve Clojure's exact assertion dispatch boundary
+  for fully qualified core predicate heads. ``(is (clojure.core/= ...))``,
+  ``(is (clojure.core/instance? ...))``, and ``(is (clojure.core/not ...))`` are
+  generic predicate assertions in JVM Clojure, not the unqualified special
+  assertion handlers; Basilisp now treats the corresponding ``basilisp.core/*``
+  heads the same way. Shared fixtures lock return values plus source-form and
+  generic-predicate actual-shape checks.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
