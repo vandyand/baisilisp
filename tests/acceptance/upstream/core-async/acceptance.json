@@ -10,6 +10,6 @@
     "clojure.core.async -> basilisp.core.async",
     "clojure.core.async.impl.ioc-macros -> basilisp.core.async.impl.ioc-macros",
     "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
-    "portable source examples plus public IOC runtime helpers only; compiler-generated ioc-alts! state-machine integration remains excluded"
+    "portable source examples plus public IOC runtime helpers and direct ioc-alts! state-array integration; compiler-generated go lowering remains excluded"
   ]
 }

@@ -312,8 +312,9 @@ Channel transducers, pub/sub, mult/mix routing, blocking/thread bridges, and a
 coroutine-backed ``go`` parking subset are now covered by staged JVM fixtures;
 the shipped ``clojure.core.async.impl`` protocol, buffer, channel, dispatch,
 and IOC runtime-helper source-import surfaces now have Python-native
-compatibility facades. Deeper compiler-produced IOC state-machine parity,
-including full ``ioc-alts!`` selection integration, remains later work. See
+compatibility facades. Direct ``ioc-alts!`` state-array selection integrates
+with the same ``do-alts`` runtime path. Deeper compiler-produced IOC
+state-machine lowering from ``go`` bodies remains later work. See
 :ref:`core_async_design` for the staged ``clojure.core.async`` compatibility
 design.
 

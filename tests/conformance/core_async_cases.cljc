@@ -323,27 +323,55 @@
                (impl-ioc/aget-object put-state impl-ioc/VALUE-IDX)
                (impl-ioc/aget-object put-state impl-ioc/STATE-IDX)]}))))
 
-(defn ioc-boundary-summary []
-  #?(:clj {:public? true
-           :boundary :unsupported-ioc-state-machine
-           :required :compiler-generated-ioc
-           :retains-inputs? true}
-     :lpy (try
-            (async/ioc-alts! :state :block [:port])
-            {:public? true
-             :boundary :not-rejected
-             :required nil
-             :retains-inputs? false}
-            (catch Exception e
-              (let [data (ex-data e)]
-                {:public? (contains? (current-publics) 'ioc-alts!)
-                 :boundary (:basilisp.core.async/boundary data)
-                 :required (:basilisp.core.async/required data)
-                 :retains-inputs? (= [:state :block [:port] nil]
-                                     [(:state data)
-                                      (:cont-block data)
-                                      (:ports data)
-                                      (:opts data)])})))))
+(defn ioc-alts-summary []
+  (let [normalize (fn [result expected-port]
+                    [(first result) (identical? (second result) expected-port)])
+        ready-channel (async/chan 1)
+        ready-state   (impl-ioc-make-state (fn [_] :unused))
+        put-channel   (async/chan 1)
+        put-state     (impl-ioc-make-state (fn [_] :unused))
+        default-channel (async/chan)
+        default-state   (impl-ioc-make-state (fn [_] :unused))
+        enqueued-channel (async/chan)
+        enqueued-calls   (atom [])
+        enqueued-state   (impl-ioc-make-state
+                          (fn [state]
+                            (let [result (impl-ioc/aget-object state impl-ioc/VALUE-IDX)]
+                              (swap! enqueued-calls
+                                     conj
+                                     [(normalize result enqueued-channel)
+                                      (impl-ioc/aget-object state impl-ioc/STATE-IDX)])
+                              :continued)))]
+    (async/>!! ready-channel :ready)
+    (let [ready-result   (async/ioc-alts! ready-state 7 [ready-channel])
+          put-result     (async/ioc-alts! put-state 11 [[put-channel :written]])
+          default-result (async/ioc-alts! default-state
+                                          13
+                                          [default-channel]
+                                          :default
+                                          :fallback)
+          enqueued-result (async/ioc-alts! enqueued-state 17 [enqueued-channel])]
+      (async/>!! enqueued-channel :later)
+      #?(:clj (Thread/sleep 50)
+         :lpy (async/<!! (async/timeout 50)))
+      {:public? (contains? (current-publics) 'ioc-alts!)
+       :ready [ready-result
+               (normalize (impl-ioc/aget-object ready-state impl-ioc/VALUE-IDX)
+                          ready-channel)
+               (impl-ioc/aget-object ready-state impl-ioc/STATE-IDX)]
+       :put [put-result
+             (normalize (impl-ioc/aget-object put-state impl-ioc/VALUE-IDX)
+                        put-channel)
+             (async/<!! put-channel)
+             (impl-ioc/aget-object put-state impl-ioc/STATE-IDX)]
+       :default [default-result
+                 (impl-ioc/aget-object default-state impl-ioc/VALUE-IDX)
+                 (impl-ioc/aget-object default-state impl-ioc/STATE-IDX)]
+       :enqueued [enqueued-result
+                  @enqueued-calls
+                  (normalize (impl-ioc/aget-object enqueued-state impl-ioc/VALUE-IDX)
+                             enqueued-channel)
+                  (impl-ioc/aget-object enqueued-state impl-ioc/STATE-IDX)]})))
 
 #?(:clj
    (defn drain-channel [channel]
@@ -2359,8 +2387,8 @@
 (emit-case :core-async-public-surface
            (supported-public-surface))
 
-(emit-case :core-async-ioc-boundary
-           (ioc-boundary-summary))
+(emit-case :core-async-ioc-alts
+           (ioc-alts-summary))
 
 (emit-case :core-async-impl-namespaces
            [(impl-public-surface)

@@ -161,9 +161,10 @@ into one of these states:
    * - Compiler work
      - Requires ``go``/parking context or macro lowering.
      - Public surface covered locally by coroutine-backed ``go``, ``go-loop``,
-       ``<!``, ``>!``, and ``alt!``. Full Clojure IOC/state-machine parity,
-       including meaningful direct ``ioc-alts!`` integration, remains deeper
-       compiler work. The public ``clojure.core.async.impl.ioc-macros``
+       ``<!``, ``>!``, and ``alt!``. Direct ``ioc-alts!`` state-array
+       selection now uses the same ``do-alts`` runtime path as Clojure. Full
+       compiler-produced IOC/state-machine lowering remains deeper compiler
+       work. The public ``clojure.core.async.impl.ioc-macros``
        runtime helper surface is now covered for constants, state-array
        mutation, one-step state-machine execution, wrapped failure close,
        ``return-chan``, and immediate/enqueued ``take!``/``put!`` continuation
@@ -457,9 +458,9 @@ The initial implementation now covers:
   ``take!``: no callback returns an awaitable; callback calls schedule on the
   current event loop and return ``nil``.
 * Add the coroutine-backed parking surface ``go``, ``go-loop``, ``<!``,
-  ``>!``, and ``alt!``. ``ioc-alts!`` is public and rejects direct calls
-  deterministically because the current implementation does not expose a
-  Clojure-style IOC state machine.
+  ``>!``, and ``alt!``. ``ioc-alts!`` is public and now supports direct
+  Clojure-shaped state-array selection/resume behavior, while compiler lowering
+  into those state arrays remains outside the coroutine-backed ``go`` macro.
 * Harden the coroutine-backed parking subset with shared JVM fixtures for
   closed-channel takes, puts to closed channels, timeout interaction, nested
   ``alt!`` choices, close/result races, and exception-driven result-channel
@@ -510,11 +511,11 @@ The initial implementation now covers:
   preserve state across puts, may emit zero/one/many values, flush completion
   output on close, honor ``ex-handler`` replacement/drop behavior, and close
   the channel when a completing xform such as ``take`` terminates.
-* Harden the support matrix and IOC boundary: shared fixtures now require the
+* Harden the support matrix and IOC helpers: shared fixtures now require the
   ``clojure.core.async`` facade to have no missing or accidental extra public
   names, the source-level acceptance library emits the same exactness proof,
-  and direct ``ioc-alts!`` calls fail with structured ``ex-data`` identifying
-  the unsupported compiler-generated IOC state-machine boundary.
+  and direct ``ioc-alts!`` state-array calls match JVM ``core.async`` for
+  ready takes, puts, defaults, and enqueued continuation resume.
 * Harden synchronous constructor parity: task-backed facade functions now use
   the current event loop when present and Basilisp's shared background channel
   loop otherwise, so ordinary Clojure-shaped code can compose ``timeout``,
@@ -534,12 +535,13 @@ Why this tranche first:
 Recommended Next Tranche
 ------------------------
 
-The next tranche should decide whether deeper compiler-produced IOC parity is
+The next tranche should decide whether deeper compiler-produced IOC lowering is
 worth the complexity or whether the coroutine-backed ``go`` subset is the
 intended long-term compatibility boundary. The ``clojure.core.async`` public
-surface and the shipped ``clojure.core.async.impl`` public source-import
-surfaces are now exact and guarded, but public surface parity is not the same
-as full implementation parity:
+surface, direct ``ioc-alts!`` runtime helper behavior, and the shipped
+``clojure.core.async.impl`` public source-import surfaces are now exact and
+guarded, but public/runtime-helper parity is not the same as full compiler
+parity:
 
 * Keep the maintained public support matrix for ``clojure.core.async`` exact in
   both the differential fixture and the source-level acceptance library, and
@@ -550,10 +552,10 @@ as full implementation parity:
   channels, timeout interaction, nested parking choices, close/result races, and
   exception result-channel lifecycle, plus direct impl buffer/handler/channel
   and dispatch compatibility.
-* Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary for
-  the long term or invest in a compiler-produced state-machine representation.
-  The public IOC runtime helper namespace is now available; the missing piece
-  is compiler lowering and full ``ioc-alts!`` selection integration.
+* Decide whether to invest in compiler-produced state-machine lowering. The
+  public IOC runtime helper namespace and direct ``ioc-alts!`` selection
+  integration are now available; the missing piece is macro/compiler lowering
+  from ``go`` bodies into state arrays.
 * Add deterministic rejection or compatibility tests for unsupported
   parking/compiler forms if deeper IOC work begins. The audited upstream
   ``org.clojure/core.async`` 1.9.865 artifact does not ship
