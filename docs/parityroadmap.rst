@@ -1431,6 +1431,12 @@ Near-term deliverable:
   reporting pass/fail events, matching ordinary predicate and truthiness
   assertions. The shared fixture covers passing/failing scalar, collection,
   ``nil``/``false``, and boolean pairs while checking report counters.
+* **Completed locally:** preserve Clojure's exception assertion return values.
+  ``(is (thrown? ...))`` now returns ``nil`` for no-throw failure paths
+  regardless of reporter return value, and ``(is (thrown-with-msg? ...))``
+  returns the caught exception for the expected exception type even when the
+  regex does not match and a failure is reported. Shared fixtures cover
+  matching, regex-mismatch, and no-throw outcomes with report counters.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

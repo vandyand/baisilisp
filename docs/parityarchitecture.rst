@@ -1052,8 +1052,10 @@ Clojure-style thunk fixtures; Basilisp's generator-fixture form remains a
 ``with-fixtures`` extension rather than part of the shared contract. Assertion
 forms return Clojure-shaped values after reporting: truthiness and predicate
 assertions return their evaluated result, ``thrown?`` returns the caught
-exception on success, and equality assertions return the computed boolean for
-both pass and fail outcomes.
+exception on success and ``nil`` on failure, ``thrown-with-msg?`` returns the
+caught exception after a matching exception type even when the message regex
+fails, and equality assertions return the computed boolean for both pass and
+fail outcomes.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
