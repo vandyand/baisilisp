@@ -60,9 +60,13 @@ Near-term deliverable:
 
 * **Completed locally:** a minimal ``pyproject.toml``-first Basilisp project
   contract with source paths, test paths, and compiler options for CLI tools
-* next, prove a sample Basilisp package can build and install through the
-  existing Maturin backend before deciding whether a dedicated PEP 517 wrapper
-  is needed
+* **Completed locally:** the existing Maturin backend is guarded by
+  ``scripts/package_probe.py`` and the main test workflow. The probe builds the
+  wheel and sdist, verifies representative Lisp sources are packaged, installs
+  each artifact in isolation, imports shipped namespaces, confirms cache
+  creation, and runs the installed ``basilisp`` console script against a
+  temporary ``pyproject.toml`` source-path project before any dedicated PEP 517
+  wrapper is justified.
 
 2. Test Compatibility
 ^^^^^^^^^^^^^^^^^^^^^

@@ -500,8 +500,11 @@ or alter Python dependency resolution. Likewise, a self-hosting PEP 517 backend
 is a separate project. The existing Maturin backend is now verified by
 ``scripts/package_probe.py``: it builds a wheel and sdist, asserts
 representative ``.lpy`` sources are present, installs each artifact into a clean
-environment, imports Basilisp namespaces, and checks that namespace caching
-succeeds. Only a failing expansion of that probe justifies a wrapper backend.
+environment, imports Basilisp namespaces, checks that namespace caching
+succeeds, and runs the installed ``basilisp`` console script against a temporary
+``pyproject.toml``-configured source project. CI runs that artifact probe on
+the release-grade Linux/Python 3.14 lane. Only a failing expansion of that probe
+justifies a wrapper backend.
 An interactive ``add-lib`` must manage an explicitly selected Python environment
 and require a restart when imports cannot be made safe; it must not silently
 invoke a second package manager in the running process.
