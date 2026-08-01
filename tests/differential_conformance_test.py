@@ -27,7 +27,7 @@ def test_fixture_paths_defaults_to_the_sorted_corpus():
     assert fixtures == sorted(fixtures)
     assert fixtures
     assert all(path.parent.name == "conformance" for path in fixtures)
-    assert "prepl_cases.cljc" not in {path.name for path in fixtures}
+    assert "prepl_cases.cljc" in {path.name for path in fixtures}
 
 
 def test_conformance_fixture_inventory_is_sorted_unique_and_checked_in():
@@ -42,7 +42,7 @@ def test_conformance_fixture_inventory_is_sorted_unique_and_checked_in():
     assert tuple(sorted(expected)) == expected
     assert len(set(expected)) == len(expected)
     assert observed == expected
-    assert set(conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES) <= set(expected)
+    assert conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES == frozenset()
     assert conformance.conformance_inventory_errors() == []
 
 
