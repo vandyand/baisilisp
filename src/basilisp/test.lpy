@@ -343,23 +343,20 @@
        (let [result# (do ~@body)]
          (do-report {:type :fail
                      :message ~msg
-                     :expr (quote ~expr)
-                     :actual result#
-                     :expected (quote ~exc-type)})
+                     :actual nil
+                     :expected (quote ~expr)})
          nil)
        (catch ~exc-type e#
          (do-report {:type :pass
                      :message ~msg
-                     :expr (quote ~expr)
                      :actual e#
-                     :expected (quote ~exc-type)})
+                     :expected (quote ~expr)})
          e#)
        (catch python/Exception e#
-         (do-report {:type :fail
-                     :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
-                     :expr (quote ~expr)
+         (do-report {:type :error
+                     :message ~msg
                      :actual e#
-                     :expected ~exc-type})
+                     :expected (quote ~expr)})
          nil))))
 
 (defmethod assert-expr 'thrown-with-msg?
@@ -371,9 +368,8 @@
        (let [result# (do ~@body)]
          (do-report {:type :fail
                      :message ~msg
-                     :expr (quote ~expr)
-                     :actual result#
-                     :expected (quote ~exc-type)})
+                     :actual nil
+                     :expected (quote ~expr)})
          nil)
        (catch ~exc-type e#
          ;; Use python/str rather than Basilisp str to get the raw "message"
@@ -382,21 +378,18 @@
            (if (re-find ~pattern string-exc#)
              (do-report {:type :pass
                          :message ~msg
-                         :expr (quote ~expr)
                          :actual e#
-                         :expected ~pattern})
+                         :expected (quote ~expr)})
              (do-report {:type :fail
-                         :message "Regex pattern did not match"
-                         :expr (quote ~expr)
-                         :actual string-exc#
-                         :expected ~pattern}))
+                         :message ~msg
+                         :actual e#
+                         :expected (quote ~expr)}))
            e#))
        (catch python/Exception e#
-         (do-report {:type :fail
-                     :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
-                     :expr (quote ~expr)
+         (do-report {:type :error
+                     :message ~msg
                      :actual e#
-                     :expected ~exc-type})
+                     :expected (quote ~expr)})
          nil))))
 
 (defmethod assert-expr 'portable-thrown?

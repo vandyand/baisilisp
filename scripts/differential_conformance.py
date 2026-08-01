@@ -263,7 +263,7 @@ EXPECTED_CONFORMANCE_CASE_COUNTS = {
     "template_cases.cljc": 5,
     "test_check_cases.cljc": 12,
     "test_runner_cases.cljc": 9,
-    "testing_cases.cljc": 5,
+    "testing_cases.cljc": 6,
     "testing_reporting_cases.cljc": 1,
     "tools_cli_cases.cljc": 7,
     "tools_logging_cases.cljc": 11,

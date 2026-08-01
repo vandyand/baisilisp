@@ -1445,6 +1445,14 @@ Near-term deliverable:
   returns the caught exception for the expected exception type even when the
   regex does not match and a failure is reported. Shared fixtures cover
   matching, regex-mismatch, and no-throw outcomes with report counters.
+* **Completed locally:** align exception assertion report payloads with
+  Clojure's reporter contract. ``thrown?`` and ``thrown-with-msg?`` now report
+  the full source assertion form as ``:expected``, no-throw failures report
+  ``nil`` as ``:actual``, wrong exception types are ``:error`` events, and regex
+  mismatches keep the caught exception as ``:actual``. Shared fixtures compare
+  pass, no-throw, wrong-type, regex-match, and regex-mismatch payload summaries
+  across JVM Clojure and Basilisp while normalizing only unavoidable host class
+  names.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

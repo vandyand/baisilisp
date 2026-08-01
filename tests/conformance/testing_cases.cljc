@@ -141,6 +141,134 @@
                t/*report-counters* (ref t/*initial-report-counters*)]
        (thrown-with-msg-return-summary))))
 
+(defn exception-report-expected-thrown? [m class-symbol body-summary]
+  (let [form (:expected m)]
+    (and (seq? form)
+         (= 'thrown? (first form))
+         (= 3 (count form))
+         (= class-symbol (second form))
+         (= body-summary (pr-str (nth form 2))))))
+
+(defn exception-report-expected-thrown-with-msg? [m class-symbol pattern body-summary]
+  (let [form (:expected m)]
+    (and (seq? form)
+         (= 'thrown-with-msg? (first form))
+         (= 4 (count form))
+         (= class-symbol (second form))
+         (= pattern (pr-str (nth form 2)))
+         (= body-summary (pr-str (nth form 3))))))
+
+(defn exception-report-expected-matches? [m]
+  (let [exception-symbol #?(:clj 'Exception :lpy 'python/Exception)
+        wrong-symbol #?(:clj 'IllegalArgumentException :lpy 'python/ValueError)
+        throw-body #?(:clj "(throw (Exception. \"boom\"))"
+                      :lpy "(throw (python/Exception \"boom\"))")]
+    (case (:message m)
+      "thrown-pass" (exception-report-expected-thrown? m exception-symbol throw-body)
+      "thrown-no" (exception-report-expected-thrown? m exception-symbol "42")
+      "thrown-wrong" (exception-report-expected-thrown? m wrong-symbol throw-body)
+      "msg-pass" (exception-report-expected-thrown-with-msg? m exception-symbol
+                                                            "#\"boom\""
+                                                            throw-body)
+      "msg-mismatch" (exception-report-expected-thrown-with-msg? m exception-symbol
+                                                                "#\"missing\""
+                                                                throw-body)
+      "msg-no" (exception-report-expected-thrown-with-msg? m exception-symbol
+                                                          "#\"anything\""
+                                                          "42")
+      "msg-wrong" (exception-report-expected-thrown-with-msg? m wrong-symbol
+                                                             "#\"boom\""
+                                                             throw-body))))
+
+(defn exception-report-actual-kind [actual]
+  (cond
+    #?(:clj (instance? Throwable actual)
+       :lpy (instance? python/BaseException actual)) :exception
+    (nil? actual) :nil
+    :else :value))
+
+(defn exception-report-actual-summary [actual]
+  (cond
+    #?(:clj (instance? Throwable actual)
+       :lpy (instance? python/BaseException actual)) #?(:clj (.getMessage actual)
+                                                        :lpy (python/str actual))
+    :else (pr-str actual)))
+
+(defn exception-report-summary [m]
+  {:type (:type m)
+   :message (:message m)
+   :expected-matches-source (exception-report-expected-matches? m)
+   :actual-kind (exception-report-actual-kind (:actual m))
+   :actual (exception-report-actual-summary (:actual m))})
+
+(defn exception-report-payload-body []
+  (let [events (atom [])
+        capture-report (fn [m]
+                         (swap! events conj (exception-report-summary m))
+                         nil)]
+    #?(:clj
+       (with-redefs [t/report capture-report]
+         (t/is (thrown? Exception
+                        (throw (Exception. "boom")))
+               "thrown-pass")
+         (t/is (thrown? Exception 42)
+               "thrown-no")
+         (t/is (thrown? IllegalArgumentException
+                        (throw (Exception. "boom")))
+               "thrown-wrong")
+         (t/is (thrown-with-msg? Exception
+                                 #"boom"
+                                 (throw (Exception. "boom")))
+               "msg-pass")
+         (t/is (thrown-with-msg? Exception
+                                 #"missing"
+                                 (throw (Exception. "boom")))
+               "msg-mismatch")
+         (t/is (thrown-with-msg? Exception
+                                 #"anything"
+                                 42)
+               "msg-no")
+         (t/is (thrown-with-msg? IllegalArgumentException
+                                 #"boom"
+                                 (throw (Exception. "boom")))
+               "msg-wrong")
+         @events)
+       :lpy
+       (binding [t/report capture-report]
+         (t/is (thrown? python/Exception
+                        (throw (python/Exception "boom")))
+               "thrown-pass")
+         (t/is (thrown? python/Exception 42)
+               "thrown-no")
+         (t/is (thrown? python/ValueError
+                        (throw (python/Exception "boom")))
+               "thrown-wrong")
+         (t/is (thrown-with-msg? python/Exception
+                                 #"boom"
+                                 (throw (python/Exception "boom")))
+               "msg-pass")
+         (t/is (thrown-with-msg? python/Exception
+                                 #"missing"
+                                 (throw (python/Exception "boom")))
+               "msg-mismatch")
+         (t/is (thrown-with-msg? python/Exception
+                                 #"anything"
+                                 42)
+               "msg-no")
+         (t/is (thrown-with-msg? python/ValueError
+                                 #"boom"
+                                 (throw (python/Exception "boom")))
+               "msg-wrong")
+         @events))))
+
+(def exception-report-payload-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)]
+       (exception-report-payload-body))
+     :lpy
+     (binding [t/*test-output* false]
+       (exception-report-payload-body))))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -151,3 +279,4 @@
 (emit-case :is-equality-return-values equality-return-values)
 (emit-case :is-equality-arity-report-values equality-arity-report-values)
 (emit-case :thrown-with-msg-return-values thrown-with-msg-return-values)
+(emit-case :exception-report-payload-values exception-report-payload-values)
