@@ -50,6 +50,7 @@ Changelog = "https://github.com/vandyand/baisilisp/blob/main/CHANGELOG.md"
 [dependency-groups]
 dev = [
     "black >=24.0.0",
+    "coverage[toml] >=7.0.0",
     "docutils",
     "hypothesis >=6.0",
     "isort",
@@ -122,6 +123,7 @@ exclude = '''
 
 [tool.coverage.run]
 branch = true
+plugins = ["basilisp.contrib.coverage"]
 omit = [
     "*/__version__.py",
     "*/basilisp/contrib/sphinx/*",
