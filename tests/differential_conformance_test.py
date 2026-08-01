@@ -1,5 +1,6 @@
 from pathlib import Path
 from subprocess import CompletedProcess
+from tempfile import TemporaryDirectory
 
 import pytest
 from hypothesis import given
@@ -27,6 +28,72 @@ def test_fixture_paths_defaults_to_the_sorted_corpus():
     assert fixtures
     assert all(path.parent.name == "conformance" for path in fixtures)
     assert "prepl_cases.cljc" not in {path.name for path in fixtures}
+
+
+def test_conformance_fixture_inventory_is_sorted_unique_and_checked_in():
+    expected = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
+    observed = tuple(
+        sorted(
+            path.name
+            for path in conformance.DEFAULT_FIXTURE_DIRECTORY.glob("*_cases.cljc")
+        )
+    )
+
+    assert tuple(sorted(expected)) == expected
+    assert len(set(expected)) == len(expected)
+    assert observed == expected
+    assert set(conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES) <= set(expected)
+    assert conformance.conformance_inventory_errors() == []
+
+
+def test_conformance_fixture_inventory_reports_unexpected_and_missing_fixtures(
+    tmp_path,
+):
+    for name in ("expected_cases.cljc", "unexpected_cases.cljc"):
+        (tmp_path / name).write_text("(ns fixture)", encoding="utf-8")
+
+    original = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
+    original_excluded = conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES
+    try:
+        conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = (
+            "expected_cases.cljc",
+            "missing_cases.cljc",
+        )
+        conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
+        assert conformance.conformance_inventory_errors(tmp_path) == [
+            "unexpected conformance fixture(s): unexpected_cases.cljc",
+            "missing conformance fixture(s): missing_cases.cljc",
+        ]
+    finally:
+        conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = original
+        conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = original_excluded
+
+
+@given(
+    unexpected=st.lists(
+        st.from_regex(r"generated_[a-z0-9]{1,6}_cases\.cljc", fullmatch=True),
+        min_size=1,
+        max_size=5,
+        unique=True,
+    )
+)
+def test_generated_conformance_inventory_drift_is_reported(unexpected):
+    with TemporaryDirectory() as dirname:
+        root = Path(dirname)
+        for name in unexpected:
+            (root / name).write_text("(ns fixture)", encoding="utf-8")
+
+        original = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
+        original_excluded = conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES
+        try:
+            conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = ()
+            conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
+            assert conformance.conformance_inventory_errors(root) == [
+                "unexpected conformance fixture(s): " + ", ".join(sorted(unexpected))
+            ]
+        finally:
+            conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = original
+            conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = original_excluded
 
 
 def test_fixture_paths_preserves_explicit_selection():
@@ -148,3 +215,28 @@ def test_run_merges_extra_environment(monkeypatch):
 
     assert seen_env["BASILISP_EXISTING_ENV"] == "preserved"
     assert seen_env["BASILISP_DO_NOT_CACHE_NAMESPACES"] == "true"
+
+
+def test_main_verify_inventory_can_run_without_fixture_execution(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("fixture execution should not run")
+
+    monkeypatch.setattr(conformance, "conformance_inventory_errors", lambda: [])
+    monkeypatch.setattr(conformance, "_run", fail_if_called)
+
+    assert 0 == conformance.main(["--verify-inventory"])
+
+
+def test_main_stops_before_execution_on_inventory_drift(monkeypatch, capsys):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("fixture execution should not run")
+
+    monkeypatch.setattr(
+        conformance,
+        "conformance_inventory_errors",
+        lambda: ["unexpected conformance fixture(s): surprise_cases.cljc"],
+    )
+    monkeypatch.setattr(conformance, "_run", fail_if_called)
+
+    assert 1 == conformance.main(["--verify-inventory"])
+    assert "unexpected conformance fixture" in capsys.readouterr().err
