@@ -1618,9 +1618,11 @@ Completed locally:
   Clojure.
 * Namespace bytecode cache hardening now treats corrupt or wrong-shaped
   marshaled ``.lpyc`` payloads as disposable cache misses after validating the
-  source timestamp and size header. This preserves normal cached imports while
-  recovering from interrupted writes or stale local cache artifacts by
-  recompiling source and replacing the cache with a valid code-object payload.
+  source timestamp, size, and hash header. Same-size source edits inside a
+  filesystem timestamp tick also invalidate the cache. This preserves normal
+  cached imports while recovering from interrupted writes or stale local cache
+  artifacts by recompiling source and replacing the cache with a valid
+  code-object payload.
 * Structured exception diagnostics now expose source locations consistently
   for reader syntax errors, compiler exceptions, nested causes, and Python
   syntax errors. This keeps CLI/pREPL-facing diagnostic maps useful for

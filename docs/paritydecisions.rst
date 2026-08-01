@@ -506,11 +506,12 @@ CLI, and direct human traceback rendering.
 
 Namespace cache files are performance artifacts, not semantic authority. The
 importer validates the ``.lpyc`` magic number, source timestamp, source size,
-marshaled payload readability, and decoded payload shape before executing
-cached code. Header mismatches, truncated files, corrupt marshal payloads, and
-wrong-shaped decoded payloads are treated as cache misses and recompiled from
-source. AOT artifacts remain stricter because they are source-independent
-deployment artifacts rather than local namespace caches.
+source hash, marshaled payload readability, and decoded payload shape before
+executing cached code. Header mismatches, same-size edits within a filesystem
+timestamp tick, truncated files, corrupt marshal payloads, and wrong-shaped
+decoded payloads are treated as cache misses and recompiled from source. AOT
+artifacts remain stricter because they are source-independent deployment
+artifacts rather than local namespace caches.
 
 The analyzer already checks known abstract members for ``deftype`` and
 ``reify`` and can inspect ordinary Python signatures when

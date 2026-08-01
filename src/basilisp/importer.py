@@ -1,5 +1,6 @@
 import importlib
 import importlib.util
+import hashlib
 import logging
 import marshal
 import os
@@ -28,9 +29,10 @@ from basilisp.util import timed
 
 _NO_CACHE_ENVVAR = "BASILISP_DO_NOT_CACHE_NAMESPACES"
 
-MAGIC_NUMBER = (1149).to_bytes(2, "little") + b"\r\n"
+MAGIC_NUMBER = (1151).to_bytes(2, "little") + b"\r\n"
 _AOT_MAGIC_NUMBER = (1150).to_bytes(2, "little") + b"\r\n"
 _COMPILE_PATH_VAR_NAME = "*compile-path*"
+_SOURCE_HASH_SIZE = 16
 
 logger = logging.getLogger(__name__)
 
@@ -45,19 +47,30 @@ def _w_long(x: int) -> bytes:
     return (int(x) & 0xFFFFFFFF).to_bytes(4, "little")
 
 
+def _source_hash(source_bytes: bytes) -> bytes:
+    """Return a compact stable digest for source-backed cache validation."""
+
+    return hashlib.blake2s(source_bytes, digest_size=_SOURCE_HASH_SIZE).digest()
+
+
 def _basilisp_bytecode(
-    mtime: int, source_size: int, code: list[types.CodeType]
+    mtime: int, source_size: int, source_hash: bytes, code: list[types.CodeType]
 ) -> bytes:
     """Return the bytes for a Basilisp bytecode cache file."""
+    if len(source_hash) != _SOURCE_HASH_SIZE:
+        raise ValueError(
+            f"source_hash must be {_SOURCE_HASH_SIZE} bytes, got {len(source_hash)}"
+        )
     data = bytearray(MAGIC_NUMBER)
     data.extend(_w_long(mtime))
     data.extend(_w_long(source_size))
+    data.extend(source_hash)
     data.extend(marshal.dumps(code))
     return bytes(data)
 
 
 def _get_basilisp_bytecode(
-    fullname: str, mtime: int, source_size: int, cache_data: bytes
+    fullname: str, mtime: int, source_size: int, source_hash: bytes, cache_data: bytes
 ) -> list[types.CodeType]:
     """Unmarshal the bytes from a Basilisp bytecode cache file, validating the
     file header prior to returning. If the file header does not match, throw
@@ -66,6 +79,7 @@ def _get_basilisp_bytecode(
     magic = cache_data[:4]
     raw_timestamp = cache_data[4:8]
     raw_size = cache_data[8:12]
+    raw_source_hash = cache_data[12 : 12 + _SOURCE_HASH_SIZE]
     if magic != MAGIC_NUMBER:
         message = (
             f"Incorrect magic number ({magic!r}) in {fullname}; "
@@ -89,9 +103,17 @@ def _get_basilisp_bytecode(
         message = f"Non-matching filesize ({_r_long(raw_size)}) in {fullname} bytecode cache; expected {source_size}"
         logger.debug(message)
         raise ImportError(message, **exc_details)
+    elif len(raw_source_hash) != _SOURCE_HASH_SIZE:
+        message = f"Reached EOF while reading source hash in {fullname}"
+        logger.debug(message)
+        raise EOFError(message)
+    elif raw_source_hash != source_hash:
+        message = f"Non-matching source hash in {fullname} bytecode cache"
+        logger.debug(message)
+        raise ImportError(message, **exc_details)
 
     try:
-        code = marshal.loads(cache_data[12:])  # nosec B302
+        code = marshal.loads(cache_data[12 + _SOURCE_HASH_SIZE :])  # nosec B302
     except (EOFError, TypeError, ValueError) as e:
         message = f"Invalid Basilisp bytecode cache payload for {fullname}"
         logger.debug(message)
@@ -111,8 +133,9 @@ def _basilisp_aot_bytecode(source_filename: str, code: list[types.CodeType]) -> 
     """Return a standalone Basilisp ahead-of-time artifact.
 
     Ordinary ``.lpyc`` cache files are deliberately tied to the source file's
-    timestamp and size. AOT artifacts instead carry the original source path
-    only for diagnostics and can be imported after that source is unavailable.
+    timestamp, size, and hash. AOT artifacts instead carry the original source
+    path only for diagnostics and can be imported after that source is
+    unavailable.
     As with Python ``.pyc`` files, artifacts are trusted executable bytecode
     and are local to a compatible Python/Basilisp installation.
     """
@@ -374,7 +397,9 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
 
     def path_stats(self, path: str) -> Mapping[str, Any]:
         stat = os.stat(path)
-        return {"mtime": int(stat.st_mtime), "size": stat.st_size}
+        with open(path, mode="rb") as f:
+            source_hash = _source_hash(f.read())
+        return {"mtime": int(stat.st_mtime), "size": stat.st_size, "hash": source_hash}
 
     def get_data(self, path: str) -> bytes:
         with open(path, mode="r+b") as f:
@@ -471,7 +496,7 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
         self,
         fullname: str,
         loader_state: Mapping[str, str],
-        path_stats: Mapping[str, int],
+        path_stats: Mapping[str, Any],
         module: BasilispModule,
     ) -> list[types.CodeType]:
         """Load and execute a cached Basilisp module."""
@@ -486,7 +511,11 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
             logger.debug(f"Checking for cached Basilisp module '{fullname}''")
             cache_data = self.get_data(cache_filename)
             cached_code = _get_basilisp_bytecode(
-                fullname, path_stats["mtime"], path_stats["size"], cache_data
+                fullname,
+                path_stats["mtime"],
+                path_stats["size"],
+                path_stats["hash"],
+                cache_data,
             )
             compiler.compile_bytecode(
                 cached_code,
@@ -502,7 +531,7 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
         self,
         fullname: str,
         loader_state: Mapping[str, str],
-        path_stats: Mapping[str, int],
+        path_stats: Mapping[str, Any],
         module: BasilispModule,
     ) -> list[types.CodeType]:
         """Load and execute a non-cached Basilisp module."""
@@ -542,7 +571,10 @@ class BasilispImporter(  # type: ignore[misc]  # pylint: disable=abstract-method
 
         # Cache the bytecode that was collected through the compilation run.
         cache_file_bytes = _basilisp_bytecode(
-            path_stats["mtime"], path_stats["size"], all_bytecode
+            path_stats["mtime"],
+            path_stats["size"],
+            path_stats["hash"],
+            all_bytecode,
         )
         self._cache_bytecode(filename, cache_filename, cache_file_bytes)
         return all_bytecode
