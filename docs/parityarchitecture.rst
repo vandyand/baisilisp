@@ -1054,8 +1054,11 @@ forms return Clojure-shaped values after reporting: truthiness and predicate
 assertions return their evaluated result, ``thrown?`` returns the caught
 exception on success and ``nil`` on failure, ``thrown-with-msg?`` returns the
 caught exception after a matching exception type even when the message regex
-fails, and equality assertions return the computed boolean for both pass and
-fail outcomes.
+fails, and equality assertions return the computed boolean for supported public
+``=`` arities while preserving Clojure's zero-arity runtime error path through
+``try-expr``. Equality assertion report payloads also preserve Clojure's split
+between the source ``:expected`` form and the evaluated ``:actual`` form,
+including ``(not (= ...))`` for failures.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

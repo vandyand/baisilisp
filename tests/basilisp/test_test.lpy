@@ -147,6 +147,55 @@
     (is (= {:test 0 :pass 7 :fail 4 :error 0}
            @counters))))
 
+(deftest equality-assertions-use-all-arities-and-clojure-report-shapes
+  (let [observed (volatile! nil)
+        events (volatile! [])]
+    (binding [report (fn [m]
+                       (vswap! events conj
+                               (select-keys m [:type :message :expected :actual]))
+                       nil)]
+      (vreset! observed
+               [(is (=) "zero")
+                (is (= 1) "one")
+                (is (= 1 1 1 1) "many-pass")
+                (is (= 1 1 2 1) "many-fail")
+                (is (= :a :a :a) "keywords")
+                (is (= [:a 1] [:a 1] '(:a 2)) "sequential-fail")]))
+    (is (= [nil true true false true false] @observed))
+    (is (= [{:type :error
+             :message "zero"
+             :expected '(=)
+             :actual-kind :exception}
+            {:type :pass
+             :message "one"
+             :expected '(= 1)
+             :actual '(= 1)}
+            {:type :pass
+             :message "many-pass"
+             :expected '(= 1 1 1 1)
+             :actual '(= 1 1 1 1)}
+            {:type :fail
+             :message "many-fail"
+             :expected '(= 1 1 2 1)
+             :actual '(not (= 1 1 2 1))}
+            {:type :pass
+             :message "keywords"
+             :expected '(= :a :a :a)
+             :actual '(= :a :a :a)}
+            {:type :fail
+             :message "sequential-fail"
+             :expected '(= [:a 1] [:a 1] '(:a 2))
+             :actual '(not (= [:a 1] [:a 1] (:a 2)))}]
+           (mapv (fn [event]
+                   (if (= :error (:type event))
+                     (-> event
+                         (dissoc :actual)
+                         (assoc :actual-kind (if (some? (:actual event))
+                                               :exception
+                                               :missing)))
+                     event))
+                 @events)))))
+
 (deftest thrown-with-msg-returns-caught-exception-after-reporting
   (let [observed (volatile! nil)
         counters (volatile! nil)]

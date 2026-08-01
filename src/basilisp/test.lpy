@@ -320,21 +320,20 @@
 
 (defmethod assert-expr '=
   [msg expr]
-  `(let [expected# ~(second expr)
-         actual#   ~(nth expr 2)
-         result#   (= expected# actual#)]
+  (let [args (rest expr)]
+    `(let [values# (list ~@args)
+           actual-form# (cons (symbol "=") values#)
+           result# (apply = values#)]
      (if result#
        (do-report {:type :pass
                    :message ~msg
-                   :expr (quote ~expr)
-                   :actual (list (symbol "=") expected# actual#)
+                   :actual actual-form#
                    :expected (quote ~expr)})
        (do-report {:type :fail
                    :message ~msg
-                   :expr (quote ~expr)
-                   :actual (list (symbol "=") expected# actual#)
+                   :actual (list (symbol "not") actual-form#)
                    :expected (quote ~expr)}))
-     result#))
+     result#)))
 
 (defmethod assert-expr 'thrown?
   [msg expr]

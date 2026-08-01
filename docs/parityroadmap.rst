@@ -1431,6 +1431,14 @@ Near-term deliverable:
   reporting pass/fail events, matching ordinary predicate and truthiness
   assertions. The shared fixture covers passing/failing scalar, collection,
   ``nil``/``false``, and boolean pairs while checking report counters.
+* **Completed locally:** extend ``is`` equality assertion parity across
+  Clojure's public ``=`` arity boundary and reporter payloads. ``(is (=))`` now
+  compiles and reports Clojure's runtime arity error instead of failing during
+  macro expansion, ``(is (= x))`` returns ``true``, n-ary equality evaluates
+  every operand instead of only the first two, and failure reports expose
+  Clojure's evaluated ``(not (= ...))`` ``:actual`` form while preserving the
+  source ``:expected`` form. Shared fixtures lock zero-arity error, one-arity,
+  passing n-ary, failing n-ary, keyword, and sequential-value cases.
 * **Completed locally:** preserve Clojure's exception assertion return values.
   ``(is (thrown? ...))`` now returns ``nil`` for no-throw failure paths
   regardless of reporter return value, and ``(is (thrown-with-msg? ...))``
