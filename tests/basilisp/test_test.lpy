@@ -302,3 +302,42 @@
              :actual-kind :exception
              :actual "boom"}]
            @events))))
+
+(deftest instance-and-predicate-assertions-use-clojure-report-shapes
+  (let [observed (volatile! nil)
+        events (volatile! [])]
+    (binding [report (fn [m]
+                       (vswap! events conj
+                               (let [actual (:actual m)]
+                                 {:type (:type m)
+                                  :message (:message m)
+                                  :expected (pr-str (:expected m))
+                                  :actual (cond
+                                            (= python/str actual) :str-class
+                                            (= python/int actual) :int-class
+                                            (nil? actual) :nil
+                                            :else (pr-str actual))}))
+                       nil)]
+      (vreset! observed
+               [(is (instance? python/str "x") "instance-pass")
+                (is (instance? python/str 1) "instance-fail")
+                (is (instance? python/str nil) "instance-nil")
+                (is (string? 1) "predicate-fail")]))
+    (is (= [true false false false] @observed))
+    (is (= [{:type :pass
+             :message "instance-pass"
+             :expected "(instance? python/str \"x\")"
+             :actual :str-class}
+            {:type :fail
+             :message "instance-fail"
+             :expected "(instance? python/str 1)"
+             :actual :int-class}
+            {:type :fail
+             :message "instance-nil"
+             :expected "(instance? python/str nil)"
+             :actual :nil}
+            {:type :fail
+             :message "predicate-fail"
+             :expected "(string? 1)"
+             :actual "(not (string? 1))"}]
+           @events))))

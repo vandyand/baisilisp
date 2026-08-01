@@ -1062,7 +1062,10 @@ including ``(not (= ...))`` for failures. Exception assertion report payloads
 also follow Clojure's source-form contract: ``:expected`` is the full assertion
 form, no-throw failures report ``nil`` as ``:actual``, wrong exception types are
 ``:error`` events, and ``thrown-with-msg?`` regex mismatches keep the caught
-exception as ``:actual``.
+exception as ``:actual``. ``instance?`` assertion reports follow Clojure's
+specialized payload shape by reporting the observed runtime class as
+``:actual`` instead of the evaluated predicate form, while generic predicate
+failures render the public ``not`` symbol.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
