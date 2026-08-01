@@ -1068,7 +1068,10 @@ specialized payload shape by reporting the observed runtime class as
 failures render the public ``not`` symbol. Fully qualified core predicate heads
 such as ``clojure.core/=`` remain generic predicate assertions, matching
 Clojure's exact dispatch boundary rather than receiving unqualified special
-assertion handling.
+assertion handling. ``are`` follows Clojure's template-row boundary: empty
+binding vectors accept no values, non-empty binding vectors require at least
+one full row, and trailing incomplete rows are rejected during macro expansion
+instead of being silently ignored.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

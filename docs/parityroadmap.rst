@@ -1466,6 +1466,12 @@ Near-term deliverable:
   assertion handlers; Basilisp now treats the corresponding ``basilisp.core/*``
   heads the same way. Shared fixtures lock return values plus source-form and
   generic-predicate actual-shape checks.
+* **Completed locally:** align ``are`` template value-count validation with
+  Clojure. Empty binding vectors now reject any supplied values, non-empty
+  binding vectors require at least one complete row, and incomplete trailing
+  rows fail during macro expansion instead of being silently dropped by
+  ``do-template``. Shared fixtures lock accepted and rejected zero-, one-, and
+  two-binding cases.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

@@ -520,6 +520,11 @@
 
   ``are`` assertions must appear inside of a :lpy:fn:`deftest` form."
   [argv expr & args]
+  (assert (or (and (empty? argv) (empty? args))
+              (and (seq argv)
+                   (seq args)
+                   (zero? (mod (count args) (count argv)))))
+          "The number of args doesn't match are's argv.")
   (let [assertion-form (with-meta `(is ~expr) (meta &form))]
     `(template/do-template ~argv ~assertion-form ~@args)))
 
