@@ -137,13 +137,14 @@ the current running event loop, or on the background channel loop when called
 from synchronous code, and returns a channel which receives the non-``nil`` body
 result before close. This closes the public ``clojure.core.async`` surface gap
 for ordinary portable examples, but it is not a full Clojure IOC/state-machine
-implementation. The public ``ioc-alts!`` name is present and rejects direct
-calls with an explicit error because BaisiLisp does not expose Clojure's
-compiler-generated IOC state representation. Shared JVM fixtures now cover
+implementation. The public ``ioc-alts!`` helper supports direct Clojure-shaped
+state-array selection/resume calls, but BaisiLisp still does not compile
+``go`` bodies into Clojure IOC state machines. Shared JVM fixtures now cover
 ordinary result channels, ``go-loop``, parking puts/takes, ``alt!`` take and put
 clauses, default and priority selection, closed-channel takes, puts to closed
-channels, timeout interaction, nested parking choices, close/result races, and
-exception-driven result-channel close behavior.
+channels, timeout interaction, nested parking choices, nested parking
+operations inside ``go`` arguments, quoted parking forms as data, close/result
+races, and exception-driven result-channel close behavior.
 
 Transactions
 ------------

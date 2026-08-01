@@ -208,9 +208,11 @@ Near-term deliverable:
   timeout selection, pipelines, collection/channel combinators, finite
   mult/pub/mix routing, mix mutation return contracts, and a deterministic
   generated parking stress corpus. The proof also locks an exact public
-  support matrix, shipped IOC runtime helpers, and direct ``ioc-alts!``
-  state-array selection behavior while keeping compiler-generated IOC
-  state-machine lowering explicitly outside the current contract.
+  support matrix, shipped IOC runtime helpers, direct ``ioc-alts!``
+  state-array selection behavior, recursive nested parking lowering in
+  coroutine-backed ``go`` bodies, and quoted parking forms as data while
+  keeping compiler-generated IOC state-machine lowering explicitly outside the
+  current contract.
   The ``data.csv`` proof uses the published ``org.clojure/data.csv`` 1.1.0
   artifact on the JVM side and Basilisp's production ``clojure.data.csv`` alias
   on the Basilisp side; it locks multi-file source-level read/write workflows,
@@ -392,7 +394,11 @@ Near-term deliverable:
   ``return-chan``, immediate/enqueued ``take!``/``put!`` continuations, and
   terminator mappings. The direct ``ioc-alts!`` follow-up now matches JVM
   ``core.async`` for ready takes, ready puts, default results, enqueued
-  continuation resume, and generated direct state-array selection stress.
+  continuation resume, and generated direct state-array selection stress. The
+  recursive ``go`` lowering follow-up hardens the coroutine-backed compiler
+  boundary by lowering nested parking operations inside ``go`` body arguments,
+  preserving quoted parking forms as data, and extending the JVM fixture and
+  source-level acceptance workflow with generated nested parking stress.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,
