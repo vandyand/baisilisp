@@ -150,6 +150,133 @@ EXPECTED_CONFORMANCE_FIXTURE_NAMES = (
     "xml_cases.cljc",
     "zip_cases.cljc",
 )
+EXPECTED_CONFORMANCE_CASE_COUNTS = {
+    "agent_context_cases.cljc": 1,
+    "base64_cases.cljc": 8,
+    "case_cases.cljc": 7,
+    "character_cases.cljc": 16,
+    "chunk_cases.cljc": 1,
+    "compile_vars_cases.cljc": 1,
+    "concurrency_cases.cljc": 6,
+    "core_async_cases.cljc": 8,
+    "core_bit_cases.cljc": 3,
+    "core_cache_cases.cljc": 9,
+    "core_cases.cljc": 7,
+    "core_collection_array_transient_cases.cljc": 6,
+    "core_collection_function_cases.cljc": 9,
+    "core_concurrency_random_cases.cljc": 6,
+    "core_definition_utility_cases.cljc": 5,
+    "core_deftype_cases.cljc": 3,
+    "core_genclass_cases.cljc": 5,
+    "core_gvec_cases.cljc": 3,
+    "core_hierarchy_multimethod_cases.cljc": 4,
+    "core_host_print_resource_cases.cljc": 6,
+    "core_lifecycle_cases.cljc": 6,
+    "core_match_cases.cljc": 7,
+    "core_memoize_cases.cljc": 8,
+    "core_namespace_state_cases.cljc": 6,
+    "core_protocols_cases.cljc": 4,
+    "core_proxy_interface_cases.cljc": 5,
+    "core_public_surface_cases.cljc": 5,
+    "core_reader_eval_load_cases.cljc": 6,
+    "core_resultset_syntax_cases.cljc": 3,
+    "core_runtime_boundary_cases.cljc": 7,
+    "core_runtime_representation_cases.cljc": 5,
+    "core_sequence_control_cases.cljc": 5,
+    "core_server_cases.cljc": 7,
+    "core_specs_uuid_cases.cljc": 4,
+    "core_stream_cases.cljc": 4,
+    "core_text_regex_io_cases.cljc": 4,
+    "core_var_binding_cases.cljc": 3,
+    "csv_cases.cljc": 8,
+    "data_cases.cljc": 11,
+    "data_xml_cases.cljc": 8,
+    "datafy_cases.cljc": 8,
+    "definline_cases.cljc": 2,
+    "deps_tooling_cases.cljc": 5,
+    "edge_cases.cljc": 5,
+    "edn_cases.cljc": 6,
+    "exception_cause_cases.cljc": 2,
+    "file_var_cases.cljc": 2,
+    "hash_cases.cljc": 4,
+    "inspector_cases.cljc": 7,
+    "instant_cases.cljc": 13,
+    "java_browse_cases.cljc": 3,
+    "java_classpath_cases.cljc": 4,
+    "java_io_cases.cljc": 10,
+    "java_javadoc_cases.cljc": 4,
+    "json_cases.cljc": 10,
+    "junit_cases.cljc": 9,
+    "legacy_metadata_cases.cljc": 1,
+    "loop_closure_cases.cljc": 6,
+    "main_cases.cljc": 9,
+    "math_cases.cljc": 7,
+    "math_combinatorics_cases.cljc": 4,
+    "math_context_cases.cljc": 6,
+    "merge_cases.cljc": 7,
+    "namespace_alias_cases.cljc": 2,
+    "namespace_prefix_cases.cljc": 2,
+    "numeric_coercion_cases.cljc": 12,
+    "numeric_equality_cases.cljc": 3,
+    "parallel_cases.cljc": 11,
+    "pprint_cases.cljc": 20,
+    "prepl_cases.cljc": 3,
+    "primitive_array_cases.cljc": 10,
+    "print_helpers_cases.cljc": 5,
+    "print_writer_cases.cljc": 1,
+    "priority_map_cases.cljc": 4,
+    "process_cases.cljc": 10,
+    "protocol_cache_cases.cljc": 1,
+    "proxy_helpers_cases.cljc": 1,
+    "reader_eval_cases.cljc": 2,
+    "reducers_cases.cljc": 7,
+    "ref_cases.cljc": 7,
+    "ref_fuzz_cases.cljc": 2,
+    "ref_history_cases.cljc": 4,
+    "reflect_cases.cljc": 8,
+    "reflect_java_resource_cases.cljc": 6,
+    "reflection_warning_vars_cases.cljc": 1,
+    "repl_cases.cljc": 7,
+    "repl_context_cases.cljc": 1,
+    "repl_host_boundary_cases.cljc": 2,
+    "require_rename_cases.cljc": 3,
+    "rrb_vector_cases.cljc": 6,
+    "seq_to_map_for_destructuring_cases.cljc": 1,
+    "seque_cases.cljc": 2,
+    "set_cases.cljc": 6,
+    "shared_core_semantics_cases.cljc": 17,
+    "shell_cases.cljc": 8,
+    "source_path_cases.cljc": 2,
+    "spec_alpha_cases.cljc": 12,
+    "spec_fspec_generation_cases.cljc": 3,
+    "spec_gen_cases.cljc": 8,
+    "spec_keys_cases.cljc": 6,
+    "spec_multi_spec_cases.cljc": 3,
+    "spec_public_surface_cases.cljc": 5,
+    "spec_recursive_generation_cases.cljc": 2,
+    "spec_test_cases.cljc": 7,
+    "stacktrace_cases.cljc": 7,
+    "string_cases.cljc": 7,
+    "struct_cases.cljc": 1,
+    "suppress_read_cases.cljc": 1,
+    "tap_cases.cljc": 8,
+    "template_cases.cljc": 5,
+    "test_check_cases.cljc": 12,
+    "test_runner_cases.cljc": 9,
+    "testing_cases.cljc": 2,
+    "testing_reporting_cases.cljc": 1,
+    "tools_cli_cases.cljc": 7,
+    "tools_logging_cases.cljc": 11,
+    "tools_macro_cases.cljc": 8,
+    "tools_namespace_cases.cljc": 11,
+    "tools_reader_cases.cljc": 42,
+    "unresolved_vars_cases.cljc": 1,
+    "verbose_defrecords_cases.cljc": 1,
+    "version_compatibility_cases.cljc": 2,
+    "walk_cases.cljc": 8,
+    "xml_cases.cljc": 11,
+    "zip_cases.cljc": 6,
+}
 DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
 CLOJURE_VERSION = "1.12.4"
 DEFAULT_CLOJURE_SDEPS = (
@@ -195,11 +322,14 @@ def conformance_inventory_errors(
     observed = {fixture.name for fixture in fixture_directory.glob("*_cases.cljc")}
     expected = set(EXPECTED_CONFORMANCE_FIXTURE_NAMES)
     excluded = set(DEFAULT_EXCLUDED_FIXTURE_NAMES)
+    counted = set(EXPECTED_CONFORMANCE_CASE_COUNTS)
 
     errors: list[str] = []
     unexpected = sorted(observed - expected)
     missing = sorted(expected - observed)
     unknown_exclusions = sorted(excluded - expected)
+    missing_counts = sorted(expected - counted)
+    unexpected_counts = sorted(counted - expected)
     if unexpected:
         errors.append("unexpected conformance fixture(s): " + ", ".join(unexpected))
     if missing:
@@ -209,7 +339,29 @@ def conformance_inventory_errors(
             "excluded conformance fixture(s) absent from manifest: "
             + ", ".join(unknown_exclusions)
         )
+    if missing_counts:
+        errors.append("missing conformance case count(s): " + ", ".join(missing_counts))
+    if unexpected_counts:
+        errors.append(
+            "unexpected conformance case count(s): " + ", ".join(unexpected_counts)
+        )
     return errors
+
+
+def conformance_case_count_errors(fixture_name: str, observed_count: int) -> list[str]:
+    """Return errors when a checked-in fixture emits a drifted case count."""
+
+    if fixture_name not in EXPECTED_CONFORMANCE_FIXTURE_NAMES:
+        return []
+    expected_count = EXPECTED_CONFORMANCE_CASE_COUNTS.get(fixture_name)
+    if expected_count is None:
+        return [f"missing conformance case count for fixture: {fixture_name}"]
+    if observed_count != expected_count:
+        return [
+            "conformance fixture case count drift: "
+            f"{fixture_name} expected={expected_count} observed={observed_count}"
+        ]
+    return []
 
 
 def _shard_fixture_paths(
@@ -397,6 +549,11 @@ def main(argv: list[str] | None = None) -> int:
             label=f"fixture: {fixture}",
             show_output=args.show_output,
         ):
+            return 1
+        count_errors = conformance_case_count_errors(fixture.name, len(basilisp))
+        if count_errors:
+            for error in count_errors:
+                print(error, file=sys.stderr)
             return 1
         print(f"conformant fixture={fixture.name} cases={len(basilisp)}", flush=True)
     return 0

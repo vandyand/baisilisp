@@ -32,6 +32,7 @@ def test_fixture_paths_defaults_to_the_sorted_corpus():
 
 def test_conformance_fixture_inventory_is_sorted_unique_and_checked_in():
     expected = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
+    expected_case_counts = conformance.EXPECTED_CONFORMANCE_CASE_COUNTS
     observed = tuple(
         sorted(
             path.name
@@ -42,6 +43,8 @@ def test_conformance_fixture_inventory_is_sorted_unique_and_checked_in():
     assert tuple(sorted(expected)) == expected
     assert len(set(expected)) == len(expected)
     assert observed == expected
+    assert tuple(expected_case_counts) == expected
+    assert all(count > 0 for count in expected_case_counts.values())
     assert conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES == frozenset()
     assert conformance.conformance_inventory_errors() == []
 
@@ -54,19 +57,27 @@ def test_conformance_fixture_inventory_reports_unexpected_and_missing_fixtures(
 
     original = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
     original_excluded = conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES
+    original_case_counts = conformance.EXPECTED_CONFORMANCE_CASE_COUNTS
     try:
         conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = (
             "expected_cases.cljc",
             "missing_cases.cljc",
         )
         conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
+        conformance.EXPECTED_CONFORMANCE_CASE_COUNTS = {
+            "expected_cases.cljc": 1,
+            "unexpected_count_cases.cljc": 1,
+        }
         assert conformance.conformance_inventory_errors(tmp_path) == [
             "unexpected conformance fixture(s): unexpected_cases.cljc",
             "missing conformance fixture(s): missing_cases.cljc",
+            "missing conformance case count(s): missing_cases.cljc",
+            "unexpected conformance case count(s): unexpected_count_cases.cljc",
         ]
     finally:
         conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = original
         conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = original_excluded
+        conformance.EXPECTED_CONFORMANCE_CASE_COUNTS = original_case_counts
 
 
 @given(
@@ -85,21 +96,33 @@ def test_generated_conformance_inventory_drift_is_reported(unexpected):
 
         original = conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES
         original_excluded = conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES
+        original_case_counts = conformance.EXPECTED_CONFORMANCE_CASE_COUNTS
         try:
             conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = ()
             conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = frozenset()
+            conformance.EXPECTED_CONFORMANCE_CASE_COUNTS = {}
             assert conformance.conformance_inventory_errors(root) == [
                 "unexpected conformance fixture(s): " + ", ".join(sorted(unexpected))
             ]
         finally:
             conformance.EXPECTED_CONFORMANCE_FIXTURE_NAMES = original
             conformance.DEFAULT_EXCLUDED_FIXTURE_NAMES = original_excluded
+            conformance.EXPECTED_CONFORMANCE_CASE_COUNTS = original_case_counts
 
 
 def test_fixture_paths_preserves_explicit_selection():
     fixture = Path("prepl_cases.cljc")
 
     assert _fixture_paths([fixture]) == [fixture]
+
+
+def test_conformance_case_count_errors_report_checked_in_fixture_drift():
+    assert conformance.conformance_case_count_errors("prepl_cases.cljc", 3) == []
+    assert conformance.conformance_case_count_errors("ad_hoc_cases.cljc", 99) == []
+    assert conformance.conformance_case_count_errors("prepl_cases.cljc", 2) == [
+        "conformance fixture case count drift: "
+        "prepl_cases.cljc expected=3 observed=2"
+    ]
 
 
 def test_shard_fixture_paths_selects_stable_modulo_shards():
@@ -240,3 +263,33 @@ def test_main_stops_before_execution_on_inventory_drift(monkeypatch, capsys):
 
     assert 1 == conformance.main(["--verify-inventory"])
     assert "unexpected conformance fixture" in capsys.readouterr().err
+
+
+def test_main_stops_after_semantic_match_on_case_count_drift(monkeypatch, capsys):
+    fixture = Path("prepl_cases.cljc")
+
+    monkeypatch.setattr(conformance, "_fixture_paths", lambda fixtures: [fixture])
+    monkeypatch.setattr(
+        conformance,
+        "_run",
+        lambda *args, **kwargs: ["{:case :only-one}"],
+    )
+
+    assert 1 == conformance.main(["--fixture", str(fixture)])
+    assert "case count drift: prepl_cases.cljc expected=3 observed=1" in (
+        capsys.readouterr().err
+    )
+
+
+def test_main_allows_unmanifested_explicit_fixture_counts(monkeypatch, capsys):
+    fixture = Path("ad_hoc_cases.cljc")
+
+    monkeypatch.setattr(conformance, "_fixture_paths", lambda fixtures: [fixture])
+    monkeypatch.setattr(
+        conformance,
+        "_run",
+        lambda *args, **kwargs: ["{:case :ad-hoc}"],
+    )
+
+    assert 0 == conformance.main(["--fixture", str(fixture)])
+    assert "conformant fixture=ad_hoc_cases.cljc cases=1" in capsys.readouterr().out

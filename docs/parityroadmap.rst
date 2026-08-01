@@ -74,11 +74,12 @@ Near-term deliverable:
   reviewed explicitly.
 * **Completed locally:** the differential fixture corpus is now
   inventory-gated. ``scripts/differential_conformance.py --verify-inventory``
-  pins the checked-in ``tests/conformance/*_cases.cljc`` set, and the sharded
-  parity-proof workflow runs that gate before fixture execution. The pREPL
-  fixture has also moved into the normal full-corpus shard set, giving local
-  ``prepl`` and ``io-prepl`` event envelopes the same differential proof as the
-  rest of the standard namespace corpus.
+  pins the checked-in ``tests/conformance/*_cases.cljc`` set and each
+  fixture's emitted-case count, and the sharded parity-proof workflow runs that
+  gate before fixture execution. The pREPL fixture has also moved into the
+  normal full-corpus shard set, giving local ``prepl`` and ``io-prepl`` event
+  envelopes the same differential proof as the rest of the standard namespace
+  corpus.
 
 2. Test Compatibility
 ^^^^^^^^^^^^^^^^^^^^^
