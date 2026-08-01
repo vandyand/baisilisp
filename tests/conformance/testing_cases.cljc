@@ -65,6 +65,45 @@
                t/*report-counters* (ref t/*initial-report-counters*)]
        (equality-return-summary))))
 
+(defn equality-arity-report-body []
+  (let [events (atom [])
+        event-summary (fn [m]
+                        {:type (:type m)
+                         :message (:message m)
+                         :expected (pr-str (:expected m))
+                         :actual (if (= :error (:type m))
+                                   :exception
+                                   (pr-str (:actual m)))})
+        capture-report (fn [m]
+                         (swap! events conj (event-summary m))
+                         nil)]
+    #?(:clj
+       (with-redefs [t/report capture-report]
+         {:returns [(t/is (=) "zero")
+                    (t/is (= 1) "one")
+                    (t/is (= 1 1 1 1) "many-pass")
+                    (t/is (= 1 1 2 1) "many-fail")
+                    (t/is (= :a :a :a) "keywords")
+                    (t/is (= [:a 1] [:a 1] '(:a 2)) "sequential-fail")]
+          :events @events})
+       :lpy
+       (binding [t/report capture-report]
+         {:returns [(t/is (=) "zero")
+                    (t/is (= 1) "one")
+                    (t/is (= 1 1 1 1) "many-pass")
+                    (t/is (= 1 1 2 1) "many-fail")
+                    (t/is (= :a :a :a) "keywords")
+                    (t/is (= [:a 1] [:a 1] '(:a 2)) "sequential-fail")]
+          :events @events}))))
+
+(def equality-arity-report-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)]
+       (equality-arity-report-body))
+     :lpy
+     (binding [t/*test-output* false]
+       (equality-arity-report-body))))
+
 (defn thrown-with-msg-return-summary []
   (let [thrown-match (t/is (thrown? #?(:clj Exception :lpy python/Exception)
                                     (throw (#?(:clj Exception.
@@ -110,4 +149,5 @@
 (emit-case :assertions-and-fixtures @fixture-events)
 (emit-case :test-var-report-counters report-counters)
 (emit-case :is-equality-return-values equality-return-values)
+(emit-case :is-equality-arity-report-values equality-arity-report-values)
 (emit-case :thrown-with-msg-return-values thrown-with-msg-return-values)
