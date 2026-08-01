@@ -53,6 +53,7 @@ jobs:
       - name: Run cache-disabled differential conformance shard
         run: |
           tox exec -e py314 -- python scripts/differential_conformance.py \
+            --verify-inventory \
             --disable-basilisp-ns-cache \
             --shard-count 32 \
             --shard-index ${{ matrix.shard-index }} \

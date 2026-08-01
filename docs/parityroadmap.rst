@@ -72,6 +72,11 @@ Near-term deliverable:
   the checked-in acceptance library roots, and the sharded parity-proof workflow
   runs that gate before executing library shards so accidental corpus drift is
   reviewed explicitly.
+* **Completed locally:** the differential fixture corpus is now
+  inventory-gated. ``scripts/differential_conformance.py --verify-inventory``
+  pins the checked-in ``tests/conformance/*_cases.cljc`` set, including the
+  explicitly excluded pREPL fixture, and the sharded parity-proof workflow runs
+  that gate before fixture execution.
 
 2. Test Compatibility
 ^^^^^^^^^^^^^^^^^^^^^

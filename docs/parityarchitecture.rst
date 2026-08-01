@@ -540,6 +540,13 @@ acceptance library is added or removed without updating that list, so corpus
 growth is a reviewed compatibility decision rather than an accidental side
 effect of copied source files.
 
+The differential conformance corpus is likewise inventory-gated. The checked-in
+``tests/conformance/*_cases.cljc`` files are pinned in
+``scripts/differential_conformance.py``, including explicitly excluded fixtures
+such as the finite-runner-incompatible pREPL case. ``--verify-inventory`` fails
+before sharded execution when fixture files drift from that manifest, keeping
+fixture corpus changes visible in review.
+
 Pretty Printing
 ^^^^^^^^^^^^^^^
 

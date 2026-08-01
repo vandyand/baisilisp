@@ -12,6 +12,7 @@ def test_parity_proofs_workflow_runs_sharded_differential_conformance():
     assert "max-parallel: 4" in workflow
     assert "scripts/prefetch_clojure_deps.py differential" in workflow
     assert "scripts/differential_conformance.py" in workflow
+    assert "--verify-inventory" in workflow
     assert "--disable-basilisp-ns-cache" in workflow
     assert "--shard-count 32" in workflow
     assert "--shard-index ${{ matrix.shard-index }}" in workflow
