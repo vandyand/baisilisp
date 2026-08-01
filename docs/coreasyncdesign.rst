@@ -498,6 +498,11 @@ The initial implementation now covers:
   preserve state across puts, may emit zero/one/many values, flush completion
   output on close, honor ``ex-handler`` replacement/drop behavior, and close
   the channel when a completing xform such as ``take`` terminates.
+* Harden the support matrix and IOC boundary: shared fixtures now require the
+  ``clojure.core.async`` facade to have no missing or accidental extra public
+  names, the source-level acceptance library emits the same exactness proof,
+  and direct ``ioc-alts!`` calls fail with structured ``ex-data`` identifying
+  the unsupported compiler-generated IOC state-machine boundary.
 
 Why this tranche first:
 
@@ -514,17 +519,17 @@ Recommended Next Tranche
 The next tranche should decide whether deeper compiler-produced IOC parity is
 worth the complexity or whether the coroutine-backed ``go`` subset is the
 intended long-term compatibility boundary. The ``clojure.core.async`` public
-surface is closed on this branch, but public surface parity is not the same as
+surface is now exact and guarded, but public surface parity is not the same as
 full implementation parity:
 
-* Keep the maintained public support matrix for ``clojure.core.async`` exact:
-  no missing and no extra public names.
+* Keep the maintained public support matrix for ``clojure.core.async`` exact in
+  both the differential fixture and the source-level acceptance library.
 * Extend JVM differential fixtures only where behavior is portable and
   observable from channels; the current hardening tranche already covers closed
   channels, timeout interaction, nested parking choices, close/result races, and
   exception result-channel lifecycle.
-* Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary or
-  invest in a compiler-produced state-machine representation.
+* Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary for
+  the long term or invest in a compiler-produced state-machine representation.
 * Add deterministic rejection or compatibility tests for any remaining
   unsupported flow APIs and for unsupported parking/compiler forms if deeper IOC
   work begins.

@@ -424,8 +424,10 @@ variant names ``pipeline-blocking`` and ``pipeline-async`` are also supported
 and covered by JVM fixtures. The parking names ``go``, ``go-loop``, ``<!``,
 ``>!``, and ``alt!`` are supported as a coroutine-backed compatibility subset,
 and ``ioc-alts!`` is present as an explicit unsupported direct-call boundary.
-This closes the public surface gap while still deferring full Clojure
-IOC/state-machine parity.
+The facade's exact public matrix is guarded in both shared conformance and
+source-level acceptance, and ``ioc-alts!`` reports structured ``ex-data`` for
+the unsupported compiler-generated IOC requirement. This closes the public
+surface gap while still deferring full Clojure IOC/state-machine parity.
 
 AnyIO And Task Ownership
 ^^^^^^^^^^^^^^^^^^^^^^^^

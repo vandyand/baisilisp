@@ -190,8 +190,10 @@ Near-term deliverable:
   multi-file source-level usage of ``go``/``go-loop`` parking, ``alt!``,
   timeout selection, pipelines, collection/channel combinators, finite
   mult/pub/mix routing, mix mutation return contracts, and a deterministic
-  generated parking stress corpus while keeping direct IOC state-machine
-  integration explicitly outside the current contract.
+  generated parking stress corpus. The proof also locks an exact public
+  support matrix and a structured direct ``ioc-alts!`` rejection boundary while
+  keeping compiler-generated IOC state-machine integration explicitly outside
+  the current contract.
   The ``data.csv`` proof uses the published ``org.clojure/data.csv`` 1.1.0
   artifact on the JVM side and Basilisp's production ``clojure.data.csv`` alias
   on the Basilisp side; it locks multi-file source-level read/write workflows,

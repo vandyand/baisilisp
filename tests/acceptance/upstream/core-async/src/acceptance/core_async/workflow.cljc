@@ -1,6 +1,70 @@
 (ns acceptance.core-async.workflow
   (:require [clojure.core.async :as async]))
 
+(def supported-publics
+  '#{buffer dropping-buffer sliding-buffer
+     Mux Mult Pub Mix
+     chan close! offer! poll! put! take!
+     alts! timeout pipe pipeline
+     promise-chan
+     pipeline-async pipeline-blocking
+     to-chan to-chan! to-chan!!
+     onto-chan onto-chan! onto-chan!!
+     merge split take
+     into reduce transduce
+     map partition partition-by unique
+     unblocking-buffer?
+     map< map> filter< filter>
+     remove< remove> mapcat< mapcat>
+     muxch*
+     mult tap untap untap-all
+     tap* untap* untap-all*
+     pub sub unsub unsub-all
+     sub* unsub* unsub-all*
+     mix admix unmix unmix-all
+     admix* unmix* unmix-all*
+     toggle solo-mode
+     toggle* solo-mode*
+     <!! >!! alts!! alt!! do-alt
+     fn-handler do-alts defblockingop
+     go go-loop <! >! alt! ioc-alts!
+     thread thread-call io-thread})
+
+(defn public-surface-summary
+  "Prove the maintained compatibility facade has neither missing nor accidental
+  extra public names."
+  []
+  (let [publics (set (keys (ns-publics 'clojure.core.async)))]
+    [[:exact? (= publics supported-publics)]
+     [:missing (vec (sort (remove publics supported-publics)))]
+     [:extra (vec (sort (remove supported-publics publics)))]]))
+
+(defn ioc-boundary-summary
+  "Classify direct ioc-alts! use as Basilisp's explicit unsupported IOC
+  state-machine boundary while preserving the public name for source loading."
+  []
+  #?(:clj [[:public? true]
+           [:boundary :unsupported-ioc-state-machine]
+           [:required :compiler-generated-ioc]
+           [:retains-inputs? true]]
+     :lpy (try
+            (async/ioc-alts! :state :block [:port])
+            [[:public? true]
+             [:boundary :not-rejected]
+             [:required nil]
+             [:retains-inputs? false]]
+            (catch Exception e
+              (let [data (ex-data e)]
+                [[:public? (contains? (set (keys (ns-publics 'clojure.core.async)))
+                                      'ioc-alts!)]
+                 [:boundary (:basilisp.core.async/boundary data)]
+                 [:required (:basilisp.core.async/required data)]
+                 [:retains-inputs? (= [:state :block [:port] nil]
+                                      [(:state data)
+                                       (:cont-block data)
+                                       (:ports data)
+                                       (:opts data)])]])))))
+
 (defn drain
   "Synchronously drain channel values until close."
   [channel]
