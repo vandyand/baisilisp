@@ -1,5 +1,6 @@
 (ns tests.basilisp.test-test
-  (:require [basilisp.test :refer :all]))
+  (:require [basilisp.string :as str]
+            [basilisp.test :refer :all]))
 
 (defn- before-after-fixture
   [events]
@@ -340,4 +341,42 @@
              :message "predicate-fail"
              :expected "(string? 1)"
              :actual "(not (string? 1))"}]
+           @events))))
+
+(deftest qualified-core-assertion-heads-remain-generic-predicates
+  (let [observed (volatile! nil)
+        events (volatile! [])]
+    (binding [report (fn [m]
+                       (vswap! events conj
+                               {:type (:type m)
+                                :message (:message m)
+                                :expected (pr-str (:expected m))
+                                :actual (let [rendered (pr-str (:actual m))]
+                                          (cond
+                                            (str/includes? rendered "<class 'str'>")
+                                            (str/replace rendered #"<class 'str'>" ":string-class")
+                                            :else rendered))})
+                       nil)]
+      (vreset! observed
+               [(is (basilisp.core/= 1 2) "fq-eq")
+                (is (basilisp.core/instance? python/str "x") "fq-instance-pass")
+                (is (basilisp.core/instance? python/str 1) "fq-instance-fail")
+                (is (basilisp.core/not true) "fq-not")]))
+    (is (= [false true false false] @observed))
+    (is (= [{:type :fail
+             :message "fq-eq"
+             :expected "(basilisp.core/= 1 2)"
+             :actual "(not (basilisp.core/= 1 2))"}
+            {:type :pass
+             :message "fq-instance-pass"
+             :expected "(basilisp.core/instance? python/str \"x\")"
+             :actual "(basilisp.core/instance? :string-class \"x\")"}
+            {:type :fail
+             :message "fq-instance-fail"
+             :expected "(basilisp.core/instance? python/str 1)"
+             :actual "(not (basilisp.core/instance? :string-class 1))"}
+            {:type :fail
+             :message "fq-not"
+             :expected "(basilisp.core/not true)"
+             :actual "(not (basilisp.core/not true))"}]
            @events))))

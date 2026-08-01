@@ -1065,7 +1065,10 @@ form, no-throw failures report ``nil`` as ``:actual``, wrong exception types are
 exception as ``:actual``. ``instance?`` assertion reports follow Clojure's
 specialized payload shape by reporting the observed runtime class as
 ``:actual`` instead of the evaluated predicate form, while generic predicate
-failures render the public ``not`` symbol.
+failures render the public ``not`` symbol. Fully qualified core predicate heads
+such as ``clojure.core/=`` remain generic predicate assertions, matching
+Clojure's exact dispatch boundary rather than receiving unqualified special
+assertion handling.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

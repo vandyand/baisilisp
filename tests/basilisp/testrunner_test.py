@@ -73,7 +73,7 @@ class TestTestrunner:
         run_result.stdout.fnmatch_lines(
             [
                 "FAIL in (assertion-test) (test_testrunner.lpy:8)",
-                "     is assertions :: Test failure: false",
+                "     is assertions :: Test failure: nil",
                 "",
                 "    expected: false",
                 "      actual: false",
@@ -84,21 +84,22 @@ class TestTestrunner:
         run_result.stdout.fnmatch_lines(
             [
                 "FAIL in (assertion-test) (test_testrunner.lpy:9)",
-                "     is assertions :: Test failure: (some #{5} #{6 7})",
+                "     is assertions :: Test failure: nil",
                 "",
-                "    expected: (some #{5} #{6 7})",
-                "      actual: nil",
+                "    expected: (some #{5} #{*})",
+                "      actual: (not (some #{5} #{*}))",
             ],
             consecutive=True,
         )
 
         run_result.stdout.fnmatch_lines(
             [
-                "FAIL in (assertion-test) (test_testrunner.lpy:13)",
-                "     is assertions :: Expected <class 'basilisp.lang.exception.ExceptionInfo'>; got <class 'Exception'> instead",
+                "ERROR in (assertion-test) (test_testrunner.lpy:13)",
                 "",
-                "    expected: <class 'basilisp.lang.exception.ExceptionInfo'>",
-                "      actual: Exception()",
+                "Traceback (most recent call last):",
+                '*File "*test_testrunner.lpy", line 13, in assertion_test',
+                "    (is (thrown? basilisp.lang.exception/ExceptionInfo (throw (python/Exception))))",
+                "Exception",
             ],
             consecutive=True,
         )
@@ -106,10 +107,10 @@ class TestTestrunner:
         run_result.stdout.fnmatch_lines(
             [
                 "FAIL in (assertion-test) (test_testrunner.lpy:19)",
-                "     is assertions :: Regex pattern did not match",
+                "     is assertions :: Test failure: nil",
                 "",
-                '    expected: #"Known exception"',
-                '      actual: "Unexpected exception {}"',
+                '    expected: (thrown-with-msg? basilisp.lang.exception/ExceptionInfo #"Known exception" (throw (ex-info "Unexpected exception" {})))',
+                "      actual: basilisp.lang.exception.ExceptionInfo(Unexpected exception, {})",
             ],
             consecutive=True,
         )
@@ -117,10 +118,10 @@ class TestTestrunner:
         run_result.stdout.fnmatch_lines(
             [
                 "FAIL in (assertion-test) (test_testrunner.lpy:25)",
-                '     are assertions :: Test failure: (= "true" false)',
+                "     are assertions :: Test failure: nil",
                 "",
                 '    expected: (= "true" false)',
-                '      actual: (= "true" false)',
+                '      actual: (not (= "true" false))',
             ],
             consecutive=True,
         )
@@ -128,10 +129,10 @@ class TestTestrunner:
         run_result.stdout.fnmatch_lines(
             [
                 "FAIL in (syntax-quote-seq-test) (test_testrunner.lpy)",
-                "    Test failure: (basilisp.core/= 5 4)",
+                "    Test failure: nil",
                 "",
                 "    expected: (basilisp.core/= 5 4)",
-                "      actual: (= 5 4)",
+                "      actual: (not (basilisp.core/= 5 4))",
             ],
             consecutive=True,
         )
