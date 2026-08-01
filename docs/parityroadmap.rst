@@ -368,7 +368,10 @@ Near-term deliverable:
   helpers with JVM ``core.async`` return values, fixes ``pub`` ``unsub-all``
   return values, extends the shared JVM fixture with direct mult/pub/mix helper
   return-contract checks, and adds an adversarial mix route covering mute,
-  pause, solo ``:mute``, solo ``:pause``, ``unmix``, and ``unmix-all``.
+  pause, solo ``:mute``, solo ``:pause``, ``unmix``, and ``unmix-all``. The
+  follow-up pub hardening now honors Clojure's topic ``buf-fn`` lifecycle,
+  including one buffer allocation per subscribed topic, no allocation for
+  never-subscribed topics, and topic recreation after ``unsub-all``.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

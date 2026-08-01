@@ -387,6 +387,61 @@
                        (async/poll! beta))]
           [alpha-ret? beta-ret? matched unsubbed closed])))))
 
+(defasync core-async-pub-buffer-fn-roundtrip []
+  (let [calls       (atom [])
+        source      (async/chan 8)
+        publication (async/pub source
+                               :topic
+                               (fn [topic]
+                                 (swap! calls conj topic)
+                                 (async/buffer 2)))
+        alpha       (async/chan 2)
+        alpha-again (async/chan 2)
+        beta        (async/chan 2)]
+    (await (async/put! source {:topic :ignored :value 0}))
+    (await (asyncio/sleep 0))
+    (let [after-unsubscribed @calls
+          sub-alpha?        (identical? alpha
+                                        (async/sub publication :a alpha))
+          after-alpha       @calls
+          sub-alpha-again?  (identical? alpha-again
+                                        (async/sub publication :a alpha-again))
+          after-alpha-again @calls
+          sub-beta?         (identical? beta
+                                        (async/sub publication :b beta))
+          after-beta        @calls]
+      (await (async/put! source {:topic :a :value 1}))
+      (await (async/put! source {:topic :b :value 2}))
+      (let [delivered [(await (async/take! alpha))
+                       (await (async/take! alpha-again))
+                       (await (async/take! beta))
+                       (async/poll! alpha)
+                       (async/poll! alpha-again)
+                       (async/poll! beta)]]
+        (async/unsub publication :a alpha)
+        (let [alpha-resub (async/chan 2)]
+          (async/sub publication :a alpha-resub)
+          (let [after-unsub-resub @calls]
+            (async/unsub-all publication :a)
+            (let [alpha-after-topic-reset (async/chan 2)]
+              (async/sub publication :a alpha-after-topic-reset)
+              (let [after-topic-reset @calls]
+                (async/unsub-all publication)
+                (let [alpha-after-all-reset (async/chan 2)]
+                  (async/sub publication :a alpha-after-all-reset)
+                  (let [after-all-reset @calls]
+                    (async/close! source)
+                    (await (:task publication))
+                    {:after-unsubscribed after-unsubscribed
+                     :sub-returns [sub-alpha? sub-alpha-again? sub-beta?]
+                     :calls [after-alpha
+                             after-alpha-again
+                             after-beta
+                             after-unsub-resub
+                             after-topic-reset
+                             after-all-reset]
+                     :delivered delivered}))))))))))
+
 (defasync core-async-mix-roundtrip []
   (let [out (async/chan 10)
         x   (async/chan 10)
@@ -1063,6 +1118,21 @@
            (asyncio/run (core-async-mult-unbuffered-parallel-roundtrip))))
     (is (= [true true [{:topic :a :value 1} {:topic :b :value 2}] nil nil]
            (asyncio/run (core-async-pub-roundtrip))))
+    (is (= {:after-unsubscribed []
+            :sub-returns [true true true]
+            :calls [[:a]
+                    [:a]
+                    [:a :b]
+                    [:a :b]
+                    [:a :b :a]
+                    [:a :b :a :a]]
+            :delivered [{:topic :a :value 1}
+                        {:topic :a :value 1}
+                        {:topic :b :value 2}
+                        nil
+                        nil
+                        nil]}
+           (asyncio/run (core-async-pub-buffer-fn-roundtrip))))
     (is (= [:x1 [:y-after-mute nil] [:y-after-pause nil] :x-paused]
            (asyncio/run (core-async-mix-roundtrip))))
     (is (= [[:x-default-solo nil] nil [:x-paused-solo nil] :y-paused-solo]

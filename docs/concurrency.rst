@@ -105,7 +105,10 @@ task-backed routing combinators ``mult``, ``tap``, ``untap``, ``untap-all``,
 ``unmix-all``, ``toggle``, and ``solo-mode`` plus the Clojure protocol helper
 surface ``Mux``, ``Mult``, ``Pub``, ``Mix``, ``muxch*``, and the corresponding
 ``tap*``/``sub*``/``admix*`` families. Source close propagation is performed by
-the router task on the owning event loop.
+the router task on the owning event loop. ``pub`` uses Clojure-shaped internal
+topic channels: ``buf-fn`` is called once per subscribed topic, never-subscribed
+topics are dropped without allocating topic state, and ``unsub-all`` removes
+topic state so a later subscription recreates it.
 
 The Clojure blocking bridge names ``<!!``, ``>!!``, ``alts!!``, and ``alt!!`` are
 available for synchronous callers. They reject calls from the channel's owning
