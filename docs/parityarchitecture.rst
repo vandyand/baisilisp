@@ -1058,7 +1058,11 @@ fails, and equality assertions return the computed boolean for supported public
 ``=`` arities while preserving Clojure's zero-arity runtime error path through
 ``try-expr``. Equality assertion report payloads also preserve Clojure's split
 between the source ``:expected`` form and the evaluated ``:actual`` form,
-including ``(not (= ...))`` for failures.
+including ``(not (= ...))`` for failures. Exception assertion report payloads
+also follow Clojure's source-form contract: ``:expected`` is the full assertion
+form, no-throw failures report ``nil`` as ``:actual``, wrong exception types are
+``:error`` events, and ``thrown-with-msg?`` regex mismatches keep the caught
+exception as ``:actual``.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

@@ -223,5 +223,82 @@
                                             #"boom"
                                             (throw (python/Exception "boom")))))]))
     (is (= [true true true true true true] @observed))
-    (is (= {:test 0 :pass 2 :fail 4 :error 0}
+    (is (= {:test 0 :pass 2 :fail 3 :error 1}
            @counters))))
+
+(deftest exception-assertions-use-clojure-report-shapes
+  (let [events (volatile! [])]
+    (binding [report (fn [m]
+                       (vswap! events conj
+                               (let [actual (:actual m)]
+                                 {:type (:type m)
+                                  :message (:message m)
+                                  :expected (pr-str (:expected m))
+                                  :actual-kind (cond
+                                                 (instance? python/BaseException actual) :exception
+                                                 (nil? actual) :nil
+                                                 :else :value)
+                                  :actual (cond
+                                            (instance? python/BaseException actual) (python/str actual)
+                                            :else (pr-str actual))}))
+                       nil)]
+      (is (thrown? python/Exception
+                   (throw (python/Exception "boom")))
+          "thrown-pass")
+      (is (thrown? python/Exception 42)
+          "thrown-no")
+      (is (thrown? python/ValueError
+                   (throw (python/Exception "boom")))
+          "thrown-wrong")
+      (is (thrown-with-msg? python/Exception
+                            #"boom"
+                            (throw (python/Exception "boom")))
+          "msg-pass")
+      (is (thrown-with-msg? python/Exception
+                            #"missing"
+                            (throw (python/Exception "boom")))
+          "msg-mismatch")
+      (is (thrown-with-msg? python/Exception
+                            #"anything"
+                            42)
+          "msg-no")
+      (is (thrown-with-msg? python/ValueError
+                            #"boom"
+                            (throw (python/Exception "boom")))
+          "msg-wrong"))
+    (is (= [{:type :pass
+             :message "thrown-pass"
+             :expected "(thrown? python/Exception (throw (python/Exception \"boom\")))"
+             :actual-kind :exception
+             :actual "boom"}
+            {:type :fail
+             :message "thrown-no"
+             :expected "(thrown? python/Exception 42)"
+             :actual-kind :nil
+             :actual "nil"}
+            {:type :error
+             :message "thrown-wrong"
+             :expected "(thrown? python/ValueError (throw (python/Exception \"boom\")))"
+             :actual-kind :exception
+             :actual "boom"}
+            {:type :pass
+             :message "msg-pass"
+             :expected "(thrown-with-msg? python/Exception #\"boom\" (throw (python/Exception \"boom\")))"
+             :actual-kind :exception
+             :actual "boom"}
+            {:type :fail
+             :message "msg-mismatch"
+             :expected "(thrown-with-msg? python/Exception #\"missing\" (throw (python/Exception \"boom\")))"
+             :actual-kind :exception
+             :actual "boom"}
+            {:type :fail
+             :message "msg-no"
+             :expected "(thrown-with-msg? python/Exception #\"anything\" 42)"
+             :actual-kind :nil
+             :actual "nil"}
+            {:type :error
+             :message "msg-wrong"
+             :expected "(thrown-with-msg? python/ValueError #\"boom\" (throw (python/Exception \"boom\")))"
+             :actual-kind :exception
+             :actual "boom"}]
+           @events))))
