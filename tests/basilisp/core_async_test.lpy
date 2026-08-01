@@ -1,12 +1,129 @@
 (ns tests.basilisp.core-async-test
   (:import asyncio)
   (:require [basilisp.test :refer [deftest is testing]]
-            [clojure.core.async :as async]))
+            [clojure.core.async :as async]
+            [clojure.core.async.impl.buffers :as impl-buffers]
+            [clojure.core.async.impl.channels :as impl-channels]
+            [clojure.core.async.impl.dispatch :as impl-dispatch]
+            [clojure.core.async.impl.protocols :as impl-protocols]
+            [clojure.datafy :as datafy]))
 
 (async/defblockingop helper-defined-blocking-op
   "fixture blocking op"
   [value]
   [:helper value])
+
+(def core-async-impl-expected-publics
+  {'clojure.core.async.impl.protocols
+   '#{Buffer Capacity Channel Executor Handler MAX-QUEUE-SIZE ReadPort
+      UnblockingBuffer WritePort active? add! add!* blockable? capacity
+      close! close-buf! closed? commit exec full? lock-id put! remove! take!}
+   'clojure.core.async.impl.buffers
+   '#{->DroppingBuffer ->FixedBuffer ->PromiseBuffer ->SlidingBuffer
+      datafy-buffer dropping-buffer fixed-buffer promise-buffer sliding-buffer}
+   'clojure.core.async.impl.channels
+   '#{->ManyToManyChannel MMC abort appm assert-unlock box chan cleanup}
+   'clojure.core.async.impl.dispatch
+   '#{check-blocking-in-dispatch counted-thread-factory ex-handler exec
+      executor executor-for in-dispatch-thread? in-go-dispatch run
+      virtual-threads-available? with-dispatch-thread-marking}})
+
+(defn core-async-impl-publics-roundtrip []
+  (into {}
+        (map (fn [[ns-sym expected]]
+               [ns-sym (= expected (set (keys (ns-publics ns-sym))))]))
+        core-async-impl-expected-publics))
+
+(defn core-async-impl-buffer-roundtrip []
+  (let [fixed    (impl-buffers/fixed-buffer 1)
+        dropping (impl-buffers/dropping-buffer 1)
+        sliding  (impl-buffers/sliding-buffer 1)
+        promise  (impl-buffers/promise-buffer)]
+    (impl-protocols/add! fixed :fixed-a)
+    (impl-protocols/add! fixed :fixed-b)
+    (impl-protocols/add! dropping :drop-a)
+    (impl-protocols/add! dropping :drop-b)
+    (impl-protocols/add! sliding :slide-a)
+    (impl-protocols/add! sliding :slide-b)
+    (impl-protocols/add! promise :promise-a)
+    (impl-protocols/add! promise :promise-b)
+    (let [fixed-summary    [(impl-protocols/capacity fixed)
+                            (impl-protocols/full? fixed)
+                            (impl-protocols/remove! fixed)
+                            (impl-protocols/remove! fixed)]
+          dropping-summary [(impl-protocols/capacity dropping)
+                            (impl-protocols/full? dropping)
+                            (satisfies? impl-protocols/UnblockingBuffer dropping)
+                            (impl-protocols/remove! dropping)]
+          sliding-summary  [(impl-protocols/capacity sliding)
+                            (impl-protocols/full? sliding)
+                            (satisfies? impl-protocols/UnblockingBuffer sliding)
+                            (impl-protocols/remove! sliding)]
+          promise-summary  [(impl-protocols/capacity promise)
+                            (impl-protocols/full? promise)
+                            (satisfies? impl-protocols/UnblockingBuffer promise)
+                            (impl-protocols/remove! promise)
+                            (impl-protocols/remove! promise)]
+          datafy-summary   [(datafy/datafy fixed)
+                            (datafy/datafy dropping)
+                            (datafy/datafy sliding)
+                            (datafy/datafy promise)]]
+      {:fixed fixed-summary
+       :dropping dropping-summary
+       :sliding sliding-summary
+       :promise promise-summary
+       :datafy datafy-summary})))
+
+(defn core-async-impl-handler-roundtrip []
+  (let [seen     (atom [])
+        handler  (async/fn-handler #(swap! seen conj %) false)
+        callback (impl-protocols/commit handler)]
+    (callback :delivered)
+    {:callback? (fn? callback)
+     :active?   (impl-protocols/active? handler)
+     :blockable? (impl-protocols/blockable? handler)
+     :lock-id   (impl-protocols/lock-id handler)
+     :commit?   (some? (impl-protocols/commit handler))
+     :seen      @seen}))
+
+(defn core-async-impl-channel-roundtrip []
+  (let [buffered       (impl-channels/chan (impl-buffers/fixed-buffer 1))
+        handler        (async/fn-handler identity)
+        closed-before? (impl-protocols/closed? buffered)
+        put-value      @(impl-protocols/put! buffered :value handler)
+        take-value     @(impl-protocols/take! buffered handler)
+        closed-after?  (do (impl-protocols/close! buffered)
+                           (impl-protocols/closed? buffered))
+        closed-take    @(impl-protocols/take! buffered handler)]
+    {:closed-before? closed-before?
+     :put put-value
+     :take take-value
+     :closed-after? closed-after?
+     :closed-take closed-take
+     :box @(impl-channels/box :boxed)
+     :abort (impl-channels/abort buffered)
+     :cleanup (impl-channels/cleanup buffered)
+     :appm ((impl-channels/appm identity :arg))}))
+
+(defn core-async-impl-dispatch-roundtrip []
+  (let [called (atom [])]
+    (impl-dispatch/run (with-meta #(swap! called conj :run) {:on-caller? true}))
+    (impl-dispatch/exec #(swap! called conj :exec) :mixed)
+    (async/<!! (async/timeout 50))
+    {:workloads [(some? (impl-dispatch/executor-for :mixed))
+                 (some? (impl-dispatch/executor-for :compute))
+                 (some? (impl-dispatch/executor-for :io))
+                 (some? (impl-dispatch/executor-for :core-async-dispatch))]
+     :rejects   [(try (impl-dispatch/executor-for nil)
+                      false
+                      (catch Exception _ true))
+                 (try (impl-dispatch/executor-for :fixed)
+                      false
+                      (catch Exception _ true))]
+     :called    (vec (sort @called))
+     :dispatch? (impl-dispatch/in-dispatch-thread?)
+     :blocking-check (nil? (impl-dispatch/check-blocking-in-dispatch))
+     :virtual-var? (boolean? impl-dispatch/virtual-threads-available?)}))
 
 (defasync core-async-rendezvous-roundtrip []
   (let [channel (async/chan)
@@ -1291,6 +1408,45 @@
            (asyncio/run (core-async-routing-protocol-helper-roundtrip))))))
 
 (deftest core-async-blocking-bridges-test
+  (testing "impl namespace compatibility shims"
+    (is (= {'clojure.core.async.impl.protocols true
+            'clojure.core.async.impl.buffers true
+            'clojure.core.async.impl.channels true
+            'clojure.core.async.impl.dispatch true}
+           (core-async-impl-publics-roundtrip)))
+    (is (= {:fixed [1 true :fixed-a :fixed-b]
+            :dropping [1 false true :drop-a]
+            :sliding [1 false true :slide-b]
+            :promise [1 false true :promise-a :promise-a]
+            :datafy [{:count 0 :type 'FixedBuffer :capacity 1}
+                     {:count 0 :type 'DroppingBuffer :capacity 1}
+                     {:count 0 :type 'SlidingBuffer :capacity 1}
+                     {:count 1 :type 'PromiseBuffer :capacity 1}]}
+           (core-async-impl-buffer-roundtrip)))
+    (is (= {:callback? true
+            :active? true
+            :blockable? false
+            :lock-id 0
+            :commit? true
+            :seen [:delivered]}
+           (core-async-impl-handler-roundtrip)))
+    (is (= {:closed-before? false
+            :put true
+            :take :value
+            :closed-after? true
+            :closed-take nil
+            :box :boxed
+            :abort nil
+            :cleanup nil
+            :appm :arg}
+           (core-async-impl-channel-roundtrip)))
+    (is (= {:workloads [true true true true]
+            :rejects [true true]
+            :called [:exec :run]
+            :dispatch? false
+            :blocking-check true
+            :virtual-var? true}
+           (core-async-impl-dispatch-roundtrip))))
   (testing "blocking operations and thread helpers"
     (is (= [true :value [:second true :fallback :default]]
            (core-async-blocking-roundtrip)))

@@ -1,0 +1,31 @@
+(ns basilisp.core.async.impl.buffers
+  "Portable buffer objects for ``clojure.core.async.impl.buffers``."
+  (:require [clojure.core.async.impl.protocols :as protocols]
+            [basilisp.core.protocols :as core-protocols])
+  (:import [basilisp.core_async_impl :as impl]))
+
+(defn ->FixedBuffer [capacity] (impl/FixedBuffer capacity))
+(defn ->DroppingBuffer [capacity] (impl/DroppingBuffer capacity))
+(defn ->SlidingBuffer [capacity] (impl/SlidingBuffer capacity))
+(defn ->PromiseBuffer [] (impl/PromiseBuffer))
+
+(defn fixed-buffer [capacity] (->FixedBuffer capacity))
+(defn dropping-buffer [capacity] (->DroppingBuffer capacity))
+(defn sliding-buffer [capacity] (->SlidingBuffer capacity))
+(defn promise-buffer [] (->PromiseBuffer))
+
+(defn datafy-buffer
+  [buffer]
+  {:type     (symbol (python/getattr (python/type buffer) "__name__"))
+   :count    (python/getattr buffer "count")
+   :capacity (protocols/capacity buffer)})
+
+(extend-protocol core-protocols/Datafiable
+  impl/FixedBuffer
+  (datafy [buffer] (datafy-buffer buffer))
+  impl/DroppingBuffer
+  (datafy [buffer] (datafy-buffer buffer))
+  impl/SlidingBuffer
+  (datafy [buffer] (datafy-buffer buffer))
+  impl/PromiseBuffer
+  (datafy [buffer] (datafy-buffer buffer)))

@@ -3,8 +3,18 @@
 
 (ns conformance.core-async-cases)
 
-#?(:clj (require '[clojure.core.async :as async])
-   :lpy (require '[clojure.core.async :as async]))
+#?(:clj (require '[clojure.core.async :as async]
+                 '[clojure.core.async.impl.buffers :as impl-buffers]
+                 '[clojure.core.async.impl.channels :as impl-channels]
+                 '[clojure.core.async.impl.dispatch :as impl-dispatch]
+                 '[clojure.core.async.impl.protocols :as impl-protocols]
+                 '[clojure.datafy :as datafy])
+   :lpy (require '[clojure.core.async :as async]
+                 '[clojure.core.async.impl.buffers :as impl-buffers]
+                 '[clojure.core.async.impl.channels :as impl-channels]
+                 '[clojure.core.async.impl.dispatch :as impl-dispatch]
+                 '[clojure.core.async.impl.protocols :as impl-protocols]
+                 '[clojure.datafy :as datafy]))
 
 #?(:lpy (import asyncio))
 
@@ -48,6 +58,24 @@
 (def unsupported-parking-and-blocking-publics
   '#{})
 
+(def impl-protocol-publics
+  '#{Buffer Capacity Channel Executor Handler MAX-QUEUE-SIZE ReadPort
+     UnblockingBuffer WritePort active? add! add!* blockable? capacity
+     close! close-buf! closed? commit exec full? lock-id put! remove! take!})
+
+(def impl-buffer-publics
+  '#{->DroppingBuffer ->FixedBuffer ->PromiseBuffer ->SlidingBuffer
+     datafy-buffer dropping-buffer fixed-buffer promise-buffer sliding-buffer})
+
+(def impl-channel-publics
+  '#{->ManyToManyChannel MMC abort appm assert-unlock box
+     chan cleanup})
+
+(def impl-dispatch-publics
+  '#{check-blocking-in-dispatch counted-thread-factory ex-handler exec
+     executor executor-for in-dispatch-thread? in-go-dispatch run
+     virtual-threads-available? with-dispatch-thread-marking})
+
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
 
@@ -60,6 +88,114 @@
      :unsupported-absent-in-basilisp?
      #?(:clj true
         :lpy (not-any? publics unsupported-parking-and-blocking-publics))}))
+
+(defn impl-public-surface []
+  (let [surface (fn [ns-sym expected]
+                  (let [publics (set (keys (ns-publics ns-sym)))]
+                    {:exact?  (= publics expected)
+                     :missing (vec (sort (remove publics expected)))
+                     :extra   (vec (sort (remove expected publics)))}))]
+    {:protocols (surface 'clojure.core.async.impl.protocols impl-protocol-publics)
+     :buffers   (surface 'clojure.core.async.impl.buffers impl-buffer-publics)
+     :channels  (surface 'clojure.core.async.impl.channels impl-channel-publics)
+     :dispatch  (surface 'clojure.core.async.impl.dispatch impl-dispatch-publics)}))
+
+(defn impl-buffer-roundtrip []
+  (let [fixed    (impl-buffers/fixed-buffer 1)
+        dropping (impl-buffers/dropping-buffer 1)
+        sliding  (impl-buffers/sliding-buffer 1)
+        promise  (impl-buffers/promise-buffer)]
+    (impl-protocols/add! fixed :fixed-a)
+    (impl-protocols/add! fixed :fixed-b)
+    (impl-protocols/add! dropping :drop-a)
+    (impl-protocols/add! dropping :drop-b)
+    (impl-protocols/add! sliding :slide-a)
+    (impl-protocols/add! sliding :slide-b)
+    (impl-protocols/add! promise :promise-a)
+    (impl-protocols/add! promise :promise-b)
+    (let [fixed-summary    [(impl-protocols/capacity fixed)
+                            (impl-protocols/full? fixed)
+                            (impl-protocols/remove! fixed)
+                            (impl-protocols/remove! fixed)]
+          dropping-summary [(impl-protocols/capacity dropping)
+                            (impl-protocols/full? dropping)
+                            (satisfies? impl-protocols/UnblockingBuffer dropping)
+                            (impl-protocols/remove! dropping)]
+          sliding-summary  [(impl-protocols/capacity sliding)
+                            (impl-protocols/full? sliding)
+                            (satisfies? impl-protocols/UnblockingBuffer sliding)
+                            (impl-protocols/remove! sliding)]
+          promise-summary  [(impl-protocols/capacity promise)
+                            (impl-protocols/full? promise)
+                            (satisfies? impl-protocols/UnblockingBuffer promise)
+                            (impl-protocols/remove! promise)
+                            (impl-protocols/remove! promise)]
+          datafy-summary   [(datafy/datafy fixed)
+                            (datafy/datafy dropping)
+                            (datafy/datafy sliding)
+                            (datafy/datafy promise)]]
+      {:fixed fixed-summary
+       :dropping dropping-summary
+       :sliding sliding-summary
+       :promise promise-summary
+       :datafy datafy-summary})))
+
+(defn impl-handler-roundtrip []
+  (let [seen    (atom [])
+        handler (async/fn-handler #(swap! seen conj %) false)
+        callback (impl-protocols/commit handler)]
+    (callback :delivered)
+    {:before-callback? (fn? callback)
+     :after-active?    (impl-protocols/active? handler)
+     :blockable?       (impl-protocols/blockable? handler)
+     :lock-id?         (zero? (impl-protocols/lock-id handler))
+     :second-commit    (some? (impl-protocols/commit handler))
+     :seen             @seen}))
+
+(defn impl-channel-roundtrip []
+  (let [buffered (impl-channels/chan (impl-buffers/fixed-buffer 1))
+        handler  (async/fn-handler identity)
+        boxed    (impl-channels/box :boxed)
+        closed-before? (impl-protocols/closed? buffered)
+        put-value      @(impl-protocols/put! buffered :value handler)
+        take-value     @(impl-protocols/take! buffered handler)
+        closed-after?  (do (impl-protocols/close! buffered)
+                           (impl-protocols/closed? buffered))
+        closed-take    @(impl-protocols/take! buffered handler)
+        box-value      @boxed
+        abort-value    (impl-channels/abort buffered)
+        cleanup-value  (impl-channels/cleanup buffered)
+        appm-value     ((impl-channels/appm identity :arg))]
+    {:closed-before? closed-before?
+     :put put-value
+     :take take-value
+     :closed-after? closed-after?
+     :closed-take closed-take
+     :box box-value
+     :abort abort-value
+     :cleanup cleanup-value
+     :appm appm-value}))
+
+(defn impl-dispatch-roundtrip []
+  (let [called (atom [])]
+    (impl-dispatch/run (with-meta #(swap! called conj :run) {:on-caller? true}))
+    (impl-dispatch/exec #(swap! called conj :exec) :mixed)
+    #?(:clj (Thread/sleep 50)
+       :lpy (async/<!! (async/timeout 50)))
+    {:workloads [(some? (impl-dispatch/executor-for :mixed))
+                 (some? (impl-dispatch/executor-for :compute))
+                 (some? (impl-dispatch/executor-for :io))
+                 (some? (impl-dispatch/executor-for :core-async-dispatch))]
+     :rejects   [(try (impl-dispatch/executor-for nil)
+                      false
+                      (catch Exception _ true))
+                 (try (impl-dispatch/executor-for :fixed)
+                      false
+                      (catch Exception _ true))]
+     :called    (vec (sort @called))
+     :dispatch? (impl-dispatch/in-dispatch-thread?)
+     :blocking-check (nil? (impl-dispatch/check-blocking-in-dispatch))
+     :virtual-var? (boolean? impl-dispatch/virtual-threads-available?)}))
 
 (defn ioc-boundary-summary []
   #?(:clj {:public? true
@@ -2099,6 +2235,13 @@
 
 (emit-case :core-async-ioc-boundary
            (ioc-boundary-summary))
+
+(emit-case :core-async-impl-namespaces
+           [(impl-public-surface)
+            (impl-buffer-roundtrip)
+            (impl-handler-roundtrip)
+            (impl-channel-roundtrip)
+            (impl-dispatch-roundtrip)])
 
 (emit-case :core-async-buffers
            #?(:clj [(fixed-buffer-roundtrip)

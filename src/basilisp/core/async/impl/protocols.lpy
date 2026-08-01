@@ -1,0 +1,116 @@
+(ns basilisp.core.async.impl.protocols
+  "Portable protocol surface for ``clojure.core.async.impl.protocols``.
+
+  These protocols are provided for source compatibility with libraries that
+  import core.async internals. They delegate to BaisiLisp's Python-native
+  channel runtime rather than the JVM mutex/handler implementation."
+  (:refer-basilisp :exclude [put! take! close! add! remove! full?])
+  (:require [basilisp.concurrent :as concurrent])
+  (:import [basilisp.concurrent_channel :as channel]
+           [basilisp.core_async_impl :as impl]
+           [basilisp.lang.futures :as futures]))
+
+(def MAX-QUEUE-SIZE 1024)
+
+(defprotocol Handler
+  (active? [h] "returns true if has callback. Must work w/o lock")
+  (blockable? [h] "returns true if this handler may be blocked, otherwise it must not block")
+  (commit [h] "commit to fulfilling its end of the transfer, returns cb. Must be called within lock")
+  (lock-id [h] "a unique id for lock acquisition order, 0 if no lock"))
+
+(defprotocol ReadPort
+  (take! [port fn1-handler]
+    "derefable val if taken, nil if take was enqueued"))
+
+(defprotocol WritePort
+  (put! [port val fn1-handler]
+    "derefable boolean (false iff already closed) if handled, nil if put was enqueued. Must throw on nil val."))
+
+(defprotocol Channel
+  (closed? [chan])
+  (close! [chan]))
+
+(defprotocol Buffer
+  (full? [b] "returns true if buffer cannot accept put")
+  (remove! [b] "remove and return next item from buffer, called under chan mutex")
+  (add!* [b itm] "if room, add item to the buffer, returns b, called under chan mutex")
+  (add! [b] [b itm])
+  (close-buf! [b] "called on chan closed under chan mutex, return ignored"))
+
+(defprotocol UnblockingBuffer)
+
+(defprotocol Capacity
+  (capacity [b] "The max capacity of the buffer, nil if unknown"))
+
+(defprotocol Executor
+  (exec [e runnable] "execute runnable asynchronously"))
+
+(defn- deliver-handler!
+  [handler value]
+  (when (active? handler)
+    (when-let [callback (commit handler)]
+      (callback value)))
+  nil)
+
+(defn- scheduled-delivery!
+  [awaitable handler]
+  (let [task (concurrent/submit-task! awaitable)]
+    (.add_done_callback task
+                        (fn [completed]
+                          (deliver-handler! handler (.result completed))))
+    nil))
+
+(defn- immediate-result
+  [value]
+  (delay value))
+
+(extend-type impl/FnHandler
+  Handler
+  (active? [h] (.-active h))
+  (blockable? [h] (.-blockable h))
+  (commit [h] (.commit h))
+  (lock-id [h] (.-lock_id h)))
+
+(extend-type channel/Channel
+  ReadPort
+  (take! [port handler]
+    (let [value (concurrent/poll! port)]
+      (cond
+        (some? value) (immediate-result value)
+        (concurrent/closed? port) (immediate-result nil)
+        :else (scheduled-delivery! (concurrent/take! port) handler))))
+
+  WritePort
+  (put! [port value handler]
+    (when (nil? value)
+      (throw (python/ValueError "Cannot put nil on channel")))
+    (cond
+      (concurrent/offer! port value) (immediate-result true)
+      (concurrent/closed? port) (immediate-result false)
+      :else (scheduled-delivery! (concurrent/put! port value) handler)))
+
+  Channel
+  (closed? [port] (concurrent/closed? port))
+  (close! [port] (concurrent/close! port)))
+
+(doseq [buffer-type [impl/FixedBuffer impl/DroppingBuffer impl/SlidingBuffer impl/PromiseBuffer]]
+  (extend buffer-type
+          Buffer
+          {:full?      (fn [buffer] (.-full buffer))
+           :remove!    (fn [buffer] (.remove buffer))
+           :add!*      (fn [buffer item] (.add buffer item))
+           :add!       (fn
+                         ([buffer] buffer)
+                         ([buffer item] (.add buffer item)))
+           :close-buf! (fn [buffer] (.close buffer))}
+          Capacity
+          {:capacity (fn [buffer] (.-capacity buffer))}))
+
+(doseq [buffer-type [impl/DroppingBuffer impl/SlidingBuffer impl/PromiseBuffer]]
+  (extend buffer-type UnblockingBuffer {}))
+
+(extend-type futures/ThreadPoolExecutor
+  Executor
+  (exec [executor runnable]
+    (.submit executor runnable)
+    nil))
