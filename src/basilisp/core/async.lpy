@@ -765,14 +765,31 @@
   [mult]
   (untap-all mult))
 
+(defn- close-topic-entry!
+  [entry]
+  (close! (:channel entry)))
+
+(defn- make-topic-entry
+  [buf-fn topic]
+  (let [channel (chan (buf-fn topic))]
+    {:channel channel
+     :mult    (mult channel)}))
+
+(defn- ensure-topic-entry!
+  [publication topic]
+  (let [topics (:topics publication)]
+    (or (get @topics topic)
+        (let [entry (make-topic-entry (:buf-fn publication) topic)]
+          (swap! topics #(if (contains? % topic)
+                           %
+                           (assoc % topic entry)))
+          (get @topics topic)))))
+
 (defasync ^:private route-topic!
   [topics topic value]
-  (let [registrations (get @topics topic)]
-    (when (seq registrations)
-      (await (route-to-registrations!
-              registrations
-              value
-              #(swap! topics update topic dissoc %))))))
+  (let [entry (get @topics topic)]
+    (when entry
+      (await (put! (:channel entry) value)))))
 
 (defasync ^:private distribute-publication!
   [source topic-fn topics]
@@ -782,15 +799,15 @@
         (await (route-topic! topics (topic-fn value) value))
         (recur (await (take! source)))))
     (finally
-      (doseq [[_topic registrations] @topics]
-        (close-registered-channels! registrations)))))
+      (doseq [[_topic entry] @topics]
+        (close-topic-entry! entry)))))
 
 (defn pub
   "Create a publication of ``channel`` partitioned by ``topic-fn``.
 
-  The optional ``buf-fn`` argument is accepted for Clojure-shaped source
-  compatibility but the current direct ``asyncio`` router does not create
-  internal topic buffers."
+  The optional ``buf-fn`` argument is called once when a topic is first
+  subscribed and supplies the internal topic channel buffer. Values for
+  never-subscribed topics are dropped without allocating topic state."
   ([channel topic-fn]
    (pub channel topic-fn (constantly nil)))
   ([channel topic-fn buf-fn]
@@ -810,7 +827,7 @@
   ([pub topic channel]
    (sub pub topic channel true))
   ([pub topic channel close?]
-   (swap! (:topics pub) update topic #(assoc (or % {}) channel close?))
+   (tap (:mult (ensure-topic-entry! pub topic)) channel close?)
    channel))
 
 (defn sub*
@@ -821,7 +838,9 @@
 (defn unsub
   "Unsubscribe ``channel`` from ``topic`` in publication ``pub``."
   [pub topic channel]
-  (swap! (:topics pub) update topic dissoc channel)
+  (let [entry (get @(:topics pub) topic)]
+    (when entry
+      (untap (:mult entry) channel)))
   nil)
 
 (defn unsub*
@@ -833,9 +852,16 @@
   "Unsubscribe all channels from publication ``pub``, or all channels from one
   ``topic``."
   ([pub]
+   (doseq [[_topic entry] @(:topics pub)]
+     (untap-all (:mult entry))
+     (close-topic-entry! entry))
    (reset! (:topics pub) {})
    {})
   ([pub topic]
+   (let [entry (get @(:topics pub) topic)]
+     (when entry
+       (untap-all (:mult entry))
+       (close-topic-entry! entry)))
    (swap! (:topics pub) dissoc topic)
    {}))
 

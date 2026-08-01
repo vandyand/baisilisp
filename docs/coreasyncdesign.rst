@@ -472,8 +472,10 @@ The initial implementation now covers:
   supplied target channel.
 * Add task-backed routing combinators: ``mult``, ``tap``, ``untap``,
   ``untap-all``, ``pub``, ``sub``, ``unsub``, and ``unsub-all``. The current
-  publication implementation accepts ``buf-fn`` for source compatibility but
-  does not yet model per-topic internal buffers.
+  publication implementation models Clojure's per-topic internal channels:
+  ``buf-fn`` is called once when a topic is first subscribed, unsubscribed
+  topics do not allocate buffers, and ``unsub-all`` removes topic state so a
+  later subscription recreates it.
 * Add the routing protocol helper surface: ``Mux``, ``Mult``, ``Pub``,
   ``Mix``, ``muxch*``, and the ``tap*``/``sub*``/``admix*`` helper families.
   These delegate to the existing map-backed routing state and preserve the

@@ -1342,8 +1342,119 @@
            (await (:task publication))
            (let [closed (do
                            (await (async/take! alpha))
-                          (async/poll! beta))]
+                           (async/poll! beta))]
              [alpha-ret? beta-ret? matched unsubbed closed]))))))
+
+#?(:clj
+   (defn pub-buffer-fn-roundtrip []
+     (let [calls       (atom [])
+           source      (async/chan 8)
+           publication (async/pub source
+                                  :topic
+                                  (fn [topic]
+                                    (swap! calls conj topic)
+                                    (async/buffer 2)))
+           alpha       (async/chan 2)
+           alpha-again (async/chan 2)
+           beta        (async/chan 2)]
+       (async/>!! source {:topic :ignored :value 0})
+       (Thread/sleep 50)
+       (let [after-unsubscribed @calls
+             sub-alpha?        (identical? alpha
+                                           (async/sub publication :a alpha))
+             after-alpha       @calls
+             sub-alpha-again?  (identical? alpha-again
+                                           (async/sub publication :a alpha-again))
+             after-alpha-again @calls
+             sub-beta?         (identical? beta
+                                           (async/sub publication :b beta))
+             after-beta        @calls]
+         (async/>!! source {:topic :a :value 1})
+         (async/>!! source {:topic :b :value 2})
+         (let [delivered [(async/<!! alpha)
+                          (async/<!! alpha-again)
+                          (async/<!! beta)
+                          (async/poll! alpha)
+                          (async/poll! alpha-again)
+                          (async/poll! beta)]]
+           (async/unsub publication :a alpha)
+           (let [alpha-resub (async/chan 2)]
+             (async/sub publication :a alpha-resub)
+             (let [after-unsub-resub @calls]
+               (async/unsub-all publication :a)
+               (let [alpha-after-topic-reset (async/chan 2)]
+                 (async/sub publication :a alpha-after-topic-reset)
+                 (let [after-topic-reset @calls]
+                   (async/unsub-all publication)
+                   (let [alpha-after-all-reset (async/chan 2)]
+                     (async/sub publication :a alpha-after-all-reset)
+                     (let [after-all-reset @calls]
+                       (async/close! source)
+                       {:after-unsubscribed after-unsubscribed
+                        :sub-returns [sub-alpha? sub-alpha-again? sub-beta?]
+                        :calls [after-alpha
+                                after-alpha-again
+                                after-beta
+                                after-unsub-resub
+                                after-topic-reset
+                                after-all-reset]
+                        :delivered delivered}))))))))))
+
+   :lpy
+   (defasync pub-buffer-fn-roundtrip []
+     (let [calls       (atom [])
+           source      (async/chan 8)
+           publication (async/pub source
+                                  :topic
+                                  (fn [topic]
+                                    (swap! calls conj topic)
+                                    (async/buffer 2)))
+           alpha       (async/chan 2)
+           alpha-again (async/chan 2)
+           beta        (async/chan 2)]
+       (await (async/put! source {:topic :ignored :value 0}))
+       (await (asyncio/sleep 0))
+       (let [after-unsubscribed @calls
+             sub-alpha?        (identical? alpha
+                                           (async/sub publication :a alpha))
+             after-alpha       @calls
+             sub-alpha-again?  (identical? alpha-again
+                                           (async/sub publication :a alpha-again))
+             after-alpha-again @calls
+             sub-beta?         (identical? beta
+                                           (async/sub publication :b beta))
+             after-beta        @calls]
+         (await (async/put! source {:topic :a :value 1}))
+         (await (async/put! source {:topic :b :value 2}))
+         (let [delivered [(await (async/take! alpha))
+                          (await (async/take! alpha-again))
+                          (await (async/take! beta))
+                          (async/poll! alpha)
+                          (async/poll! alpha-again)
+                          (async/poll! beta)]]
+           (async/unsub publication :a alpha)
+           (let [alpha-resub (async/chan 2)]
+             (async/sub publication :a alpha-resub)
+             (let [after-unsub-resub @calls]
+               (async/unsub-all publication :a)
+               (let [alpha-after-topic-reset (async/chan 2)]
+                 (async/sub publication :a alpha-after-topic-reset)
+                 (let [after-topic-reset @calls]
+                   (async/unsub-all publication)
+                   (let [alpha-after-all-reset (async/chan 2)]
+                     (async/sub publication :a alpha-after-all-reset)
+                     (let [after-all-reset @calls]
+                       (async/close! source)
+                       (await (:task publication))
+                       {:after-unsubscribed after-unsubscribed
+                        :sub-returns [sub-alpha? sub-alpha-again? sub-beta?]
+                        :calls [after-alpha
+                                after-alpha-again
+                                after-beta
+                                after-unsub-resub
+                                after-topic-reset
+                                after-all-reset]
+                        :delivered delivered})))))))))))
 
 #?(:clj
    (defn mix-roundtrip []
@@ -1909,6 +2020,7 @@
 (emit-case :core-async-routing-combinators
            #?(:clj [(mult-roundtrip)
                     (pub-roundtrip)
+                    (pub-buffer-fn-roundtrip)
                     (routing-return-contract-roundtrip)
                     (mix-roundtrip)
                     (mix-solo-roundtrip)
@@ -1917,6 +2029,7 @@
                     (routing-protocol-helper-roundtrip)]
               :lpy [(asyncio/run (mult-roundtrip))
                     (asyncio/run (pub-roundtrip))
+                    (asyncio/run (pub-buffer-fn-roundtrip))
                     (asyncio/run (routing-return-contract-roundtrip))
                     (asyncio/run (mix-roundtrip))
                     (asyncio/run (mix-solo-roundtrip))

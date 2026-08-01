@@ -308,9 +308,11 @@ supported by Basilisp do not share a uniform close and selection API.
 ``alts!`` and ``timeout`` complete the first selection surface. Selection uses
 a shared winner token so a value is neither lost nor delivered twice. ``pipe!``
 and ``pipeline!`` now cover the first ordered channel pipeline milestone.
-Transducers attached directly to channels, pub/sub, and full ``go`` parking
-semantics are later work; see :ref:`core_async_design` for the staged
-``clojure.core.async`` compatibility design.
+Channel transducers, pub/sub, mult/mix routing, blocking/thread bridges, and a
+coroutine-backed ``go`` parking subset are now covered by staged JVM fixtures;
+deeper compiler-produced IOC state-machine parity remains later work. See
+:ref:`core_async_design` for the staged ``clojure.core.async`` compatibility
+design.
 
 ``(alts! ports & opts)`` accepts take channels and ``[channel value]`` put
 pairs; it returns
