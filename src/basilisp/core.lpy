@@ -9223,7 +9223,7 @@
          (~'seq [~this-gs]
           (concat
            [~@(map (fn [field]
-                     (map-entry (keyword (name field)) field))
+                     `(map-entry ~(keyword (name field)) ~field))
                    fields)]
            (seq ~'_recmap)))
          (~'dissoc [~this-gs ~'& ks#]
@@ -9296,7 +9296,7 @@
                 qual-name (.- (python/type ~this-gs) ~'__qualname__)]
             (cond->> (if (and print-dup (not *verbose-defrecords*))
                        (str "#" ~(name *ns*) "." qual-name
-                            (repr (vec (vals ~this-gs))))
+                            (repr (vec (concat [~@fields] (vals ~'_recmap)))))
                        (->> (mapcat identity ~this-gs)
                             (apply hash-map)
                             (repr)
