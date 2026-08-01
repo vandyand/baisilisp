@@ -377,7 +377,15 @@ Near-term deliverable:
   on the current event loop or Basilisp's shared background channel loop; the
   shared JVM fixture now locks ``timeout``, collection/channel combinators,
   folds, pipelines, transform-direction helpers, and mult/pub/mix routing under
-  direct ``<!!`` consumption.
+  direct ``<!!`` consumption. The impl-namespace follow-up adds exact public
+  source-import facades for the shipped ``clojure.core.async.impl.protocols``,
+  ``clojure.core.async.impl.buffers``,
+  ``clojure.core.async.impl.channels``, and
+  ``clojure.core.async.impl.dispatch`` namespaces, with shared JVM fixtures for
+  public surfaces, buffer semantics/datafy shape, handler lifecycle, channel
+  construction/protocol operations, dispatch workload selection, and explicit
+  rejection of unsupported workload tags. Compiler-generated IOC internals and
+  ``impl.ioc-macros`` remain outside the current contract.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

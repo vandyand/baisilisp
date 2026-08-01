@@ -1,0 +1,52 @@
+(ns basilisp.core.async.impl.dispatch
+  "Python-native dispatch facade for ``clojure.core.async.impl.dispatch``."
+  (:refer-basilisp :exclude [run])
+  (:require [clojure.core.async.impl.protocols :as protocols]
+            [basilisp.concurrent :as concurrent])
+  (:import [basilisp.core_async_impl :as impl]))
+
+(def executor (concurrent/thread-executor))
+
+(def virtual-threads-available? false)
+
+(defn executor-for
+  [workload]
+  (case workload
+    :mixed executor
+    :compute executor
+    :io executor
+    :core-async-dispatch executor
+    (throw (python/ValueError (str "No matching clause: " workload)))))
+
+(defn in-dispatch-thread? [] false)
+
+(defn check-blocking-in-dispatch [] nil)
+
+(defn run
+  "Runs runnable on caller when metadata asks for it; otherwise schedules it."
+  [runnable]
+  (if (:on-caller? (meta runnable))
+    (runnable)
+    (protocols/exec executor runnable))
+  nil)
+
+(defn exec
+  [runnable workload]
+  (protocols/exec (executor-for workload) runnable)
+  nil)
+
+(defn counted-thread-factory
+  ([name-format daemon]
+   (impl/thread_factory name-format daemon))
+  ([name-format daemon {:keys [init-fn]}]
+   (impl/thread_factory name-format daemon init-fn)))
+
+(defn ex-handler [_ex] nil)
+
+(defmacro with-dispatch-thread-marking
+  [& body]
+  `(do ~@body))
+
+(defn in-go-dispatch
+  [f]
+  (f))

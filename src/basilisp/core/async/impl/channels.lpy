@@ -1,0 +1,58 @@
+(ns basilisp.core.async.impl.channels
+  "Portable channel helpers for ``clojure.core.async.impl.channels``."
+  (:refer-basilisp :exclude [chan])
+  (:require [clojure.core.async :as async]
+            [clojure.core.async.impl.protocols :as protocols])
+  (:import [basilisp.concurrent_channel :as channel]
+           [basilisp.core_async_impl :as impl]))
+
+(defprotocol MMC
+  (abort [_])
+  (cleanup [_]))
+
+(defn ->ManyToManyChannel
+  [& _args]
+  (channel/Channel))
+
+(defn- buffer->channel-args
+  [buffer]
+  (cond
+    (nil? buffer) [nil]
+    (instance? impl/PromiseBuffer buffer) [:promise]
+    (instance? impl/FixedBuffer buffer) [(protocols/capacity buffer)]
+    (instance? impl/DroppingBuffer buffer) [(async/dropping-buffer (protocols/capacity buffer))]
+    (instance? impl/SlidingBuffer buffer) [(async/sliding-buffer (protocols/capacity buffer))]
+    :else (throw (python/ValueError (str "Unsupported core.async impl buffer: " buffer)))))
+
+(defn chan
+  ([buf]
+   (let [[kind value] (let [args (buffer->channel-args buf)]
+                        (if (= :promise (first args))
+                          [:promise nil]
+                          [:chan (first args)]))]
+     (if (= :promise kind)
+       (async/promise-chan)
+       (async/chan value))))
+  ([buf xform]
+   (let [args (buffer->channel-args buf)]
+     (if (= :promise (first args))
+       (async/promise-chan xform)
+       (async/chan (first args) xform))))
+  ([buf xform ex-handler]
+   (let [args (buffer->channel-args buf)]
+     (if (= :promise (first args))
+       (async/promise-chan xform ex-handler)
+       (async/chan (first args) xform ex-handler)))))
+
+(defn box [val] (impl/Box val))
+
+(defn appm
+  [f arg]
+  (with-meta (fn [] (f arg)) (meta f)))
+
+(defn assert-unlock [_lock _test _msg] nil)
+
+(extend-type channel/Channel
+  MMC
+  (abort [_] nil)
+  (cleanup [_] nil))

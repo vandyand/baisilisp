@@ -7,7 +7,8 @@
   an explicit unsupported boundary."
   (:refer-basilisp :exclude [into reduce take transduce])
   (:require [basilisp.concurrent :as concurrent])
-  (:import asyncio))
+  (:import asyncio
+           [basilisp.core_async_impl :as impl]))
 
 (def ^:private buffer-key :basilisp.core.async/buffer)
 (def Mux :basilisp.core.async/Mux)
@@ -187,9 +188,7 @@
   ([f]
    (fn-handler f true))
   ([f blockable]
-   {:basilisp.core.async/handler true
-    :f f
-    :blockable blockable}))
+   (impl/FnHandler f blockable)))
 
 (defn- alts-task!
   [fret ports opts]

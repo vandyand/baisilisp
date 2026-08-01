@@ -176,11 +176,16 @@ into one of these states:
        worker-thread executor as ``thread``.
    * - Advanced routing
      - Requires higher-level fan-out/fan-in state and lifecycle semantics.
-     - Covered locally for ``mult``/``pub``/``mix`` families; remaining flow
-       APIs are deferred.
-   * - Defer
-     - Experimental or broad enough to need a separate design.
-     - ``clojure.core.async.flow``
+     - Covered locally for ``mult``/``pub``/``mix`` families.
+   * - Impl source imports
+     - Requires public, source-compatible facades without copying JVM mutex
+       internals.
+     - Covered locally for ``clojure.core.async.impl.protocols``,
+       ``clojure.core.async.impl.buffers``,
+       ``clojure.core.async.impl.channels``, and
+       ``clojure.core.async.impl.dispatch``. These shims support portable
+       public Vars, buffer behavior, handler lifecycle, channel construction,
+       and dispatch workload boundaries while remaining Python-native.
 
 Phase 1: Compatibility Facade Without ``go``
 --------------------------------------------
@@ -528,17 +533,22 @@ Recommended Next Tranche
 The next tranche should decide whether deeper compiler-produced IOC parity is
 worth the complexity or whether the coroutine-backed ``go`` subset is the
 intended long-term compatibility boundary. The ``clojure.core.async`` public
-surface is now exact and guarded, but public surface parity is not the same as
-full implementation parity:
+surface and the shipped ``clojure.core.async.impl`` public source-import
+surfaces are now exact and guarded, but public surface parity is not the same
+as full implementation parity:
 
 * Keep the maintained public support matrix for ``clojure.core.async`` exact in
-  both the differential fixture and the source-level acceptance library.
+  both the differential fixture and the source-level acceptance library, and
+  keep the ``impl.*`` namespace public surfaces exact in the differential
+  fixture.
 * Extend JVM differential fixtures only where behavior is portable and
   observable from channels; the current hardening tranche already covers closed
   channels, timeout interaction, nested parking choices, close/result races, and
-  exception result-channel lifecycle.
+  exception result-channel lifecycle, plus direct impl buffer/handler/channel
+  and dispatch compatibility.
 * Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary for
   the long term or invest in a compiler-produced state-machine representation.
-* Add deterministic rejection or compatibility tests for any remaining
-  unsupported flow APIs and for unsupported parking/compiler forms if deeper IOC
-  work begins.
+* Add deterministic rejection or compatibility tests for unsupported
+  parking/compiler forms if deeper IOC work begins. The audited upstream
+  ``org.clojure/core.async`` 1.9.865 artifact does not ship
+  ``clojure.core.async.flow``.
