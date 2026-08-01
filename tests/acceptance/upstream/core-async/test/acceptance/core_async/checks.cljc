@@ -10,7 +10,8 @@
         pipeline     (workflow/pipeline-summary)
         collection   (workflow/collection-summary)
         routing      (workflow/routing-summary)
-        stress       (workflow/stress-summary)]
+        stress       (workflow/stress-summary)
+        parking      (workflow/parking-boundary-summary)]
     [[:public-surface surface]
      [:ioc-alts     ioc-alts]
      [:ioc-helpers  ioc-helpers]
@@ -19,4 +20,5 @@
      [:pipeline     pipeline]
      [:collection   collection]
      [:routing      routing]
-     [:stress       stress]]))
+     [:stress       stress]
+     [:parking      parking]]))

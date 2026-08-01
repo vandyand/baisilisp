@@ -291,6 +291,91 @@
   [& clauses]
   (do-alt `alts!! clauses))
 
+(defn- resolves-to-var?
+  [sym target]
+  (try
+    (= (resolve sym) target)
+    (catch Exception _
+      false)))
+
+(defn- parking-op
+  [sym]
+  (when (symbol? sym)
+    (cond
+      (or (= '<! sym)
+          (= 'clojure.core.async/<! sym)
+          (= 'basilisp.core.async/<! sym)
+          (= "<!" (name sym))
+          (resolves-to-var? sym (resolve 'basilisp.core.async/<!))) :take
+
+      (or (= '>! sym)
+          (= 'clojure.core.async/>! sym)
+          (= 'basilisp.core.async/>! sym)
+          (= ">!" (name sym))
+          (resolves-to-var? sym (resolve 'basilisp.core.async/>!))) :put
+
+      (or (= 'alt! sym)
+          (= 'clojure.core.async/alt! sym)
+          (= 'basilisp.core.async/alt! sym)
+          (= "alt!" (name sym))
+          (resolves-to-var? sym (resolve 'basilisp.core.async/alt!))) :alt)))
+
+(defn- quoted-form-head?
+  [sym]
+  (contains? '#{quote basilisp.core/quote clojure.core/quote
+                var basilisp.core/var clojure.core/var}
+             sym))
+
+(declare rewrite-parking-form)
+
+(defn- rewrite-parking-coll
+  [form]
+  (cond
+    (vector? form)
+    (vec (map rewrite-parking-form form))
+
+    (map? form)
+    (basilisp.core/into (empty form)
+                        (map (fn [[k v]]
+                               [(rewrite-parking-form k) (rewrite-parking-form v)]))
+                        form)
+
+    (set? form)
+    (basilisp.core/into (empty form) (map rewrite-parking-form) form)
+
+    :else
+    form))
+
+(defn- rewrite-parking-form
+  [form]
+  (cond
+    (seq? form)
+    (let [head (first form)]
+      (case (parking-op head)
+        :take
+        (let [[_ port & more] form]
+          (assert (empty? more) "<! expects exactly one argument")
+          `(await (take! ~(rewrite-parking-form port))))
+
+        :put
+        (let [[_ port value & more] form]
+          (assert (empty? more) ">! expects exactly two arguments")
+          `(await (put! ~(rewrite-parking-form port)
+                        ~(rewrite-parking-form value))))
+
+        :alt
+        (do-alt* `alts! (map rewrite-parking-form (rest form)) true)
+
+        (if (quoted-form-head? head)
+          form
+          (apply list (map rewrite-parking-form form)))))
+
+    (or (vector? form) (map? form) (set? form))
+    (rewrite-parking-coll form)
+
+    :else
+    form))
+
 (defasync ^:private run-go-body!
   [result-channel body-fn]
   (try
@@ -308,7 +393,9 @@
   ``core.async/go``. Parking operations ``<!``, ``>!``, and ``alt!`` lower to
   ``await`` over the existing channel runtime."
   [& body]
-  (let [body-fn (with-meta (concat '(fn []) body) {:async true})]
+  (let [rewritten-body (doall (map rewrite-parking-form body))
+        body-fn        (with-meta (concat '(fn []) rewritten-body)
+                           {:async true})]
     `(let [result-channel# (chan 1)]
        (concurrent/submit-task!
         (@#'basilisp.core.async/run-go-body! result-channel# ~body-fn))

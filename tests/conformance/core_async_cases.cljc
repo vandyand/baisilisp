@@ -1308,6 +1308,28 @@
                             inputs))]
     (vec (doall (map async/<!! results)))))
 
+(defn go-nested-parking-generated-roundtrip []
+  (let [n       32
+        inputs  (doall (map (fn [idx]
+                              (let [channel (async/chan 1)]
+                                (async/>!! channel idx)
+                                channel))
+                            (range n)))
+        results (doall
+                 (map (fn [channel]
+                        (async/go
+                          (let [target (async/chan 1)]
+                            (async/>! target (inc (async/<! channel)))
+                            (async/<! target))))
+                      inputs))]
+    (vec (doall (map async/<!! results)))))
+
+(defn go-quoted-parking-roundtrip []
+  (async/<!! (async/go
+               ['(async/<! input)
+                '(async/>! output value)
+                '(async/alt! input :branch)])))
+
 (defn go-parking-edge-roundtrip []
   (let [closed-input  (async/chan)
         closed-output (async/chan)
@@ -2500,6 +2522,8 @@
                :lpy (asyncio/run (helper-publics-generated-roundtrip)))
             (go-parking-roundtrip)
             (go-parking-generated-roundtrip)
+            (go-nested-parking-generated-roundtrip)
+            (go-quoted-parking-roundtrip)
             (go-parking-edge-roundtrip)
             (thread-roundtrip)
             (io-thread-roundtrip)])

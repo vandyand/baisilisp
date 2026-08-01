@@ -378,3 +378,24 @@
                                   [value (inc value)])))
                             inputs))]
     (vec (map async/<!! results))))
+
+(defn parking-boundary-summary
+  "Exercise quoted parking forms and recursive go-body rewriting."
+  []
+  (let [inputs   (doall (map (fn [idx]
+                               (let [channel (async/chan 1)]
+                                 (async/>!! channel idx)
+                                 channel))
+                             (range 32)))
+        nested   (doall
+                  (map (fn [channel]
+                         (async/go
+                           (let [target (async/chan 1)]
+                             (async/>! target (inc (async/<! channel)))
+                             (async/<! target))))
+                       inputs))]
+    [[:nested (vec (map async/<!! nested))]
+     [:quoted (async/<!! (async/go
+                           ['(async/<! input)
+                            '(async/>! output value)
+                            '(async/alt! input :branch)]))]]))

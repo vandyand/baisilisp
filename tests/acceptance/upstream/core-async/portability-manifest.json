@@ -62,7 +62,7 @@
         "unsubbed",
         "value"
       ],
-      "sha256": "5aaa0e53b3026885ae817c4dbf934c0422833dba939b6d2c7f74cf28a0ddef74"
+      "sha256": "d12a95f762ec2b3909ce77e057a246724da5cb48e0c25aac1e2e6770dbb96f51"
     },
     {
       "blockers": [],
@@ -74,7 +74,7 @@
         "acceptance.core-async.workflow",
         "surface"
       ],
-      "sha256": "2c4c690af6c47d8abafca3ec306343eb981f65acc89a31a4e79424ac7e33d055"
+      "sha256": "5385dcb3ee23b805faf14e656239aa2305e44c652715fe345168b8cd04c6754b"
     }
   ],
   "substitutions": [

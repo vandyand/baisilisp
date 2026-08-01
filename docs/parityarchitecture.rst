@@ -313,8 +313,11 @@ coroutine-backed ``go`` parking subset are now covered by staged JVM fixtures;
 the shipped ``clojure.core.async.impl`` protocol, buffer, channel, dispatch,
 and IOC runtime-helper source-import surfaces now have Python-native
 compatibility facades. Direct ``ioc-alts!`` state-array selection integrates
-with the same ``do-alts`` runtime path. Deeper compiler-produced IOC
-state-machine lowering from ``go`` bodies remains later work. See
+with the same ``do-alts`` runtime path. The coroutine-backed ``go`` macro now
+recursively lowers nested parking forms inside its own body and shared JVM
+fixtures guard generated nested parking stress plus quoted parking forms as
+data. Deeper compiler-produced IOC state-machine lowering from ``go`` bodies
+remains later work. See
 :ref:`core_async_design` for the staged ``clojure.core.async`` compatibility
 design.
 

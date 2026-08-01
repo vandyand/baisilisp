@@ -349,6 +349,10 @@ boundary:
 * ``>!`` expands to an await of ``put!`` and is valid where Basilisp permits
   ``await``. Portable Clojure-shaped use should keep it inside ``go``.
 * ``alt!`` expands to awaitable selection over ``alts!``.
+* ``go`` now rewrites parking forms recursively inside its own body before
+  building the coroutine function, so nested values such as
+  ``(>! out (inc (<! in)))`` are handled by the ``go`` expansion rather than
+  relying on later public macro expansion. Quoted parking forms remain data.
 * ``<!!``, ``>!!``, and ``alts!!`` inside ``go`` are not currently rejected at
   macro-expansion time; they retain the existing same-owner-loop deadlock
   rejection when invoked.
@@ -522,6 +526,15 @@ The initial implementation now covers:
   collection/channel combinators, pipelines, transform-direction helpers,
   ``mult``, ``pub``, and ``mix`` with ``<!!`` without manually entering
   ``asyncio``.
+* Harden ``go`` body lowering before any full IOC compiler work: the
+  coroutine-backed ``go`` macro now recursively lowers nested parking
+  operations in its own body and the shared JVM fixtures guard generated nested
+  parking stress plus quoted parking forms as data. Adversarial review also
+  identified a separate macroexpansion boundary: JVM ``core.async``
+  ``macroexpand`` does not throw for ``<!``/``>!`` outside ``go``, while the
+  current Basilisp public parking macros still expand through Python
+  ``await``. That remains a follow-up because changing it safely requires
+  deeper macro-expansion design.
 
 Why this tranche first:
 
@@ -548,8 +561,9 @@ parity:
   keep the ``impl.*`` namespace public surfaces exact in the differential
   fixture.
 * Extend JVM differential fixtures only where behavior is portable and
-  observable from channels; the current hardening tranche already covers closed
-  channels, timeout interaction, nested parking choices, close/result races, and
+  observable from channels; the current hardening tranches already cover closed
+  channels, timeout interaction, nested parking choices, nested parking
+  lowering inside ``go`` arguments, quoted parking data, close/result races, and
   exception result-channel lifecycle, plus direct impl buffer/handler/channel
   and dispatch compatibility.
 * Decide whether to invest in compiler-produced state-machine lowering. The
@@ -560,3 +574,7 @@ parity:
   parking/compiler forms if deeper IOC work begins. The audited upstream
   ``org.clojure/core.async`` 1.9.865 artifact does not ship
   ``clojure.core.async.flow``.
+* Resolve the public parking macroexpansion boundary before claiming compiler
+  parity: JVM ``core.async`` leaves ``<!``/``>!`` macroexpansion outside a
+  compiler IOC context non-throwing, whereas Basilisp's current public macros
+  are coroutine-oriented.
