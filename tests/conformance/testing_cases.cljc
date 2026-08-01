@@ -65,6 +65,43 @@
                t/*report-counters* (ref t/*initial-report-counters*)]
        (equality-return-summary))))
 
+(defn thrown-with-msg-return-summary []
+  (let [thrown-match (t/is (thrown? #?(:clj Exception :lpy python/Exception)
+                                    (throw (#?(:clj Exception.
+                                               :lpy python/Exception)
+                                            "boom"))))
+        thrown-miss  (t/is (thrown? #?(:clj Exception :lpy python/Exception)
+                                    42))
+        matched   (t/is (thrown-with-msg? #?(:clj Exception :lpy python/Exception)
+                                          #"boom"
+                                          (throw (#?(:clj Exception.
+                                                     :lpy python/Exception)
+                                                  "boom"))))
+        mismatch  (t/is (thrown-with-msg? #?(:clj Exception :lpy python/Exception)
+                                          #"missing"
+                                          (throw (#?(:clj Exception.
+                                                     :lpy python/Exception)
+                                                  "boom"))))
+        no-throw  (t/is (thrown-with-msg? #?(:clj Exception :lpy python/Exception)
+                                          #"anything"
+                                          42))]
+    {:returns [(some? thrown-match)
+               (nil? thrown-miss)
+               (some? matched)
+               (some? mismatch)
+               (nil? no-throw)]
+     :counters @t/*report-counters*}))
+
+(def thrown-with-msg-return-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)
+               t/*report-counters* (ref t/*initial-report-counters*)]
+       (thrown-with-msg-return-summary))
+     :lpy
+     (binding [t/*test-output* false
+               t/*report-counters* (ref t/*initial-report-counters*)]
+       (thrown-with-msg-return-summary))))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -73,3 +110,4 @@
 (emit-case :assertions-and-fixtures @fixture-events)
 (emit-case :test-var-report-counters report-counters)
 (emit-case :is-equality-return-values equality-return-values)
+(emit-case :thrown-with-msg-return-values thrown-with-msg-return-values)

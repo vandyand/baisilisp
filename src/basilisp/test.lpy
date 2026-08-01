@@ -346,7 +346,8 @@
                      :message ~msg
                      :expr (quote ~expr)
                      :actual result#
-                     :expected (quote ~exc-type)}))
+                     :expected (quote ~exc-type)})
+         nil)
        (catch ~exc-type e#
          (do-report {:type :pass
                      :message ~msg
@@ -359,7 +360,8 @@
                      :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
                      :expr (quote ~expr)
                      :actual e#
-                     :expected ~exc-type})))))
+                     :expected ~exc-type})
+         nil))))
 
 (defmethod assert-expr 'thrown-with-msg?
   [msg expr]
@@ -372,7 +374,8 @@
                      :message ~msg
                      :expr (quote ~expr)
                      :actual result#
-                     :expected (quote ~exc-type)}))
+                     :expected (quote ~exc-type)})
+         nil)
        (catch ~exc-type e#
          ;; Use python/str rather than Basilisp str to get the raw "message"
          ;; from the exception.
@@ -387,13 +390,15 @@
                          :message "Regex pattern did not match"
                          :expr (quote ~expr)
                          :actual string-exc#
-                         :expected ~pattern}))))
+                         :expected ~pattern}))
+           e#))
        (catch python/Exception e#
          (do-report {:type :fail
                      :message (str "Expected " ~exc-type "; got " (python/type e#) " instead")
                      :expr (quote ~expr)
                      :actual e#
-                     :expected ~exc-type})))))
+                     :expected ~exc-type})
+         nil))))
 
 (defmethod assert-expr 'portable-thrown?
   [msg expr]
