@@ -546,8 +546,11 @@ The differential conformance corpus is likewise inventory-gated. The checked-in
 normal full-corpus shard set, so local ``prepl`` and ``io-prepl`` event
 contracts are part of the same JVM/Basilisp differential proof as other
 standard namespaces. ``--verify-inventory`` fails before sharded execution when
-fixture files drift from that manifest, keeping fixture corpus changes visible
-in review.
+fixture files or their pinned emitted-case counts drift from that manifest,
+keeping fixture corpus changes visible in review. After Clojure and Basilisp
+outputs match semantically, each checked-in fixture must still emit the
+expected number of EDN cases; this prevents accidental loss of proof depth
+inside an otherwise conformant fixture file.
 
 Pretty Printing
 ^^^^^^^^^^^^^^^
