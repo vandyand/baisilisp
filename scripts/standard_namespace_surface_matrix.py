@@ -187,6 +187,128 @@ STANDARD_NAMESPACE_PAIRS: tuple[NamespacePair, ...] = (
     NamespacePair("clojure.zip", "basilisp.zip"),
 )
 
+ALLOWED_BASILISP_EXTENSIONS: dict[str, tuple[str, ...]] = {
+    "basilisp.core.cache": (
+        "BasicCache",
+        "FIFOCache",
+        "FnCache",
+        "LIRSCache",
+        "LRUCache",
+        "LUCache",
+        "TTLCacheQ",
+    ),
+    "basilisp.core.memoize": ("PluggableMemoization", "RetryingDelay"),
+    "basilisp.core.protocols": ("KVReduce",),
+    "basilisp.data.xml": (
+        "->CDataEvent",
+        "->CharsEvent",
+        "->CommentEvent",
+        "->EmptyElementEvent",
+        "->EndElementEvent",
+        "->QNameEvent",
+        "->StartElementEvent",
+        "CDataEvent",
+        "CharsEvent",
+        "CommentEvent",
+        "EmptyElementEvent",
+        "EndElementEvent",
+        "QNameEvent",
+        "StartElementEvent",
+        "decode-uri",
+        "element-nss*",
+        "encode-uri",
+        "end-element-event",
+        "event-element",
+        "event-exit?",
+        "event-node",
+        "event-tree",
+        "flatten-elements",
+        "map->Element",
+        "namespaced?",
+        "tagged-element",
+    ),
+    "basilisp.data.xml.event": (
+        "CDataEvent",
+        "CharsEvent",
+        "CommentEvent",
+        "EmptyElementEvent",
+        "EndElementEvent",
+        "QNameEvent",
+        "StartElementEvent",
+    ),
+    "basilisp.edn": ("EDNEncodeable", "write", "write*", "write-string"),
+    "basilisp.instant": ("read-instant",),
+    "basilisp.pprint": (
+        "*current-length*",
+        "*current-level*",
+        "*print-sort-keys*",
+        "Blob",
+        "EndBlock",
+        "Indent",
+        "LogicalBlock",
+        "Newline",
+        "PrettyWriter",
+        "StartBlock",
+        "end-block",
+        "pp-indent",
+        "pp-newline",
+        "start-block",
+    ),
+    "basilisp.reflect": (
+        "->PythonReflector",
+        "AsmReflector",
+        "Constructor",
+        "Field",
+        "JavaReflector",
+        "Method",
+        "PythonReflector",
+        "Reflectable",
+        "reflect*",
+    ),
+    "basilisp.repl": (
+        "mark-exception",
+        "mark-repl-result",
+        "print-doc",
+        "print-source",
+    ),
+    "basilisp.set": ("disjoint?", "symmetric-difference"),
+    "basilisp.spec.alpha": ("fdef*", "get-fspec", "invalid"),
+    "basilisp.string": (
+        "alpha?",
+        "alphanumeric?",
+        "digits?",
+        "lpad",
+        "ltrim",
+        "rpad",
+        "rtrim",
+        "title-case",
+        "trim-newlines",
+    ),
+    "basilisp.test": (
+        "*test-failures*",
+        "*test-line*",
+        "*test-name*",
+        "*test-output*",
+        "*test-passes*",
+        "*test-results*",
+        "*test-section*",
+        "fixture-takes-thunk?",
+        "gen-assert",
+        "generator?",
+        "record-report!",
+        "with-fixtures",
+    ),
+    "basilisp.test.check.generators": ("Generator",),
+    "basilisp.test.check.properties": ("ErrorResult",),
+    "basilisp.test.check.random": ("JavaUtilSplittableRandom",),
+    "basilisp.test.check.rose-tree": ("RoseTree",),
+    "basilisp.tools.namespace.dependency": ("MapDependencyGraph",),
+    "basilisp.tools.namespace.file": ("basilisp-extensions", "basilisp-file?"),
+    "basilisp.tools.namespace.find": ("lpy",),
+    "basilisp.tools.namespace.parse": ("lpy-read-opts",),
+    "basilisp.walk": ("IWalkable", "walk*"),
+}
+
 
 def _default_clojure_command() -> list[str]:
     if configured := os.environ.get("CLOJURE_COMMAND"):
@@ -318,6 +440,45 @@ def has_unclassified_missing(rows: Iterable[dict[str, str]]) -> bool:
     return any(row["status"] == "missing-in-basilisp" for row in rows)
 
 
+def basilisp_extension_errors(rows: Iterable[dict[str, str]]) -> list[str]:
+    """Return errors for unmanifested or stale Basilisp extension rows."""
+
+    observed: dict[str, set[str]] = {}
+    for row in rows:
+        if row["status"] == "basilisp-extension":
+            observed.setdefault(row["basilisp_namespace"], set()).add(row["symbol"])
+
+    errors: list[str] = []
+    allowed_namespaces = set(ALLOWED_BASILISP_EXTENSIONS)
+    observed_namespaces = set(observed)
+
+    for namespace in sorted(observed_namespaces - allowed_namespaces):
+        symbols = ", ".join(sorted(observed[namespace]))
+        errors.append(f"unexpected Basilisp extension namespace {namespace}: {symbols}")
+
+    for namespace in sorted(allowed_namespaces - observed_namespaces):
+        symbols = ", ".join(ALLOWED_BASILISP_EXTENSIONS[namespace])
+        errors.append(f"stale Basilisp extension namespace {namespace}: {symbols}")
+
+    for namespace in sorted(allowed_namespaces & observed_namespaces):
+        expected = set(ALLOWED_BASILISP_EXTENSIONS[namespace])
+        actual = observed[namespace]
+        unexpected = sorted(actual - expected)
+        stale = sorted(expected - actual)
+        if unexpected:
+            errors.append(
+                f"unexpected Basilisp extension(s) in {namespace}: "
+                f"{', '.join(unexpected)}"
+            )
+        if stale:
+            errors.append(
+                f"stale Basilisp extension manifest entry in {namespace}: "
+                f"{', '.join(stale)}"
+            )
+
+    return errors
+
+
 def _write_rows(output: Path | None, rows: Sequence[dict[str, str]]) -> None:
     fieldnames = (
         "clojure_namespace",
@@ -358,6 +519,11 @@ def main() -> int:
         default="basilisp run -c",
         help="command prefix used to evaluate Basilisp (default: 'basilisp run -c')",
     )
+    parser.add_argument(
+        "--verify-extensions",
+        action="store_true",
+        help="fail if Basilisp extension publics differ from the checked-in manifest",
+    )
     args = parser.parse_args()
 
     clojure_command = (
@@ -382,7 +548,15 @@ def main() -> int:
         " ".join(f"{status}={count}" for status, count in sorted(summary.items())),
         file=sys.stderr,
     )
-    return 1 if has_unclassified_missing(rows) else 0
+    errors = []
+    if has_unclassified_missing(rows):
+        errors.append("standard namespace surface has missing Basilisp publics")
+    if args.verify_extensions:
+        errors.extend(basilisp_extension_errors(rows))
+
+    for error in errors:
+        print(error, file=sys.stderr)
+    return 1 if errors else 0
 
 
 if __name__ == "__main__":

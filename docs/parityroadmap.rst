@@ -286,6 +286,11 @@ Near-term deliverable:
 
 * prioritize namespaces with small, testable API surfaces before larger
   runtime-level features
+* **Completed locally:** the standard namespace public-surface matrix now
+  verifies the Basilisp extension side as well as the Clojure missing-name side.
+  ``--verify-extensions`` pins every Basilisp-only public Var that remains
+  outside the portable Clojure surface, so accidental extension drift fails CI
+  instead of silently changing the compatibility contract.
 * **Completed locally:** close the small portable public-surface gaps in
   ``clojure.string`` and ``clojure.data.priority-map``. ``trim-newline``,
   ``->PersistentPriorityMap``, and ``apply-keyfn`` are now covered by shared

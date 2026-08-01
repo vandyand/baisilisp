@@ -525,6 +525,14 @@ their entry points. This prevents test discovery and interactive tools from
 interpreting the same project differently. Build-backend integration remains a
 separate packaging milestone.
 
+Standard namespace public-surface auditing is intentionally two-sided.
+``scripts/standard_namespace_surface_matrix.py`` fails when a Clojure public Var
+is missing from the Basilisp compatibility namespace, and its
+``--verify-extensions`` mode also fails when Basilisp-only public Vars drift
+from the checked-in extension manifest. This keeps Python-hosted helpers and
+explicit extensions available without letting accidental public API changes hide
+inside an otherwise green Clojure parity report.
+
 Pretty Printing
 ^^^^^^^^^^^^^^^
 

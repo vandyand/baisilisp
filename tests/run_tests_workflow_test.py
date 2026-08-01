@@ -34,6 +34,10 @@ def test_run_tests_workflow_gates_core_and_standard_namespace_parity():
         workflow,
     )
     assert "scripts/standard_namespace_surface_matrix.py" in workflow
+    assert re.search(
+        r"scripts/standard_namespace_surface_matrix\.py\b.*--verify-extensions",
+        workflow,
+    )
     assert "scripts/standard_namespace_inventory.py" in workflow
     assert "--verify-clojure --verify-basilisp" in workflow
     assert "--verify-legacy-source" in workflow
