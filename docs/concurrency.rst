@@ -110,6 +110,14 @@ topic channels: ``buf-fn`` is called once per subscribed topic, never-subscribed
 topics are dropped without allocating topic state, and ``unsub-all`` removes
 topic state so a later subscription recreates it.
 
+Task-backed constructors such as ``timeout``, ``to-chan!``, ``onto-chan!``,
+``merge``, ``split``, ``take``, ``into``, ``reduce``, ``transduce``,
+``pipeline``, ``map``, ``partition``, ``partition-by``, ``unique``,
+``mult``, ``pub``, and ``mix`` can be called from ordinary synchronous code.
+When no Python event loop is running, their router work runs on Basilisp's
+shared background channel loop, so Clojure-shaped code can immediately consume
+results with ``<!!``.
+
 The Clojure blocking bridge names ``<!!``, ``>!!``, ``alts!!``, and ``alt!!`` are
 available for synchronous callers. They reject calls from the channel's owning
 running event loop to avoid deadlock. ``alt!!`` expands to the existing

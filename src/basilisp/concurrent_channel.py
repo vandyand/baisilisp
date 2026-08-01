@@ -374,8 +374,8 @@ class Channel:
         self._takes = deque(waiter for waiter in self._takes if waiter.active)
 
     def _bind_loop(self) -> None:
-        """Bind the channel to its first running event loop."""
-        loop = asyncio.get_running_loop()
+        """Bind the channel to the current loop or the shared blocking loop."""
+        loop = _current_running_loop() or _blocking_loop()
         if self._loop is None:
             self._loop = loop
         elif self._loop is not loop:
@@ -391,12 +391,10 @@ class TimeoutChannel(Channel):
     """A one-shot channel closed by the owning event loop after a delay."""
 
     def __init__(self, delay_ms: float):
-        if delay_ms < 0:
-            raise ValueError("timeout delay must be non-negative")
         super().__init__()
-        self._bind_loop()
+        self._loop = _current_running_loop() or _blocking_loop()
         assert self._loop is not None
-        self._timer = self._loop.call_later(delay_ms / 1000, self.close)
+        self._timer = self._loop.call_later(max(0, delay_ms) / 1000, self.close)
 
     @property
     def timer_cancelled(self) -> bool:
@@ -760,7 +758,7 @@ def pipe(
     source closes; pass ``close_output=False`` when another owner controls it.
     """
 
-    return asyncio.create_task(_pipe(source, destination, close_output=close_output))
+    return submit_coroutine(_pipe(source, destination, close_output=close_output))
 
 
 async def _pipeline(
@@ -859,7 +857,7 @@ def pipeline(
         raise TypeError("pipeline xform must be callable")
     if error_handler is not None and not callable(error_handler):
         raise TypeError("pipeline error_handler must be callable")
-    return asyncio.create_task(
+    return submit_coroutine(
         _pipeline(
             parallelism,
             source,
@@ -981,7 +979,7 @@ def pipeline_async(
         raise ValueError("pipeline parallelism must be a positive integer")
     if not callable(function):
         raise TypeError("pipeline_async function must be callable")
-    return asyncio.create_task(
+    return submit_coroutine(
         _pipeline_async(
             parallelism,
             source,

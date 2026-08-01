@@ -158,7 +158,7 @@ EXPECTED_CONFORMANCE_CASE_COUNTS = {
     "chunk_cases.cljc": 1,
     "compile_vars_cases.cljc": 1,
     "concurrency_cases.cljc": 6,
-    "core_async_cases.cljc": 8,
+    "core_async_cases.cljc": 9,
     "core_bit_cases.cljc": 3,
     "core_cache_cases.cljc": 9,
     "core_cases.cljc": 7,

@@ -459,7 +459,8 @@ The initial implementation now covers:
   from inside ``go``.
 * Add the first collection/channel combinators: ``to-chan!``, ``onto-chan!``,
   ``merge``, ``split``, ``take``, ``into``, ``reduce``, and ``transduce``.
-  These return channels and run their work in caller-owned ``asyncio`` tasks.
+  These return channels and run their work on the current event loop, or on the
+  shared background channel loop when called from synchronous code.
 * Add the second collection/channel tranche: ``promise-chan``, ``to-chan``,
   ``to-chan!!``, ``onto-chan``, ``onto-chan!!``, ``map``, ``partition``,
   ``partition-by``, ``unique``, and ``unblocking-buffer?``. ``promise-chan``
@@ -505,6 +506,12 @@ The initial implementation now covers:
   names, the source-level acceptance library emits the same exactness proof,
   and direct ``ioc-alts!`` calls fail with structured ``ex-data`` identifying
   the unsupported compiler-generated IOC state-machine boundary.
+* Harden synchronous constructor parity: task-backed facade functions now use
+  the current event loop when present and Basilisp's shared background channel
+  loop otherwise, so ordinary Clojure-shaped code can compose ``timeout``,
+  collection/channel combinators, pipelines, transform-direction helpers,
+  ``mult``, ``pub``, and ``mix`` with ``<!!`` without manually entering
+  ``asyncio``.
 
 Why this tranche first:
 
