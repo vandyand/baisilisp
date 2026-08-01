@@ -29,6 +29,29 @@ DEFAULT_ACCEPTANCE_DIRECTORY = ROOT / "tests" / "acceptance"
 DEFAULT_LIBRARY_ROOT = ROOT / "tests" / "acceptance" / "portable_library"
 DEFAULT_MANIFEST = DEFAULT_LIBRARY_ROOT / "portability-manifest.json"
 ACCEPTANCE_CONFIG_NAME = "acceptance.json"
+EXPECTED_ACCEPTANCE_LIBRARY_ROOTS = (
+    "portable_library",
+    "upstream/algo-generic",
+    "upstream/algo-monads",
+    "upstream/cognitect-anomalies",
+    "upstream/core-async",
+    "upstream/core-cache-memoize",
+    "upstream/core-match",
+    "upstream/core-unify",
+    "upstream/data-codec-base64",
+    "upstream/data-csv",
+    "upstream/data-json",
+    "upstream/data-priority-map",
+    "upstream/data-xml",
+    "upstream/math-combinatorics",
+    "upstream/medley",
+    "upstream/test-check",
+    "upstream/tools-cli",
+    "upstream/tools-logging",
+    "upstream/tools-macro",
+    "upstream/tools-namespace",
+    "upstream/tools-reader",
+)
 _SUBSTITUTIONS = (
     "clojure.set -> basilisp.set",
     "clojure.string -> basilisp.string",
@@ -260,6 +283,33 @@ def acceptance_library_roots(
     )
 
 
+def _relative_acceptance_root(
+    library_root: Path, acceptance_directory: Path = DEFAULT_ACCEPTANCE_DIRECTORY
+) -> str:
+    return library_root.resolve().relative_to(acceptance_directory.resolve()).as_posix()
+
+
+def acceptance_inventory_errors(
+    acceptance_directory: Path = DEFAULT_ACCEPTANCE_DIRECTORY,
+) -> list[str]:
+    """Return errors when checked-in acceptance libraries drift from the manifest."""
+
+    observed = {
+        _relative_acceptance_root(root, acceptance_directory)
+        for root in acceptance_library_roots(acceptance_directory)
+    }
+    expected = set(EXPECTED_ACCEPTANCE_LIBRARY_ROOTS)
+
+    errors: list[str] = []
+    unexpected = sorted(observed - expected)
+    missing = sorted(expected - observed)
+    if unexpected:
+        errors.append("unexpected acceptance library root(s): " + ", ".join(unexpected))
+    if missing:
+        errors.append("missing acceptance library root(s): " + ", ".join(missing))
+    return errors
+
+
 def _shard_library_roots(
     library_roots: list[Path], *, shard_count: int, shard_index: int
 ) -> list[Path]:
@@ -342,6 +392,11 @@ def main(argv: list[str] | None = None) -> int:
         action="store_true",
         help="run every checked-in acceptance library under tests/acceptance",
     )
+    parser.add_argument(
+        "--verify-inventory",
+        action="store_true",
+        help="fail if checked-in acceptance libraries differ from the manifest",
+    )
     parser.add_argument("--clojure-command", default=_default_clojure_command())
     parser.add_argument("--basilisp-command", default="uv run basilisp run")
     parser.add_argument(
@@ -379,6 +434,15 @@ def main(argv: list[str] | None = None) -> int:
         if args.disable_basilisp_ns_cache
         else None
     )
+
+    if args.verify_inventory:
+        errors = acceptance_inventory_errors()
+        if errors:
+            for error in errors:
+                print(error, file=sys.stderr)
+            return 1
+        if not args.all:
+            return 0
 
     if args.all:
         if args.manifest is not None:

@@ -67,6 +67,11 @@ Near-term deliverable:
   creation, and runs the installed ``basilisp`` console script against a
   temporary ``pyproject.toml`` source-path project before any dedicated PEP 517
   wrapper is justified.
+* **Completed locally:** the real-library acceptance corpus is now
+  inventory-gated. ``scripts/library_acceptance.py --verify-inventory`` pins
+  the checked-in acceptance library roots, and the sharded parity-proof workflow
+  runs that gate before executing library shards so accidental corpus drift is
+  reviewed explicitly.
 
 2. Test Compatibility
 ^^^^^^^^^^^^^^^^^^^^^

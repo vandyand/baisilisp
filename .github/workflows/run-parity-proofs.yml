@@ -93,6 +93,7 @@ jobs:
         run: |
           tox exec -e py314 -- python scripts/library_acceptance.py \
             --all \
+            --verify-inventory \
             --disable-basilisp-ns-cache \
             --shard-count 3 \
             --shard-index ${{ matrix.shard-index }} \

@@ -533,6 +533,13 @@ from the checked-in extension manifest. This keeps Python-hosted helpers and
 explicit extensions available without letting accidental public API changes hide
 inside an otherwise green Clojure parity report.
 
+Real-library acceptance is inventory-gated for the same reason. The checked-in
+corpus under ``tests/acceptance`` is listed explicitly in
+``scripts/library_acceptance.py``. ``--verify-inventory`` fails when a runnable
+acceptance library is added or removed without updating that list, so corpus
+growth is a reviewed compatibility decision rather than an accidental side
+effect of copied source files.
+
 Pretty Printing
 ^^^^^^^^^^^^^^^
 

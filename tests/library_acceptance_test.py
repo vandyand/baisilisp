@@ -1,8 +1,11 @@
 from pathlib import Path
 from shutil import copytree
 from subprocess import CompletedProcess
+from tempfile import TemporaryDirectory
 
 import pytest
+from hypothesis import given
+from hypothesis import strategies as st
 
 import scripts.library_acceptance as acceptance
 from scripts.library_acceptance import (
@@ -300,6 +303,66 @@ def test_acceptance_library_roots_discovers_checked_in_libraries(tmp_path):
     assert acceptance.acceptance_library_roots(tmp_path) == [first, second]
 
 
+def test_acceptance_library_inventory_is_sorted_unique_and_checked_in():
+    expected = acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS
+    observed = tuple(
+        acceptance._relative_acceptance_root(root)
+        for root in acceptance.acceptance_library_roots()
+    )
+
+    assert tuple(sorted(expected)) == expected
+    assert len(set(expected)) == len(expected)
+    assert observed == expected
+    assert acceptance.acceptance_inventory_errors() == []
+
+
+def test_acceptance_library_inventory_reports_unexpected_and_missing_roots(tmp_path):
+    expected = tmp_path / "expected"
+    unexpected = tmp_path / "unexpected"
+    for library in (expected, unexpected):
+        library.mkdir()
+        (library / "run.cljc").write_text("", encoding="utf-8")
+        (library / "portability-manifest.json").write_text("{}", encoding="utf-8")
+
+    original = acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS
+    try:
+        acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS = ("expected", "missing")
+        assert acceptance.acceptance_inventory_errors(tmp_path) == [
+            "unexpected acceptance library root(s): unexpected",
+            "missing acceptance library root(s): missing",
+        ]
+    finally:
+        acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS = original
+
+
+@given(
+    unexpected=st.lists(
+        st.from_regex(r"generated-[a-z0-9]{1,6}", fullmatch=True),
+        min_size=1,
+        max_size=5,
+        unique=True,
+    )
+)
+def test_generated_acceptance_inventory_drift_is_reported(unexpected):
+    with TemporaryDirectory() as dirname:
+        root = Path(dirname)
+        for name in unexpected:
+            library = root / name
+            library.mkdir()
+            (library / "run.cljc").write_text("", encoding="utf-8")
+            (library / "portability-manifest.json").write_text("{}", encoding="utf-8")
+
+        original = acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS
+        try:
+            acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS = ()
+            assert acceptance.acceptance_inventory_errors(root) == [
+                "unexpected acceptance library root(s): "
+                + ", ".join(sorted(unexpected))
+            ]
+        finally:
+            acceptance.EXPECTED_ACCEPTANCE_LIBRARY_ROOTS = original
+
+
 def test_default_clojure_command_pins_verified_clojure_version(monkeypatch):
     monkeypatch.delenv("CLOJURE_COMMAND", raising=False)
     monkeypatch.setattr(acceptance.shutil, "which", lambda name: name == "clojure")
@@ -363,6 +426,7 @@ def test_main_all_runs_every_checked_in_library(monkeypatch, tmp_path):
     observed = []
 
     monkeypatch.setattr(acceptance, "acceptance_library_roots", lambda: [first, second])
+    monkeypatch.setattr(acceptance, "acceptance_inventory_errors", lambda: [])
     monkeypatch.setattr(
         acceptance,
         "_accept_library",
@@ -375,6 +439,7 @@ def test_main_all_runs_every_checked_in_library(monkeypatch, tmp_path):
     assert 0 == acceptance.main(
         [
             "--all",
+            "--verify-inventory",
             "--clojure-command",
             "clj",
             "--basilisp-command",
@@ -403,6 +468,7 @@ def test_main_all_applies_sharding_and_basilisp_cache_disable(monkeypatch, tmp_p
     monkeypatch.setattr(
         acceptance, "acceptance_library_roots", lambda: [first, second, third]
     )
+    monkeypatch.setattr(acceptance, "acceptance_inventory_errors", lambda: [])
     monkeypatch.setattr(
         acceptance,
         "_accept_library",
@@ -415,6 +481,7 @@ def test_main_all_applies_sharding_and_basilisp_cache_disable(monkeypatch, tmp_p
     assert 0 == acceptance.main(
         [
             "--all",
+            "--verify-inventory",
             "--shard-count",
             "2",
             "--shard-index",
@@ -470,6 +537,7 @@ def test_main_all_stops_on_first_acceptance_mismatch(monkeypatch, tmp_path):
     observed = []
 
     monkeypatch.setattr(acceptance, "acceptance_library_roots", lambda: [first, second])
+    monkeypatch.setattr(acceptance, "acceptance_inventory_errors", lambda: [])
 
     def accept_library(library_root, manifest_path, **kwargs):
         observed.append(library_root)
@@ -479,6 +547,33 @@ def test_main_all_stops_on_first_acceptance_mismatch(monkeypatch, tmp_path):
 
     assert 1 == acceptance.main(["--all"])
     assert observed == [first.resolve()]
+
+
+def test_main_all_stops_before_execution_on_inventory_drift(monkeypatch, capsys):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("acceptance execution should not run")
+
+    monkeypatch.setattr(
+        acceptance,
+        "acceptance_inventory_errors",
+        lambda: ["unexpected acceptance library root(s): surprise"],
+    )
+    monkeypatch.setattr(acceptance, "acceptance_library_roots", fail_if_called)
+    monkeypatch.setattr(acceptance, "_accept_library", fail_if_called)
+
+    assert 1 == acceptance.main(["--all", "--verify-inventory"])
+    assert "unexpected acceptance library root" in capsys.readouterr().err
+
+
+def test_main_verify_inventory_can_run_without_library_execution(monkeypatch):
+    def fail_if_called(*args, **kwargs):
+        raise AssertionError("acceptance execution should not run")
+
+    monkeypatch.setattr(acceptance, "acceptance_inventory_errors", lambda: [])
+    monkeypatch.setattr(acceptance, "acceptance_library_roots", fail_if_called)
+    monkeypatch.setattr(acceptance, "_accept_library", fail_if_called)
+
+    assert 0 == acceptance.main(["--verify-inventory"])
 
 
 def test_main_all_rejects_explicit_manifest(monkeypatch, tmp_path):
