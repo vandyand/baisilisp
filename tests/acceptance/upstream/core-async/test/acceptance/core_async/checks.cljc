@@ -3,7 +3,7 @@
 
 (defn summary []
   (let [surface      (workflow/public-surface-summary)
-        ioc-boundary (workflow/ioc-boundary-summary)
+        ioc-alts     (workflow/ioc-alts-summary)
         ioc-helpers  (workflow/ioc-helper-summary)
         go-transform (workflow/go-transform-summary)
         selection    (workflow/selection-summary)
@@ -12,7 +12,7 @@
         routing      (workflow/routing-summary)
         stress       (workflow/stress-summary)]
     [[:public-surface surface]
-     [:ioc-boundary ioc-boundary]
+     [:ioc-alts     ioc-alts]
      [:ioc-helpers  ioc-helpers]
      [:go-transform go-transform]
      [:selection    selection]

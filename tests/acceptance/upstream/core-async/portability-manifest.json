@@ -28,7 +28,10 @@
         "channel",
         "clojure.core.async",
         "clojure.core.async.impl.ioc-macros",
-        "data",
+        "default-channel",
+        "default-result",
+        "enqueued-channel",
+        "enqueued-result",
         "even",
         "f",
         "first-pair",
@@ -41,9 +44,14 @@
         "left-only",
         "merged",
         "muted",
+        "normalize",
         "priority-first",
         "publics",
         "published",
+        "put-channel",
+        "put-result",
+        "ready-channel",
+        "ready-result",
         "result",
         "return-contracts",
         "second-value",
@@ -54,7 +62,7 @@
         "unsubbed",
         "value"
       ],
-      "sha256": "d87ee0d5a91aac5d6ee797501cd70ced82a2d9411010fc8d81b86472cc4aa9c1"
+      "sha256": "5aaa0e53b3026885ae817c4dbf934c0422833dba939b6d2c7f74cf28a0ddef74"
     },
     {
       "blockers": [],
@@ -66,14 +74,14 @@
         "acceptance.core-async.workflow",
         "surface"
       ],
-      "sha256": "139c63951fb1c00efd0ef18ff81cfcf2f755e2b7fb61edd99b4c3aa8deb0421b"
+      "sha256": "2c4c690af6c47d8abafca3ec306343eb981f65acc89a31a4e79424ac7e33d055"
     }
   ],
   "substitutions": [
     "clojure.core.async -> basilisp.core.async",
     "clojure.core.async.impl.ioc-macros -> basilisp.core.async.impl.ioc-macros",
     "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
-    "portable source examples plus public IOC runtime helpers only; compiler-generated ioc-alts! state-machine integration remains excluded"
+    "portable source examples plus public IOC runtime helpers and direct ioc-alts! state-array integration; compiler-generated go lowering remains excluded"
   ],
   "supported_python": [
     "3.10",

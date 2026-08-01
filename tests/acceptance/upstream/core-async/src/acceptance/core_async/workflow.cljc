@@ -42,31 +42,61 @@
      [:missing (vec (sort (remove publics supported-publics)))]
      [:extra (vec (sort (remove supported-publics publics)))]]))
 
-(defn ioc-boundary-summary
-  "Classify direct ioc-alts! use as Basilisp's explicit unsupported IOC
-  state-machine boundary while preserving the public name for source loading."
+(declare ioc-make-state)
+
+(defn ioc-alts-summary
+  "Exercise direct ioc-alts! state-array integration without claiming compiler
+  lowering from go bodies."
   []
-  #?(:clj [[:public? true]
-           [:boundary :unsupported-ioc-state-machine]
-           [:required :compiler-generated-ioc]
-           [:retains-inputs? true]]
-     :lpy (try
-            (async/ioc-alts! :state :block [:port])
-            [[:public? true]
-             [:boundary :not-rejected]
-             [:required nil]
-             [:retains-inputs? false]]
-            (catch Exception e
-              (let [data (ex-data e)]
-                [[:public? (contains? (set (keys (ns-publics 'clojure.core.async)))
-                                      'ioc-alts!)]
-                 [:boundary (:basilisp.core.async/boundary data)]
-                 [:required (:basilisp.core.async/required data)]
-                 [:retains-inputs? (= [:state :block [:port] nil]
-                                      [(:state data)
-                                       (:cont-block data)
-                                       (:ports data)
-                                       (:opts data)])]])))))
+  (let [normalize (fn [result expected-port]
+                    [(first result) (identical? (second result) expected-port)])
+        ready-channel    (async/chan 1)
+        ready-state      (ioc-make-state (fn [_] :unused))
+        put-channel      (async/chan 1)
+        put-state        (ioc-make-state (fn [_] :unused))
+        default-channel  (async/chan)
+        default-state    (ioc-make-state (fn [_] :unused))
+        enqueued-channel (async/chan)
+        enqueued-calls   (atom [])
+        enqueued-state   (ioc-make-state
+                          (fn [state]
+                            (let [result (ioc/aget-object state ioc/VALUE-IDX)]
+                              (swap! enqueued-calls
+                                     conj
+                                     [(normalize result enqueued-channel)
+                                      (ioc/aget-object state ioc/STATE-IDX)])
+                              :continued)))]
+    (async/>!! ready-channel :ready)
+    (let [ready-result    (async/ioc-alts! ready-state 7 [ready-channel])
+          put-result      (async/ioc-alts! put-state 11 [[put-channel :written]])
+          default-result  (async/ioc-alts! default-state
+                                           13
+                                           [default-channel]
+                                           :default
+                                           :fallback)
+          enqueued-result (async/ioc-alts! enqueued-state 17 [enqueued-channel])]
+      (async/>!! enqueued-channel :later)
+      #?(:clj (Thread/sleep 50)
+         :lpy (async/<!! (async/timeout 50)))
+      [[:public? (contains? (set (keys (ns-publics 'clojure.core.async)))
+                            'ioc-alts!)]
+       [:ready [ready-result
+                (normalize (ioc/aget-object ready-state ioc/VALUE-IDX)
+                           ready-channel)
+                (ioc/aget-object ready-state ioc/STATE-IDX)]]
+       [:put [put-result
+              (normalize (ioc/aget-object put-state ioc/VALUE-IDX)
+                         put-channel)
+              (async/<!! put-channel)
+              (ioc/aget-object put-state ioc/STATE-IDX)]]
+       [:default [default-result
+                  (ioc/aget-object default-state ioc/VALUE-IDX)
+                  (ioc/aget-object default-state ioc/STATE-IDX)]]
+       [:enqueued [enqueued-result
+                   @enqueued-calls
+                   (normalize (ioc/aget-object enqueued-state ioc/VALUE-IDX)
+                              enqueued-channel)
+                   (ioc/aget-object enqueued-state ioc/STATE-IDX)]]])))
 
 (def ioc-publics
   '#{BINDINGS-IDX EXCEPTION-FRAMES FN-IDX STATE-IDX USER-START-IDX VALUE-IDX

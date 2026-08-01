@@ -208,9 +208,9 @@ Near-term deliverable:
   timeout selection, pipelines, collection/channel combinators, finite
   mult/pub/mix routing, mix mutation return contracts, and a deterministic
   generated parking stress corpus. The proof also locks an exact public
-  support matrix and a structured direct ``ioc-alts!`` rejection boundary while
-  keeping compiler-generated IOC state-machine integration explicitly outside
-  the current contract.
+  support matrix, shipped IOC runtime helpers, and direct ``ioc-alts!``
+  state-array selection behavior while keeping compiler-generated IOC
+  state-machine lowering explicitly outside the current contract.
   The ``data.csv`` proof uses the published ``org.clojure/data.csv`` 1.1.0
   artifact on the JVM side and Basilisp's production ``clojure.data.csv`` alias
   on the Basilisp side; it locks multi-file source-level read/write workflows,
@@ -347,9 +347,9 @@ Near-term deliverable:
   transducer completion, nil-output rejection, local seeded stress, and JVM
   fixtures. The stacked minimal-go tranche closes the remaining
   ``clojure.core.async`` public-surface gap with coroutine-backed ``go``,
-  ``go-loop``, ``<!``, ``>!``, and ``alt!`` plus an explicit ``ioc-alts!``
-  rejection boundary. This gives public surface parity for ordinary portable
-  examples while full Clojure IOC/state-machine parity remains a deeper
+  ``go-loop``, ``<!``, ``>!``, and ``alt!`` plus a public ``ioc-alts!``
+  placeholder. This gives public surface parity for ordinary portable
+  examples while full Clojure IOC/state-machine lowering remains a deeper
   compiler project. The follow-up hardening tranche now adds shared JVM
   fixtures for closed-channel takes, puts to closed channels, timeout
   interaction, nested ``alt!`` choices, close/result races, and
@@ -384,14 +384,15 @@ Near-term deliverable:
   ``clojure.core.async.impl.dispatch`` namespaces, with shared JVM fixtures for
   public surfaces, buffer semantics/datafy shape, handler lifecycle, channel
   construction/protocol operations, dispatch workload selection, and explicit
-  rejection of unsupported workload tags. Compiler-generated IOC internals and
-  full ``ioc-alts!`` state-machine selection remain outside the current
-  contract. The IOC-helper follow-up adds the shipped
+  rejection of unsupported workload tags. Compiler-generated IOC lowering
+  remains outside the current contract. The IOC-helper follow-up adds the shipped
   ``clojure.core.async.impl.ioc-macros`` public runtime helper surface, with
   shared JVM fixtures and source-level acceptance coverage for constants,
   state-array mutation, one-step state-machine execution, wrapped failure close,
   ``return-chan``, immediate/enqueued ``take!``/``put!`` continuations, and
-  terminator mappings.
+  terminator mappings. The direct ``ioc-alts!`` follow-up now matches JVM
+  ``core.async`` for ready takes, ready puts, default results, enqueued
+  continuation resume, and generated direct state-array selection stress.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,
