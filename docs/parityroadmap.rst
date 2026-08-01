@@ -1426,6 +1426,11 @@ Near-term deliverable:
   Clojure-style thunk fixture composition, ``test-vars``/``test-all-vars``
   return values, direct ``deftest`` uncaught-error reporting, and
   ``testing-contexts-str``/``testing-vars-str`` formatting.
+* **Completed locally:** preserve Clojure's ``is`` equality assertion return
+  value. ``(is (= expected actual))`` now returns the equality boolean after
+  reporting pass/fail events, matching ordinary predicate and truthiness
+  assertions. The shared fixture covers passing/failing scalar, collection,
+  ``nil``/``false``, and boolean pairs while checking report counters.
 
 5. Compiler, Runtime, And Debugging
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

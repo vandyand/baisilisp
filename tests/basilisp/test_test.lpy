@@ -107,3 +107,42 @@
   ;; This matches clojure-test-suite's ``p/thrown?`` assertion form. ``p`` is
   ;; deliberately not a runtime alias: ``is`` must dispatch it while expanding.
   (is (p/thrown? (+ 1 nil))))
+
+(deftest equality-assertions-return-clojure-boolean-results
+  (let [observed (volatile! nil)
+        counters (volatile! nil)]
+    (binding [report (fn [m]
+                       (case (:type m)
+                         :pass (vswap! counters update :pass (fnil inc 0))
+                         :fail (vswap! counters update :fail (fnil inc 0))
+                         nil))]
+      (vreset! counters *initial-report-counters*)
+      (let [pairs [[0 0 true]
+                   [0 1 false]
+                   [:same :same true]
+                   [:left :right false]
+                   [[1 2] '(1 2) true]
+                   [{:a 1 :b 2} {:b 2 :a 1} true]
+                   [#{1 2 3} #{3 2 1} true]
+                   [nil nil true]
+                   [nil false false]
+                   [true true true]
+                   [true false false]]]
+        (vreset! observed
+                 (mapv (fn [[left right expected]]
+                         [(is (= left right)) expected])
+                       pairs))))
+    (is (= [[true true]
+            [false false]
+            [true true]
+            [false false]
+            [true true]
+            [true true]
+            [true true]
+            [true true]
+            [false false]
+            [true true]
+            [false false]]
+           @observed))
+    (is (= {:test 0 :pass 7 :fail 4 :error 0}
+           @counters))))
