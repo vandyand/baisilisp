@@ -33,6 +33,38 @@
     (t/test-var #'report-counter-assertions)
     @t/*report-counters*))
 
+(def equality-return-pairs
+  [[0 0]
+   [0 1]
+   [:same :same]
+   [:left :right]
+   [[1 2] '(1 2)]
+   [{:a 1 :b 2} {:b 2 :a 1}]
+   [#{1 2 3} #{3 2 1}]
+   [nil nil]
+   [nil false]
+   [true true]
+   [true false]])
+
+(defn equality-return-summary []
+  (let [direct [(t/is (= 1 1)) (t/is (= 1 2))]
+        seeded (mapv (fn [[left right]]
+                        (t/is (= left right)))
+                      equality-return-pairs)]
+    {:direct direct
+     :seeded seeded
+     :counters @t/*report-counters*}))
+
+(def equality-return-values
+  #?(:clj
+     (binding [t/*test-out* (java.io.StringWriter.)
+               t/*report-counters* (ref t/*initial-report-counters*)]
+       (equality-return-summary))
+     :lpy
+     (binding [t/*test-output* false
+               t/*report-counters* (ref t/*initial-report-counters*)]
+       (equality-return-summary))))
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -40,3 +72,4 @@
 
 (emit-case :assertions-and-fixtures @fixture-events)
 (emit-case :test-var-report-counters report-counters)
+(emit-case :is-equality-return-values equality-return-values)

@@ -321,8 +321,9 @@
 (defmethod assert-expr '=
   [msg expr]
   `(let [expected# ~(second expr)
-         actual#   ~(nth expr 2)]
-     (if (= expected# actual#)
+         actual#   ~(nth expr 2)
+         result#   (= expected# actual#)]
+     (if result#
        (do-report {:type :pass
                    :message ~msg
                    :expr (quote ~expr)
@@ -332,7 +333,8 @@
                    :message ~msg
                    :expr (quote ~expr)
                    :actual (list (symbol "=") expected# actual#)
-                   :expected (quote ~expr)}))))
+                   :expected (quote ~expr)}))
+     result#))
 
 (defmethod assert-expr 'thrown?
   [msg expr]

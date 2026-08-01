@@ -1049,7 +1049,11 @@ low-level entrypoints that return ``nil`` like Clojure, while ``test-ns``,
 ``run-test-var``, ``run-test``, ``run-tests``, and ``run-all-tests`` preserve
 summary maps for callers. ``compose-fixtures`` and ``join-fixtures`` accept
 Clojure-style thunk fixtures; Basilisp's generator-fixture form remains a
-``with-fixtures`` extension rather than part of the shared contract.
+``with-fixtures`` extension rather than part of the shared contract. Assertion
+forms return Clojure-shaped values after reporting: truthiness and predicate
+assertions return their evaluated result, ``thrown?`` returns the caught
+exception on success, and equality assertions return the computed boolean for
+both pass and fail outcomes.
 
 ``test.tap`` and ``test.junit``
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
