@@ -403,6 +403,21 @@
      (binding [t/*test-output* false]
        (qualified-report-payload-body))))
 
+(defn macroexpands? [form]
+  (try
+    (macroexpand form)
+    true
+    (catch #?(:clj Throwable :lpy python/Exception) _
+      false)))
+
+(def are-value-count-boundary-values
+  {:zero-bindings-no-values (macroexpands? '(t/are [] true))
+   :zero-bindings-extra-value (macroexpands? '(t/are [] true 1))
+   :one-binding-no-values (macroexpands? '(t/are [x] (= x x)))
+   :one-binding-one-value (macroexpands? '(t/are [x] (= x x) 1))
+   :two-bindings-short-row (macroexpands? '(t/are [x y] (= x y) 1))
+   :two-bindings-trailing-value (macroexpands? '(t/are [x y] (= x y) 1 1 2))})
+
 #?(:clj (binding [t/*test-out* (java.io.StringWriter.)]
           (t/test-ns 'conformance.testing-cases))
    :lpy (binding [t/*test-output* false]
@@ -416,3 +431,4 @@
 (emit-case :exception-report-payload-values exception-report-payload-values)
 (emit-case :instance-report-payload-values instance-report-payload-values)
 (emit-case :qualified-report-payload-values qualified-report-payload-values)
+(emit-case :are-value-count-boundary-values are-value-count-boundary-values)

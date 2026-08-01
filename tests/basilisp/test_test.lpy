@@ -380,3 +380,18 @@
              :expected "(basilisp.core/not true)"
              :actual "(not (basilisp.core/not true))"}]
            @events))))
+
+(deftest are-rejects-incomplete-template-rows-like-clojure
+  (letfn [(macroexpands? [form]
+            (try
+              (macroexpand form)
+              true
+              (catch python/Exception _
+                false)))]
+    (is (= [true false false true false false]
+           [(macroexpands? '(are [] true))
+            (macroexpands? '(are [] true 1))
+            (macroexpands? '(are [x] (= x x)))
+            (macroexpands? '(are [x] (= x x) 1))
+            (macroexpands? '(are [x y] (= x y) 1))
+            (macroexpands? '(are [x y] (= x y) 1 1 2))]))))
