@@ -822,6 +822,151 @@
      (async/alt!! (async/chan) :unreachable
                   :default :fallback)]))
 
+(defn sync-constructor-roundtrip []
+  (let [timeout-values [(async/<!! (async/timeout -1))
+                        (async/<!! (async/timeout 0))]
+        to-values      (let [channel (async/to-chan! [1 2])]
+                         [(async/<!! channel)
+                          (async/<!! channel)
+                          (async/<!! channel)])
+        onto-values    (let [channel (async/chan 2)
+                             done    (async/onto-chan! channel [:a :b])]
+                         [(async/<!! done)
+                          (async/<!! channel)
+                          (async/<!! channel)
+                          (async/<!! channel)])
+        merge-values   (let [channel (async/merge [(async/to-chan! [1])
+                                                   (async/to-chan! [2])]
+                                                  2)]
+                         (vec (sort [(async/<!! channel)
+                                     (async/<!! channel)])))
+        split-values   (let [[even odd] (async/split even?
+                                                     (async/to-chan! [1 2 3])
+                                                     2
+                                                     2)]
+                         [(async/<!! even)
+                          (async/<!! even)
+                          (async/<!! odd)
+                          (async/<!! odd)
+                          (async/<!! odd)])
+        take-values    (let [channel (async/take 2 (async/to-chan! [1 2 3]) 2)]
+                         [(async/<!! channel)
+                          (async/<!! channel)
+                          (async/<!! channel)])
+        fold-values    [(async/<!! (async/into [] (async/to-chan! [1 2 3])))
+                        (async/<!! (async/reduce + 0 (async/to-chan! [1 2 3])))
+                        (async/<!! (async/transduce (map inc)
+                                                    +
+                                                    0
+                                                    (async/to-chan! [1 2 3])))]
+        pipeline-values (let [source (async/to-chan! [1 2])
+                              output (async/chan 2)]
+                          (async/pipeline 2 output (map inc) source)
+                          [(async/<!! output)
+                           (async/<!! output)
+                           (async/<!! output)])
+        stream-values  [(let [channel (async/map + [(async/to-chan! [1 2])
+                                                    (async/to-chan! [10 20])]
+                                           2)]
+                          [(async/<!! channel)
+                           (async/<!! channel)
+                           (async/<!! channel)])
+                        (let [channel (async/partition 2
+                                                       (async/to-chan! [1 2 3])
+                                                       2)]
+                          [(async/<!! channel)
+                           (async/<!! channel)
+                           (async/<!! channel)])
+                        (let [channel (async/partition-by odd?
+                                                          (async/to-chan! [1 3 2 4 5])
+                                                          2)]
+                          [(async/<!! channel)
+                           (async/<!! channel)
+                           (async/<!! channel)])
+                        (let [channel (async/unique
+                                       (async/to-chan! [1 1 2 2 1])
+                                       2)]
+                          [(async/<!! channel)
+                           (async/<!! channel)
+                           (async/<!! channel)
+                           (async/<!! channel)])]
+        transform-values [(let [channel (async/map< inc (async/to-chan! [1 2]))]
+                            [(async/<!! channel)
+                             (async/<!! channel)
+                             (async/<!! channel)])
+                          (let [channel (async/filter< odd?
+                                                       (async/to-chan! [1 2 3])
+                                                       2)]
+                            [(async/<!! channel)
+                             (async/<!! channel)
+                             (async/<!! channel)])
+                          (let [target (async/chan 4)
+                                input  (async/map> inc target)]
+                            (async/>!! input 1)
+                            (async/>!! input 2)
+                            (async/close! input)
+                            [(async/<!! target)
+                             (async/<!! target)
+                             (async/<!! target)])
+                          (let [target (async/chan 4)
+                                input  (async/mapcat> (fn [value] [value (- value)])
+                                                      target
+                                                      4)]
+                            (async/>!! input 1)
+                            (async/>!! input 2)
+                            (async/close! input)
+                            [(async/<!! target)
+                             (async/<!! target)
+                             (async/<!! target)
+                             (async/<!! target)
+                             (async/<!! target)])]
+        routing-values [(let [source (async/chan 2)
+                              m      (async/mult source)
+                              left   (async/chan 2)
+                              right  (async/chan 2)]
+                          (async/tap m left)
+                          (async/tap m right)
+                          (async/>!! source :value)
+                          (async/close! source)
+                          [(async/<!! left)
+                           (async/<!! right)
+                           (async/<!! left)
+                           (async/<!! right)])
+                        (let [calls       (atom [])
+                              source      (async/chan 2)
+                              publication (async/pub source
+                                                     :topic
+                                                     (fn [topic]
+                                                       (swap! calls conj topic)
+                                                       (async/buffer 2)))
+                              alpha       (async/chan 2)]
+                          (async/sub publication :a alpha)
+                          (async/>!! source {:topic :a :value 1})
+                          (async/>!! source {:topic :b :value 2})
+                          (async/close! source)
+                          [(async/<!! alpha)
+                           (async/<!! alpha)
+                           @calls])
+                        (let [output (async/chan 2)
+                              input  (async/chan 2)
+                              mx     (async/mix output)]
+                          (async/admix mx input)
+                          (async/>!! input :mixed)
+                          (let [value (async/<!! output)]
+                            #?(:lpy (.cancel (:task mx)))
+                            [value]))]]
+    [timeout-values
+     to-values
+     onto-values
+     merge-values
+     split-values
+     take-values
+     fold-values
+     pipeline-values
+     stream-values
+     transform-values
+     routing-values]))
+
 (defn go-parking-roundtrip []
   (let [input  (async/chan 4)
         output (async/chan 4)
@@ -2036,6 +2181,9 @@
                     (asyncio/run (mix-toggle-add-roundtrip))
                     (asyncio/run (mix-adversarial-routing-roundtrip))
                     (asyncio/run (routing-protocol-helper-roundtrip))]))
+
+(emit-case :core-async-sync-constructors
+           (sync-constructor-roundtrip))
 
 (emit-case :core-async-blocking-bridges
            [(blocking-roundtrip)

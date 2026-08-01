@@ -372,6 +372,12 @@ Near-term deliverable:
   follow-up pub hardening now honors Clojure's topic ``buf-fn`` lifecycle,
   including one buffer allocation per subscribed topic, no allocation for
   never-subscribed topics, and topic recreation after ``unsub-all``.
+  The sync-constructor follow-up makes task-backed ``core.async`` constructors
+  usable from ordinary blocking Clojure-shaped code by scheduling router work
+  on the current event loop or Basilisp's shared background channel loop; the
+  shared JVM fixture now locks ``timeout``, collection/channel combinators,
+  folds, pipelines, transform-direction helpers, and mult/pub/mix routing under
+  direct ``<!!`` consumption.
 * **Completed locally:** deepen ``clojure.string`` semantic coverage across the
   full portable public surface. Shared fixtures now directly exercise
   predicates, case conversion, prefix/suffix/inclusion checks, joins, reverse,

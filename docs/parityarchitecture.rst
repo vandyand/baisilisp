@@ -325,14 +325,18 @@ matching a put or take, deregister every losing waiter, and handle cancellation
 and close races. ``timeout`` should be a one-shot channel backed by the owning
 event loop's timer and must remove its timer handle when closed early.
 
-This is primarily an ``asyncio`` API: callers may use it from ``defasync`` with
-``await``. The ``clojure.core.async`` facade now also exposes a
-coroutine-backed ``go``/parking subset for source compatibility. This is not a
-full Clojure IOC state-machine: Python coroutines still do not permit an
-``await`` to cross an arbitrary ordinary function boundary. Cross-thread
-adapters use ``run_coroutine_threadsafe`` only through explicit bridge helpers
-and must document event-loop ownership. AnyIO is an optional adapter layer
-only; it should not become the language runtime.
+This remains an ``asyncio``-native API: callers may use it from ``defasync``
+with ``await``. The ``clojure.core.async`` facade also supports ordinary
+synchronous Clojure-shaped construction for task-backed helpers by scheduling
+router work on the current event loop or on Basilisp's shared background
+channel loop when no loop is running, so blocking consumers such as ``<!!`` can
+drain those channels. The facade now exposes a coroutine-backed ``go``/parking
+subset for source compatibility. This is not a full Clojure IOC state-machine:
+Python coroutines still do not permit an ``await`` to cross an arbitrary
+ordinary function boundary. Cross-thread adapters use ``run_coroutine_threadsafe``
+only through explicit bridge helpers and must document event-loop ownership.
+AnyIO is an optional adapter layer only; it should not become the language
+runtime.
 
 The test gate includes cancellation while blocked in both directions, close
 races, FIFO fairness, every buffer policy, timeout and ``alts!`` races, and

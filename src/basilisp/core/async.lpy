@@ -127,7 +127,7 @@
 
 (defn- schedule-callback!
   [awaitable callback]
-  (let [task (asyncio/create-task awaitable)]
+  (let [task (concurrent/submit-task! awaitable)]
     (.add_done_callback task (fn [completed]
                                (callback (.result completed))))
     nil))
@@ -193,7 +193,7 @@
 
 (defn- alts-task!
   [fret ports opts]
-  (let [task (asyncio/create-task
+  (let [task (concurrent/submit-task!
               (apply concurrent/alts! ports (apply concat opts)))]
     (.add_done_callback task (fn [completed]
                                (fret (.result completed))))
@@ -403,7 +403,7 @@
   ``asyncio`` task and should not block."
   [coll]
   (let [channel (chan)]
-    (asyncio/create-task (copy-coll-to-channel! channel coll true nil))
+    (concurrent/submit-task! (copy-coll-to-channel! channel coll true nil))
     channel))
 
 (defn to-chan
@@ -427,7 +427,7 @@
    (onto-chan! channel coll true))
   ([channel coll close?]
    (let [completion (chan)]
-     (asyncio/create-task (copy-coll-to-channel! channel coll close? completion))
+     (concurrent/submit-task! (copy-coll-to-channel! channel coll close? completion))
      completion)))
 
 (defn onto-chan
@@ -468,7 +468,7 @@
    (merge channels nil))
   ([channels buf-or-n]
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (merge-all! channels output))
+     (concurrent/submit-task! (merge-all! channels output))
      output)))
 
 (defasync ^:private split-all!
@@ -491,7 +491,7 @@
   ([pred channel true-buf-or-n false-buf-or-n]
    (let [true-output  (chan true-buf-or-n)
          false-output (chan false-buf-or-n)]
-     (asyncio/create-task (split-all! pred channel true-output false-output))
+     (concurrent/submit-task! (split-all! pred channel true-output false-output))
      [true-output false-output])))
 
 (defasync ^:private take-values!
@@ -514,7 +514,7 @@
    (take n channel nil))
   ([n channel buf-or-n]
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (take-values! n channel output))
+     (concurrent/submit-task! (take-values! n channel output))
      output)))
 
 (defasync ^:private into-result!
@@ -534,7 +534,7 @@
   from ``channel`` onto ``to``."
   [to channel]
   (let [output (chan 1)]
-    (asyncio/create-task (into-result! to channel output))
+    (concurrent/submit-task! (into-result! to channel output))
     output))
 
 (defasync ^:private reduce-result!
@@ -560,7 +560,7 @@
   "Return a channel containing the result of reducing values from ``channel``."
   [f init channel]
   (let [output (chan 1)]
-    (asyncio/create-task (reduce-result! f init channel output))
+    (concurrent/submit-task! (reduce-result! f init channel output))
     output))
 
 (defasync ^:private transduce-result!
@@ -590,7 +590,7 @@
   with the transformation ``xform`` applied to ``f``."
   [xform f init channel]
   (let [output (chan 1)]
-    (asyncio/create-task (transduce-result! xform f init channel output))
+    (concurrent/submit-task! (transduce-result! xform f init channel output))
     output))
 
 (defn map<
@@ -719,7 +719,7 @@
   (let [taps (atom {})]
     {:source channel
      :taps   taps
-     :task   (asyncio/create-task (distribute-mult! channel taps))}))
+     :task   (concurrent/submit-task! (distribute-mult! channel taps))}))
 
 (defn muxch*
   "Return the source/output channel associated with a mult, pub, or mix."
@@ -816,7 +816,7 @@
       :topic-fn topic-fn
       :buf-fn   buf-fn
       :topics   topics
-      :task     (asyncio/create-task
+      :task     (concurrent/submit-task!
                  (distribute-publication! channel topic-fn topics))})))
 
 (defn sub
@@ -974,7 +974,7 @@
              :inputs    (atom {})
              :solo-mode (atom :mute)
              :change    (chan (sliding-buffer 1))}]
-    (assoc mix :task (asyncio/create-task (distribute-mix! mix)))))
+    (assoc mix :task (concurrent/submit-task! (distribute-mix! mix)))))
 
 (defn admix
   "Add ``channel`` as an input to ``mix``."
@@ -1131,7 +1131,7 @@
    (map f channels nil))
   ([f channels buf-or-n]
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (map-channel-values! f channels output))
+     (concurrent/submit-task! (map-channel-values! f channels output))
      output)))
 
 (defasync ^:private partition-values!
@@ -1159,7 +1159,7 @@
    (when-not (pos-int? n)
      (throw (ex-info "partition expects a positive integer size" {:n n})))
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (partition-values! n channel output))
+     (concurrent/submit-task! (partition-values! n channel output))
      output)))
 
 (defasync ^:private partition-by-values!
@@ -1194,7 +1194,7 @@
    (partition-by f channel nil))
   ([f channel buf-or-n]
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (partition-by-values! f channel output))
+     (concurrent/submit-task! (partition-by-values! f channel output))
      output)))
 
 (defasync ^:private unique-values!
@@ -1217,5 +1217,5 @@
    (unique channel nil))
   ([channel buf-or-n]
    (let [output (chan buf-or-n)]
-     (asyncio/create-task (unique-values! channel output))
+     (concurrent/submit-task! (unique-values! channel output))
      output)))

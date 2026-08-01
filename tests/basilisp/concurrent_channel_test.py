@@ -569,8 +569,7 @@ def test_timeout_cancelled_by_early_close_does_not_leave_a_live_timer():
 
     run(scenario())
 
-    with pytest.raises(ValueError, match="non-negative"):
-        timeout(-1)
+    assert blocking_take(timeout(-1)) is None
 
 
 def test_alts_stress_never_completes_more_than_one_competing_put():
