@@ -106,7 +106,9 @@ Namespace Caching
 -----------------
 
 The Basilisp compiler aggressively caches compiled namespace modules because compilation is relatively expensive and leads to significant slowdowns when starting Basilisp.
-Basilisp namespaces are cached using the `same mechanism as the Python compiler uses <https://docs.python.org/3/reference/import.html#cached-bytecode-invalidation>`_ -- namespaces are cached as bytecode and only recomputed when the ``mtime`` of the source file differs from the ``mtime`` stored in the header of the cached file.
+Basilisp namespaces are cached as bytecode and recomputed when the source file
+timestamp, source size, or source hash differs from the values stored in the
+cache header.
 Cache files are stored with an ``.lpyc`` prefix and respect the Python ``PYTHONCACHEPREFIX`` (:external:py:data:`sys.pycache_prefix`) setting.
 
 There may be times when the caching behavior is undesirable for whatever reason.
@@ -127,12 +129,12 @@ given symbol. The directory layout follows the munged Python module path, so
 ``my.app`` is written as ``classes/my/app.lpyc`` and a package is written as
 ``classes/my/app/__init__.lpyc``.
 
-Unlike the ordinary timestamp-validated cache, this artifact may be imported
-after its source file has been removed. Keep the artifact tree available through
+Unlike the ordinary source-validated cache, this artifact may be imported after
+its source file has been removed. Keep the artifact tree available through
 ``*compile-path*`` in the target process. When both source and an artifact are
 available, Basilisp deliberately loads source first so development and reload
-behavior remains predictable. ``*compile-files*`` is false normally and is
-bound true while ``compile`` loads its target namespace.
+behavior remains predictable. ``*compile-files*`` is false normally and is bound
+true while ``compile`` loads its target namespace.
 
 Artifacts contain Python marshal bytecode and are therefore trusted,
 Python-version-local build outputs, similar to Python ``.pyc`` files. Build

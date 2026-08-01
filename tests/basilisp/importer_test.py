@@ -583,26 +583,104 @@ class TestImporter:
         using_cache = load_namespace(cached_module_ns)
         assert cached_module_ns == using_cache.find(sym.symbol("val")).value
 
+    def test_import_module_with_truncated_source_hash(
+        self, module_dir, cached_module_ns, cached_module_file, load_namespace
+    ):
+        cache_filename = importer._cache_from_source(
+            os.path.join(module_dir, cached_module_file)
+        )
+        source_filename = os.path.join(module_dir, cached_module_file)
+        stat = os.stat(source_filename)
+        with open(cache_filename, mode="w+b") as f:
+            f.write(importer.MAGIC_NUMBER)
+            f.write(importer._w_long(stat.st_mtime))
+            f.write(importer._w_long(stat.st_size))
+            f.write(b"abc")
+
+        using_cache = load_namespace(cached_module_ns)
+        assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+    def test_import_module_with_invalid_source_hash(
+        self, module_dir, cached_module_ns, cached_module_file, load_namespace
+    ):
+        cache_filename = importer._cache_from_source(
+            os.path.join(module_dir, cached_module_file)
+        )
+        source_filename = os.path.join(module_dir, cached_module_file)
+        stat = os.stat(source_filename)
+        with open(cache_filename, mode="r+b") as f:
+            f.seek(12)
+            f.write(b"0" * importer._SOURCE_HASH_SIZE)
+
+        using_cache = load_namespace(cached_module_ns)
+        assert cached_module_ns == using_cache.find(sym.symbol("val")).value
+
+        with open(source_filename, mode="rb") as f:
+            source_hash = importer._source_hash(f.read())
+        with open(cache_filename, mode="rb") as f:
+            cached_code = importer._get_basilisp_bytecode(
+                cached_module_ns,
+                int(stat.st_mtime),
+                stat.st_size,
+                source_hash,
+                f.read(),
+            )
+        assert cached_code
+
+    def test_import_module_invalidates_same_timestamp_same_size_source_edits(
+        self, do_cache_namespaces, make_new_module, load_namespace, module_dir
+    ):
+        ns_name = "importer.namespace.same-size-source-hash"
+        module_path = ("importer", "namespace", "same_size_source_hash.lpy")
+        source_filename = os.path.join(module_dir, *module_path)
+        make_new_module(
+            *module_path,
+            module_text=f'(ns {ns_name}) (def val "alpha")',
+        )
+
+        p = Process(target=_import_module, args=(munge(ns_name),))
+        p.start()
+        p.join()
+        assert 0 == p.exitcode
+
+        stat = os.stat(source_filename)
+        replacement = f'(ns {ns_name}) (def val "omega")'
+        assert os.path.getsize(source_filename) == len(replacement)
+        with open(source_filename, mode="w") as f:
+            f.write(replacement)
+        os.utime(source_filename, (stat.st_atime, stat.st_mtime))
+        importlib.invalidate_caches()
+
+        using_cache = load_namespace(ns_name)
+
+        assert "omega" == using_cache.find(sym.symbol("val")).value
+
     def test_import_module_with_corrupt_cache_payload(
         self, module_dir, cached_module_ns, cached_module_file, load_namespace
     ):
         source_filename = os.path.join(module_dir, cached_module_file)
         cache_filename = importer._cache_from_source(source_filename)
         stat = os.stat(source_filename)
+        with open(source_filename, mode="rb") as f:
+            source_hash = importer._source_hash(f.read())
         with open(cache_filename, mode="w+b") as f:
             f.write(importer.MAGIC_NUMBER)
             f.write(importer._w_long(stat.st_mtime))
             f.write(importer._w_long(stat.st_size))
+            f.write(source_hash)
             f.write(b"not marshal data")
 
         using_cache = load_namespace(cached_module_ns)
         assert cached_module_ns == using_cache.find(sym.symbol("val")).value
 
+        with open(source_filename, mode="rb") as f:
+            source_hash = importer._source_hash(f.read())
         with open(cache_filename, mode="rb") as f:
             cached_code = importer._get_basilisp_bytecode(
                 cached_module_ns,
                 int(stat.st_mtime),
                 stat.st_size,
+                source_hash,
                 f.read(),
             )
         assert cached_code
@@ -614,20 +692,26 @@ class TestImporter:
         source_filename = os.path.join(module_dir, cached_module_file)
         cache_filename = importer._cache_from_source(source_filename)
         stat = os.stat(source_filename)
+        with open(source_filename, mode="rb") as f:
+            source_hash = importer._source_hash(f.read())
         with open(cache_filename, mode="w+b") as f:
             f.write(importer.MAGIC_NUMBER)
             f.write(importer._w_long(stat.st_mtime))
             f.write(importer._w_long(stat.st_size))
+            f.write(source_hash)
             f.write(marshal.dumps({"not": "bytecode"}))
 
         using_cache = load_namespace(cached_module_ns)
         assert cached_module_ns == using_cache.find(sym.symbol("val")).value
 
+        with open(source_filename, mode="rb") as f:
+            source_hash = importer._source_hash(f.read())
         with open(cache_filename, mode="rb") as f:
             cached_code = importer._get_basilisp_bytecode(
                 cached_module_ns,
                 int(stat.st_mtime),
                 stat.st_size,
+                source_hash,
                 f.read(),
             )
         assert cached_code
