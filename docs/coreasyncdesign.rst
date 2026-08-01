@@ -163,7 +163,11 @@ into one of these states:
      - Public surface covered locally by coroutine-backed ``go``, ``go-loop``,
        ``<!``, ``>!``, and ``alt!``. Full Clojure IOC/state-machine parity,
        including meaningful direct ``ioc-alts!`` integration, remains deeper
-       compiler work.
+       compiler work. The public ``clojure.core.async.impl.ioc-macros``
+       runtime helper surface is now covered for constants, state-array
+       mutation, one-step state-machine execution, wrapped failure close,
+       ``return-chan``, and immediate/enqueued ``take!``/``put!`` continuation
+       behavior.
    * - Blocking bridge
      - Requires an explicit policy for using a loop-owned async channel from
        synchronous Python threads.
@@ -432,8 +436,8 @@ Every phase should add tests before broadening the public surface.
 
 4. Rejection tests
    Unsupported parking forms, blocking calls in ``go``, same-loop blocking
-   bridge calls, nil channel values, and unsupported flow APIs should fail with
-   stable messages.
+   bridge calls, nil channel values, and unsupported compiler/IOC paths should
+   fail with stable messages.
 
 5. Documentation tests
    Examples in ``docs/concurrency.rst`` and this design should compile or be
@@ -548,6 +552,8 @@ as full implementation parity:
   and dispatch compatibility.
 * Decide whether to keep ``ioc-alts!`` as an explicit unsupported boundary for
   the long term or invest in a compiler-produced state-machine representation.
+  The public IOC runtime helper namespace is now available; the missing piece
+  is compiler lowering and full ``ioc-alts!`` selection integration.
 * Add deterministic rejection or compatibility tests for unsupported
   parking/compiler forms if deeper IOC work begins. The audited upstream
   ``org.clojure/core.async`` 1.9.865 artifact does not ship

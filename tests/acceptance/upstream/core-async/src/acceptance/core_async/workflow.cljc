@@ -1,5 +1,8 @@
 (ns acceptance.core-async.workflow
-  (:require [clojure.core.async :as async]))
+  (:require [clojure.core.async :as async]
+            [clojure.core.async.impl.ioc-macros :as ioc]))
+
+#?(:clj (import '[java.util.concurrent.atomic AtomicReferenceArray]))
 
 (def supported-publics
   '#{buffer dropping-buffer sliding-buffer
@@ -64,6 +67,76 @@
                                        (:cont-block data)
                                        (:ports data)
                                        (:opts data)])]])))))
+
+(def ioc-publics
+  '#{BINDINGS-IDX EXCEPTION-FRAMES FN-IDX STATE-IDX USER-START-IDX VALUE-IDX
+     aget-object aset-all! aset-object async-custom-terminators put!
+     return-chan run-state-machine run-state-machine-wrapped take!})
+
+(defn ioc-state-array []
+  #?(:clj (AtomicReferenceArray. 8)
+     :lpy (object-array 8)))
+
+(defn ioc-state-values [state]
+  (vec (map #(ioc/aget-object state %) (range 8))))
+
+(defn ioc-make-state [f]
+  (doto (ioc-state-array)
+    (ioc/aset-object ioc/FN-IDX f)
+    (ioc/aset-object ioc/STATE-IDX 0)
+    (ioc/aset-object ioc/VALUE-IDX :initial)
+    (ioc/aset-object ioc/USER-START-IDX (async/chan 1))))
+
+(defn ioc-helper-summary
+  "Exercise the public runtime helpers targeted by generated IOC state
+  machines without claiming compiler-produced IOC transformation."
+  []
+  (let [publics      (set (keys (ns-publics 'clojure.core.async.impl.ioc-macros)))
+        array-state  (ioc-state-array)
+        _            (ioc/aset-object array-state 7 :seven)
+        _            (ioc/aset-all! array-state 0 :zero 2 :two 5 :five)
+        calls        (atom [])
+        run-state    (ioc-make-state
+                      (fn [state]
+                        (swap! calls conj [(ioc/aget-object state ioc/STATE-IDX)
+                                           (ioc/aget-object state ioc/VALUE-IDX)])
+                        (ioc/aset-all! state
+                                       ioc/VALUE-IDX :next
+                                       ioc/STATE-IDX 1)
+                        :step-done))
+        return-state (ioc-make-state (fn [_] :unused))
+        out          (ioc/aget-object return-state ioc/USER-START-IDX)
+        take-channel (async/chan 1)
+        take-state   (ioc-make-state (fn [_] :unused))
+        put-channel  (async/chan 1)
+        put-state    (ioc-make-state (fn [_] :unused))]
+    (async/>!! take-channel :ready)
+    [[:surface {:exact? (= publics ioc-publics)
+                :missing (vec (sort (remove publics ioc-publics)))
+                :extra (vec (sort (remove ioc-publics publics)))}]
+     [:constants [ioc/FN-IDX
+                  ioc/STATE-IDX
+                  ioc/VALUE-IDX
+                  ioc/BINDINGS-IDX
+                  ioc/EXCEPTION-FRAMES
+                  ioc/USER-START-IDX]]
+     [:array [(ioc/aget-object array-state 5)
+              (ioc-state-values array-state)]]
+     [:run [(ioc/run-state-machine run-state)
+            @calls
+            (ioc/aget-object run-state ioc/VALUE-IDX)
+            (ioc/aget-object run-state ioc/STATE-IDX)]]
+     [:return [(identical? out (ioc/return-chan return-state :returned))
+               (async/<!! out)
+               (async/<!! out)]]
+     [:ready {:take [(ioc/take! take-state 7 take-channel)
+                     (ioc/aget-object take-state ioc/VALUE-IDX)
+                     (ioc/aget-object take-state ioc/STATE-IDX)]
+              :put [(ioc/put! put-state 9 put-channel :value)
+                    (async/<!! put-channel)
+                    (ioc/aget-object put-state ioc/VALUE-IDX)
+                    (ioc/aget-object put-state ioc/STATE-IDX)]}]
+     [:terminators ioc/async-custom-terminators]]))
 
 (defn drain
   "Synchronously drain channel values until close."

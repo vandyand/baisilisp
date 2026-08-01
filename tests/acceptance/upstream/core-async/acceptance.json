@@ -8,7 +8,8 @@
   "run_via_load_file": true,
   "substitutions": [
     "clojure.core.async -> basilisp.core.async",
+    "clojure.core.async.impl.ioc-macros -> basilisp.core.async.impl.ioc-macros",
     "Clojure IOC go state machine -> Basilisp asyncio coroutine-backed go subset",
-    "portable source examples only; direct ioc-alts! state-machine integration remains excluded"
+    "portable source examples plus public IOC runtime helpers only; compiler-generated ioc-alts! state-machine integration remains excluded"
   ]
 }

@@ -7,16 +7,19 @@
                  '[clojure.core.async.impl.buffers :as impl-buffers]
                  '[clojure.core.async.impl.channels :as impl-channels]
                  '[clojure.core.async.impl.dispatch :as impl-dispatch]
+                 '[clojure.core.async.impl.ioc-macros :as impl-ioc]
                  '[clojure.core.async.impl.protocols :as impl-protocols]
                  '[clojure.datafy :as datafy])
    :lpy (require '[clojure.core.async :as async]
                  '[clojure.core.async.impl.buffers :as impl-buffers]
                  '[clojure.core.async.impl.channels :as impl-channels]
                  '[clojure.core.async.impl.dispatch :as impl-dispatch]
+                 '[clojure.core.async.impl.ioc-macros :as impl-ioc]
                  '[clojure.core.async.impl.protocols :as impl-protocols]
                  '[clojure.datafy :as datafy]))
 
 #?(:lpy (import asyncio))
+#?(:clj (import '[java.util.concurrent.atomic AtomicReferenceArray]))
 
 (async/defblockingop helper-defined-blocking-op
   "fixture blocking op"
@@ -76,6 +79,11 @@
      executor executor-for in-dispatch-thread? in-go-dispatch run
      virtual-threads-available? with-dispatch-thread-marking})
 
+(def impl-ioc-publics
+  '#{BINDINGS-IDX EXCEPTION-FRAMES FN-IDX STATE-IDX USER-START-IDX VALUE-IDX
+     aget-object aset-all! aset-object async-custom-terminators put!
+     return-chan run-state-machine run-state-machine-wrapped take!})
+
 (defn current-publics []
   (set (keys (ns-publics 'clojure.core.async))))
 
@@ -98,7 +106,8 @@
     {:protocols (surface 'clojure.core.async.impl.protocols impl-protocol-publics)
      :buffers   (surface 'clojure.core.async.impl.buffers impl-buffer-publics)
      :channels  (surface 'clojure.core.async.impl.channels impl-channel-publics)
-     :dispatch  (surface 'clojure.core.async.impl.dispatch impl-dispatch-publics)}))
+     :dispatch  (surface 'clojure.core.async.impl.dispatch impl-dispatch-publics)
+     :ioc       (surface 'clojure.core.async.impl.ioc-macros impl-ioc-publics)}))
 
 (defn impl-buffer-roundtrip []
   (let [fixed    (impl-buffers/fixed-buffer 1)
@@ -196,6 +205,123 @@
      :dispatch? (impl-dispatch/in-dispatch-thread?)
      :blocking-check (nil? (impl-dispatch/check-blocking-in-dispatch))
      :virtual-var? (boolean? impl-dispatch/virtual-threads-available?)}))
+
+(defn impl-ioc-state-array []
+  #?(:clj (AtomicReferenceArray. 8)
+     :lpy (object-array 8)))
+
+(defn impl-ioc-state-values [state]
+  (vec (map #(impl-ioc/aget-object state %) (range 8))))
+
+(defn impl-ioc-make-state [f]
+  (doto (impl-ioc-state-array)
+    (impl-ioc/aset-object impl-ioc/FN-IDX f)
+    (impl-ioc/aset-object impl-ioc/STATE-IDX 0)
+    (impl-ioc/aset-object impl-ioc/VALUE-IDX :initial)
+    (impl-ioc/aset-object impl-ioc/USER-START-IDX (async/chan 1))))
+
+(defn impl-ioc-public-summary []
+  {:constants [impl-ioc/FN-IDX
+               impl-ioc/STATE-IDX
+               impl-ioc/VALUE-IDX
+               impl-ioc/BINDINGS-IDX
+               impl-ioc/EXCEPTION-FRAMES
+               impl-ioc/USER-START-IDX]
+   :terminators impl-ioc/async-custom-terminators})
+
+(defn impl-ioc-array-roundtrip []
+  (let [state (impl-ioc-state-array)]
+    [(impl-ioc/aset-object state 7 :seven)
+     (do (impl-ioc/aset-all! state 0 :zero 2 :two 5 :five)
+         (impl-ioc/aget-object state 5))
+     (impl-ioc-state-values state)]))
+
+(defn impl-ioc-run-roundtrip []
+  (let [calls (atom [])
+        state (impl-ioc-make-state
+               (fn [s]
+                 (swap! calls conj [(impl-ioc/aget-object s impl-ioc/STATE-IDX)
+                                    (impl-ioc/aget-object s impl-ioc/VALUE-IDX)])
+                 (impl-ioc/aset-all! s
+                                     impl-ioc/VALUE-IDX :next
+                                     impl-ioc/STATE-IDX 1)
+                 :step-done))]
+    [(impl-ioc/run-state-machine state)
+     @calls
+     (impl-ioc/aget-object state impl-ioc/VALUE-IDX)
+     (impl-ioc/aget-object state impl-ioc/STATE-IDX)]))
+
+(defn impl-ioc-return-roundtrip []
+  (let [state    (impl-ioc-make-state (fn [_] :unused))
+        out      (impl-ioc/aget-object state impl-ioc/USER-START-IDX)
+        returned (impl-ioc/return-chan state :returned)]
+    [(identical? out returned) (async/<!! out) (async/<!! out)]))
+
+(defn impl-ioc-wrapped-error-roundtrip []
+  (let [state (impl-ioc-make-state
+               #?(:clj (fn [_] (throw (RuntimeException. "boom")))
+                  :lpy (fn [_] (throw (python/RuntimeError "boom")))))
+        out   (impl-ioc/aget-object state impl-ioc/USER-START-IDX)]
+    (try
+      (impl-ioc/run-state-machine-wrapped state)
+      {:thrown? false
+       :closed-take (async/<!! out)}
+      (catch Exception e
+        {:thrown? true
+         :message (ex-message e)
+         :closed-take (async/<!! out)}))))
+
+(defn impl-ioc-ready-roundtrip []
+  (let [take-channel (async/chan 1)
+        take-state   (impl-ioc-make-state (fn [_] :unused))
+        put-channel  (async/chan 1)
+        put-state    (impl-ioc-make-state (fn [_] :unused))]
+    (async/>!! take-channel :ready)
+    (let [take-result (impl-ioc/take! take-state 7 take-channel)
+          put-result  (impl-ioc/put! put-state 9 put-channel :value)]
+      {:take [take-result
+              (impl-ioc/aget-object take-state impl-ioc/VALUE-IDX)
+              (impl-ioc/aget-object take-state impl-ioc/STATE-IDX)]
+       :put [put-result
+             (async/<!! put-channel)
+             (impl-ioc/aget-object put-state impl-ioc/VALUE-IDX)
+             (impl-ioc/aget-object put-state impl-ioc/STATE-IDX)]})))
+
+(defn impl-ioc-enqueued-roundtrip []
+  (let [take-channel (async/chan)
+        take-calls   (atom [])
+        take-state   (impl-ioc-make-state
+                      (fn [s]
+                        (swap! take-calls
+                               conj
+                               [(impl-ioc/aget-object s impl-ioc/VALUE-IDX)
+                                (impl-ioc/aget-object s impl-ioc/STATE-IDX)])
+                        :continued))
+        put-channel  (async/chan)
+        put-calls    (atom [])
+        put-state    (impl-ioc-make-state
+                      (fn [s]
+                        (swap! put-calls
+                               conj
+                               [(impl-ioc/aget-object s impl-ioc/VALUE-IDX)
+                                (impl-ioc/aget-object s impl-ioc/STATE-IDX)])
+                        :continued))]
+    (let [take-result (impl-ioc/take! take-state 11 take-channel)]
+      (async/>!! take-channel :later)
+      #?(:clj (Thread/sleep 50)
+         :lpy (async/<!! (async/timeout 50)))
+      (let [put-result (impl-ioc/put! put-state 13 put-channel :later)]
+        (async/<!! put-channel)
+        #?(:clj (Thread/sleep 50)
+           :lpy (async/<!! (async/timeout 50)))
+        {:take [take-result
+                @take-calls
+                (impl-ioc/aget-object take-state impl-ioc/VALUE-IDX)
+                (impl-ioc/aget-object take-state impl-ioc/STATE-IDX)]
+         :put [put-result
+               @put-calls
+               (impl-ioc/aget-object put-state impl-ioc/VALUE-IDX)
+               (impl-ioc/aget-object put-state impl-ioc/STATE-IDX)]}))))
 
 (defn ioc-boundary-summary []
   #?(:clj {:public? true
@@ -2242,6 +2368,15 @@
             (impl-handler-roundtrip)
             (impl-channel-roundtrip)
             (impl-dispatch-roundtrip)])
+
+(emit-case :core-async-ioc-macros
+           [(impl-ioc-public-summary)
+            (impl-ioc-array-roundtrip)
+            (impl-ioc-run-roundtrip)
+            (impl-ioc-return-roundtrip)
+            (impl-ioc-wrapped-error-roundtrip)
+            (impl-ioc-ready-roundtrip)
+            (impl-ioc-enqueued-roundtrip)])
 
 (emit-case :core-async-buffers
            #?(:clj [(fixed-buffer-roundtrip)
