@@ -1601,11 +1601,16 @@ Completed locally:
   Reader/compiler exceptions keep their source diagnostics even when nested
   under ordinary Python wrapper exceptions, while Python tracebacks keep bounded
   frame rendering.
+* coverage.py integration now registers a Basilisp file tracer/reporter for
+  concrete ``.lpy`` files. Coverage reports can use Basilisp source text and
+  reader-derived executable lines instead of trying to parse Lisp files as
+  Python, with conservative fallback behavior for malformed in-progress source
+  and top-level literals that do not carry reader metadata.
 
 Near-term deliverable:
 
-* improve source mapping, traceback output, and coverage support before making
-  broad language changes
+* continue source mapping and debugger integration hardening before making broad
+  language changes
 
 6. Python-Native Extensions
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^
